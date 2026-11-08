@@ -32,9 +32,11 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -48,6 +50,7 @@
 #include <openglad/gameplay/weap.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -457,9 +460,190 @@ TEST_F(QuietProbe, an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
     EXPECT_TRUE(world().query_passable(300.0f, 300.0f, rock, 0, true));
     EXPECT_EQ(before, state(rock, {arrow})) << "no draw, nothing touched";
 
+    EXPECT_FALSE(world().query_object_passable(300.0f, 300.0f, rock, 0, true, true))
+        << "asked strictly (weapons_block, Gameplay Fixes AV) the roll is taken as lost";
+    EXPECT_EQ(before, state(rock, {arrow})) << "the strict probe draws nothing either";
+
     EXPECT_FALSE(world().query_passable(300.0f, 300.0f, rock));
     EXPECT_EQ(after_roll.state_, world().rng_.state_)
         << "the loud probe drew its one miss roll";
+}
+
+// Gameplay Fixes AV (#451): asked with weapons_block, the pad probe takes the
+// weapon-vs-weapon miss roll as lost. An elf (team 1, 16x16 at 320,320,
+// heading RIGHT) has its rock's pad (read from weapon_pad) held by an enemy
+// weapon-order body: an arrow in flight, a level-2 door, a grown tree. For
+// each: the lenient answer is Clear (the quiet probe never rolls the clash
+// and passes it), the strict answer is Weapon, and neither changes the world
+// (WorldState, the stream included); the Lua doors answer the same
+// (fire_pad_answer(nil, true) "weapon", fire_pad_clear(nil, true) false,
+// G.pad_clear_of_weapons false). The strict answer is the loud answer on a
+// lost roll: a real rock of the elf's standing on the pad, asked loudly, is
+// blocked when its one clash roll loses (next(10) <= 3) and passes when it
+// wins; and fire() itself, its draws scripted (the waver, then the clash),
+// launches no rock on a lost clash (it lands its melee blow on the body,
+// whose damage roll is a third draw, and the blow destroys an arrow) and
+// one rock on a won clash, after exactly the two draws. An
+// own-team arrow on the pad is Clear on both questions, and an enemy arrow
+// in the pad's 32 px cell but off its box is Clear: the question is about
+// the box, not the cell.
+// RED (planted): obmap.cpp `(quiet ? !weapons_block : ...)` -> `(quiet || ...)`
+// (strict answers Clear); walker.cpp `if (weapons_block && ...)` ->
+// `if (false && ...)` (strict answers Clear); the strict call made loud
+// (/*quiet=*/false): the stream moves.
+TEST_F(QuietProbe, a_strict_pad_probe_takes_the_clash_roll_as_lost)
+{
+    using PA = walker::PadAnswer;
+    // Draws the listed values in turn and records every bound asked.
+    struct Scripted : IRandom
+    {
+        std::vector<std::uint32_t> values;
+        std::vector<std::uint32_t> bounds;
+        std::uint32_t next(std::uint32_t max_exclusive) override
+        {
+            bounds.push_back(max_exclusive);
+            const std::uint32_t v = bounds.size() <= values.size()
+                ? values[bounds.size() - 1] : 0u;
+            return v % max_exclusive;
+        }
+    };
+    const std::pair<short, short> rock_box = body_box(Order::Weapon, FAMILY_ROCK);
+    ASSERT_EQ((std::pair<short, short>{6, 6}), rock_box);
+    short px = 0, py = 0;
+    std::vector<const walker*> watched;
+    const auto build = [&](const std::string& kind) -> walker* {
+        fresh_world();
+        watched.clear();
+        walker* elf = living_at(FAMILY_ELF, 1, 320, 320);
+        if (elf == nullptr)
+            return nullptr;
+        elf->set_current_weapon(FAMILY_ROCK);
+        elf->set_lastx(1.0f);
+        elf->set_lasty(0.0f);
+        walker probe(walker::WeaponProfileProbeTag{});
+        probe.set_sizex(rock_box.first);
+        probe.set_sizey(rock_box.second);
+        elf->weapon_pad(probe, px, py);
+        if (kind == "weapon in flight") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 2, px, py, 7, 7));
+        } else if (kind == "door") {
+            walker* door = weapon_at(FAMILY_DOOR, 2, px, 320, 16, 16);
+            if (door != nullptr)
+                door->stats()->set_level(2);
+            watched.push_back(door);
+        } else if (kind == "tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 2, px, 320, 16, 16));
+        } else if (kind == "own arrow") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 1, px, py, 7, 7));
+        } else if (kind == "enemy arrow in the cell, off the box") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 2, 345, 340, 7, 7));
+        }
+        return elf;
+    };
+    ASSERT_NE(nullptr, build("open"));
+    ASSERT_EQ(337, px) << "the pad one pixel right of the elf";
+    ASSERT_EQ(325, py) << "centred on the elf's 16 px side";
+
+    for (const char* kind : {"weapon in flight", "door", "tree"}) {
+        SCOPED_TRACE(kind);
+        walker* elf = build(kind);
+        ASSERT_NE(nullptr, elf);
+        ASSERT_NE(nullptr, watched[0]);
+        world().rng_.state_ = 4242u;
+        const WorldState before = state(elf, watched);
+        EXPECT_EQ(PA::Clear, elf->fire_pad_answer()) << "the lenient probe passes it";
+        EXPECT_TRUE(elf->fire_pad_clear());
+        EXPECT_EQ(PA::Weapon, elf->fire_pad_answer(-1, true)) << "the strict probe meets it";
+        EXPECT_FALSE(elf->fire_pad_clear(-1, true));
+        EXPECT_EQ(before, state(elf, watched))
+            << "before " << before.describe() << "\nafter  "
+            << state(elf, watched).describe();
+        Answers a = lua(elf,
+                        "    og.log('answer', self:fire_pad_answer(nil, true))\n"
+                        "    og.log('clear', self:fire_pad_clear(nil, true) and 1 or 0)\n"
+                        "    og.log('gate', G.pad_clear_of_weapons(self) and 1 or 0)\n"
+                        "    og.log('lenient', G.pad_clear(self) and 1 or 0)\n");
+        EXPECT_EQ("weapon", a["answer"]) << last_error();
+        EXPECT_EQ("0", a["clear"]);
+        EXPECT_EQ("0", a["gate"]);
+        EXPECT_EQ("1", a["lenient"]);
+        EXPECT_EQ(4242u, world().rng_.state_) << "the Lua doors draw nothing";
+
+        // The loud answer on each roll, with a real rock of the elf's on the pad.
+        walker* rock = weapon_at(FAMILY_ROCK, 1, px, py, rock_box.first, rock_box.second);
+        ASSERT_NE(nullptr, rock);
+        rock->set_owner(elf);
+        const std::uint32_t lost = state_where_draws_are({10}, {0});
+        const std::uint32_t won = state_where_draws_are({10}, {9});
+        world().rng_.state_ = won;
+        EXPECT_TRUE(world().query_passable(px, py, rock)) << "a won roll: the rock passes it";
+        og::sim::SimRandom after_won(won);
+        (void)after_won.next(10);
+        EXPECT_EQ(after_won.state_, world().rng_.state_) << "the one clash roll";
+        world().rng_.state_ = lost;
+        EXPECT_FALSE(world().query_passable(px, py, rock))
+            << "a lost roll: the loud answer is the strict one";
+        og::sim::SimRandom after_lost(lost);
+        (void)after_lost.next(10);
+        EXPECT_EQ(after_lost.state_, world().rng_.state_) << "the one clash roll";
+
+        // fire() itself: the waver draw, then the clash roll.
+        for (const bool clash_lost : {true, false}) {
+            SCOPED_TRACE(clash_lost ? "fire(), the clash lost" : "fire(), the clash won");
+            elf = build(kind);
+            ASSERT_NE(nullptr, elf);
+            const auto live_rocks = [&]() {
+                std::size_t n = 0;
+                for (const auto& ob : world().weaplist)
+                    if (ob && ob->dead() == 0 && ob->family() == static_cast<char>(FAMILY_ROCK))
+                        ++n;
+                return n;
+            };
+            Scripted scripted;
+            scripted.values = {0u, clash_lost ? 0u : 9u};
+            walker* launched = nullptr;
+            {
+                ScopedSimRandom guard(&scripted);
+                launched = elf->fire();
+            }
+            ASSERT_LE(2u, scripted.bounds.size()) << testing::PrintToString(scripted.bounds);
+            EXPECT_EQ(10u, scripted.bounds[1]) << "the second draw is the clash roll";
+            if (clash_lost) {
+                // The lost clash leaves the pad held: fire() lands its melee
+                // blow on the body there, whose damage roll is the third draw
+                // (compute_base_damage: next(floor(sqrt(damage)))).
+                ASSERT_EQ(3u, scripted.bounds.size())
+                    << "the waver, the clash, the blow's damage roll: "
+                    << testing::PrintToString(scripted.bounds);
+                EXPECT_EQ(static_cast<std::uint32_t>(std::floor(std::sqrt(elf->damage()))),
+                          scripted.bounds[2]);
+                EXPECT_EQ(nullptr, launched) << "no rock leaves";
+                EXPECT_EQ(0u, live_rocks()) << "the rock made for the shot is dead";
+                EXPECT_EQ(std::string(kind) == "weapon in flight", watched[0]->dead() != 0)
+                    << "the blow destroys the arrow; the door and the tree stand";
+            } else {
+                ASSERT_EQ(2u, scripted.bounds.size()) << testing::PrintToString(scripted.bounds);
+                ASSERT_NE(nullptr, launched) << "the rock flies";
+                EXPECT_EQ(static_cast<char>(FAMILY_ROCK), launched->family());
+                EXPECT_EQ(1u, live_rocks());
+            }
+        }
+    }
+
+    for (const char* kind : {"own arrow", "enemy arrow in the cell, off the box"}) {
+        SCOPED_TRACE(kind);
+        walker* elf = build(kind);
+        ASSERT_NE(nullptr, elf);
+        ASSERT_NE(nullptr, watched[0]);
+        const WorldState before = state(elf, watched);
+        EXPECT_EQ(PA::Clear, elf->fire_pad_answer());
+        EXPECT_EQ(PA::Clear, elf->fire_pad_answer(-1, true));
+        EXPECT_TRUE(elf->fire_pad_clear(-1, true));
+        EXPECT_EQ(before, state(elf, watched));
+    }
+    // The off-box arrow shares the pad's 32 px cell.
+    EXPECT_EQ(px / 32, 345 / 32);
+    EXPECT_EQ(py / 32, 340 / 32);
 }
 
 // The arrow slit: a living is refused either way; a weapon with an owner is
@@ -761,7 +945,9 @@ TEST_F(QuietProbe, fire_pad_clear_is_false_for_a_non_living)
 // deterministic it is the control: it launches exactly when the answer is
 // Clear. Every case through the Lua door too, and the world after the probe
 // is the world before it. A generator caster and a weapon the loader cannot
-// make answer NoProbe.
+// make answer NoProbe. Asked strictly (weapons_block, Gameplay Fixes AV) the
+// door, the tree and the weapon in flight answer Weapon; every other case
+// answers what the lenient question answers.
 // RED (planted): fire_pad_answer's grid half answering Body instead of
 // Terrain (return PadAnswer::Terrain -> return PadAnswer::Body): the wall,
 // the arrow's tree tile and the map edge cases red.
@@ -774,20 +960,22 @@ TEST_F(QuietProbe, fire_pad_answer_names_what_the_pad_holds)
         PA answer;
         const char* lua_answer;
         bool fire_is_deterministic;
+        PA strict;               // asked with weapons_block (Gameplay Fixes AV)
+        const char* lua_strict;
     };
     const std::vector<PadCase> cases = {
-        {"open", PA::Clear, "clear", true},
-        {"wall", PA::Terrain, "terrain", true},
-        {"tree tile", PA::Clear, "clear", true},
-        {"tree tile, arrow", PA::Terrain, "terrain", true},
-        {"water", PA::Clear, "clear", true},
-        {"map edge", PA::Terrain, "terrain", true},
-        {"enemy living", PA::Body, "body", true},
-        {"ally living", PA::Clear, "clear", true},
-        {"generator", PA::Body, "body", true},
-        {"door", PA::Clear, "clear", false},
-        {"tree", PA::Clear, "clear", false},
-        {"weapon in flight", PA::Clear, "clear", false},
+        {"open", PA::Clear, "clear", true, PA::Clear, "clear"},
+        {"wall", PA::Terrain, "terrain", true, PA::Terrain, "terrain"},
+        {"tree tile", PA::Clear, "clear", true, PA::Clear, "clear"},
+        {"tree tile, arrow", PA::Terrain, "terrain", true, PA::Terrain, "terrain"},
+        {"water", PA::Clear, "clear", true, PA::Clear, "clear"},
+        {"map edge", PA::Terrain, "terrain", true, PA::Terrain, "terrain"},
+        {"enemy living", PA::Body, "body", true, PA::Body, "body"},
+        {"ally living", PA::Clear, "clear", true, PA::Clear, "clear"},
+        {"generator", PA::Body, "body", true, PA::Body, "body"},
+        {"door", PA::Clear, "clear", false, PA::Weapon, "weapon"},
+        {"tree", PA::Clear, "clear", false, PA::Weapon, "weapon"},
+        {"weapon in flight", PA::Clear, "clear", false, PA::Weapon, "weapon"},
     };
     const auto build = [&](const std::string& kind,
                            std::vector<const walker*>& watched) -> walker* {
@@ -841,14 +1029,20 @@ TEST_F(QuietProbe, fire_pad_answer_names_what_the_pad_holds)
         const WorldState before = state(elf, watched);
         EXPECT_EQ(c.answer, elf->fire_pad_answer());
         EXPECT_EQ(c.answer == PA::Clear, elf->fire_pad_clear());
+        EXPECT_EQ(c.strict, elf->fire_pad_answer(-1, true)) << "asked strictly";
+        EXPECT_EQ(c.strict == PA::Clear, elf->fire_pad_clear(-1, true)) << "asked strictly";
         EXPECT_EQ(before, state(elf, watched))
             << "before " << before.describe() << "\nafter  "
             << state(elf, watched).describe();
         Answers a = lua(elf,
                         "    og.log('answer', self:fire_pad_answer())\n"
-                        "    og.log('clear', self:fire_pad_clear() and 1 or 0)\n");
+                        "    og.log('clear', self:fire_pad_clear() and 1 or 0)\n"
+                        "    og.log('strict', self:fire_pad_answer(nil, true))\n"
+                        "    og.log('strict_clear', self:fire_pad_clear(nil, true) and 1 or 0)\n");
         EXPECT_EQ(c.lua_answer, a["answer"]) << last_error();
         EXPECT_EQ(c.answer == PA::Clear ? "1" : "0", a["clear"]);
+        EXPECT_EQ(c.lua_strict, a["strict"]);
+        EXPECT_EQ(c.strict == PA::Clear ? "1" : "0", a["strict_clear"]);
         if (c.fire_is_deterministic) {
             EXPECT_EQ(c.answer == PA::Clear, elf->fire() != nullptr)
                 << "fire() launches exactly when the pad is clear";
@@ -859,6 +1053,7 @@ TEST_F(QuietProbe, fire_pad_answer_names_what_the_pad_holds)
     walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
     ASSERT_NE(nullptr, place(tent, 320, 320, 16, 16));
     EXPECT_EQ(PA::NoProbe, tent->fire_pad_answer()) << "a generator caster";
+    EXPECT_EQ(PA::NoProbe, tent->fire_pad_answer(-1, true)) << "a generator caster, strictly";
     EXPECT_FALSE(tent->fire_pad_clear());
     EXPECT_EQ("none", lua(tent, "    og.log('answer', self:fire_pad_answer())\n")["answer"]);
 
@@ -1065,6 +1260,160 @@ TEST_F(QuietProbe, body_spot_clear_asks_the_placement_rule_with_the_bodys_box)
                                           500, 700, 0))
         << "on a delayed spawn";
     EXPECT_EQ(before, state(nullptr, {food})) << before.describe();
+}
+
+// Gameplay Fixes AR (#435): walker::pad_room asks the druid's SUMMON
+// FAERIE question before the cast: is there room for a faerie of the
+// druid's where the bolt stands? The druid (team 1, 16x16 at 320,320,
+// heading RIGHT) puts its 8x8 lightning, and so the faerie, at fire()'s pad
+// (337,324). For every case the quiet answer changes nothing (WorldState,
+// the potion undrunk), the Lua door walker:pad_room('living', faerie)
+// answers the same, and the answer equals the loud one the cast asks: a
+// real faerie of the druid's on the spot, og.query_passable's C++ with it
+// (asked last, since a real faerie on the spot would meet the probe). An
+// own-team tree passes (a living passes its own side's weapons), an ally,
+// an enemy living, an enemy tree, an enemy arrow in flight and a locked
+// door block, a mana potion passes (a treasure never blocks; the loud
+// question drinks it, the quiet one leaves it), a wall and an
+// arrow slit block a living, and water lets the faerie (a flyer) pass. A
+// tent caster and a living family the loader cannot make answer no, an
+// unknown order word is a script error naming it, and a wall that a 16x16
+// box on the spot would meet but the faerie's box does not leaves room: the
+// question is asked with the summoned body, never the caster's (#423).
+// RED (planted): summon_room_at asking loudly (quiet = false): the potion
+// is drunk and the state differs; summon_room_at asking with the
+// owner as the probe: the 16x16 wall arm answers no.
+TEST_F(QuietProbe, pad_room_asks_the_casts_question_with_the_summoned_body)
+{
+    const std::pair<short, short> faerie_box = body_box(Order::Living, FAMILY_FAERIE);
+    ASSERT_EQ((std::pair<short, short>{8, 8}), faerie_box);
+    ASSERT_EQ((std::pair<short, short>{8, 8}), body_box(Order::Weapon, FAMILY_LIGHTNING));
+    struct RoomCase
+    {
+        const char* name;
+        bool room;
+    };
+    const std::vector<RoomCase> cases = {
+        {"open", true},
+        {"ally living", false},
+        {"enemy living", false},
+        {"own-team tree", true},
+        {"enemy tree", false},
+        {"enemy weapon in flight", false},
+        {"enemy door", false},
+        {"mana potion", true},
+        {"wall", false},
+        {"arrow slit", false},
+        {"water", true},
+    };
+    const short sx = 337;  // fire()'s pad for the lightning: one pixel right,
+    const short sy = 324;  // centred on the druid's 16 px side
+    std::vector<const walker*> watched;
+    const auto build = [&](const std::string& kind) -> walker* {
+        fresh_world();
+        watched.clear();
+        walker* druid = living_at(FAMILY_DRUID, 1, 320, 320);
+        if (druid == nullptr)
+            return nullptr;
+        druid->set_current_weapon(FAMILY_LIGHTNING);
+        druid->set_lastx(1.0f);
+        druid->set_lasty(0.0f);
+        if (kind == "ally living") {
+            watched.push_back(living_at(FAMILY_SOLDIER, 1, 337, 320));
+        } else if (kind == "enemy living") {
+            watched.push_back(living_at(FAMILY_ORC, 2, 337, 320));
+        } else if (kind == "own-team tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 1, 337, 320, 16, 16));
+        } else if (kind == "enemy tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 2, 337, 320, 16, 16));
+        } else if (kind == "enemy weapon in flight") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 2, 338, 325, 7, 7));
+        } else if (kind == "enemy door") {
+            walker* door = weapon_at(FAMILY_DOOR, 2, 337, 320, 16, 16);
+            if (door != nullptr)
+                door->stats()->set_level(2);
+            watched.push_back(door);
+        } else if (kind == "mana potion") {
+            walker* potion = world().add_fx_ob(Order::Treasure, FAMILY_MAGIC_POTION);
+            watched.push_back(place(potion, 337, 324, 8, 8));
+        } else if (kind == "wall") {
+            tile(21, 20, PIX_H_WALL1);
+        } else if (kind == "arrow slit") {
+            tile(21, 20, PIX_WALL4);
+        } else if (kind == "water") {
+            tile(21, 20, PIX_WATER1);
+        }
+        return druid;
+    };
+    {
+        walker* druid = build("open");
+        ASSERT_NE(nullptr, druid);
+        walker probe(walker::WeaponProfileProbeTag{});
+        probe.set_sizex(8);
+        probe.set_sizey(8);
+        short px = 0, py = 0;
+        druid->weapon_pad(probe, px, py);
+        ASSERT_EQ(sx, px) << "the spot is fire()'s pad";
+        ASSERT_EQ(sy, py);
+    }
+    const int faerie_family = FAMILY_FAERIE;
+    for (const RoomCase& c : cases) {
+        SCOPED_TRACE(c.name);
+        walker* druid = build(c.name);
+        ASSERT_NE(nullptr, druid);
+        for (const walker* w : watched)
+            ASSERT_NE(nullptr, w);
+        const WorldState before = state(druid, watched);
+        EXPECT_EQ(c.room, druid->pad_room(Order::Living, faerie_family));
+        EXPECT_EQ(before, state(druid, watched))
+            << "before " << before.describe() << "\nafter  "
+            << state(druid, watched).describe();
+        Answers a = lua(druid, std::format(
+            "    og.log('room', self:pad_room('living', {}) and 1 or 0)\n", faerie_family));
+        EXPECT_EQ(c.room ? "1" : "0", a["room"]) << last_error();
+
+        // The loud answer the cast asks, with a real faerie of the druid's.
+        walker* faerie = world().add_ob(Order::Living, faerie_family);
+        ASSERT_NE(nullptr, faerie);
+        faerie->set_owner(druid);
+        faerie->set_team_num(1);
+        place(faerie, sx, sy, faerie_box.first, faerie_box.second);
+        EXPECT_EQ(c.room, world().query_passable(sx, sy, faerie))
+            << "the cast's own question, asked loudly";
+        if (std::string(c.name) == "mana potion") {
+            EXPECT_NE(0, watched[0]->dead())
+                << "the control: the loud question drinks the potion the quiet one left";
+        }
+    }
+
+    // A tent asks nothing; a family the loader cannot make has no room.
+    fresh_world();
+    walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, place(tent, 320, 320, 16, 16));
+    EXPECT_FALSE(tent->pad_room(Order::Living, faerie_family)) << "a tent caster";
+    walker* druid = build("open");
+    ASSERT_NE(nullptr, druid);
+    EXPECT_FALSE(druid->pad_room(Order::Living, 100)) << "a living slot no pack declares";
+    EXPECT_TRUE(druid->pad_room(Order::Living, faerie_family)) << "the control";
+    Answers bad = lua(druid,
+                      "    local ok, err = pcall(function() return self:pad_room('bogus', 1) end)\n"
+                      "    og.log('ok', ok and 1 or 0)\n"
+                      "    og.log('err', tostring(err))\n");
+    EXPECT_EQ("0", bad["ok"]);
+    EXPECT_NE(std::string::npos, bad["err"].find("bogus")) << bad["err"];
+
+    // A wall a caster-sized box on the spot meets and the faerie's does not.
+    druid = build("open");
+    ASSERT_NE(nullptr, druid);
+    tile(22, 21, PIX_H_WALL1);
+    walker body16(walker::WeaponProfileProbeTag{});
+    ASSERT_NE(nullptr, world().configure_existing_entity(body16, Order::Living, FAMILY_SOLDIER));
+    body16.set_sizex(16);
+    body16.set_sizey(16);
+    ASSERT_FALSE(world().query_grid_passable(sx, sy, &body16, 0, true))
+        << "precondition: a 16x16 box on the spot meets the wall";
+    EXPECT_TRUE(druid->pad_room(Order::Living, faerie_family))
+        << "the faerie's own box fits (#423)";
 }
 
 // body_spot_near's ring order on fixed arrangements around the corner

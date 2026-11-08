@@ -41,7 +41,11 @@ class obmap
 		// eaten or exit latched (a treasure never blocks), no door opened and
 		// no "Key N needed!" notice (the loud answer is kept: a door blocks
 		// this round), and no collide() or collide_ob change. Loud by default.
-		short query_list(walker  *ob, short x, short y, bool quiet = false);
+		// weapons_block (with quiet): the weapon-vs-weapon miss is taken as
+		// lost, so an enemy weapon in flight, door or grown tree on the box
+		// blocks, as the loud probe's lost roll blocks (a bot gate's strict
+		// pad question, Gameplay Fixes AV). Still no draw; loud ignores it.
+		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false);
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy

@@ -43,7 +43,8 @@
 //      TARGET, NO ALLY, and the elemental's QUENCH IMMOLATE FIRST: a burning
 //      bot's rules say no to every cast but the quench, #458); SPECIAL BUSY, the soldier's PATH BLOCKED, the elf's
 //      COULD NOT FIRE, the druid's, barbarian's, mage's and archer's COULD
-//      NOT FIRE (one count) and NOT ENOUGH MP are capped at the measured
+//      NOT FIRE (one count), the druid's NO ROOM TO SUMMON (fix AR) and NOT
+//      ENOUGH MP are capped at the measured
 //      count plus a third (at least 3); no walk shoves a body its step did
 //      not meet.
 //   A replay of seed 42 gives the same casts in the same order.
@@ -108,6 +109,14 @@
 //   104 casters), the other five read the same; pooled specials 47 -> 50,
 //   crew casts 314 -> 299, elf COULD NOT FIRE 11 -> 14 (cap 15), rolls the
 //   gates held 5170 -> 5198. #453, #455 and #485 move nothing here.
+//   After fixes AR, AS, AV and #437 (2026-11-08, measured on the bot-gates
+//   package's tree at 6993f2f8 against the same tree with that package's Lua
+//   swapped back): casts 519 / 507 / 430 / 375 / 469 / 380 -> 381 / 415 /
+//   451 / 396 / 553 / 450; ARCHER BARRAGE 127 -> 87 (its rule now holds a
+//   roll whose arrow pad is held), ELF ROCKS 87 -> 82, DRUID SUMMON FAERIE
+//   14 -> 11, all above their B2 floors; elf COULD NOT FIRE 11 -> 0, the
+//   druid's NO ROOM TO SUMMON 2 -> 0, the four families' COULD NOT FIRE 0
+//   (BARRAGE's new refusal never met); rolls the gates held 5416 -> 5427.
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
 //   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
@@ -691,6 +700,9 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // The four families whose gates ask the weapon's pad with fix AA (#407):
     // a cast refused COULD NOT FIRE after its gate said yes.
     int pad_could_not_fire = 0;
+    // The druid's SUMMON FAERIE refused NO ROOM TO SUMMON after its gate
+    // said yes (fix AR: the rule asks the faerie's room where the bolt stands).
+    int druid_no_room = 0;
     int walk_shoves = 0;
     std::vector<std::string> far_shoves;
     int held = 0;
@@ -774,6 +786,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                 (r.family == FAMILY_DRUID || r.family == FAMILY_BARBARIAN ||
                  r.family == FAMILY_MAGE || r.family == FAMILY_ARCHER))
                 pad_could_not_fire++;
+            if (r.reason == "NO ROOM TO SUMMON" && r.family == FAMILY_DRUID)
+                druid_no_room++;
             if (is_counted_nomp(r))
                 nomp++;
         }
@@ -877,10 +891,11 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     }
     std::printf("pooled: %zu specials, crew casts %d (%zu specials), casts at nobody %zu, "
                 "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d, PATH BLOCKED %d, elf COULD NOT FIRE %d, "
-                "druid/barbarian/mage/archer COULD NOT FIRE %d, held %d, walk shoves %d (far %zu)\n",
+                "druid/barbarian/mage/archer COULD NOT FIRE %d, druid NO ROOM TO SUMMON %d, held %d, "
+                "walk shoves %d (far %zu)\n",
                 rows.size(), crew_casts, crew_specials.size(), violations.size(),
                 fact_refusals.size(), busy, nomp, path_blocked, elf_could_not_fire,
-                pad_could_not_fire, held, walk_shoves, far_shoves.size());
+                pad_could_not_fire, druid_no_room, held, walk_shoves, far_shoves.size());
     for (const std::string& v : violations)
         std::printf("  CAST AT NOBODY: %s\n", v.c_str());
     for (const std::string& f : fact_refusals)
@@ -897,6 +912,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     ::testing::Test::RecordProperty("path_blocked", path_blocked);
     ::testing::Test::RecordProperty("elf_could_not_fire", elf_could_not_fire);
     ::testing::Test::RecordProperty("pad_could_not_fire", pad_could_not_fire);
+    ::testing::Test::RecordProperty("druid_no_room", druid_no_room);
     ::testing::Test::RecordProperty("walk_shoves", walk_shoves);
     ::testing::Test::RecordProperty("far_shoves", static_cast<int>(far_shoves.size()));
     ::testing::Test::RecordProperty("crew_freeze_rolls", crew_freeze_rolls);
@@ -1025,19 +1041,31 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // docs/gameplay-fixes.md "What the gates still do not see" names; its
     // mechanism did not change, the amended stream only reaches it more
     // often. No other count rose.
+    // Measured again 2026-11-08 with fixes AR, AS, AV and #437 in (on the
+    // bot-gates package's tree at 6993f2f8; the same six seeds read with the
+    // package's Lua swapped back for the baseline): the elf's COULD NOT FIRE
+    // 11 -> 0 (fix AV: the rule asks the strict pad question and takes the
+    // clash roll as lost; cap 3, the rule's floor for a measured 0), the four
+    // families' COULD NOT FIRE 0 -> 0 with BARRAGE now able to refuse it
+    // (fix AS), and the druid's NO ROOM TO SUMMON after its gate's yes 2 -> 0
+    // (seeds 42 and 2, one each: an ally where the faerie appears; fix AR asks
+    // the faerie's room; cap 3). The gates held 5416 -> 5427 rolls.
     EXPECT_LE(busy, 3)
         << "SPECIAL BUSY refusals (measured 0 pooled; 4 on the three seeds before the "
            "mage's flee teleport asked the busy guard, #408; 157 before fix W)";
     EXPECT_LE(path_blocked, 3)
         << "soldier CHARGE refused PATH BLOCKED after its gate said yes (measured 0 pooled; "
            "139 before fixes V and W)";
-    EXPECT_LE(elf_could_not_fire, 15)
-        << "elf ROCKS refused COULD NOT FIRE after its gate said yes (measured 11 pooled, "
-           "2 / 0 / 0 / 4 / 4 / 1, each an enemy weapon in flight on the pad that won the "
-           "clash roll; 5 before fix Y's amendment; 80 before fix V)";
+    EXPECT_LE(elf_could_not_fire, 3)
+        << "elf ROCKS refused COULD NOT FIRE after its gate said yes (measured 0 pooled with "
+           "fix AV; 11 before it, each an enemy weapon in flight on the pad that won the clash "
+           "roll; 5 before fix Y's amendment; 80 before fix V)";
+    EXPECT_LE(druid_no_room, 3)
+        << "druid SUMMON FAERIE refused NO ROOM TO SUMMON after its gate said yes (measured 0 "
+           "pooled with fix AR; 2 before it, an ally standing where the faerie appears)";
     EXPECT_LE(pad_could_not_fire, 3)
         << "druid, barbarian, mage or archer cast refused COULD NOT FIRE after its gate "
-           "said yes (measured 0 pooled; 2 before fix Y's amendment, both the druid's "
+           "said yes (measured 0 pooled, BARRAGE included since fix AS; 2 before fix Y's amendment, both the druid's "
            "SUMMON FAERIE: a door, a grown tree or a weapon in flight on the pad, which a "
            "weapon probe passes; 25 on the three seeds before fix AA)";
     EXPECT_LE(nomp, 3)

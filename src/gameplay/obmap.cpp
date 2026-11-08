@@ -32,7 +32,11 @@
 // quiet: the probe asks the loud call's question and changes nothing (no
 // draw, no treasure eaten, no door opened, no collide()); see query_list in
 // obmap.h. Every caller but obmap::query_list(..., true) is loud.
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false);
+// weapons_block (with quiet): the weapon-vs-weapon miss roll is taken as
+// lost, so an enemy weapon-order body on the box (a weapon in flight, a door,
+// a grown tree) is met as the loud probe meets it on 4 rolls in 10. A bot
+// gate's strict pad question (Gameplay Fixes AV). A loud probe ignores it.
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false, bool weapons_block = false);
 
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
@@ -92,7 +96,7 @@ size_t obmap::size() const
     return walker_to_pos.size();
 }
 
-short obmap::query_list(walker  *ob, short x, short y, bool quiet)
+short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_block)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
@@ -150,7 +154,7 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet)
 			//   blocked probe.
 			// tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
 			// tests: SemAi2.a_blocked_probe_stops_at_the_first_blocking_cell_and_eats_nothing_beyond_it
-			if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet))
+			if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet, weapons_block))
 				return 0;
 		}
 	}
@@ -418,7 +422,7 @@ const std::list<walker*>* obmap::find_list(short x, short y, int floor)
 /***********************************************
 **  All pass checking from here down.
 ***********************************************/
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet)
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet, bool weapons_block)
 {
 	short oxsize, oysize;
 	short x2, y2, xsize2, ysize2;
@@ -478,11 +482,14 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
             // (a quiet probe never rolls: an enemy weapon in flight passes it)
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet || current_game->world->rng_.next(10) > 3))  // rule: Two hostile projectiles
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet ? !weapons_block : current_game->world->rng_.next(10) > 3))  // rule: Two hostile projectiles
                 //   meeting usually fly through each other: 6 in 10 times (rng.next(10) > 3) they
-                //   pass, 4 in 10 they collide; a quiet probe never rolls and always passes.
+                //   pass, 4 in 10 they collide; a quiet probe never rolls and always passes; asked
+                //   with weapons_block (a bot gate's strict pad, Gameplay Fixes AV) the quiet probe
+                //   takes the roll as lost and goes on to the box test, still drawing nothing.
                 // tests: QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
                 // tests: SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine
+                // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)  // rule: Projectiles never hit or pick

@@ -74,6 +74,7 @@
 ---@field bonus_rounds fun(self: og.Walker): integer
 ---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field can_approach_weapon_range fun(self: og.Walker, objective: og.Walker): boolean # walker:can_approach_weapon_range(objective) -> bool.
+---@field cast_cost fun(self: og.Walker, slot: integer, shifted: any): integer # walker:cast_cost(slot [, shifted]) -> integer: the price the engine gates the slot's cast on and charges, as this session sees it (og::sim::cast_cost): price...
 ---@field center_on fun(self: og.Walker, other: og.Walker)
 ---@field charm_left fun(self: og.Walker): integer
 ---@field clear_myguy fun(self: og.Walker)
@@ -100,8 +101,8 @@
 ---@field find_teleport_target fun(self: og.Walker): og.Walker?
 ---@field fire fun(self: og.Walker): og.Walker?
 ---@field fire_frequency fun(self: og.Walker): number
----@field fire_pad_answer fun(self: og.Walker, weapon_family: integer?): string # walker:fire_pad_answer([weapon_family]) → "clear" | "terrain" | "body" | "none" — what that pad holds (walker::fire_pad_answer): "terrain" a wall, the map ed...
----@field fire_pad_clear fun(self: og.Walker, weapon_family: integer?): boolean # walker:fire_pad_clear([weapon_family]) → boolean — would fire() launch this living's weapon (the current one, or weapon_family) instead of meeting something...
+---@field fire_pad_answer fun(self: og.Walker, weapon_family: integer?, weapons_block: any): string # walker:fire_pad_answer([weapon_family [, weapons_block]]) → "clear" | "terrain" | "body" | "weapon" | "none" — what that pad holds (walker::fire_pad_answer):...
+---@field fire_pad_clear fun(self: og.Walker, weapon_family: integer?, weapons_block: any): boolean # walker:fire_pad_clear([weapon_family [, weapons_block]]) → boolean — would fire() launch this living's weapon (the current one, or weapon_family) instead of...
 ---@field flight_left fun(self: og.Walker): integer
 ---@field floor fun(self: og.Walker): integer
 ---@field foe og.Walker?|fun(self: og.Walker): og.Walker? # write-through property: `self.foe = v` runs m_set_foe; reads answer the method (method-first)
@@ -154,6 +155,7 @@
 ---@field move_myguy_to fun(self: og.Walker, target: og.Walker)
 ---@field order fun(self: og.Walker): integer
 ---@field owner fun(self: og.Walker): og.Walker?
+---@field pad_room fun(self: og.Walker, order: og.OrderName, family: integer, weapon_family: integer?): boolean # walker:pad_room(order, family [, weapon_family]) → boolean — is there room on the pad fire() would place this living's weapon on (the current one, or weapon_...
 ---@field possess_link fun(self: og.Walker): integer # walker:possess_link() -> integer (the partner's entity id, 0 = none)
 ---@field possess_ticks fun(self: og.Walker): integer # walker:possess_ticks() -> integer (the host's countdown, 0 = permanent)
 ---@field real_team_num fun(self: og.Walker): integer

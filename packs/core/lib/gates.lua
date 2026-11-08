@@ -8,7 +8,7 @@
 --      og.find_nearest_foe / og.check_special_ai_distance (find_near_foe
 --      rolls rng(invisibility_left / 20) per cloaked candidate), no loud
 --      og.query_passable or s_forward_blocked() (eat, latch, open, swing);
---      s_forward_blocked(true), og.quiet_passable and fire_pad_clear are ours: no draw, no change.
+--      s_forward_blocked(true), og.quiet_passable, fire_pad_clear (strict too) and pad_room are ours: no draw, no change.
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
@@ -697,22 +697,51 @@ function M.pad_clear(self, weapon)
   return self:fire_pad_clear(weapon)
 end
 
--- The bot can pay the slot's price, or the alternate's when shifted. An
--- alternate with no price of its own answers 0 from alternate_cost and
--- costs the slot's price.
+-- pad_clear's question with an enemy weapon-order body on the pad in the way
+-- too (Gameplay Fixes AV): a weapon in flight, a door or a grown tree, which
+-- the quiet probe passes and fire() meets on 4 rolls in 10. A rule may not
+-- draw that roll, so it takes it as lost (walker:fire_pad_clear with
+-- weapons_block). Own-team bodies still pass. Draws nothing.
+function M.pad_clear_of_weapons(self, weapon)
+  -- rule: The strict pad question is clear only when fire() would launch on any clash roll: no
+  --   wall or map edge, no foe's body and no enemy weapon-order body (a weapon in flight, a door,
+  --   a grown tree) on the pad; the caster's own team's bodies pass. Draws nothing.
+  -- tests: GameplayFixesBots.elf_rocks_refuse_an_enemy_weapon_on_the_pad
+  -- tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+  return self:fire_pad_clear(weapon, true)
+end
+
+-- A cast that fires its weapon and stands a summon where the weapon stands
+-- (the druid's SUMMON FAERIE puts the faerie on the bolt's spot): the
+-- weapon's pad is clear, and the summoned body, the caster's own, has room
+-- there (walker:pad_room: the cast's own passability question, asked
+-- quietly with a detached body of that family, never with the caster,
+-- #423). `order` is an order word ("living"). Draws nothing.
+function M.summon_pad_clear(self, order, family, weapon)
+  -- rule: A summon that stands where the caster's weapon stands pays only when the weapon's pad is
+  --   clear and the summoned body has room on it: an ally there passes the weapon but blocks the
+  --   body; asked with the body, never with the caster. Draws nothing.
+  -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
+  -- tests: GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
+  if not self:fire_pad_clear(weapon) then
+    return false
+  end
+  return self:pad_room(order, family, weapon)
+end
+
+-- The bot can pay the slot, or its Shift arm when shifted, at the price the
+-- engine gates the cast on and charges (walker:cast_cost, og::sim::cast_cost):
+-- a slot out of play is priced out, a hidden or channelling walker's next
+-- press is free, a priced alternate in play costs its own price, every other
+-- press the slot's.
 function M.can_pay(self, slot, shifted)
-  local price = 0
-  -- rule: A bot can pay a slot when its magic covers the alternate's own price while shifted, or
-  --   the slot's price when unshifted or when the alternate has no price of its own (alternate_cost
-  --   0).
+  -- rule: A bot can pay a slot (or its Shift arm while shifted) when its magic covers the price the
+  --   engine charges for it (og::sim::cast_cost): the alternate's own price while shifted, the
+  --   slot's when unshifted or when the alternate has none; 0 for a hidden or channelling
+  --   walker's next press; never a slot out of play (#437).
   -- tests: BotGatesLib.can_pay_falls_back_to_the_slot_price_when_the_alternate_has_none
-  if shifted then
-    price = self:alternate_cost(slot)
-  end
-  if price == 0 then
-    price = self:s_special_cost(slot)
-  end
-  return self.magicpoints >= price
+  -- tests: BotGatesLib.can_pay_reads_the_price_the_cast_charges
+  return self.magicpoints >= self:cast_cost(slot, shifted)
 end
 
 -- The slot's rest is running (living_common gate_with_rest reads the same).

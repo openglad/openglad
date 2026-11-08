@@ -203,14 +203,14 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
   -- tests: SemElf.an_unmapped_elf_slot_aims_like_mega_rocks
   local v = VOLLEYS[self:current_special()] or VOLLEYS[4]
-  -- rule: Gameplay Fixes bot elf never casts when its rock's launch pad is blocked (wall, edge, or
-  --   a foe body on the pad) even with a foe in flight; an ally on the pad does not block.
+  -- rule: Gameplay Fixes bot elf never casts when its rock's launch pad is blocked (wall, edge, or a foe body on the pad) even with a foe in flight; an ally on the pad does not block;
+  --   with fix AV an enemy weapon in flight, door or grown tree on the pad blocks too (fire() meets one on 4 rolls in 10, a roll the rule may not draw).
   -- tests: GameplayFixesBots.elf_rocks_refuse_a_pad_on_a_wall
   -- tests: GameplayFixesBots.elf_rocks_refuse_a_pad_off_the_map
   -- tests: GameplayFixesBots.elf_rocks_refuse_a_foe_on_the_pad
-  -- tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
-  -- tests: parity:elf_bot_rocks_blocked_fixes_scen99
-  return G.pad_clear(self) and volley(self, v[1], v[2])
+  -- tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way, GameplayFixesBots.elf_rocks_refuse_an_enemy_weapon_on_the_pad
+  -- tests: parity:elf_bot_rocks_blocked_fixes_scen99, parity:elf_bot_rocks_tree_pad_fixes_scen99
+  return G.pad_clear_of_weapons(self) and volley(self, v[1], v[2])
 end
 
 og.family("living", {

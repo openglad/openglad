@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "bot_gate_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_registry.h>
@@ -488,6 +489,85 @@ TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
     EXPECT_TRUE(gate(elf, 1, 1)) << "the pad clear, the tower in flight";
 }
 
+// Gameplay Fixes AV (#451): the rock's pad held by an enemy weapon-order
+// body. A weapon in flight, a door or a grown tree of the foes' passes the
+// quiet pad question (the clash is a roll a rule may not draw), and the
+// loud fire() meets it on 4 rolls in 10: the cast then refuses COULD NOT
+// FIRE. With the setting on the rule asks the strict question
+// (G.pad_clear_of_weapons) and says no; the classic elf casts every roll.
+// The elf (level 1, 16x16 at 200,200, heading UP at spawn) faces a tower
+// 31 px above, off the pad and in flight; the pad is read from fire()'s
+// table (weapon_pad). The stream is pinned to a state whose clash roll
+// would lose, and no question moves it. The enemy arrow 5 px above the pad
+// still meets it (collide() shrinks both boxes by a pixel), 6 px above it
+// is off it; an own-team rock on the pad passes; BOUNCING ROCKS shares the
+// rule, as all four volleys do.
+// RED (planted): living-01-elf.lua:213 `G.pad_clear_of_weapons(self)` ->
+// `G.pad_clear(self)`: gate(elf, 1, 1) reads true with the arrow on the pad.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_an_enemy_weapon_on_the_pad)
+{
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 196, 140, 1), 25, 29));  // a 31 px gap above
+    ASSERT_TRUE(elf && foe);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "the control: the pad clear, the tower faced in flight";
+
+    walker probe(walker::WeaponProfileProbeTag{});
+    const PixieData* rock_data =
+        world().configure_existing_entity(probe, Order::Weapon, FAMILY_ROCK);
+    ASSERT_NE(nullptr, rock_data);
+    probe.set_data(*rock_data);
+    short px = 0, py = 0;
+    elf->weapon_pad(probe, px, py);
+    ASSERT_EQ(205, px) << "the rock's 6 px pad, centred above the elf";
+    ASSERT_EQ(193, py);
+
+    const auto weapon_on = [&](int family, unsigned char team, short x, short y,
+                               short sx, short sy) {
+        walker* w = world().add_weap_ob(Order::Weapon, family);
+        if (w != nullptr) {
+            w->set_team_num(team);
+            body(w, sx, sy)->setxy(x, y);
+            settle_body(w);
+        }
+        return w;
+    };
+    walker* arrow = weapon_on(FAMILY_ARROW, 2, px, py, 7, 7);
+    ASSERT_NE(nullptr, arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, elf->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, elf->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_FALSE(gate(elf, 2, 1)) << "BOUNCING ROCKS asks the same pad";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->setxy(px, static_cast<short>(py - 5));
+    EXPECT_FALSE(gate(elf, 1, 1)) << "5 px above: the shrunk boxes still share a row";
+    arrow->setxy(px, static_cast<short>(py - 6));
+    EXPECT_TRUE(gate(elf, 1, 1)) << "6 px above: off the pad";
+    arrow->set_dead(1);
+
+    walker* door = weapon_on(FAMILY_DOOR, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, door);
+    door->stats()->set_level(2);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy door on the pad";
+    door->set_dead(1);
+
+    walker* tree = weapon_on(FAMILY_TREE, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, tree);
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy grown tree on the pad";
+    tree->set_dead(1);
+
+    walker* own = weapon_on(FAMILY_ROCK, 1, px, py, 6, 6);
+    ASSERT_NE(nullptr, own);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "a rock of the elf's own team passes";
+    EXPECT_EQ(lost, world().rng_.state_) << "nothing drew";
+}
+
 // A weapon passes its own team's bodies, so an ally on the pad is not in
 // the way: the rock flies over it at the foe beyond. The same body on the
 // other team is a foe on the pad.
@@ -593,6 +673,63 @@ TEST_F(GameplayFixesBots, archer_barrage_wants_its_foe_faced_in_flight)
     archer->set_foe(tent);
     EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: the tent is within 130";
     EXPECT_FALSE(gate(archer, 2, 1)) << "a generator foe: the barrage is for a fighter";
+}
+
+// Gameplay Fixes AS (#436): BARRAGE's arrows leave from the pad fire()
+// places the archer's arrow on, and with the setting on the cast refuses
+// COULD NOT FIRE when the first cannot leave. The rule asks that pad with
+// fix AV's strict question (G.pad_clear_of_weapons): a wall face, a foe's
+// body, or an enemy arrow in flight on it is a no (the stream pinned to a
+// state whose clash roll would lose, and unmoved); an arrow of the archer's
+// own team passes. The archer (level 4, 16x16 at 192,183, heading UP)
+// holds the tower 85 px above as its foe; its 7x7 arrow pad (196,175)
+// reaches grid row 10.
+// RED (planted): living-02-archer.lua `return G.pad_clear_of_weapons(self)`
+// -> `return true`: every refusing arm reads true.
+TEST_F(GameplayFixesBots, archer_barrage_wants_its_pad_clear)
+{
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 183, 4, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 188, 69, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    archer->set_lasty(-1.0f);
+    archer->set_foe(foe);
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 2, 1)) << "open grass: faced, in flight, the pad clear";
+
+    pad_wall(world(), 12, 10);
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer())
+        << "precondition: the arrow's pad reaches the wall";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a wall under the pad: three arrows that never fly";
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_GRASS1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "the wall gone";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 2, 192, 166, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, archer->fire_pad_answer())
+        << "precondition: a foe's body on the arrow's pad";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a foe's body on the pad: the first arrow is a blow";
+    on_pad->setxy(600, 600);
+
+    walker* arrow = world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(2);
+    body(arrow, 7, 7)->setxy(196, 175);
+    settle_body(arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, archer->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->set_team_num(1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "an arrow of the archer's own team passes";
 }
 
 // EXPLODING BOLT goes off on its foe (a blast of 15 + 4 px a level, 43 at

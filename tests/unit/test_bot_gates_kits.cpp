@@ -25,6 +25,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
@@ -402,6 +403,41 @@ TEST_F(GameplayFixesBots, elemental_rekindle_is_not_forced_on_a_pool_that_cannot
     e->set_shifter_down(1);
     EXPECT_TRUE(kit_gate(e, 4)) << "45 MP: REKINDLE";
     EXPECT_EQ(0, e->shifter_down()) << "REKINDLE, not SUPERNOVA";
+}
+
+// #437: SUPERNOVA (slot 4 shifted, 10 MP) is chosen only when the elemental
+// can pay it. A level-10 elemental at 75 of 400 hp (under a fifth) with two
+// foes 20 px off: with one magic point short of the engine's price for
+// SUPERNOVA the rule does not set the Shift and falls through to REKINDLE,
+// which 9 MP cannot pay either: no, Shift 0. With the price in hand:
+// SUPERNOVA, Shift 1. New Specials off: the guard's yes. The rule reads no
+// Gameplay Fixes setting: both values give the same answers.
+// RED (planted): kit_elemental.lua `if close >= 2 and G.can_pay(self, 4,
+// true) then` -> `if close >= 2 then`: the 9 MP arm reads yes, Shift 1.
+TEST_F(GameplayFixesBots, elemental_supernova_waits_for_its_price)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "Gameplay Fixes " << fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* e = body(add(FAMILY_FIREELEMENTAL, kBots, 200, 200, 10, 10.0f), 16, 16);
+        living* one = body(add(FAMILY_SOLDIER, kFoes, 220, 200, 1), 16, 16);
+        living* two = body(add(FAMILY_SOLDIER, kFoes, 200, 220, 1), 16, 16);
+        ASSERT_TRUE(e && one && two);
+        e->stats()->set_hitpoints(75.0f);  // under a fifth of 400
+        world().new_specials = 1;
+        const int nova = og::sim::cast_cost(*e, 4, true);
+        ASSERT_EQ(10, nova) << "SUPERNOVA's own 10";
+        e->stats()->set_magicpoints(static_cast<float>(nova - 1));
+        e->set_shifter_down(1);
+        EXPECT_FALSE(kit_gate(e, 4)) << "9 MP pays neither SUPERNOVA nor REKINDLE";
+        EXPECT_EQ(0, e->shifter_down()) << "the Shift is not set for a cast it cannot pay";
+        e->stats()->set_magicpoints(static_cast<float>(nova));
+        EXPECT_TRUE(kit_gate(e, 4)) << "10 MP: SUPERNOVA";
+        EXPECT_EQ(1, e->shifter_down());
+        e->stats()->set_magicpoints(static_cast<float>(nova - 1));
+        EXPECT_TRUE(kit_gate(e, 4, 0)) << "New Specials off: the guard's yes";
+    }
 }
 
 // ---------------------------------------------------------------------------

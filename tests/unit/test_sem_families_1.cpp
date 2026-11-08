@@ -671,6 +671,137 @@ TEST_F(SemArcher, a_barrage_costs_exactly_the_slots_price)
     }
 }
 
+// living-02-archer.lua:38, Gameplay Fixes AS (#436). A BARRAGE at terrain:
+// a wall face under the arrow's own pad (the archer 16x16 at 192,183
+// heading UP: the 7x7 pad at 196,175 reaches grid row 10), or the map's top
+// edge. With the setting off (the old game: walker.cpp FAMILY_ARCHER case
+// 2) the cast refunds three shots and fires three times: each fire() pays
+// its 1 MP shot and draws its waver, no arrow leaves, the cast answers yes
+// and is charged the 60, and busy grows by 2 x fire_frequency. With it on
+// the cast refuses COULD NOT FIRE before the refund: 500 MP, nothing drawn,
+// no weapon made, busy unchanged.
+// Break: `if gf.pad_blocked_by_terrain(self) then` -> `if false then` (the
+// setting-on arms read 440 MP and the stream three draws on).
+TEST_F(SemArcher, a_barrage_at_terrain_spends_nothing_with_the_setting_on)
+{
+    struct Arm { const char* what; short y; bool wall; };
+    for (const Arm arm : {Arm{"a wall on the arrow's pad", 183, true},
+                          Arm{"the map's edge", 2, false}}) {
+        for (const short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(testing::Message() << arm.what << ", setting " << fixes);
+            fresh_world();
+            living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, arm.y, 4, 500.0f), 16, 16));
+            ASSERT_NE(nullptr, archer);
+            archer->set_lasty(-1.0f);
+            if (arm.wall)
+                pad_wall(world(), 12, 10);
+            ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer())
+                << "precondition: the arrow's pad is terrain";
+            const float busy = archer->busy();
+            const float ff = archer->fire_frequency();
+            const std::size_t weapons = world().weaplist.size();
+            world().rng_.state_ = 4242u;
+
+            std::string reason;
+            const bool cast_ok = cast(archer, 2, fixes, &reason);
+            EXPECT_EQ(0u, weapons_of(FAMILY_ARROW).size()) << "no arrow flies";
+            if (fixes == 0) {
+                EXPECT_TRUE(cast_ok) << "the classic cast answers yes: " << reason;
+                EXPECT_FLOAT_EQ(440.0f, archer->stats()->magicpoints())
+                    << "the classic cast is charged its 60 (the three shots are refunded)";
+                og::sim::SimRandom three(4242u);
+                (void)three.next(1);
+                (void)three.next(1);
+                (void)three.next(1);
+                EXPECT_EQ(three.state_, world().rng_.state_)
+                    << "three fire() calls, one waver draw each";
+                EXPECT_FLOAT_EQ(busy + ff * 2.0f, archer->busy());
+            } else {
+                EXPECT_FALSE(cast_ok);
+                EXPECT_EQ("COULD NOT FIRE", reason);
+                EXPECT_FLOAT_EQ(500.0f, archer->stats()->magicpoints()) << "nothing spent";
+                EXPECT_EQ(4242u, world().rng_.state_) << "nothing drawn";
+                EXPECT_EQ(weapons, world().weaplist.size()) << "no weapon made";
+                EXPECT_FLOAT_EQ(busy, archer->busy()) << "no rest";
+            }
+        }
+    }
+}
+
+// living-02-archer.lua:48, Gameplay Fixes AS (#436). A BARRAGE whose first
+// arrow cannot leave: a hostile tower (25x29) touching the archer's front
+// (the archer 16x16 at 200,200 heading UP, the tower at 196,171) stands on
+// the arrow's pad, so fire() lands a melee blow instead of an arrow. With
+// the setting off the cast fires three times whatever each answers: three
+// blows (three clangs), the 60 charged (440 MP), 2 x fire_frequency busy,
+// and yes. With it on the cast refuses COULD NOT FIRE after the first blow:
+// one clang, the three refunded shots taken back so it costs the one swing
+// (499 MP; the 60 is never charged), busy unchanged. An enemy arrow in
+// flight on the pad that wins fire()'s clash roll (the second draw,
+// scripted to 0) stops the first arrow the same way.
+// Break: `if not first and gf.on() then` -> `if false then` (the setting-on
+// arm reads yes with three clangs).
+TEST_F(SemArcher, a_barrage_whose_first_arrow_cannot_leave_refuses_after_one_blow)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        fresh_world();
+        living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 200, 200, 4, 500.0f), 16, 16));
+        living* tower = settle_body(body(add(FAMILY_TOWER1, 2, 196, 171, 1), 25, 29));  // touching above
+        ASSERT_TRUE(archer && tower);
+        archer->set_lasty(-1.0f);
+        ASSERT_EQ(walker::PadAnswer::Body, archer->fire_pad_answer())
+            << "precondition: the tower stands on the arrow's pad";
+        const float busy = archer->busy();
+        const float ff = archer->fire_frequency();
+
+        std::string reason;
+        const bool cast_ok = cast(archer, 2, fixes, &reason);
+        EXPECT_EQ(0u, weapons_of(FAMILY_ARROW).size()) << "no arrow flies";
+        EXPECT_LT(tower->stats()->hitpoints(), 400.0f) << "the blow lands on the tower";
+        if (fixes == 0) {
+            EXPECT_TRUE(cast_ok) << reason;
+            EXPECT_EQ(3, sounds(SOUND_CLANG)) << "three fire() calls, three blows";
+            EXPECT_FLOAT_EQ(440.0f, archer->stats()->magicpoints()) << "the 60 is charged";
+            EXPECT_FLOAT_EQ(busy + ff * 2.0f, archer->busy());
+        } else {
+            EXPECT_FALSE(cast_ok);
+            EXPECT_EQ("COULD NOT FIRE", reason);
+            EXPECT_EQ(1, sounds(SOUND_CLANG)) << "the first blow, and no more";
+            EXPECT_FLOAT_EQ(499.0f, archer->stats()->magicpoints())
+                << "the one swing; the 60 is never charged";
+            EXPECT_FLOAT_EQ(busy, archer->busy()) << "no rest";
+        }
+    }
+
+    // An enemy arrow in flight on the pad wins the clash: the setting on.
+    fresh_world();
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 200, 200, 4, 500.0f), 16, 16));
+    ASSERT_NE(nullptr, archer);
+    archer->set_lasty(-1.0f);
+    walker* arrow = world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(2);
+    body(arrow, 7, 7)->setxy(204, 192);
+    settle_body(arrow);
+    ASSERT_EQ(walker::PadAnswer::Weapon, archer->fire_pad_answer(-1, true))
+        << "precondition: the enemy arrow stands on the arrow's pad";
+    SequenceRandom clash_lost({0u, 0u});  // the waver, then the clash roll: 0 <= 3, the arrows meet
+    std::string reason;
+    bool cast_ok = true;
+    {
+        ScopedSimRandom guard(&clash_lost);
+        cast_ok = cast(archer, 2, 1, &reason);
+    }
+    EXPECT_FALSE(cast_ok) << "the first arrow met the enemy arrow";
+    EXPECT_EQ("COULD NOT FIRE", reason);
+    std::size_t own_arrows = 0;
+    for (const walker* w : weapons_of(FAMILY_ARROW))
+        own_arrows += w->team_num() == 1 ? 1u : 0u;
+    EXPECT_EQ(0u, own_arrows) << "none of the archer's arrows flies";
+    EXPECT_FLOAT_EQ(499.0f, archer->stats()->magicpoints()) << "the one shot paid, the 60 never";
+}
+
 // living-02-archer.lua:51. EXPLODING BOLT is one fire arrow marked to explode
 // (skip_exit 5000) with 500 hp and twice a plain fire arrow's damage; the
 // archer gets its own bow back whether or not the bolt flew.

@@ -100,7 +100,10 @@ usual pause.
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
+| AR | The druid bot's SUMMON FAERIE rule | No rule (fix Q's off column). With the setting on before this fix the rule asked the bolt's pad alone: a bolt passes an ally, a faerie does not, so with an ally standing where the faerie appears the rule said yes and the cast refused `NO ROOM TO SUMMON`. | The rule also asks the cast's own question for the faerie where the bolt stands, quietly, with a faerie of the druid's (never the druid's own body, #423): an ally, an enemy door or tree, an enemy weapon in flight or an arrow slit there is a no. |
+| AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
 | AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
+| AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -425,14 +428,16 @@ usual busy.
 | HOWL | `NO FOE IN RANGE` | nothing inside the howl radius |
 | RAISE UNDEAD, RAISE GHOST, RESURRECT | `CORPSE IS BLOCKED` | no room for the body within 16 px of the corpse, on every stain in range (free) |
 | CHARGE | `PATH BLOCKED` | a wall, a body or a door one pixel ahead along the heading (free: no swing, no busy) |
-| the elf's volleys, GROW TREE, SUMMON FAERIE, EXPLODING BOLT, HURL BOULDER, EXPLODING BOULDER, ENERGY WAVE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on a weapon that cannot cross the forest (free: nothing drawn, no swing or shot; fix AC) |
+| the elf's volleys, GROW TREE, SUMMON FAERIE, BARRAGE, EXPLODING BOLT, HURL BOULDER, EXPLODING BOULDER, ENERGY WAVE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on a weapon that cannot cross the forest (free: nothing drawn, no swing or shot; fix AC, and fix AS for BARRAGE) |
+| BARRAGE | `COULD NOT FIRE` | the first arrow cannot leave: a body on the pad takes its blow, or an enemy weapon there wins the clash roll (the one swing; the 60 is never charged; fix AS) |
 
 `NO ROOM TO SUMMON` (SUMMON ELEMENTAL) and `COULD NOT FIRE` keep their
 text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
 blocked by terrain costs nothing (AC); a body on the pad costs exactly the
-one swing (H, I). A door, a grown tree or an enemy weapon in flight on the
-pad is not seen by the pad question, and `fire()`'s own probe passes such a
-body only six times in ten, so a cast at one can still cost the swing.
+one swing (H, I; BARRAGE, AS). A door, a grown tree or an enemy weapon in
+flight on the pad is seen only by the strict pad question, which the elf's
+volleys and BARRAGE ask (AV); `fire()`'s own probe passes such a body only
+six times in ten, so another cast at one can still cost the swing.
 
 ## Bots
 
@@ -506,12 +511,16 @@ because the spin strikes it and the yell stuns it (fix K).
   flight, and at least two living foes inside their longer flights. Every
   volley also wants the rock's pad clear (fix V): the spot the first rock
   would be placed on holds no wall face, no map edge and no foe's body (a
-  body of the elf's own team passes, as the rock passes it; a door, a grown
-  tree or a weapon in flight passes the question too, see below). The
-  classic elf threw at nobody.
+  body of the elf's own team passes, as the rock passes it). A door, a
+  grown tree or a weapon in flight of the elf's foes is in the way too
+  (fix AV): `fire()` meets one on 4 rolls in 10, a roll the rule may not
+  draw, so the rule takes it as lost. The classic elf threw at nobody.
 - **Archer.** FIRE ARROWS, the ring, wants at least two living foes inside
   the arrows' flight, or one the archer does not face. BARRAGE wants the
-  archer's foe, a living one, faced and inside the flight. EXPLODING BOLT
+  archer's foe, a living one, faced and inside the flight, and the arrow's
+  pad clear of terrain, bodies and enemy weapons (fix AS, with fix AV's
+  question: the cast refuses when its first arrow cannot leave, and a rule
+  may not draw the clash roll). EXPLODING BOLT
   wants that foe faced and inside the flight, with no ally of the archer,
   and not the archer, inside the blast around it, and the fire arrow's pad
   clear (fix AA: the bolt is a fire arrow, 9x9, so the pad is asked for it
@@ -599,7 +608,10 @@ because the spin strikes it and the yell stuns it (fix K).
 - **Druid.** GROW TREE wants the druid's nearest living foe within 60 px
   faced and not yet within a blow (a foe touching the druid blocks the
   bolt), and the bolt's pad clear (fix AA). SUMMON FAERIE wants a living
-  foe within 130 px, no faerie of the druid's alive, and the pad clear.
+  foe within 130 px, no faerie of the druid's alive, the pad clear and
+  room for the faerie where the bolt stands (fix AR: an ally on the spot
+  passes the bolt, not the faerie; the question is asked with a faerie of
+  the druid's, never the druid's own body).
   REVEAL is never cast by a bot: it changes a radar only a player sees.
   PROTECTION wants an ally within 60 px with a living foe at blows with it
   and no fresh circle (none, or one under 50 hp).
@@ -662,7 +674,10 @@ the resisted DISARM's half price and busy (fix A), is followed by the
 ordinary act too.
 
 A yes the bot cannot pay is a no (fix AB). The gate chooses the arm, and
-`G.can_pay` drops a Shift arm the bot cannot pay; with the setting on the
+`G.can_pay` drops a Shift arm the bot cannot pay. `G.can_pay` reads the
+price the engine charges (`walker:cast_cost`, `og::sim::cast_cost`): a
+hidden or channelling walker's next press is free, and a slot New Specials
+takes out of play is never paid (#437). With the setting on the
 engine then checks the slot and arm the gate ended on against what the cast
 will charge, and answers no when the bot cannot pay it. Only the hit
 response can meet that no: the act rolls a special only when the bot has
@@ -671,14 +686,13 @@ gate is asked.
 
 What the gates still do not see:
 
-- A door, a grown tree or an enemy weapon in flight on the pad. The pad
-  question is asked with a weapon, and a weapon passes other weapon-order
-  bodies (doors and trees are weapon-order) when it is asked quietly;
-  `fire()` asks loudly and passes them six times in ten. A cast at such a
-  pad can still refuse `COULD NOT FIRE` and pay its swing.
-- Room for the faerie. SUMMON FAERIE asks the bolt's pad, not whether the
-  faerie's body has room where it would stand, so with a clear pad it can
-  still refuse `NO ROOM TO SUMMON` (an ally on the spot).
+- A door, a grown tree or an enemy weapon in flight on the pad, for the
+  druid's, barbarian's and mage's gates and the archer's EXPLODING BOLT.
+  Their pad question is asked with a weapon, and a weapon passes other
+  weapon-order bodies (doors and trees are weapon-order) when it is asked
+  quietly; `fire()` asks loudly and passes them six times in ten. A cast at
+  such a pad can still refuse `COULD NOT FIRE` and pay its swing. The elf's
+  volleys and BARRAGE ask the strict question and see them (AV, AS).
 - The soldier's empty hands. A soldier whose blades are all out has its
   throw vetoed by its own weapon hook, which the pad question cannot see.
   No soldier special fires a weapon, so no gate meets it today.
@@ -732,6 +746,17 @@ enemy weapon in flight on the rock's pad (9 knives, 2 rocks), which the
 gate's quiet question passes and `fire()`'s loud one met and lost the
 weapon clash roll to; the druid's one `NO ROOM TO SUMMON` (seed 3) is
 the faerie's own room, which no gate asks about.
+
+Fixes AR, AS and AV close those shapes, and #437 moves the New Specials kit
+gates. Measured on the six seeds against the same tree with those fixes'
+Lua taken out (on that tree the elves read 11 and the druid's `NO ROOM TO
+SUMMON` 2, one each on seeds 42 and 2): the elves' `COULD NOT FIRE` reads
+0, the druid's `NO ROOM TO SUMMON` after its rule's yes 0, and the four
+families' `COULD NOT FIRE` 0, BARRAGE's new refusal included. The test caps
+the elves' count and the druid's at 3 (a measured 0). The rules hold more
+rolls (5416 to 5427): BARRAGE falls from 127 casts to 87, ROCKS from 87 to
+82 and SUMMON FAERIE from 14 to 11, each still well above the floor the
+test keeps for it.
 
 ## Charm and seats
 
@@ -866,7 +891,10 @@ The rows with the setting on, by fix:
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
+| AR | `druid_bot_faerie_room_fixes_scen99` (a new arena, with its setting-off twin) |
+| AS | `archer_bot_barrage_pad_body_fixes_scen99`, `archer_barrage_edge_pad_fixes_scen99` and `archer_barrage_pad_body_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AT | `orc_bot_faces_foe_fixes_scen99` (a new arena, with its setting-off twin), and the 44 rows below that it moves |
+| AV | `elf_bot_rocks_tree_pad_fixes_scen99` (a new arena, with its setting-off twin) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
