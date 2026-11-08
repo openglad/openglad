@@ -154,7 +154,13 @@ void install_control_policy(GameWorld& world,
 {
     return w.charm_left() > 0 && w.real_team_num() != 255;
 }
-// With the Gameplay Fixes setting on, a seat never claims a charmed walker.
+// With the Gameplay Fixes setting on, a seat never claims a charmed walker
+// (#354, #450): every scan a seat takes a body through asks this (the death
+// hand-off, the entry claim, the server's bind and a networked join). It is
+// not asked of the body a seat already holds, so on both settings a seat whose
+// walker's charm runs out keeps it. Switch Character asks the stricter
+// real_team_num() == 255 (sim_switch_control); the timer test above keeps a
+// walker whose record still carries its own team claimable before its first act.
 [[nodiscard]] inline bool seat_may_claim(const GameWorld& level,
                                          const walker& w) noexcept
 {
