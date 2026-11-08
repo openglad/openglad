@@ -11431,6 +11431,7 @@ inline constexpr Mutation kMut_archer_bolt_edge_pad_fixes_scen99 = {
 };
 
 // --- archer_barrage_edge_pad (fix AS, #436: BARRAGE at the map's edge) ---
+// Seed 0x42, archer_bolt_edge_pad's (this pair keeps that arena's seed).
 // archer_bolt_edge_pad's arena with BARRAGE: the player archer (level 4,
 // exactly BARRAGE's 60 MP) stands at the top edge of the map heading UP,
 // with slot 2 chosen, so the first press's arrow pad is off the map. The

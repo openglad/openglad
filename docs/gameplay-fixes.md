@@ -156,7 +156,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AN, in play:
+Fixes X to AV, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -414,6 +414,89 @@ Fixes X to AN, in play:
   rule and the cast agree. The struck bot's answer (fix R) asks the same
   rule. No parity recording fields an archmage with a character record, so
   every golden is unchanged.
+- **AO.** CHARGE's rush strikes the body the collision field names after
+  its last step, then erases that body's orders and walks it four steps. A
+  rush that opens a door with a key strikes the door its own step has just
+  killed: the strike draws its damage roll and does nothing to a dead body,
+  and the classic rush still erases the dead door's orders and forces the
+  walk on it (#426). With the setting on a body that is dead once the rush
+  has struck (that door, or a foe the strike itself killed) is left as it
+  lies: the damage roll is still drawn, but its orders stay and no walk is
+  forced. Nothing a player sees changes, since a dead walker never acts and
+  every revival clears its orders, and no recording holds a dead body's
+  orders, so no golden moves.
+- **AP.** A summon's or a shot's side is read by climbing its owner chain
+  to the head (a knife to its thrower, a summon to its caster). The classic
+  game climbed two ways: friendliness stopped at a dead owner, so the
+  walker then stood for itself, while a blow's score, experience and kill
+  credit climbed through it. In the tick a charmed caster dies, its summon
+  and its shots were asked for friendliness as their own colour but
+  credited to the caster's (#429). With the setting on every climb is the
+  one a blow's score always took: through a dead owner, stopping at a
+  self-loop and at a charmed walker (fix AD), so a dead caster's summon and
+  shots keep its side for the rest of that tick. A body a ghost rides stops
+  every climb on both values (#430). The mutant mode's damage gate reads
+  the same climb. No recording stages a charm, a death and a friendliness
+  question in one tick, so no golden moves.
+- **AQ.** When a player's step meets a wall, the walk tries to slide along
+  it: it asks the half step up or down and the half step across, and takes
+  each half that is free. In the classic game each half is asked with a
+  real step, taken or not: on a half that a body blocks, the probe eats a
+  treasure it reaches before the body, swings at the body when it is a
+  foe, opens a door the player holds the key to and posts "Key N needed!"
+  at a locked one (#434). With the setting on each half is asked quietly
+  first, as the right-hand walk's probes are (fix Y), and only a free half
+  takes the step, which eats what it moves onto as before. One thing a
+  player sees: a keyed door beside a wall opens when the player walks into
+  it, not when the slide brushes it. The new pair `player_slide_potion_scen99`
+  and `player_slide_potion_fixes_scen99` records it; no existing golden
+  moves.
+- **AR.** The druid bot's SUMMON FAERIE rule (fix Q) asked the bolt's pad.
+  A bolt passes an ally and a faerie does not, so with an ally standing
+  where the faerie would appear the rule said yes and the cast refused `NO
+  ROOM TO SUMMON` (#435). With the setting on the rule also asks the cast's
+  own room question for a faerie of the druid's where the bolt stands,
+  quietly and never with the druid's own body (#423): an ally, an enemy
+  door or tree, an enemy weapon in flight or an arrow slit there is a no.
+  With the setting off a bot has no such rule, so no setting-off golden
+  moves; the new pair `druid_bot_faerie_room_scen99` and its setting-on
+  twin records it.
+- **AS.** The archer's BARRAGE fires three arrows and answers yes whatever
+  each does: at a wall face or the map's edge no arrow leaves and it still
+  costs its 60 magic, and with a body on the arrow's pad it lands three
+  melee blows for the 60 (#436). With the setting on a pad blocked by
+  terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC does
+  for the other casts), and a first arrow that cannot leave refuses `COULD
+  NOT FIRE` after its one blow: the cast costs that swing, never the 60.
+  The bot rule asks the arrow's pad as well, an enemy weapon on it included
+  (fix AV's question). With the setting off the cast still calls `fire()`
+  three times in order, so no setting-off golden moves; three new pairs
+  record it.
+- **AT.** A walker turns one notch a call toward the facing it is asked
+  for. Asked for the facing it already has, the classic turn still moves it
+  one notch counter-clockwise and points its heading that way (#446). A bot
+  within 100 px of a foe it already faces is turned off it on the tick it
+  re-plans, and the swing it then tries only turns it back, so that swing
+  never starts; a chaser whose shot would land turns off its foe before it
+  attacks; a bot whose shot is refused while it faces its foe (a
+  melee-only bot always) is turned off it. With the setting on the walker
+  stays as it is, facing, heading and walk frame, and the turn reports
+  done, so a bot standing at its foe swings when it is not busy. Measured
+  on The Tryxian Chronicles' first level, six seeds of 2400 ticks: 2,307
+  such tries and no swing with the setting off, 2,291 swings in 2,383 tries
+  with it on. It moves 44 rows with the setting on (see [Parity](#parity));
+  no setting-off golden moves.
+- There is no fix AU: #450 asked a second time for fix M's seat half (see
+  [Charm and seats](#charm-and-seats)), so no new letter was given.
+- **AV.** The elf bot's volley rules (fixes Q and V) asked the rock's pad
+  quietly, and a quiet question passes an enemy weapon in flight, a door or
+  a grown tree, which `fire()` meets on 4 rolls in 10: the cast then
+  refused `COULD NOT FIRE` after the rule's yes (#451). A rule may not draw
+  that roll, so with the setting on it takes it as lost: any such body on
+  the rock's pad is a no, which holds about six casts in ten that would
+  have flown. With the setting off a bot has no such rule, so no
+  setting-off golden moves; the new pair `elf_bot_rocks_tree_pad_scen99`
+  and its setting-on twin records it.
 
 ## Refusals at a glance
 
@@ -775,8 +858,8 @@ test keeps for it.
   running and whose real team is recorded: it is on our team only because
   our side charmed it. Every scan a seat takes a body through asks this:
   the hand-off when the walker a seat drives dies, the entry claim, the
-  server's bind claim and a networked join. Switch Character has always
-  refused such a walker (it refuses any walker with a real team recorded).
+  server's bind claim and a networked join. Switch Character has refused
+  such a walker since 2013 (it refuses any walker with a real team recorded).
   A freshly spawned walker (charm timer 0) is still claimable. One visible
   consequence: a team whose only bodies are walkers it charmed now ends the
   game instead of handing a seat a borrowed walker, and a player joining

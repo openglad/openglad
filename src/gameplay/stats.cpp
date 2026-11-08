@@ -773,10 +773,10 @@ short statistics::do_command()
 				{
 					target = controller_->collide_ob();
 					controller_->attack(target);
-					// rule: Gameplay Fixes AO (#426): a rush's strike on a body that is already dead (a door its
-					//   own step opened with a key) leaves it as it lies: attack still draws its damage roll and
-					//   refuses it, but its orders are not erased and no four-step walk is forced on it. Classic:
-					//   the dead body loses its orders and is walked all the same.
+					// rule: Gameplay Fixes AO (#426): a body that is dead once the rush has struck (a door its own
+					//   step opened with a key, or a foe the strike itself killed) is left as it lies: attack still
+					//   runs and draws its damage roll, but the body's orders are not erased and no four-step walk
+					//   is forced on it. Classic: the dead body loses its orders and is walked all the same.
 					// tests: GameplayFixesWalk.a_rush_ending_on_a_dead_body_leaves_its_orders_with_the_setting_on
 					// tests: GameplayFixesWalk.a_rush_that_opens_a_door_leaves_the_dead_door_alone_with_the_setting_on
 					if (og::sim::session_gameplay_fixes() == 0 || !target->dead())
