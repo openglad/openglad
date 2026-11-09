@@ -169,8 +169,8 @@ public:
         mark_dirty(og::dirty::BIT_ORDER);
     }
 
-    [[nodiscard]] char family() const noexcept { return family_; }
-    void set_family(char value) noexcept
+    [[nodiscard]] std::uint8_t family() const noexcept { return family_; }
+    void set_family(std::uint8_t value) noexcept
     {
         family_ = value;
         mark_dirty(og::dirty::BIT_FAMILY);
@@ -274,7 +274,7 @@ private:
     // used if an object has extra rounds this cycle
     short bonus_rounds_ = 0;
     Order order_ = Order::Living;
-    char family_ = 0;
+    std::uint8_t family_ = 0;
     short frame_ = 0;
     std::uint32_t entity_id_value_ = 0;
 

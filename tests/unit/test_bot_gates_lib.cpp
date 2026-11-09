@@ -25,8 +25,10 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -580,17 +582,22 @@ TEST_F(BotGatesLib, ring_pays_two_in_or_one_unfaced)
     EXPECT_EQ("false", probe(self, warp).at("pays"));
 }
 
-// The explosion's reach: 15 + clamp(4 * level, 16, 96) (effect_bomb.lua).
+// The explosion's reach: 15 + min(4 * level, 96) (effect_bomb.lua), with no
+// floor at levels 1-3 (#483).
 TEST_F(BotGatesLib, blast_reach_is_the_explosions)
 {
     living* self = caster();
     const Answers a = probe(self,
         "    og.log('l1', G.blast_reach(1))\n"
+        "    og.log('l2', G.blast_reach(2))\n"
+        "    og.log('l3', G.blast_reach(3))\n"
         "    og.log('l4', G.blast_reach(4))\n"
         "    og.log('l5', G.blast_reach(5))\n"
         "    og.log('l24', G.blast_reach(24))\n"
         "    og.log('l30', G.blast_reach(30))\n");
-    EXPECT_EQ("31", a.at("l1"));
+    EXPECT_EQ("19", a.at("l1"));
+    EXPECT_EQ("23", a.at("l2"));
+    EXPECT_EQ("27", a.at("l3"));
     EXPECT_EQ("31", a.at("l4"));
     EXPECT_EQ("35", a.at("l5"));
     EXPECT_EQ("111", a.at("l24"));
@@ -710,39 +717,37 @@ TEST_F(BotGatesLib, owned_phantom_wants_max_hp_one)
     EXPECT_EQ("260,200", probe(self, lua).at("phantom"));
 }
 
-// corpse_near: the stain find_nearest_blood returns, within a Manhattan
-// range. The finder starts at 800 on the squared centre distance, so a
-// stain 40 px off (1600) is never returned, whatever the range.
+// corpse_underfoot: the stain find_nearest_blood returns, within a squared
+// centre distance (the meal's compare, inclusive). The finder starts at 800
+// on the squared centre distance, so a stain 40 px off (1600) is never
+// returned, whatever the reach.
 //
-// RED (corpse_near scanning the stains itself): far is 240,200.
-TEST_F(BotGatesLib, corpse_near_is_capped_by_the_finder)
+// RED (planted): the meal's compare made strict (distance_to_ob_center(blood)
+// <= reach_sq -> < reach_sq): under100 reads nil at 10 px.
+TEST_F(BotGatesLib, corpse_underfoot_is_capped_by_the_finder)
 {
     living* self = caster();
     walker* far = body(world().add_fx_ob(Order::Treasure, FAMILY_STAIN), 16, 16);
     ASSERT_NE(nullptr, far);
     far->setxy(240, 200);
     const std::string lua =
-        "    og.log('near100', where(G.corpse_near(self, 100)))\n"
-        "    og.log('near10', where(G.corpse_near(self, 10)))\n"
-        "    og.log('near11', where(G.corpse_near(self, 11)))\n"
+        "    og.log('under10000', where(G.corpse_underfoot(self, 10000)))\n"
         "    og.log('under100', where(G.corpse_underfoot(self, 100)))\n"
         "    og.log('under99', where(G.corpse_underfoot(self, 99)))\n";
     Answers a = probe(self, lua);
-    EXPECT_EQ("nil", a.at("near100")) << "40 px: beyond the finder";
+    EXPECT_EQ("nil", a.at("under10000")) << "40 px: beyond the finder";
 
     walker* close = body(world().add_fx_ob(Order::Treasure, FAMILY_STAIN), 16, 16);
     ASSERT_NE(nullptr, close);
     close->setxy(210, 200);  // 10 px: squared centre distance 100
     a = probe(self, lua);
-    EXPECT_EQ("210,200", a.at("near100"));
-    EXPECT_EQ("nil", a.at("near10")) << "the range is strict";
-    EXPECT_EQ("210,200", a.at("near11"));
+    EXPECT_EQ("210,200", a.at("under10000"));
     EXPECT_EQ("210,200", a.at("under100")) << "the meal's compare is inclusive";
     EXPECT_EQ("nil", a.at("under99"));
 
     close->set_floor(1);
     a = probe(self, lua);
-    EXPECT_EQ("nil", a.at("near100")) << "a stain upstairs";
+    EXPECT_EQ("nil", a.at("under10000")) << "a stain upstairs";
     EXPECT_EQ("nil", a.at("under100"));
 }
 
@@ -1054,6 +1059,73 @@ TEST_F(BotGatesLib, can_pay_falls_back_to_the_slot_price_when_the_alternate_has_
     EXPECT_EQ("false", a.at("nova"));
 }
 
+// #437: G.can_pay reads the price the engine gates a cast on and charges
+// (walker:cast_cost, og::sim::cast_cost), not the family table. With New
+// Specials on, a channelling fire elemental (KIT_CHANNEL) and a dug-in
+// skeleton (KIT_HIDDEN) with no magic can pay their next press, which the
+// engine prices at 0; a plain elemental pays REKINDLE (slot 4) at 40 and
+// not at 39. With New Specials off the elemental's slot 4 is out of play,
+// priced out at 5000. Every arm runs with the Gameplay Fixes setting off
+// and on (the price does not read it), and every answer is also compared
+// with magicpoints >= og::sim::cast_cost computed in C++.
+// RED (planted): can_pay back to the family table (alternate_cost when
+// shifted, else s_special_cost): the channel and hidden arms read "false".
+TEST_F(BotGatesLib, can_pay_reads_the_price_the_cast_charges)
+{
+    living* self = caster();
+    living* elemental = body(add(FAMILY_FIREELEMENTAL, 1, 300, 300, 10, 40.0f), 16, 16);
+    living* skeleton = body(add(FAMILY_SKELETON, 1, 400, 300, 10, 40.0f), 16, 16);
+    ASSERT_TRUE(elemental && skeleton);
+    const std::string lua =
+        "    og.log('e1', G.can_pay(at(300, 300), 1, false))\n"
+        "    og.log('e4s', G.can_pay(at(300, 300), 4, true))\n"
+        "    og.log('e4', G.can_pay(at(300, 300), 4, false))\n"
+        "    og.log('k1', G.can_pay(at(400, 300), 1, false))\n";
+    const auto engine = [](walker* w, int slot, bool shifted) {
+        return w->stats()->magicpoints() >=
+                       static_cast<float>(og::sim::cast_cost(*w, slot, shifted))
+                   ? std::string("true")
+                   : std::string("false");
+    };
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "Gameplay Fixes " << fixes);
+        world().gameplay_fixes = fixes;
+        world().new_specials = 1;
+        elemental->stats()->set_magicpoints(0.0f);
+        skeleton->stats()->set_magicpoints(0.0f);
+        elemental->set_kit_state(KIT_CHANNEL);
+        skeleton->set_kit_state(KIT_HIDDEN);
+        ASSERT_EQ(0, og::sim::cast_cost(*elemental, 1, false)) << "the engine charges a channel nothing";
+        ASSERT_EQ(0, og::sim::cast_cost(*elemental, 4, true));
+        ASSERT_EQ(0, og::sim::cast_cost(*skeleton, 1, false)) << "nor a hidden walker";
+        Answers a = probe(self, lua);
+        EXPECT_EQ("true", a.at("e1")) << "the channel's next press is free";
+        EXPECT_EQ("true", a.at("e4s"));
+        EXPECT_EQ("true", a.at("k1")) << "the hidden walker's next press is free";
+        EXPECT_EQ(engine(elemental, 1, false), a.at("e1"));
+        EXPECT_EQ(engine(elemental, 4, true), a.at("e4s"));
+        EXPECT_EQ(engine(skeleton, 1, false), a.at("k1"));
+
+        elemental->set_kit_state(0);
+        skeleton->set_kit_state(0);
+        ASSERT_EQ(40, og::sim::cast_cost(*elemental, 4, false)) << "REKINDLE's 40";
+        elemental->stats()->set_magicpoints(39.0f);
+        a = probe(self, lua);
+        EXPECT_EQ("false", a.at("e4")) << "39 is short of REKINDLE's 40";
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+        elemental->stats()->set_magicpoints(40.0f);
+        a = probe(self, lua);
+        EXPECT_EQ("true", a.at("e4"));
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+
+        world().new_specials = 0;
+        ASSERT_EQ(5000, og::sim::cast_cost(*elemental, 4, false)) << "slot 4 out of play";
+        a = probe(self, lua);
+        EXPECT_EQ("false", a.at("e4")) << "a slot out of play is never paid";
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+    }
+}
+
 // TELEPORT MARKER pays once (no marker of the caster's own stands) and only
 // funded: half of what is left after the slot's price must still cover
 // next_slot's price. A level-10 mage on slot 1 (15) keeping WARP SPACE (60):
@@ -1324,4 +1396,45 @@ TEST_F(BotGatesLib, with_classic_calls_classic_first_on_both_values)
         }
     }
     EXPECT_EQ(after[0], after[1]) << "the same draws on both values";
+}
+
+// on_floor keeps, of the list it is handed, the walkers on the floor asked,
+// in the list's own order, as a new array (the list itself is left as it
+// was); an empty list gives an empty array; nothing is drawn (the probe
+// checks the stream). Four foes in the finder's list order: floor 0, 1, 0, 1.
+//
+// RED (`list[i]:floor() == floor` -> `list[i]:floor() >= floor` in
+// gates.lua M.on_floor): Expected equality of these values:
+// "220,200;260,200;" a.at("floor0") Which is: "220,200;240,200;260,200;280,200;".
+TEST_F(BotGatesLib, on_floor_keeps_only_the_floor_asked_in_list_order)
+{
+    living* self = caster();
+    const short xs[] = {220, 240, 260, 280};
+    for (int i = 0; i < 4; ++i) {
+        living* f = fighter(0, xs[i], 200);
+        ASSERT_NE(nullptr, f);
+        f->set_floor(static_cast<short>(i % 2));
+    }
+    const Answers a = probe(self,
+        "    local found = og.find_foes_in_range('ob', 100, self)\n"
+        "    local function names(list)\n"
+        "      local s = ''\n"
+        "      for i = 1, #list do\n"
+        "        s = s .. where(list[i]) .. ';'\n"
+        "      end\n"
+        "      return s\n"
+        "    end\n"
+        "    og.log('found', names(found))\n"
+        "    og.log('floor0', names(G.on_floor(found, 0)))\n"
+        "    og.log('floor1', names(G.on_floor(found, 1)))\n"
+        "    og.log('floor2', #G.on_floor(found, 2))\n"
+        "    og.log('found_after', #found)\n"
+        "    og.log('empty', #G.on_floor({}, 0))\n");
+    ASSERT_EQ("220,200;240,200;260,200;280,200;", a.at("found"))
+        << "staging: the finder's order";
+    EXPECT_EQ("220,200;260,200;", a.at("floor0"));
+    EXPECT_EQ("240,200;280,200;", a.at("floor1"));
+    EXPECT_EQ("0", a.at("floor2"));
+    EXPECT_EQ("4", a.at("found_after")) << "the list handed in is unchanged";
+    EXPECT_EQ("0", a.at("empty"));
 }

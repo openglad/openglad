@@ -152,7 +152,7 @@ TEST(FamilyData, switch_special_cycles_the_registry_named_slots)
     // `fam` and returns the slots it visited, starting from slot 1.
     const auto cycle = [&](int fam, int presses) {
         auto w = std::make_unique<walker>();
-        w->set_order_family(Order::Living, static_cast<char>(fam));
+        w->set_order_family(Order::Living, static_cast<std::uint8_t>(fam));
         w->set_user(0);
         w->set_act_type(ACT_CONTROL);
         w->stats()->set_level(30);  // (5-1)*3+1 = 13: every slot unlocked

@@ -38,7 +38,7 @@ struct LivingFixture {
     }
 };
 
-living* add_living(LivingFixture& fx, char family, unsigned char team)
+living* add_living(LivingFixture& fx, std::uint8_t family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -199,7 +199,7 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     // armor, then refills hp/mp to the new maxima. The fixture world runs at
     // difficulty 0 => query_difficulty_percent() == 100, and this is a team-0
     // walker, so nothing rescales afterwards.
-    self->set_order_family(Order::Living, static_cast<char>(127));
+    self->set_order_family(Order::Living, static_cast<std::uint8_t>(127));
     const float before_hp = self->stats()->max_hitpoints();
     const float before_mp = self->stats()->max_magicpoints();
     const float before_damage = self->damage();
@@ -267,7 +267,7 @@ struct LivingR14Fixture {
     }
 };
 
-living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(LivingR14Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -431,32 +431,33 @@ TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate
     (void)self->walk(1.0f, 0.0f);
 }
 
-// living::act caps banked bonus rounds at 50 per call (living.cpp: the
-// "prevent stack overflow" clamp): each round is one recursive act() that
-// advances drawcycle once, so a single act() runs at most 51 rounds and the
-// surplus is discarded, not carried to the next call.
-TEST(LivingUnit, act_runs_at_most_fifty_bonus_rounds_per_call)
+// living::act spends every banked bonus round in the call that finds them, as
+// the old game's recursion did (#460): each round is one more act that
+// advances drawcycle once, so a bank of N runs N + 1 acts, with no cap, and
+// the bank ends at 0. This game loops instead of recursing, so a bank past the
+// old 50-round clamp costs no stack.
+TEST(LivingUnit, act_spends_every_banked_bonus_round_in_one_call)
 {
     LivingR14Fixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
     ASSERT_NE(nullptr, self);
     self->set_act_type(ACT_CONTROL);
 
-    // Control below the cap: every banked round runs (10 + this one).
     self->set_bonus_rounds(10);
     const unsigned char before_small = self->drawcycle();
     ASSERT_TRUE(self->act());
-    EXPECT_EQ(static_cast<unsigned char>(before_small + 11), self->drawcycle());
+    EXPECT_EQ(static_cast<unsigned char>(before_small + 11), self->drawcycle())
+        << "a bank of 10: 10 extra acts and this one";
     EXPECT_EQ(0, self->bonus_rounds());
 
-    // Over the cap: 60 banked rounds run as 50 + this one.
+    // Past the clamp this game used to apply: all 60 run.
     self->set_bonus_rounds(60);
     const unsigned char before = self->drawcycle();
     ASSERT_TRUE(self->act());
-    EXPECT_EQ(static_cast<unsigned char>(before + 51), self->drawcycle())
-        << "one act() runs at most 51 rounds";
+    EXPECT_EQ(static_cast<unsigned char>(before + 61), self->drawcycle())
+        << "a bank of 60: 60 extra acts and this one, no cap";
     EXPECT_EQ(0, self->bonus_rounds())
-        << "the 10 rounds over the cap are dropped, not banked";
+        << "the whole bank is spent, nothing dropped and nothing carried";
 }
 
 // An AI ally in ACTION_FOLLOW with no foe, whose nearest player has no foe

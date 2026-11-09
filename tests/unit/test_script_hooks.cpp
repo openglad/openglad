@@ -125,8 +125,9 @@ TEST_F(ScriptHooksTest, unknown_hook_name_is_a_load_error)
 TEST_F(ScriptHooksTest, erroring_hook_is_latched_loudly)
 {
     // R9: a hook that errors behaves as absent for that dispatch. Pack
-    // descriptors have no C++ fallback, so "absent" means NOTHING runs and
-    // the failure must be traced, logged, and latched for tests to assert.
+    // descriptors have no C++ fallback, so only the caller's engine default
+    // runs in its place (for on_death, walker::death's stain), and the
+    // failure must be traced, logged, and latched for tests to assert.
     register_pack_script(
         {"test.pack", "erroring.lua",
          "og.register_hooks('living', 'core:soldier', "
@@ -227,7 +228,7 @@ protected:
         world.entity_factory =
             [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             entity->ani = nullptr;
@@ -908,7 +909,7 @@ protected:
         world.entity_factory =
             [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             entity->ani = nullptr;

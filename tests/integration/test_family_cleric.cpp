@@ -41,7 +41,7 @@ walker* find_live_family(GameWorld& w, Order order, int family)
         for (const auto& ob : *list) {
             if (ob != nullptr && ob->dead() == 0 &&
                 ob->query_order() == order &&
-                ob->family() == static_cast<char>(family))
+                ob->family() == static_cast<std::uint8_t>(family))
                 return ob.get();
         }
     }
@@ -56,7 +56,7 @@ std::size_t count_live_family(GameWorld& w, Order order, int family)
         for (const auto& ob : *list) {
             if (ob != nullptr && ob->dead() == 0 &&
                 ob->query_order() == order &&
-                ob->family() == static_cast<char>(family))
+                ob->family() == static_cast<std::uint8_t>(family))
                 n++;
         }
     }
@@ -179,7 +179,7 @@ struct ClericFixture {
     }
 };
 
-living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_CLERIC)
+living* add_living(ClericFixture& fx, unsigned char team, std::uint8_t family = FAMILY_CLERIC)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -195,7 +195,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
     return out;
 }
 
-walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, char old_family)
+walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, int old_family)
 {
     // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
     // only ever scans fxlist, which is where walker::death files a real
@@ -203,7 +203,7 @@ walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, char old_
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->set_dead(0);
     return stain;
 }
@@ -425,7 +425,7 @@ struct ClericR12Fixture {
     }
 };
 
-living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMILY_CLERIC)
+living* add_living(ClericR12Fixture& fx, unsigned char team, std::uint8_t family = FAMILY_CLERIC)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -441,7 +441,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
     return out;
 }
 
-walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, char old_family)
+walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, int old_family)
 {
     // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
     // only ever scans fxlist, which is where walker::death files a real
@@ -449,7 +449,7 @@ walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, char o
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->set_dead(0);
     return stain;
 }
@@ -769,7 +769,7 @@ struct ClericR14Fixture {
     }
 };
 
-living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMILY_CLERIC)
+living* add_living(ClericR14Fixture& fx, unsigned char team, std::uint8_t family = FAMILY_CLERIC)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -785,7 +785,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
     return out;
 }
 
-walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, char old_family)
+walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, int old_family)
 {
     // fxlist, not oblist: GameWorld::find_nearest_blood (game_world.cpp:1259)
     // only ever scans fxlist, which is where walker::death files a real
@@ -793,7 +793,7 @@ walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, char o
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->set_dead(0);
     return stain;
 }
@@ -998,7 +998,7 @@ struct ClericR15Fixture {
     }
 };
 
-living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short x, short y)
+living* add_living(ClericR15Fixture& fx, unsigned char team, std::uint8_t family, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -1014,12 +1014,12 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
     return out;
 }
 
-walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char old_family)
+walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, int old_family)
 {
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(static_cast<short>(x), static_cast<short>(y));
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->set_dead(0);
     return stain;
 }
@@ -1033,7 +1033,7 @@ walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char o
 // base/2, so for any pool below 8 MP the surcharge is 0. That surcharge is
 // NOT the whole price: the HEAL slot's declared mp_cost (2) is, and the
 // engine charges it in walker::special on a true return
-// (src/gameplay/walker_specials.cpp:180-181). So the rule this test pins,
+// (src/gameplay/walker_specials.cpp:214-215). So the rule this test pins,
 // through the real engine path rather than the bare hook, is:
 //
 //   * below the slot price the cast is refused at the gate, with

@@ -350,15 +350,16 @@ missing_family_bindings(const std::int32_t*       required,
     return missing;
 }
 
-// Phase 03 — true iff at least one predicate in `kScenarios` binds the
-// given treasure family. The legacy `TreasureFamilyRemovedFromOblist`
-// kind matches arg0 == family_id alone; the Order-aware
-// `TreasureFamilyOfOrderRemovedFromOblist` kind additionally requires
-// arg1 == kOrderTreasure (so a (family, Living) row, if anyone ever
-// authored one, would NOT satisfy this binding for the same family id).
-// Both treasure gate sites delegate to this helper so each kind earns
-// the right to satisfy the gate without renumbering predicates already
-// authored in the legacy form.
+// True iff at least one predicate in `kScenarios` binds the given treasure
+// family. The legacy `TreasureFamilyRemovedFromOblist` kind matches
+// arg0 == family_id alone; the order-aware counts
+// `WalkerOfOrderFamilyAlive` / `WalkerOfOrderFamilyCount` additionally
+// require arg1 == kOrderTreasure (so a (family, Living) row would NOT
+// satisfy this binding for the same family id). Any bounds bind: a taken
+// treasure is (F, kOrderTreasure, 0, 0), and the treasures that are never
+// consumed (EXIT, TELEPORTER, KEY) and the stain anchor are standing-
+// treasure facts (F, kOrderTreasure, 1, 1). Both treasure gate sites
+// delegate to this helper.
 bool any_treasure_binding(std::int32_t family_id)
 {
     if (any_predicate_binds(og::parity::FactKind::TreasureFamilyRemovedFromOblist,
@@ -370,7 +371,10 @@ bool any_treasure_binding(std::int32_t family_id)
         for (std::size_t i = 0; i < spec.fact_count; ++i)
         {
             const auto& p = spec.expected_facts[i];
-            if (p.kind == og::parity::FactKind::TreasureFamilyOfOrderRemovedFromOblist
+            const bool order_count =
+                p.kind == og::parity::FactKind::WalkerOfOrderFamilyAlive ||
+                p.kind == og::parity::FactKind::WalkerOfOrderFamilyCount;
+            if (order_count
                 && p.arg0 == family_id
                 && p.arg1 == static_cast<std::int32_t>(Order::Treasure))
                 return true;
@@ -397,10 +401,9 @@ TEST(Parity, behavioural_coverage_gate_weapons)
 TEST(Parity, behavioural_coverage_gate_treasures)
 {
     // Each kRequiredTreasureFamilies entry must appear as arg0 of at
-    // least one TreasureFamilyRemovedFromOblist OR
-    // TreasureFamilyOfOrderRemovedFromOblist(arg0, kOrderTreasure)
-    // predicate. Phase 03 introduced the Order-aware kind; this gate
-    // accepts either form so rows can migrate independently.
+    // least one TreasureFamilyRemovedFromOblist predicate, or of a
+    // WalkerOfOrderFamilyAlive / WalkerOfOrderFamilyCount predicate in the
+    // treasure order (arg1 == kOrderTreasure).
     std::vector<std::string> missing;
     for (const std::int32_t f : og::parity::kRequiredTreasureFamilies)
     {
@@ -410,7 +413,9 @@ TEST(Parity, behavioural_coverage_gate_treasures)
     }
     EXPECT_TRUE(missing.empty())
         << format_missing("treasure families behaviourally bound "
-                          "(TreasureFamily{,OfOrder}RemovedFromOblist arg0)",
+                          "(TreasureFamilyRemovedFromOblist, or "
+                          "WalkerOfOrderFamily{Alive,Count} in the treasure "
+                          "order, arg0)",
                           missing);
 }
 
@@ -499,10 +504,10 @@ TEST(Parity, behavioural_coverage_gate)
                   og::parity::kRequiredWeaponFamilies,
                   std::size(og::parity::kRequiredWeaponFamilies),
                   og::parity::FactKind::WeaponFamilyEmitted, Order::Weapon);
-    // Treasure family binding accepts either the legacy
-    // `TreasureFamilyRemovedFromOblist` or the Phase 03 Order-aware
-    // `TreasureFamilyOfOrderRemovedFromOblist(arg0, kOrderTreasure)`
-    // kind.
+    // Treasure family binding accepts the legacy
+    // `TreasureFamilyRemovedFromOblist` or an order-aware count
+    // (`WalkerOfOrderFamilyAlive` / `WalkerOfOrderFamilyCount`) with
+    // arg1 == kOrderTreasure; see any_treasure_binding.
     for (const std::int32_t f : og::parity::kRequiredTreasureFamilies)
     {
         if (!any_treasure_binding(f))
@@ -930,8 +935,8 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             const auto& p = spec.expected_facts[i];
             bool bad = false;
             // Which pair of args the reported range comes from. Every kind
-            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount, whose
-            // arg1 is the Order ordinal.
+            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount and
+            // WalkerOfOrderFamilyAlive, whose arg1 is the Order ordinal.
             std::int32_t range_lo = p.arg1;
             std::int32_t range_hi = p.arg2;
 
@@ -949,6 +954,7 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             // this kind carries the Order in arg1, so its [min,max] is
             // arg2/arg3.
             case FK::WalkerOfOrderFamilyCount:
+            case FK::WalkerOfOrderFamilyAlive:
                 range_lo = p.arg2;
                 range_hi = p.arg3;
                 if (p.arg3 > p.arg2 + 5 && !label_exempted(p.label))

@@ -132,7 +132,7 @@ const PixieData& pixie_for_family(std::int32_t family)
 void configure_snapshot_test_entity(walker& entity, Order order, std::int32_t family)
 {
     const PixieData& pix = pixie_for_family(family);
-    entity.set_order_family(order, static_cast<char>(family));
+    entity.set_order_family(order, static_cast<std::uint8_t>(family));
     entity.set_data(pix);
     entity.ani = animation_rows_for_family(family);
     entity.set_sizex(pix.w);
@@ -195,7 +195,7 @@ void configure_snapshot_test_services_without_art_install(GameWorld& world)
     configure_snapshot_test_services(world);
     world.entity_configurator =
         [](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-            entity.set_order_family(order, static_cast<char>(family));
+            entity.set_order_family(order, static_cast<std::uint8_t>(family));
             entity.ani = animation_rows_for_family(family);
             return &pixie_for_family(family);
         };
@@ -858,7 +858,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
         else
             entity = std::make_unique<SnapshotWalker>();
 
-        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_order_family(order, static_cast<std::uint8_t>(family));
         entity->set_sizex(16);
         entity->set_sizey(16);
         return entity;
@@ -1126,14 +1126,14 @@ TEST(WorldSnapshot, keyframe_capture_marks_all_fields_and_sends_full_grid)
         if (order == Order::Weapon)
         {
             auto entity = std::make_unique<SnapshotWeapon>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             return entity;
         }
 
         auto entity = std::make_unique<SnapshotWalker>();
-        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_order_family(order, static_cast<std::uint8_t>(family));
         entity->set_sizex(16);
         entity->set_sizey(16);
         return entity;
@@ -1181,7 +1181,7 @@ TEST(WorldSnapshot, weapon_ordered_base_walker_captures_do_bounce_as_zero)
     GameWorld& world = fx.world();
     world.entity_factory = [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
         auto entity = std::make_unique<SnapshotWalker>();
-        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_order_family(order, static_cast<std::uint8_t>(family));
         entity->set_sizex(16);
         entity->set_sizey(16);
         return entity;
@@ -1642,11 +1642,13 @@ TEST(WorldSnapshot, apply_snapshot_preserves_pack_family_ids_above_the_core_span
            "authority";
 }
 
-// The wire's upper bound is the byte itself: a crafted family of 255 lands on
-// a free (unpopulated) registry slot, which every consumer already answers
-// with nullptr, and loader_slot() maps inside its tables. Negatives cannot
-// reach a table index.
-TEST(WorldSnapshot, apply_snapshot_clamps_only_negative_wire_families)
+// The wire's upper bound is the byte itself: the family field is one
+// unsigned byte (#443), every value of which is a registry slot (the
+// static_assert in apply_entity_snapshot_fields), so no byte is clamped. A
+// crafted family of 249 (the byte a signed field read as -7 and collapsed to
+// 0) lands on a free (unpopulated) registry slot, which every consumer
+// already answers with nullptr, and loader_slot() maps inside its tables.
+TEST(WorldSnapshot, apply_snapshot_takes_every_family_byte)
 {
     TestGameWorld source_fx;
     GameWorld& source = source_fx.world();
@@ -1656,7 +1658,7 @@ TEST(WorldSnapshot, apply_snapshot_clamps_only_negative_wire_families)
 
     og::sim::WorldSnapshot snapshot = og::sim::capture_keyframe_snapshot(source);
     ASSERT_EQ(1u, snapshot.oblist.size());
-    snapshot.oblist.front().family = static_cast<std::int8_t>(-7);
+    snapshot.oblist.front().family = std::uint8_t{249};
 
     TestGameWorld mirror_fx;
     GameWorld& mirror = mirror_fx.world();
@@ -1665,8 +1667,83 @@ TEST(WorldSnapshot, apply_snapshot_clamps_only_negative_wire_families)
 
     ASSERT_EQ(1u, mirror.oblist.size());
     ASSERT_NE(nullptr, mirror.oblist.front().get());
-    EXPECT_EQ(0, static_cast<int>(mirror.oblist.front()->family()))
-        << "a negative wire family must still collapse to 0";
+    EXPECT_EQ(249, static_cast<int>(mirror.oblist.front()->family()))
+        << "a wire family byte of 249 is family 249 on the mirror";
+}
+
+// #443: a family id from 128 to 255 (a class pack may pin any wire_id in
+// 0..255) is its own family on the walker, in the snapshot, on the wire and
+// on a mirror. The walker's family and a corpse's old family were signed
+// bytes, so on x86 such an id read back negative, and the apply clamped it
+// to family 0. 128 and 255 are the two ends of the range that used to
+// wrap, 200 a family in its middle.
+// RED with the apply's clamp planted back (128..255 to 0): the mirror leg.
+TEST(WorldSnapshot, a_family_byte_from_128_to_255_rides_the_wire_as_itself)
+{
+    for (const int id : {128, 200, 255})
+    {
+        SCOPED_TRACE(id);
+        og::sim::WorldSnapshot snapshot;
+        std::uint32_t actor_id = 0;
+        std::uint32_t stain_id = 0;
+        {
+            TestGameWorld source_fx;
+            GameWorld& source = source_fx.world();
+            configure_snapshot_test_services(source);
+            walker* actor = source.add_ob(Order::FX, id);
+            ASSERT_NE(nullptr, actor);
+            EXPECT_EQ(id, static_cast<int>(actor->family()));
+            actor_id = actor->entity_id();
+            walker* stain = source.add_ob(Order::Treasure, FAMILY_STAIN);
+            ASSERT_NE(nullptr, stain);
+            stain->stats()->set_old_family(static_cast<std::uint8_t>(id));
+            EXPECT_EQ(id, static_cast<int>(stain->stats()->old_family()));
+            stain_id = stain->entity_id();
+            snapshot = og::sim::capture_keyframe_snapshot(source);
+        }
+
+        const auto find_entry = [](const og::sim::WorldSnapshot& snap,
+                                   std::uint32_t entity) {
+            const og::sim::EntitySnapshot* found = nullptr;
+            for (const og::sim::EntitySnapshot& e : snap.oblist)
+                if (e.entity_id == entity)
+                    found = &e;
+            return found;
+        };
+        const og::sim::EntitySnapshot* captured = find_entry(snapshot, actor_id);
+        ASSERT_NE(nullptr, captured);
+        EXPECT_EQ(id, static_cast<int>(captured->family))
+            << "the capture carries the byte unchanged";
+        const og::sim::EntitySnapshot* captured_stain = find_entry(snapshot, stain_id);
+        ASSERT_NE(nullptr, captured_stain);
+        EXPECT_EQ(id, static_cast<int>(captured_stain->old_family));
+
+        const og::sim::WorldSnapshot decoded =
+            og::sim::deserialize_snapshot(og::sim::serialize_snapshot(snapshot));
+        const og::sim::EntitySnapshot* wired = find_entry(decoded, actor_id);
+        ASSERT_NE(nullptr, wired);
+        EXPECT_EQ(id, static_cast<int>(wired->family)) << "and the wire";
+        const og::sim::EntitySnapshot* wired_stain = find_entry(decoded, stain_id);
+        ASSERT_NE(nullptr, wired_stain);
+        EXPECT_EQ(id, static_cast<int>(wired_stain->old_family));
+
+        TestGameWorld mirror_fx;
+        GameWorld& mirror = mirror_fx.world();
+        configure_snapshot_test_services(mirror);
+        ASSERT_TRUE(og::sim::apply_snapshot(mirror, decoded));
+        walker* const mirrored = mirror.find_by_id(actor_id);
+        ASSERT_NE(nullptr, mirrored);
+        EXPECT_EQ(id, static_cast<int>(mirrored->family()))
+            << "the mirror keeps the family, not family 0";
+        walker* const mirrored_stain = mirror.find_by_id(stain_id);
+        ASSERT_NE(nullptr, mirrored_stain);
+        EXPECT_EQ(id, static_cast<int>(mirrored_stain->stats()->old_family()))
+            << "a corpse keeps the family it remembers";
+        EXPECT_EQ(og::sim::compute_snapshot_hash(decoded),
+                  og::sim::compute_snapshot_hash(
+                      og::sim::peek_keyframe_snapshot(mirror)))
+            << "the mirror's own capture agrees with the authority's";
+    }
 }
 
 TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
@@ -1711,15 +1788,18 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
 {
     // Security: family/current_special arrive straight off the wire and are used
     // to index per-family/per-special tables across the sim. A malicious peer can
-    // put any value here, so apply_snapshot must clamp them into range.
+    // put any value here, so apply_snapshot must keep them in range.
     //
     // "In range" for family is [0, NUM_FAMILY_SLOTS) — the registry capacity and
     // the span loader_slot() addresses — not [0, NUM_FAMILIES). Ids at or above
     // NUM_FAMILIES are the free slots class packs claim with `wire_id: auto`,
     // and they must survive the wire; the sibling test
     // apply_snapshot_preserves_pack_family_ids_above_the_core_span pins that.
-    // Since the wire field is an int8_t, the only values that can actually fall
-    // outside the capacity are negative ones, so that is what this forges.
+    // Since #443 the wire field is one unsigned byte and NUM_FAMILY_SLOTS is 256,
+    // so no family byte can fall outside the capacity (the static_assert in
+    // apply_entity_snapshot_fields is that guard, and the sibling test
+    // apply_snapshot_takes_every_family_byte pins a free slot's byte); only
+    // current_special is forged here.
     og::sim::WorldSnapshot snapshot;
     std::uint32_t actor_id = 0;
     {
@@ -1733,8 +1813,7 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
         snapshot = og::sim::capture_snapshot(source);
     }
     ASSERT_EQ(1u, snapshot.oblist.size());
-    // Forge attacker-controlled out-of-range indices.
-    snapshot.oblist[0].family = static_cast<std::int8_t>(-99);
+    // Forge an attacker-controlled out-of-range index.
     snapshot.oblist[0].current_special = static_cast<std::int8_t>(99);
 
     TestGameWorld mirror_fx;
@@ -1747,9 +1826,6 @@ TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
 
     walker* applied = mirror.find_by_id(actor_id);
     ASSERT_NE(nullptr, applied) << "entity should still be applied";
-    EXPECT_GE(static_cast<int>(applied->family()), 0);
-    EXPECT_LT(static_cast<int>(applied->family()), NUM_FAMILY_SLOTS)
-        << "out-of-range family must be clamped";
     EXPECT_GE(static_cast<int>(applied->current_special()), 0);
     EXPECT_LT(static_cast<int>(applied->current_special()), NUM_SPECIALS)
         << "out-of-range current_special must be clamped";

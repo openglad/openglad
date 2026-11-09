@@ -1700,9 +1700,9 @@ TEST(WalkerCoreMore, walker_round14_distance_color_and_friendliness_modes_1480_1
 // set_difficulty at 150 %:
 //   walker::set_difficulty's Generator arm -> hp = max_hp = 100*level*pct/100
 //   living::set_difficulty            team != 0 -> the multiplier applies
-//                       team 0, no myguy (A12a) -> the multiplier applies too
+//                       team 0, no myguy -> exempt (#493: allies are not scaled)
 //                       team 0 carrying a myguy -> exempt (the player crew)
-TEST(WalkerCoreMore, walker_round15_set_difficulty_scales_all_but_player_crew)
+TEST(WalkerCoreMore, walker_round15_set_difficulty_scales_only_off_the_players_team)
 {
     auto& world = og::runtime::current_session->myscreen_->world();
     world.create_new_grid();
@@ -1757,10 +1757,12 @@ TEST(WalkerCoreMore, walker_round15_set_difficulty_scales_all_but_player_crew)
     ASSERT_FLOAT_EQ(player_dmg * 1.5f, enemy->damage())
         << "a hostile living takes the 150 % damage multiplier";
 
-    ASSERT_FLOAT_EQ(enemy->stats()->max_hitpoints(), ally_npc->stats()->max_hitpoints())
-        << "A12a: a placed team-0 NPC scales exactly like its foes";
-    ASSERT_FLOAT_EQ(enemy->damage(), ally_npc->damage())
-        << "A12a: a placed team-0 NPC scales exactly like its foes";
+    ASSERT_FLOAT_EQ(player_hp, ally_npc->stats()->max_hitpoints())
+        << "#493: a placed team-0 NPC never takes the difficulty, like the player crew";
+    ASSERT_FLOAT_EQ(player_mp, ally_npc->stats()->max_magicpoints())
+        << "#493: a placed team-0 NPC never takes the difficulty, like the player crew";
+    ASSERT_FLOAT_EQ(player_dmg, ally_npc->damage())
+        << "#493: a placed team-0 NPC never takes the difficulty, like the player crew";
 
     // The exemption is from the DIFFICULTY multiplier only -- the hero still
     // gains the family's level scaling, so this is not a no-op path.
@@ -1821,7 +1823,7 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
     og::runtime::current_session->myscreen_->world().remove_ob(blocker);
     ASSERT_TRUE(!actor->query_next_to()) << "query_next_to should report pass when adjacent tile is clear";
 
-    // fire_check generator early return path (walker.cpp:943-944).
+    // fire_check generator early return path (walker.cpp:1452-1453).
     walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     ASSERT_TRUE(gen != nullptr) << "generator created";
     if (gen)
@@ -1829,13 +1831,13 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
         ASSERT_TRUE(gen->fire_check(1, 0)) << "generator fire_check should short-circuit true";
     }
 
-    // fire_check no-foe early return path (walker.cpp:955-959).
+    // fire_check no-foe early return path (walker.cpp:1467-1473).
     actor->set_foe(nullptr);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     actor->stats()->set_magicpoints(9999.0f);
     ASSERT_TRUE(!actor->fire_check(1, 0)) << "fire_check should fail when actor has no foe";
 
-    // fire_check BIT_NO_RANGED early return path (walker.cpp:962-965).
+    // fire_check BIT_NO_RANGED early return path (walker.cpp:1489-1494).
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe)
@@ -1853,7 +1855,7 @@ TEST(WalkerCoreMore, walker_round18_animate_teleport_and_skelgrow_completion_pat
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // ANI_TELE_OUT + family teleport handler branch (walker.cpp:817-821).
+    // ANI_TELE_OUT + family teleport handler branch (walker.cpp:1097-1105).
     walker* mage = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     ASSERT_TRUE(mage != nullptr) << "mage created";
     if (mage)
@@ -1865,7 +1867,7 @@ TEST(WalkerCoreMore, walker_round18_animate_teleport_and_skelgrow_completion_pat
         ASSERT_EQ(ANI_TELE_IN, (int)mage->ani_type()) << "teleport handler should switch mage to ANI_TELE_IN";
     }
 
-    // ANI_SKEL_GROW completion branch (walker.cpp:807-815).
+    // ANI_SKEL_GROW completion branch (walker.cpp:1087-1096).
     walker* skeleton = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SKELETON);
     ASSERT_TRUE(skeleton != nullptr) << "skeleton created";
     if (skeleton)

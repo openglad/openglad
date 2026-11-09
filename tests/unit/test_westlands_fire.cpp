@@ -2001,7 +2001,11 @@ WorldSnap run_level(int id, std::uint32_t seed, int ticks)
     return snap;
 }
 
-TEST_F(WestlandsFireSim, var_zero_is_byte_identical_to_a_packless_run)
+// One test per consequence level (11, 15, 21, 26), each its own CTest entry
+// (og_unit_westlands_fire_identity_<id>): a level is run 300 ticks with the
+// pack and 300 without, and under AddressSanitizer the four levels together
+// took 150 s of the group's 180 s budget.
+static void check_var_zero_identity(const int id)
 {
     // The pack must actually be in play for the first run to mean anything.
     bool registered = false;
@@ -2010,30 +2014,34 @@ TEST_F(WestlandsFireSim, var_zero_is_byte_identical_to_a_packless_run)
             registered = true;
     ASSERT_TRUE(registered) << "westlands.fire must register on mount";
 
-    const int consequence_levels[] = {11, 15, 21, 26};
-    std::vector<WorldSnap> with_pack;
-    for (const int id : consequence_levels)
-        with_pack.push_back(run_level(id, 42, 300));
+    const WorldSnap with_pack = run_level(id, 42, 300);
 
     og::script::unregister_pack_scripts(kFirePackId);
     og::script::unregister_pack_lib_modules(kFirePackId);
     for (const og::script::PackScript& ps : og::script::pack_scripts())
         ASSERT_NE(kFirePackId, ps.pack_id) << "baseline must be pack-less";
 
-    for (std::size_t i = 0; i < std::size(consequence_levels); i++)
-    {
-        const int id = consequence_levels[i];
-        const WorldSnap baseline = run_level(id, 42, 300);
-        EXPECT_EQ(baseline.rng_state, with_pack[i].rng_state)
-            << "scen" << id << ": the var==0 hook must not touch the RNG";
-        ASSERT_EQ(baseline.entities.size(), with_pack[i].entities.size())
-            << "scen" << id << ": census drift at var==0";
-        for (std::size_t e = 0; e < baseline.entities.size(); e++)
-            EXPECT_TRUE(baseline.entities[e] == with_pack[i].entities[e])
-                << "scen" << id << " entity " << e << " ("
-                << baseline.entities[e].name << ") drifted at var==0";
-    }
+    const WorldSnap baseline = run_level(id, 42, 300);
+    EXPECT_EQ(baseline.rng_state, with_pack.rng_state)
+        << "scen" << id << ": the var==0 hook must not touch the RNG";
+    ASSERT_EQ(baseline.entities.size(), with_pack.entities.size())
+        << "scen" << id << ": census drift at var==0";
+    for (std::size_t e = 0; e < baseline.entities.size(); e++)
+        EXPECT_TRUE(baseline.entities[e] == with_pack.entities[e])
+            << "scen" << id << " entity " << e << " ("
+            << baseline.entities[e].name << ") drifted at var==0";
 }
+
+#define OG_VAR_ZERO_IDENTITY_TEST(id)                                          \
+    TEST_F(WestlandsFireSim, var_zero_is_byte_identical_to_a_packless_run_scen##id) \
+    {                                                                          \
+        check_var_zero_identity(id);                                           \
+    }
+OG_VAR_ZERO_IDENTITY_TEST(11)
+OG_VAR_ZERO_IDENTITY_TEST(15)
+OG_VAR_ZERO_IDENTITY_TEST(21)
+OG_VAR_ZERO_IDENTITY_TEST(26)
+#undef OG_VAR_ZERO_IDENTITY_TEST
 
 // ---------------------------------------------------------------------------
 // Taken paths: exact spawns, softening, drops, footing

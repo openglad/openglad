@@ -804,7 +804,7 @@ bool write_scenario_payload(og::io::OgFile& outfile,
 
             unsigned char temporder =
                 static_cast<unsigned char>(ob->query_order());
-            char tempfamily = ob->family();
+            unsigned char tempfamily = ob->family();
             std::int32_t currentx = ob->xpos();
             std::int32_t currenty = ob->ypos();
             char tempteam = static_cast<char>(ob->team_num());

@@ -25,6 +25,7 @@
 #include <list>
 
 class walker;
+class GameWorld;
 
 class obmap
 {
@@ -41,11 +42,27 @@ class obmap
 		// eaten or exit latched (a treasure never blocks), no door opened and
 		// no "Key N needed!" notice (the loud answer is kept: a door blocks
 		// this round), and no collide() or collide_ob change. Loud by default.
-		short query_list(walker  *ob, short x, short y, bool quiet = false);
+		// weapons_block (with quiet): the weapon-vs-weapon miss is taken as
+		// lost, so an enemy weapon in flight, door or grown tree on the box
+		// blocks, as the loud probe's lost roll blocks (a bot gate's strict
+		// pad question, Gameplay Fixes AV). Still no draw; loud ignores it.
+		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false);
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
 		std::list<walker*>& obmap_get_list(short x, short y, int floor = 0); //Returns the list at x,y for fnf
+		// The pile at (x, y) on `floor`, or nullptr when no walker is filed
+		// there: a read that makes no node (#417). Since #427 every game read
+		// goes through it, GameWorld::find_near_foe's included; obmap_get_list,
+		// which makes the node it answers, stays for the tests that read piles.
+		const std::list<walker*>* find_list(short x, short y, int floor = 0);
+		// #427: forget every walker in the pile at (x, y) on `floor` that
+		// `world` no longer holds: out of every pile walker_to_pos files it
+		// under and out of walker_to_pos (remove()'s fast path), or, when
+		// walker_to_pos does not know it, out of this pile alone; the pile,
+		// left empty, goes with its index entry. A forgotten pointer is never
+		// dereferenced (it may be freed).
+		void forget_untracked(short x, short y, int floor, const GameWorld& world);
 		short obmapres;
 		size_t size() const;
 
@@ -67,3 +84,21 @@ class obmap
 		std::unordered_map<std::uint32_t, std::list<walker*>*> cell_index_;
 		void sync_cell_index();
 };
+
+// The obmap's box test (obmap.cpp): two boxes meet when they overlap by more
+// than the one-pixel shrink the passability probe applies.
+short collide(short x, short y, short xsize, short ysize, short x2, short y2, short xsize2, short ysize2);
+
+namespace og::sim {
+// Does `mover`'s box, moved by (dx, dy) from where it stands NOW, meet
+// `body`'s box, by the obmap's own collide() rule? The three boxes
+// living::walk probes are tried (the exact step, its ceil and its floor),
+// narrowed to short as obmap::query_list narrows them, so the box tested is
+// the box the probe tested, by collide() alone (the probe's z skip and its
+// separating-move pass are not asked: a body touching the mover may still
+// be shoved). Pure integer arithmetic: no draw, nothing
+// written. Gameplay Fixes X and Z: a walk shoves and a rush strikes only a
+// body the step itself ran into, never the stale collide_ob a teleporter, a
+// grid-stopped step or a side probe left behind.
+bool step_meets(const walker& mover, float dx, float dy, const walker& body);
+}

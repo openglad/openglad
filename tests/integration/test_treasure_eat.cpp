@@ -397,7 +397,7 @@ TEST(TreasureEat, treasure_batch7_explicit_fxlist_teleporter_branches)
     ASSERT_TRUE(detached.find_teleport_target() == nullptr) << "find_teleport_target should return null when self is not in fx list";
 
     treasure unknown_family;
-    unknown_family.set_order_family(Order::Treasure, static_cast<char>(-1));
+    unknown_family.set_order_family(Order::Treasure, std::uint8_t{255});
     ASSERT_TRUE(unknown_family.eat_me(nullptr)) << "unknown treasure family should use default eat_me return path";
 
     fx.clear();

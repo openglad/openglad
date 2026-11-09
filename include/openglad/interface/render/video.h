@@ -111,6 +111,7 @@ struct NativeWorldViewSource
     constexpr explicit operator bool() const { return w > 0 && h > 0; }
 };
 
+// The definition of the VIDEO class
 // Abstract interface-layer rendering surface.
 // Platform backends implement this contract (SDL in Phase 10).
 class video

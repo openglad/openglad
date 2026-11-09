@@ -318,7 +318,7 @@ struct Event {
     uint32_t tick;
     EventKind kind;
     uint32_t a, b;       // event-specific payload
-    uint32_t c;          // third scalar; only DamageNumber uses it today
+    uint32_t c;          // third scalar: DamageNumber's packed value, PlaySound's source box
     int32_t target_player; // -1 broadcasts; 0..15 is a GLOBAL player index
     std::string text;    // optional text payload for Notification events
 };
@@ -327,9 +327,12 @@ struct Event {
 **Event flow:**
 ```
 Entity code (walker::act, combat, specials, treasure pickup, ...)
-  → og::sim::emit_sound(id)           // instead of myscreen->soundp->play_sound()
-  → og::sim::emit_notification(msg)   // instead of viewob->set_display_text()
-  → og::sim::emit_event(kind, a, b)   // generic structured event
+  → og::sim::emit_positional_sound(w, id)  // instead of if (on_screen()) play_sound():
+                                           //   placed at w, each machine plays it
+                                           //   only where a view shows w (#468)
+  → og::sim::emit_sound(id)                // an unplaced cue every machine plays
+  → og::sim::emit_notification(msg)        // instead of viewob->set_display_text()
+  → og::sim::emit_event(kind, a, b)        // generic structured event
   → SimEventLog accumulates events
        ↓
 Runtime layer (after SimWorld::tick() returns)
@@ -447,7 +450,8 @@ Setting `save_data.numplayers = 0` enables spectator mode:
 - Skips all other player input processing (movement, fire, special, yell)
 - All characters remain AI-controlled: no seat is bound, so no hero is
   claimed (`user() == -1`, never `ACT_CONTROL`)
-- A spectator level ends on a win, the 36000-tick safety timeout, or QUIT
+- A spectator level ends on a win, the 36000-tick timeout of a level
+  nobody plays (a level a seat plays never times out), or QUIT
   from the pause menu — never by its own team being wiped out
 
 In a network lobby, removing the machine's final owned seat through Base
@@ -1072,6 +1076,14 @@ All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
 - Headless GoogleTest binaries grouped under `og_unit_*`
 - Shared headless `GameSession` plus fallback world/save/event context restored by a listener
 - No SDL initialization; pure logic only
+
+**Simulation semantics** ([sim-semantics.md](sim-semantics.md)):
+- Every branch line of the simulation carries a comment above it: a
+  `rule:` naming the tests that assert it, or a `plumbing:` line saying why
+  there is nothing to assert
+- The `semantics_check` CTest entry (`scripts/semantics/check_semantics.py`)
+  fails on an uncovered branch line, a comment that covers no branch, or a
+  cited test that does not exist
 
 ### UI/Menu Testing Pattern
 

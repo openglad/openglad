@@ -18,9 +18,11 @@
 
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -248,6 +250,199 @@ TEST(FactPredicate, order_family_count_kind_renders_by_name)
 }
 
 // ---------------------------------------------------------------------------
+// WalkerOfTeamAlive counts LIVING-order entries only (#448).
+//
+// The rule: a team's walkers are its living creatures. A teleport marker, a
+// summoned shield, a standing treasure and a generator all sit in oblist with
+// a team number, and the dump renders each under its own order's family
+// table; none of them is a walker of that team, so none is counted. A dead
+// living is not counted either (it never was).
+namespace {
+
+constexpr std::int32_t kTreasureOrder  = static_cast<std::int32_t>(Order::Treasure);
+constexpr std::int32_t kGeneratorOrder = static_cast<std::int32_t>(Order::Generator);
+
+og::parity::WalkerEntry entry(std::int32_t order, std::int32_t family,
+                              std::uint32_t team, bool alive)
+{
+    og::parity::WalkerEntry w{};
+    w.family = og::parity::family_symbol_by_order(order, family);
+    w.team   = team;
+    w.alive  = alive;
+    return w;
+}
+
+// On team 0: one live soldier, then one live entry of every other order that
+// can sit in oblist, then a dead soldier; on team 1 a live orc.
+og::parity::StateDump dump_with_team0_residents()
+{
+    og::parity::StateDump d{};
+    d.walkers.push_back(entry(kLivingOrder, FAMILY_SOLDIER, 0, true));
+    d.walkers.push_back(entry(kFxOrder, FAMILY_MARKER, 0, true));
+    d.walkers.push_back(entry(kTreasureOrder, FAMILY_KEY, 0, true));
+    d.walkers.push_back(entry(kGeneratorOrder, FAMILY_TENT, 0, true));
+    d.walkers.push_back(entry(kLivingOrder, FAMILY_SOLDIER, 0, false));
+    d.walkers.push_back(entry(kLivingOrder, FAMILY_ORC, 1, true));
+    return d;
+}
+
+} // namespace
+
+TEST(FactPredicate, team_alive_counts_living_entries_only)
+{
+    const og::parity::StateDump dump = dump_with_team0_residents();
+    ASSERT_EQ("FAMILY_MARKER", dump.walkers[1].family);
+    ASSERT_EQ("FAMILY_KEY", dump.walkers[2].family);
+    ASSERT_EQ("FAMILY_TENT", dump.walkers[3].family);
+
+    const og::parity::FactEvalResult one = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfTeamAlive(0, 1, 1), dump);
+    EXPECT_TRUE(one.ok)
+        << "team 0 has exactly one live living (the soldier); the marker, "
+           "the key and the tent are not walkers of team 0; got: "
+        << one.message;
+    EXPECT_FALSE(one.indeterminate) << "the team count is always determinate";
+    EXPECT_EQ(std::string(), one.message) << "a passing predicate says nothing";
+
+    const og::parity::FactEvalResult two = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfTeamAlive(0, 2, 2), dump);
+    EXPECT_FALSE(two.ok) << "a resident of another order must not make 2";
+    EXPECT_FALSE(two.indeterminate);
+    EXPECT_NE(std::string::npos, two.message.find("team-alive=1 out of [2,2]"))
+        << "got: " << two.message;
+
+    const og::parity::FactEvalResult team1 = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfTeamAlive(1, 1, 1), dump);
+    EXPECT_TRUE(team1.ok) << "control: team 1's live orc counts; got: "
+                          << team1.message;
+}
+
+TEST(FactPredicate, team_alive_counts_a_living_family_past_the_table)
+{
+    // A Living id past kLivingFamilies renders as FAMILY_UNKNOWN_0_<id>, and
+    // it is still a living. The same id under the FX order renders as
+    // FAMILY_UNKNOWN_4_<id>, which is not.
+    og::parity::StateDump dump{};
+    dump.walkers.push_back(entry(kLivingOrder, 25, 0, true));
+    ASSERT_EQ("FAMILY_UNKNOWN_0_25", dump.walkers[0].family);
+
+    const og::parity::FactEvalResult living = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfTeamAlive(0, 1, 1), dump);
+    EXPECT_TRUE(living.ok) << "an unknown Living id counts; got: "
+                           << living.message;
+
+    dump.walkers.push_back(entry(kFxOrder, 25, 0, true));
+    ASSERT_EQ("FAMILY_UNKNOWN_4_25", dump.walkers[1].family);
+    const og::parity::FactEvalResult both = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfTeamAlive(0, 1, 1), dump);
+    EXPECT_TRUE(both.ok)
+        << "an unknown FX id does not count, so team 0 still holds exactly "
+           "one; got: " << both.message;
+}
+
+TEST(FactPredicate, order_tables_share_no_family_name)
+{
+    // The premise the team count rests on: the dump carries no order, so a
+    // family string has to name exactly one order. Every name the five order
+    // tables render (anything but the FAMILY_UNKNOWN_ fallback) must belong
+    // to exactly one of them.
+    std::map<std::string, std::vector<std::int32_t>> orders_of;
+    for (std::int32_t order = 0; order <= 4; ++order)
+        for (std::int32_t id = 0; id < 64; ++id)
+        {
+            const std::string name = og::parity::family_symbol_by_order(order, id);
+            if (name.starts_with("FAMILY_UNKNOWN_"))
+                continue;
+            orders_of[name].push_back(order);
+        }
+    ASSERT_EQ(1u, orders_of.count("FAMILY_TOWER1"))
+        << "the scan must reach the Living table's last name";
+    ASSERT_EQ(1u, orders_of.count("FAMILY_TOWER"))
+        << "the scan must reach the generator table";
+    for (const auto& [name, orders] : orders_of)
+        EXPECT_EQ(1u, orders.size())
+            << name << " is rendered by " << orders.size() << " order tables";
+}
+
+// ---------------------------------------------------------------------------
+// WalkerOfOrderFamilyAlive: the live-only order-aware count.
+//
+// The rule: like WalkerOfOrderFamilyCount it renders (arg0, arg1) through
+// family_symbol_by_order, but it counts only LIVE entries, so a taken
+// treasure's dead entry (which stays in oblist once the level has ended) and
+// an expired effect read as 0.
+
+TEST(FactPredicate, order_family_alive_counts_live_entries_only)
+{
+    og::parity::StateDump dump{};
+    dump.walkers.push_back(entry(kTreasureOrder, FAMILY_GOLD_BAR, 0, false));
+
+    const og::parity::FactEvalResult taken = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kTreasureOrder, 0, 0),
+        dump);
+    const og::parity::FactEvalResult listed = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfOrderFamilyCount(FAMILY_GOLD_BAR, kTreasureOrder, 1, 1),
+        dump);
+    EXPECT_TRUE(taken.ok) << "a dead bar is no live bar; got: " << taken.message;
+    EXPECT_FALSE(taken.indeterminate);
+    EXPECT_TRUE(listed.ok)
+        << "control: the alive-or-dead count still sees the dead entry, so "
+           "the two kinds differ exactly on it; got: " << listed.message;
+
+    dump.walkers[0].alive = true;
+    const og::parity::FactEvalResult standing = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kTreasureOrder, 0, 0),
+        dump);
+    EXPECT_FALSE(standing.ok) << "a live bar breaks a (0,0) live count";
+    EXPECT_FALSE(standing.indeterminate);
+    EXPECT_NE(std::string::npos,
+              standing.message.find("alive=1 of FAMILY_GOLD_BAR out of [0,0]"))
+        << "got: " << standing.message;
+}
+
+TEST(FactPredicate, a_standing_treasure_fails_the_taken_fact)
+{
+    // #449: the kind this replaced passed ("indeterminate") when the
+    // treasure was never taken, so it could not fail for the case it was
+    // named after. The live-only count fails it, determinately.
+    og::parity::StateDump dump{};
+    dump.walkers.push_back(entry(kTreasureOrder, FAMILY_LIFE_GEM, 2, true));
+
+    const og::parity::FactPredicate taken =
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kTreasureOrder, 0, 0,
+                                                   "the gem is taken");
+    const og::parity::FactEvalResult standing = og::parity::evaluate_one(taken, dump);
+    EXPECT_FALSE(standing.ok) << "an untouched gem must fail the taken fact";
+    EXPECT_FALSE(standing.indeterminate)
+        << "a live survivor is a determinate failure, never a missing-data pass";
+    EXPECT_NE(std::string::npos,
+              standing.message.find("alive=1 of FAMILY_LIFE_GEM out of [0,0]"))
+        << "got: " << standing.message;
+
+    dump.walkers[0].alive = false;
+    const og::parity::FactEvalResult eaten = og::parity::evaluate_one(taken, dump);
+    EXPECT_TRUE(eaten.ok) << "the eaten gem's dead entry passes; got: "
+                          << eaten.message;
+    EXPECT_FALSE(eaten.indeterminate);
+}
+
+TEST(FactPredicate, order_family_alive_does_not_alias_living_order)
+{
+    // FX ordinal 4 is FAMILY_FLASH; Living ordinal 4 is FAMILY_SKELETON.
+    og::parity::StateDump dump{};
+    dump.walkers.push_back(entry(kFxOrder, FAMILY_FLASH, 0, true));
+
+    const og::parity::FactEvalResult fx = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_FLASH, kFxOrder, 1, 1), dump);
+    const og::parity::FactEvalResult living = og::parity::evaluate_one(
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_FLASH, kLivingOrder, 1, 1), dump);
+    EXPECT_TRUE(fx.ok) << "one live FX-order FAMILY_FLASH; got: " << fx.message;
+    EXPECT_FALSE(living.ok) << "no live FAMILY_SKELETON in the dump";
+    EXPECT_NE(std::string::npos, living.message.find("alive=0 of FAMILY_SKELETON"))
+        << "got: " << living.message;
+}
+
+// ---------------------------------------------------------------------------
 // The frozen EventKind ordinal table (og::parity::event_kind_symbol_of_ordinal).
 //
 // Two separate rules meet here and these cases pin them apart:
@@ -391,13 +586,17 @@ TEST(FactPredicate, fact_kind_name_renders_every_enumerator)
     EXPECT_STREQ("TickReached",
                  og::parity::fact_kind_name(og::parity::FactKind::TickReached))
         << "the first enumerator keeps its name";
-    EXPECT_STREQ("TreasureFamilyOfOrderRemovedFromOblist",
+    EXPECT_STREQ("TreasureFamilyRemovedFromOblist",
                  og::parity::fact_kind_name(
-                     og::parity::FactKind::TreasureFamilyOfOrderRemovedFromOblist))
+                     og::parity::FactKind::TreasureFamilyRemovedFromOblist))
         << "the longest name is spelt in full, not truncated";
     EXPECT_STREQ("WalkerOnFloor",
                  og::parity::fact_kind_name(og::parity::FactKind::WalkerOnFloor))
         << "the multi-floor kind keeps its name";
+    EXPECT_STREQ("WalkerOfOrderFamilyAlive",
+                 og::parity::fact_kind_name(
+                     og::parity::FactKind::WalkerOfOrderFamilyAlive))
+        << "the live-only order count prints under its own name";
     EXPECT_STREQ("Unknown",
                  og::parity::fact_kind_name(
                      static_cast<og::parity::FactKind>(0xFF)))

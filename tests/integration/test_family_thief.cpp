@@ -118,7 +118,7 @@ struct ThiefR12Fixture {
     }
 };
 
-living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY_THIEF)
+living* add_living(ThiefR12Fixture& fx, unsigned char team, std::uint8_t family = FAMILY_THIEF)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);

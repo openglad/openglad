@@ -23,9 +23,12 @@ against a non-deterministic reference.
 - **Always from the repo root.** Goldens are cwd-relative: run from
   `build/ci-test` and every scenario reads as "missing golden" — mass
   drift that isn't. `ctest --preset ci-test -R '^og_test_parity'` is the
-  canonical invocation: the binary runs as two entries, `og_test_parity`
-  (the scenarios) and `og_test_parity_gates` (the `Parity.coverage_gate_*`
-  tests), so an anchored `'^og_test_parity$'` skips the gates.
+  canonical invocation: the binary runs as three entries (slices of one
+  binary, `cmake/OpenGladTests.cmake`), `og_test_parity_gates` (the umbrella
+  `Parity.coverage_gate` and every `Parity.coverage_gate_*`),
+  `og_test_parity_a_m` (the other tests named `Parity.a*` to `Parity.m*`) and
+  `og_test_parity` (everything else), so an anchored `'^og_test_parity$'`
+  runs about half the scenarios and none of the gates.
 - Fresh worktrees fail the scen99-fixture scenarios until `og_test_level`
   has run once (it generates the gitignored `temp/scen/scen99.fss`); ctest
   DEPENDS handles ordering, standalone runs don't. Copy `temp/scen/*.fss`
@@ -206,7 +209,12 @@ scenarios ending within 50 ticks of combat see no regen drift; treasure
 eating is positional — place consumables at the walker's final stop;
 default fire heading is FACE_UP; dead entities are never reaped once
 `game_ended` latches, so enemy-free arenas reap nothing (park a distant
-hostile TOWER1 to hold `level_done=0`).
+hostile TOWER1 to hold `level_done=0`). `WalkerOfTeamAlive` counts livings
+only (#448): count an effect, a treasure or a generator in oblist with
+`WalkerOfOrderFamilyAlive` (live entries) or `WalkerOfOrderFamilyCount`
+(alive or dead); a taken treasure is `WalkerOfOrderFamilyAlive(F,
+kOrderTreasure, 0, 0)`, because its dead entry stays listed once the level
+has ended.
 
 ## The mutation canary (teeth oracle)
 

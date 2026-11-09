@@ -1912,24 +1912,24 @@ void apply_entity_snapshot_fields(GameWorld& world,
     // inherit a stale list, and the render prunes dead owners
     // (walker_draw.cpp DamageNumberRenderContext::prune_dead_owners).
 
-    // Clamp the wire-supplied family to the valid range before it becomes the
-    // entity's family(): family() indexes per-family tables (descriptors, special
-    // names, graphics) across the sim, and a malicious peer can send any value.
-    // The bound is NUM_FAMILY_SLOTS, the registries' capacity and the range
-    // loader_slot() addresses -- NOT NUM_FAMILIES, which is only the span of
-    // CORE ids the engine constants name. A class pack's `wire_id: auto`
-    // families start at NUM_FAMILIES and climb (packs.cpp AutoWireIds), so
-    // clamping here to NUM_FAMILIES stamped every pack-declared entity down to
-    // family 0 on arrival: the mirror's re-captured snapshot then disagreed
-    // with the authority's on that byte forever (a per-tick hash strike no
-    // keyframe could heal, since the keyframe re-applied the same clamp), and
-    // update_existing_entities re-ran the full reconfigure every tick because
-    // entity->family() never matched the wire. The soccer ball (modes:ball,
-    // Order::FX, auto id 21) was the first shipped entity to hit it.
-    int safe_family = static_cast<int>(snapshot.family);
-    if (safe_family < 0 || safe_family >= NUM_FAMILY_SLOTS)
-        safe_family = 0;
-    entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
+    // Every wire byte is a family: the field is one unsigned byte (0..255), the
+    // registries' capacity is NUM_FAMILY_SLOTS == 256 and loader_slot()
+    // addresses all of it, so no byte needs a clamp (the static_assert below is
+    // the clamp: shrink the registries below a byte and this stops compiling
+    // until a runtime range check is put back, as the respawn entry's family
+    // read does). The field was a signed byte until #443, so a class pack's
+    // family at 128..255 arrived negative and was clamped to family 0, and
+    // before that the clamp stopped at NUM_FAMILIES and stamped every
+    // `wire_id: auto` family (from 21 up, packs.cpp AutoWireIds) down to 0:
+    // either way the mirror's re-captured snapshot disagreed with the
+    // authority's on that byte forever (a per-tick hash strike no keyframe
+    // could heal) and update_existing_entities re-ran the full reconfigure
+    // every tick. The soccer ball (modes:ball, Order::FX, auto id 21) was the
+    // first shipped entity to hit the second.
+    static_assert(NUM_FAMILY_SLOTS > 255,
+                  "a wire family byte must always index a real slot");
+    const std::uint8_t safe_family = snapshot.family;
+    entity.set_order_family(snapshot.order, safe_family);
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
                                  snapshot.worldx, snapshot.worldy);
     entity.set_worldz(snapshot.worldz);
@@ -2693,8 +2693,8 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     world.ctf_requested_strip_scenario_troops = 0;
     // Sim-side twin of the lobby sanitizer / provider clamp (#241): a
     // crafted snapshot reaches this field unchecked, and a wild tick count
-    // would let a mode's deadline underflow or outrun the engine's 36000-
-    // tick loss net. 0 stays 0 (the map's own value).
+    // would let a mode's deadline underflow or outrun the 36000-tick loss
+    // net of a level nobody plays. 0 stays 0 (the map's own value).
     world.ctf_requested_time_limit =
         snapshot.ctf_requested_time_limit != 0
             ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,

@@ -153,6 +153,27 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons);
 // buttons — a blocking child (a popup, a nested screen) builds its own over
 // them — and so whether it must rebuild them or may refresh them in place.
 unsigned int allbuttons_generation();
+// A blocking dialog's own button set, published over the enclosing screen's
+// for the dialog's lifetime only (#416). The constructor moves the screen's
+// live buttons (the owned vbuttons, the allbuttons pointers, localbuttons and
+// the generation) aside and leaves the set empty for the dialog's
+// init_buttons; the destructor drops whatever the dialog published and puts
+// the screen's own buttons back, generation included, so a loop that built
+// them finds them still its own (it refreshes in place instead of
+// rebuilding), and resets the click tracking so the dialog's last press
+// does not click the screen under it.
+class ScopedButtonExposure
+{
+public:
+    ScopedButtonExposure();
+    ~ScopedButtonExposure();
+    ScopedButtonExposure(const ScopedButtonExposure&) = delete;
+    ScopedButtonExposure& operator=(const ScopedButtonExposure&) = delete;
+
+private:
+    struct Stash;
+    std::unique_ptr<Stash> stash_;
+};
 void draw_backdrop();
 void draw_buttons(button * buttons, Sint32 numbuttons);
 // Draw the yellow hover ring around a button face. Width and height are the

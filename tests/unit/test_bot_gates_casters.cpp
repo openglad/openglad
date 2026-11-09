@@ -25,12 +25,15 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 using og::test::bot_gates::GameplayFixesBots;
 
@@ -446,42 +449,50 @@ TEST_F(GameplayFixesBots, cleric_turn_undead_waits_while_busy_with_the_setting_o
 // ---------------------------------------------------------------------------
 
 // Row 31. DROP BOMB wants a living foe inside the bomb's blast around the
-// thief (31 px at level 1) and no ally in it. The classic gate bombs a foe
-// within 35 px or 130 px and more away.
+// thief (19 px at level 1, 31 at level 4: 15 + 4 per level, #483) and no
+// ally in it. The classic gate bombs a foe within 35 px or 130 px and more
+// away.
 //
-// RED (the classic gate): gate(thief, 1, 1) is true with the foe 32 px and
+// RED (the classic gate): gate(thief, 1, 1) is true with the foe 20 px and
 // 140 px away, and with the ally in the blast.
 TEST_F(GameplayFixesBots, thief_bomb_wants_a_foe_inside_its_blast_and_no_ally)
 {
     living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 1, 100.0f), 16, 16);
-    living* foe = body(add(FAMILY_SOLDIER, 0, 230, 200, 1), 16, 16);  // 30 px
+    living* foe = body(add(FAMILY_SOLDIER, 0, 218, 200, 1), 16, 16);  // 18 px
     ASSERT_TRUE(thief && foe);
     thief->set_foe(foe);
 
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
     thief->set_shifter_down(1);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 30 px off: inside the 31 px blast";
+    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 18 px off: inside the 19 px blast";
     EXPECT_EQ(0, thief->shifter_down()) << "the bomb is Shift 0";
 
-    foe->setxy(231, 200);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "31 px: the edge is in";
-    foe->setxy(232, 200);
+    foe->setxy(219, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "19 px: the edge is in";
+    foe->setxy(220, 200);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
-    EXPECT_FALSE(gate(thief, 1, 1)) << "32 px: outside the blast";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "20 px: outside the level-1 blast";
+
+    thief->stats()->set_level(4);
+    foe->setxy(231, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "level 4, 31 px: the edge of the 31 px blast is in";
+    foe->setxy(232, 200);
+    EXPECT_FALSE(gate(thief, 1, 1)) << "level 4, 32 px: outside the blast";
+    thief->stats()->set_level(1);
 
     foe->setxy(340, 200);  // 140 px
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: 130 px or more";
     EXPECT_FALSE(gate(thief, 1, 1)) << "140 px: the bomb reaches nobody";
 
-    foe->setxy(230, 200);
-    living* ally = body(add(FAMILY_ORC, 1, 180, 200, 1), 16, 16);  // 20 px the other side
+    foe->setxy(218, 200);
+    living* ally = body(add(FAMILY_ORC, 1, 190, 200, 1), 16, 16);  // 10 px the other side
     ASSERT_NE(nullptr, ally);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(thief, 1, 1)) << "an ally inside the blast";
 }
 
 // Row 32. MINE (New Specials): a level-2 thief with 94 MP lays a mine where
-// a foe will walk: a foe past the 31 px blast, within 130 px, hunting the
+// a foe will walk: a foe past the 23 px blast, within 130 px, hunting the
 // thief; fewer than three mines down, no ally in the blast and the 70 in
 // hand. Never the coin.
 //
@@ -749,4 +760,175 @@ TEST_F(GameplayFixesBots, druid_protection_wants_an_ally_under_blows_without_a_f
     ally->setxy(261, 160);  // 61 + 40 = 101 px from the druid
     foe->setxy(278, 160);
     EXPECT_FALSE(gate(druid, 4, 1)) << "the ally out of the druid's 60 px";
+}
+
+// GROW TREE fires the lightning the tree grows from (living-13-druid.lua,
+// plant_tree): with a wall under the lightning's pad fire() makes nothing
+// and the cast refuses COULD NOT FIRE. With the setting on the gate asks
+// the pad (G.pad_clear) and says no; the classic gate says yes. The druid
+// faces RIGHT from (192, 192): the pad starts at x 209, inside grid cell
+// (13, 12); the foe stands 40 px east, past that cell, faced and not at
+// blows.
+//
+// RED (the gate's pad term removed): gate(druid, 1, 1) is true with the
+// wall under the pad.
+TEST_F(GameplayFixesBots, druid_tree_refuses_a_pad_on_a_wall)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 232, 192, 1), 16, 16));  // 40 px east
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(druid, 1, 1)) << "open grass: faced, closing, the pad clear";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer";
+    pad_wall(world(), 13, 12);
+    ASSERT_EQ(walker::PadAnswer::Terrain, druid->fire_pad_answer())
+        << "precondition: the wall is under the lightning's pad";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 1, 1)) << "a wall under the pad: COULD NOT FIRE";
+}
+
+// SUMMON FAERIE fires the lightning the faerie rides out on (summon_faerie):
+// a foe's body on the pad takes fire()'s melee blow instead and the cast
+// refuses COULD NOT FIRE. The druid faces RIGHT from (200, 200): the pad is
+// x 217 on; a foe stands 100 px east (inside 130). (An ally on the pad is
+// passed by the bolt but not by the faerie: fix AR, the next test.)
+//
+// RED (the gate's pad term removed): gate(druid, 2, 1) is true with the
+// second foe on the pad.
+TEST_F(GameplayFixesBots, druid_faerie_refuses_a_pad_on_a_foe)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16));  // 100 px
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "a foe at 100 px, the pad clear";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 0, 217, 200, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, druid->fire_pad_answer())
+        << "precondition: the second foe stands on the lightning's pad";
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 2, 1)) << "a foe's body on the pad: COULD NOT FIRE";
+
+    on_pad->setxy(600, 600);  // off the pad and out of range
+    EXPECT_TRUE(gate(druid, 2, 1)) << "the body moved off: the pad clear";
+}
+
+// Gameplay Fixes AR (#435): SUMMON FAERIE stands the faerie where the bolt
+// stands and refuses NO ROOM TO SUMMON when the faerie's body has no room
+// there (the cast's og.query_passable with the faerie). A bolt passes an
+// ally of the druid's, a faerie does not, so the pad alone said yes to an
+// ally on the faerie's spot. With the setting on the rule also asks the
+// cast's question of a faerie of the druid's on the bolt's spot
+// (G.summon_pad_clear, walker:pad_room), quietly and never with the druid's
+// own body (#423). The spot is read from an open-ground cast. The druid
+// (level 4, team 1) faces RIGHT from (200, 200); a foe stands 100 px east.
+// With an ally on the spot the rule says no (the classic druid casts), the
+// stream is unmoved, and the cast refuses NO ROOM TO SUMMON on both
+// settings: the rule's no is the cast's refusal. With the ally 8 px lower,
+// where a 16x16 box on the spot would meet it and the faerie's own box does
+// not, the rule says yes and the cast stands one faerie. A tree of the
+// druid's own team on the spot passes; an enemy tree or an enemy arrow in
+// flight there passes the bolt (the lenient pad is clear) but not the
+// faerie.
+// RED (planted): living-13-druid.lua:305 `G.summon_pad_clear(self,
+// "living", LIVING_FAERIE)` -> `G.pad_clear(self)` (the ally arm reads
+// true); summon_room_at asking with the owner as the probe (the 8 px arm
+// reads false).
+TEST_F(GameplayFixesBots, druid_faerie_wants_room_where_the_bolt_stands)
+{
+    const auto cast = [&](walker* w, short fixes, std::string& reason) {
+        world().gameplay_fixes = fixes;
+        w->set_current_special(2);
+        walker::SpecialFailure why = walker::SpecialFailure::None;
+        return w->special(&why, &reason);
+    };
+    const auto live_faeries = [&]() {
+        std::vector<walker*> out;
+        for (const auto& ob : world().oblist)
+            if (ob && ob->dead() == 0 && ob->query_order() == Order::Living &&
+                ob->family() == static_cast<char>(FAMILY_FAERIE))
+                out.push_back(ob.get());
+        return out;
+    };
+    const auto scene = [&]() -> living* {
+        fresh_world();
+        living* druid = settle_body(body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16));
+        living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16));  // 100 px
+        if (druid == nullptr || foe == nullptr)
+            return nullptr;
+        druid->set_lastx(1.0f);
+        druid->set_lasty(0.0f);
+        return druid;
+    };
+
+    // Where the faerie lands: an open-ground cast.
+    living* druid = scene();
+    ASSERT_NE(nullptr, druid);
+    std::string reason;
+    ASSERT_TRUE(cast(druid, 0, reason)) << reason;
+    ASSERT_EQ(1u, live_faeries().size());
+    const walker* landed = live_faeries()[0];
+    const short fx = landed->xpos();
+    const short fy = landed->ypos();
+    const short fsx = landed->sizex();
+    const short fsy = landed->sizey();
+    ASSERT_EQ(8, fsx) << "the faerie's 8 px box (pix/faerie.json)";
+    ASSERT_EQ(8, fsy);
+
+    // An ally on the spot.
+    druid = scene();
+    ASSERT_NE(nullptr, druid);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "the control: a foe at 100 px, the spot open";
+    living* ally = settle_body(body(add(FAMILY_SOLDIER, 1, fx, fy, 1), 16, 16));
+    ASSERT_NE(nullptr, ally);
+    ASSERT_EQ(walker::PadAnswer::Clear, druid->fire_pad_answer())
+        << "precondition: the bolt passes the druid's own team";
+    world().rng_.state_ = 4242u;
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 2, 1)) << "the faerie would land on the ally";
+    EXPECT_EQ(4242u, world().rng_.state_) << "the rule draws nothing";
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "the cast, setting " << fixes);
+        reason.clear();
+        EXPECT_FALSE(cast(druid, fixes, reason));
+        EXPECT_EQ("NO ROOM TO SUMMON", reason) << "the rule's no is the cast's refusal";
+        EXPECT_EQ(0u, live_faeries().size());
+        EXPECT_FLOAT_EQ(300.0f, druid->stats()->magicpoints()) << "nothing paid";
+    }
+
+    // The ally 8 px lower: a 16x16 box on the spot meets it, the faerie's does not.
+    druid = scene();
+    ASSERT_NE(nullptr, druid);
+    ally = settle_body(body(add(FAMILY_SOLDIER, 1, fx, static_cast<short>(fy + 8), 1), 16, 16));
+    ASSERT_NE(nullptr, ally);
+    ASSERT_EQ(1, collide(fx, fy, 16, 16, ally->xpos(), ally->ypos(), 16, 16))
+        << "precondition: a caster-sized box on the spot would meet the ally";
+    ASSERT_EQ(0, collide(fx, fy, fsx, fsy, ally->xpos(), ally->ypos(), 16, 16))
+        << "precondition: the faerie's own box does not";
+    EXPECT_TRUE(gate(druid, 2, 1)) << "the faerie fits: asked with its own body (#423)";
+    reason.clear();
+    EXPECT_TRUE(cast(druid, 1, reason)) << reason;
+    EXPECT_EQ(1u, live_faeries().size()) << "the cast stands its faerie";
+
+    struct Arm { const char* what; int family; unsigned char team; short sx; short sy; bool room; };
+    for (const Arm arm : {Arm{"a tree of the druid's own team", FAMILY_TREE, 1, 16, 16, true},
+                          Arm{"an enemy tree", FAMILY_TREE, 0, 16, 16, false},
+                          Arm{"an enemy arrow in flight", FAMILY_ARROW, 0, 7, 7, false}}) {
+        SCOPED_TRACE(arm.what);
+        druid = scene();
+        ASSERT_NE(nullptr, druid);
+        walker* w = world().add_weap_ob(Order::Weapon, arm.family);
+        ASSERT_NE(nullptr, w);
+        w->set_team_num(arm.team);
+        body(w, arm.sx, arm.sy)->setxy(fx, fy);
+        settle_body(w);
+        ASSERT_EQ(walker::PadAnswer::Clear, druid->fire_pad_answer())
+            << "precondition: the lenient pad passes it";
+        EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer";
+        EXPECT_EQ(arm.room, gate(druid, 2, 1));
+    }
 }

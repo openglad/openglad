@@ -1276,6 +1276,258 @@ TEST(GameServerCoverage, disconnecting_withdraw_owner_clears_targeted_prompt)
     EXPECT_EQ(-1, fixture.world().withdraw_level);
 }
 
+namespace {
+
+// A seated soldier on peer 92 that touched an exit pad: the pad asked
+// `text` (b = `withdraw`) for level 7 on a world of `type` with Gameplay
+// Fixes `fixes`, and the prompt is pending. The exit and withdraw hooks only
+// count their calls (and answer "not handled", so no level transition runs).
+struct ExitPromptScene {
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server{fixture.world(), fixture.events, transport};
+    std::uint64_t now = 1'000;
+    walker* control = nullptr;
+    std::vector<int> exits;
+    std::vector<int> withdraws;
+
+    ExitPromptScene(char type, short fixes, const char* text, bool withdraw)
+    {
+        fixture.world().type = type;
+        fixture.world().gameplay_fixes = fixes;
+        server.set_wall_clock_ms_source([this] { return now; });
+        transport.set_connected({92u});
+        server.poll_incoming_messages();
+        control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        if (control == nullptr)
+            return;
+        control->set_user(0);
+        control->set_act_type(ACT_CONTROL);
+        control->set_skip_exit(10);
+        server.bind_player(92u, 0u, fixture.world().my_team, control);
+        server.on_exit_accepted = [this](int destination) {
+            exits.push_back(destination);
+            return false;
+        };
+        server.on_withdraw_accepted = [this](int destination) {
+            withdraws.push_back(destination);
+            return false;
+        };
+        if (withdraw)
+            fixture.events.push(og::sim::EventKind::WithdrawToLevel, 7u);
+        fixture.events.push_with_text(og::sim::EventKind::RequestExitConfirmation,
+                                      text, 7u, withdraw ? 1u : 0u);
+        server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                       og::sim::EventDeliveryMode::Drain);
+    }
+
+    std::vector<og::sim::ExitPromptBroadcastMessage> prompts() const
+    {
+        std::vector<og::sim::ExitPromptBroadcastMessage> out;
+        for (const auto& sent : transport.sent())
+        {
+            if (sent.peer_id != 92u)
+                continue;
+            if (auto prompt =
+                    og::sim::deserialize_exit_prompt_broadcast_message(sent.data))
+                out.push_back(*prompt);
+        }
+        return out;
+    }
+
+    void answer(bool accepted)
+    {
+        transport.clear_sent();
+        transport.queue_raw(92u, og::sim::serialize_exit_prompt_response_message(
+                                     {.accepted = accepted}));
+        server.step();
+    }
+};
+
+}  // namespace
+
+// Gameplay Fixes AJ (#481), the server's half. With the setting off the old
+// game asks "Exit to X?" after a declined "Withdraw to X?" on a level the
+// player may leave at any time (treasure.cpp FAMILY_EXIT falls through to
+// its exit test, which passes on that level type): the follow-up goes to the
+// same seat for the same level, and yes there ends the level as a win (the
+// exit hook, never the withdraw hook). A withdraw text the pad did not write
+// falls back to "Exit to Level N?".
+// Breaks: the follow-up's `if (player_answered && ...` -> `if (false && ...`
+// (both arms red); the text's `starts_with(kWithdrawPrefix)` ->
+// `!...starts_with(kWithdrawPrefix)` (both texts red).
+TEST(GameServerCoverage, a_declined_withdraw_on_a_can_exit_level_asks_exit_next_with_the_fixes_off)
+{
+    {
+        SCOPED_TRACE("the pad's own text");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 0, "Withdraw to Keep?",
+                          true);
+        ASSERT_NE(nullptr, s.control);
+        const auto first = s.prompts();
+        ASSERT_EQ(1u, first.size());
+        EXPECT_TRUE(first[0].withdraw_prompt);
+        EXPECT_EQ("Withdraw to Keep?", first[0].prompt_text);
+
+        s.answer(false);
+        const auto follow = s.prompts();
+        ASSERT_EQ(1u, follow.size()) << "a declined withdraw asks one follow-up";
+        EXPECT_FALSE(follow[0].withdraw_prompt) << "the follow-up is the exit prompt";
+        EXPECT_EQ(7, follow[0].destination_level);
+        EXPECT_EQ("Exit to Keep?", follow[0].prompt_text);
+        EXPECT_TRUE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.fixture.world().pending_exit_prompt);
+        EXPECT_FALSE(s.fixture.world().withdraw_requested);
+        EXPECT_EQ(-1, s.fixture.world().withdraw_level);
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty()) << "the decline withdraws nothing";
+
+        s.answer(true);
+        EXPECT_EQ(std::vector<int>{7}, s.exits) << "yes to the follow-up is the exit";
+        EXPECT_TRUE(s.withdraws.empty());
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.prompts().empty()) << "nothing is asked after the exit";
+    }
+    {
+        SCOPED_TRACE("another text");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 0, "Leave the field?",
+                          true);
+        ASSERT_NE(nullptr, s.control);
+        s.answer(false);
+        const auto follow = s.prompts();
+        ASSERT_EQ(1u, follow.size());
+        EXPECT_FALSE(follow[0].withdraw_prompt);
+        EXPECT_EQ("Exit to Level 7?", follow[0].prompt_text);
+    }
+}
+
+// Gameplay Fixes AJ (#481): nothing follows a declined withdraw with the
+// setting on (such a level never asks Withdraw there), on a level without
+// the CAN_EXIT_WHENEVER flag (the old game's exit test fails with foes
+// standing), after a declined Exit, or when the prompt closed without the
+// player's answer (the 15 s timeout, a dead trigger).
+// Breaks: `world_.gameplay_fixes == 0` -> `>= 0` (setting-on arm red);
+// `(world_.type & ...) != 0` -> `>= 0` (plain-level arm red); the timeout
+// call's and the dead-trigger call's `/*player_answered=*/false` -> `true`
+// (those two arms red).
+TEST(GameServerCoverage, a_declined_withdraw_asks_nothing_more_with_the_fixes_on_or_on_a_plain_level_or_after_a_timeout)
+{
+    const auto expect_closed = [](ExitPromptScene& s) {
+        EXPECT_TRUE(s.prompts().empty()) << "no follow-up prompt";
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_FALSE(s.fixture.world().pending_exit_prompt);
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty());
+    };
+    {
+        SCOPED_TRACE("setting on");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 1, "Withdraw to Keep?",
+                          true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        expect_closed(s);
+    }
+    {
+        SCOPED_TRACE("a level without the flag");
+        ExitPromptScene s(0, 0, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        expect_closed(s);
+    }
+    {
+        SCOPED_TRACE("a declined exit");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 0, "Exit to Keep?", false);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        expect_closed(s);
+    }
+    {
+        SCOPED_TRACE("the timeout");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 0, "Withdraw to Keep?",
+                          true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.transport.clear_sent();
+        s.now += og::sim::EXIT_PROMPT_TIMEOUT_MS;
+        s.server.step();
+        expect_closed(s);
+    }
+    {
+        SCOPED_TRACE("a dead trigger");
+        ExitPromptScene s(GameWorld::TYPE_CAN_EXIT_WHENEVER, 0, "Withdraw to Keep?",
+                          true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.transport.clear_sent();
+        s.control->set_dead(1);
+        s.server.step();
+        expect_closed(s);
+    }
+}
+
+// GameServer::handle_exit_prompt_response's free-exit test (#491). The level
+// type is a set of flags: with the setting off (the only value that reaches
+// the test, fix AJ), a declined "Withdraw to X?" on a level whose type carries
+// the free-exit bit with other bits (Protect NPCs, as seven Westlands levels;
+// the tower mark, as the Tower's Gate) asks "Exit to X?" next, as on a plain
+// free-exit level; the other bits alone ask nothing more. With the setting on
+// nothing follows (fix AJ). The old game asks for the whole type with the
+// setting off, a deliberate difference.
+// Breaks: `(world_.type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0` ->
+// `world_.type == GameWorld::TYPE_CAN_EXIT_WHENEVER` (both mixed-type arms
+// red); -> `world_.type != 0` (the no-bit arm red).
+TEST(GameServerCoverage, the_exit_after_a_declined_withdraw_reads_the_free_exit_bit_whatever_other_bits_are_set)
+{
+    const char with_npcs = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                             GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS);
+    const char with_tower = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                              GameWorld::TYPE_TOWER);
+    const char no_bit = static_cast<char>(GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS |
+                                          GameWorld::TYPE_TOWER);
+    // One arm per type; a failed ASSERT ends only its own arm.
+    const auto asks_the_exit_next = [](char type) {
+        SCOPED_TRACE(testing::Message() << "type " << static_cast<int>(type));
+        ExitPromptScene s(type, 0, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        const auto follow = s.prompts();
+        ASSERT_EQ(1u, follow.size()) << "the free-exit bit: the exit is asked next";
+        EXPECT_FALSE(follow[0].withdraw_prompt);
+        EXPECT_EQ(7, follow[0].destination_level);
+        EXPECT_EQ("Exit to Keep?", follow[0].prompt_text);
+        s.answer(true);
+        EXPECT_EQ(std::vector<int>{7}, s.exits) << "yes there is the exit";
+        EXPECT_TRUE(s.withdraws.empty());
+    };
+    for (char type : {with_npcs, with_tower})
+        asks_the_exit_next(type);
+    {
+        SCOPED_TRACE("the other bits without the free-exit bit");
+        ExitPromptScene s(no_bit, 0, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        EXPECT_TRUE(s.prompts().empty()) << "an ordinary level: nothing follows";
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty());
+    }
+    {
+        SCOPED_TRACE("setting on");
+        ExitPromptScene s(with_npcs, 1, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        EXPECT_TRUE(s.prompts().empty()) << "fix AJ: nothing follows with the setting on";
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty());
+    }
+}
+
 TEST(GameServerCoverage, explicit_host_disconnect_cascades_to_all_clients)
 {
     TestGameWorld fixture;
@@ -2605,7 +2857,7 @@ TEST(GameServerCoverage, a_pack_family_hero_cycles_its_declared_specials)
         fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, switcher);
     ASSERT_NE(nullptr, soldier);
-    switcher->set_family(static_cast<char>(NUM_FAMILIES));
+    switcher->set_family(static_cast<std::uint8_t>(NUM_FAMILIES));
     ASSERT_EQ(NUM_FAMILIES,
               static_cast<int>(static_cast<unsigned char>(switcher->family())));
     switcher->setxy(64, 64);
@@ -3005,6 +3257,83 @@ TEST(GameServerCoverage, belt_change_persists_through_the_win_merge)
     ASSERT_NE(nullptr, disk.team_list[0]);
     EXPECT_EQ(kEditedBelt, disk.team_list[0]->belt)
         << "the won level keeps the layout set from the PAUSED menu";
+}
+
+// #466: only a level nobody plays times out. GameServer::step stamps
+// GameWorld::level_unattended before every tick: true while no connected
+// client holds a seat (a spectator alone), false once a seat is bound.
+TEST(GameServerCoverage, a_spectator_only_server_marks_the_level_unattended_and_a_bound_seat_attends_it)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    server.connect_spectator(91u);
+    walker* foe = fixture.world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(1);  // holds the level open
+    fixture.world().set_level_tick_count(1);  // past the level-start launch gate
+
+    fixture.world().level_unattended = false;
+    server.step();
+    EXPECT_EQ(2u, fixture.world().level_tick_count()) << "the world ticked";
+    EXPECT_TRUE(fixture.world().level_unattended) << "a spectator alone: nobody plays";
+
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+    walker* control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(92u, 0u, fixture.world().my_team, control);
+    server.step();
+    EXPECT_EQ(3u, fixture.world().level_tick_count()) << "the world ticked";
+    EXPECT_FALSE(fixture.world().level_unattended) << "a bound seat plays it";
+}
+
+// #466: a dropped player still in its disconnect grace window keeps the
+// level attended, so a brief link loss never ends a long level; once its
+// seat goes to the AI, nobody plays it.
+TEST(GameServerCoverage, a_seat_in_its_disconnect_grace_window_keeps_the_level_attended)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    walker* control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = fixture.world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(control && foe);
+    foe->set_team_num(1);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(91u, 0u, fixture.world().my_team, control);
+    fixture.world().set_level_tick_count(1);
+
+    fixture.world().level_unattended = true;
+    server.step();
+    EXPECT_FALSE(fixture.world().level_unattended) << "a connected seat plays it";
+
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    fixture.world().level_unattended = true;
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS - 1;
+    server.step();
+    EXPECT_FALSE(server.disconnected_players().front().ai_control_enabled)
+        << "staging: still inside the grace window";
+    EXPECT_FALSE(fixture.world().level_unattended)
+        << "a dropped seat in its grace window still plays it";
+
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_TRUE(server.disconnected_players().front().ai_control_enabled)
+        << "staging: the grace window is over, the AI has the seat";
+    EXPECT_TRUE(fixture.world().level_unattended) << "the AI has the seat: nobody plays";
 }
 
 } // namespace

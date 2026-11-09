@@ -983,7 +983,7 @@ struct SimInputFixture {
 };
 
 walker* add_hero(SimInputFixture& fx, unsigned char team, signed char user,
-                 char family = FAMILY_SOLDIER)
+                 std::uint8_t family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
@@ -1373,7 +1373,7 @@ TEST(SimInputUnit, failed_resurrection_reason_is_private_throttled_and_free)
 
 TEST(SimInputUnit, intelligence_refusals_use_one_private_cue)
 {
-    struct Case { char family; char slot; const char* reason; };
+    struct Case { std::uint8_t family; char slot; const char* reason; };
     for (const Case& c : {
              Case{FAMILY_MAGE, 1, "75 INT REQUIRED"},
              Case{FAMILY_ARCHMAGE, 1, "75 INT REQUIRED"},

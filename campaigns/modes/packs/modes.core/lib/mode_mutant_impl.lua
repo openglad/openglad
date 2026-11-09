@@ -105,18 +105,12 @@ local function add_score(c, delta)
 end
 
 -- Owner-chain root (the damage gate needs it: on_damage's attacker is the
--- one-hop-resolved walker, so a summon arrives as itself). Bounded walk —
--- owner chains are shallow and acyclic, the bound is a tripwire.
+-- one-hop-resolved walker, so a summon arrives as itself). The game's one
+-- climb (walker:chain_head, Gameplay Fixes AP): up through every owner, a
+-- dead one too, stopping at a self-loop and, with Gameplay Fixes on, at a
+-- charmed walker.
 local function chain_root(w)
-  local root = w
-  for _ = 1, 8 do
-    local own = root:owner()
-    if own == nil then
-      return root
-    end
-    root = own
-  end
-  return root
+  return w:chain_head()
 end
 
 local function is_mutant(w)

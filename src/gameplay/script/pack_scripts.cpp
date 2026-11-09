@@ -27,6 +27,9 @@ void declare_registered_chunk(const std::string& chunk_name,
     // with the recorder off a registration costs one bool load and never
     // touches the string. (One line, so the guard cannot read as an
     // uncovered line in a run where it is never taken.)
+    // plumbing: declare_registered_chunk: only declares chunks named 'packs/...' to the coverage
+    //   recorder and only when it is enabled; coverage plumbing, asserted by the ScriptCoverage
+    //   tests.
     if (!coverage::enabled()) return;
     if (!std::string_view(chunk_name).starts_with("packs/"))
         return;
@@ -57,6 +60,11 @@ void register_pack_script(PackScript script)
         return p.pack_id == script.pack_id &&
                p.chunk_name == script.chunk_name;
     });
+    // rule: Registering a pack chunk under a (pack, chunk name) already registered REPLACES it in
+    //   place (keeping load order); a new name is appended at the end. Every registration bumps the
+    //   registry generation so the world VM is rebuilt.
+    // tests: SemPackScripts.a_pack_script_registered_twice_replaces_in_place
+    // tests: SemPackScripts.a_family_chunk_registered_twice_replaces_in_place
     if (it != v.end())
         *it = std::move(script);
     else
@@ -119,6 +127,10 @@ void register_pack_family_chunk(PackScript chunk)
         return p.pack_id == chunk.pack_id &&
                p.chunk_name == chunk.chunk_name;
     });
+    // rule: Registering a pack chunk under a (pack, chunk name) already registered REPLACES it in
+    //   place (keeping load order); a new name is appended at the end.
+    // tests: SemPackScripts.a_pack_script_registered_twice_replaces_in_place
+    // tests: SemPackScripts.a_family_chunk_registered_twice_replaces_in_place
     if (it != v.end())
         *it = std::move(chunk);
     else
@@ -132,6 +144,9 @@ void unregister_pack_family_chunks(const std::string& pack_id)
     const auto removed = std::remove_if(
         v.begin(), v.end(),
         [&](const PackScript& p) { return p.pack_id == pack_id; });
+    // rule: Unregistering a pack with no family chunks is a no-op and does NOT bump the family
+    //   generation (so the declaration pass is not replayed); removing chunks bumps it.
+    // tests: PackFamilyChunkRegistry.unregister_removes_one_packs_chunks
     if (removed == v.end())
         return;
     v.erase(removed, v.end());

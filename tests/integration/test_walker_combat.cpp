@@ -771,6 +771,11 @@ TEST(WalkerCombat, walker_act_with_commands)
 
     walker* target = make_guy(FAMILY_ORC, 2);
     ASSERT_NE(nullptr, target) << "act_fire target created";
+    // The world holds the target (and frees it in delete_objects below): the
+    // hit's response runs a foe search, and a foe search takes a walker the
+    // world does not hold out of the obmap (#427), which would leave the
+    // second projectile nothing to meet.
+    world.oblist.push_back(std::unique_ptr<walker>(target));
     target->setxy(120, 120);
     target->stats()->set_armor(0);
     target->stats()->set_max_hitpoints(400.0f);
@@ -817,7 +822,6 @@ TEST(WalkerCombat, walker_act_with_commands)
                     target->stats()->hitpoints())
         << "the immortal projectile lands a second identical hit";
 
-    delete target;
     gen.reset();
     world.delete_objects();
 
@@ -1040,7 +1044,7 @@ TEST(WalkerCombat, walker_fire_check_all_dirs)
 
     // Pin the SIM stream before anything is built. The probe below and the
     // fire_check under test each draw the knife's waver inside
-    // walker::set_weapon_heading (src/gameplay/walker.cpp:709) from
+    // walker::set_weapon_heading (src/gameplay/walker.cpp:696) from
     // GameWorld::rng_. Left unpinned those are two ADJACENT LCG outputs, the
     // asserted shot leaves the probe's line whenever
     // waver_ray - waver_probe <= -2 (3 of the 16 possible pairs), and the foe
@@ -1207,7 +1211,7 @@ TEST(WalkerCombat, walker_set_order_family_all)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
 
-    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    std::uint8_t families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
@@ -1283,20 +1287,21 @@ TEST(WalkerCombat, walker_set_difficulty_all_families)
             << "set_difficulty leaves a living at full magic";
     }
 
-    // A12a: a PLACED team-0 NPC (no company record) scales exactly like a foe.
+    // #493: a PLACED team-0 NPC (no company record) keeps 100%, as the old
+    // game's team_num != 0 gate always had it.
     {
         auto easy = scaled_living(FAMILY_SOLDIER, 0, 100);
         auto hard = scaled_living(FAMILY_SOLDIER, 0, 200);
         ASSERT_NE(nullptr, easy) << "team-0 NPC created";
         ASSERT_NE(nullptr, hard) << "team-0 NPC created";
         ASSERT_EQ(nullptr, hard->myguy) << "a placed NPC carries no company record";
-        ASSERT_FLOAT_EQ(easy->stats()->max_hitpoints() * 2.0f, hard->stats()->max_hitpoints())
-            << "an allied NPC without a company record scales with difficulty too";
-        ASSERT_FLOAT_EQ(easy->damage() * 2.0f, hard->damage())
-            << "an allied NPC without a company record scales its damage too";
+        ASSERT_EQ(easy->stats()->max_hitpoints(), hard->stats()->max_hitpoints())
+            << "an allied NPC without a company record never takes the difficulty (#493)";
+        ASSERT_EQ(easy->damage(), hard->damage())
+            << "an allied NPC without a company record never takes the difficulty (#493)";
     }
 
-    // ...but a walker actually carrying a player guy is exempt at any setting.
+    // A walker carrying a player guy is exempt too.
     {
         world.difficulty = 100;
         walker* easy = make_guy(FAMILY_SOLDIER, 0);

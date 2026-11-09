@@ -17,6 +17,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_util.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_sem_traces.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_special_scenes.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_play.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
@@ -201,6 +202,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_golden_compare.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_scenario_spawn_room.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_state_dump_symbols.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
@@ -513,6 +515,7 @@ og_add_test_group(og_test_game_core FILES
     test_gloader_funcs.cpp
     test_campaign_sprite_uaf.cpp
     test_game_loop.cpp
+    test_sem_traces.cpp
     test_timed_effects_mirror.cpp
     test_game_launch.cpp
     test_go_no_team.cpp
@@ -800,6 +803,7 @@ og_add_test_group(og_test_mass_coverage FILES
 og_add_test_group(og_test_parity NO_DEFAULT_TEST FILES
     test_parity_scenarios.cpp
     test_parity_coverage_gate.cpp
+    test_scenario_spawn_room.cpp
     test_fact_predicate.cpp
     test_state_dump_symbols.cpp
     test_switch_guard_tripwire.cpp
@@ -1010,6 +1014,8 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_seats.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_engine.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_quiet_probe.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_walk.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_charm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_living_act_flow_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_network.cpp
@@ -1160,16 +1166,24 @@ target_compile_definitions(og_unit_data PRIVATE
 # byte-identity against a pack-less baseline, taken-path spawns, footing).
 # Its own group beside og_unit_data so the 300-tick identity runs keep
 # their own time budget.
-og_add_unit_group(og_unit_westlands_fire FILES
+og_add_unit_group(og_unit_westlands_fire NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_fire.cpp
 )
 
 # The Imaginations dream-log campaign (campaigns/imaginations): its level
-# sims (the castle gate, the ghost tent, the asteroid's spikes and stairs)
-# and the dream-log book. Its own group beside og_unit_data so those sims
-# keep their own time budget under the instrumented lanes.
+# sims and the dream-log book, in their own groups beside og_unit_data so
+# those sims keep their own time budget under the instrumented lanes. Every
+# test loads a world and parses the class-pack Lua, which ASan makes slow,
+# so the campaign is split in two binaries of about equal weight:
+# og_unit_imaginations holds the isle and the Castle of Gold (the castle
+# gate, the ghost tent), og_unit_imaginations_asteroid holds the Asteroid
+# Castle (its spikes and stairs, the Big One) and the dream-log book.
 og_add_unit_group(og_unit_imaginations FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
+)
+
+og_add_unit_group(og_unit_imaginations_asteroid FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_asteroid.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
 )
 
@@ -1445,9 +1459,30 @@ endif()
 # og_test_parity: the coverage gates share one memoised replay of every
 # scenario (about 85 s under ASan, tests/parity/test_parity_coverage_gate.cpp),
 # paid once by whichever gate runs first, so all the gates stay together in
-# one slice and every other parity test runs in the other (about 95 s).
-og_add_filtered_test(og_test_parity_gates og_test_parity "Parity.coverage_gate_*")
-og_add_filtered_test(og_test_parity og_test_parity "-Parity.coverage_gate_*")
+# one slice. The umbrella gate Parity.coverage_gate is named on its own
+# because "Parity.coverage_gate_*" does not match it: left out, it ran with
+# the scenarios and paid a second full replay there, 112 s of the 180 s the
+# scenario entry had on a coverage run that timed out (PR #425, 2026-11-02).
+#
+# The other parity tests run in two slices, split by the first letter of the
+# test name: Parity.a* to Parity.m* in og_test_parity_a_m, everything else
+# (Parity.n* to Parity.z* and the binary's other suites) in og_test_parity,
+# so a new test always lands in one of them. Measured 2026-11-05, three
+# ci-test runs: a-m 2.2 s and the rest 2.1 s of 4.3 s. The timed-out coverage
+# run above ran the same tests about 27 times slower, which puts each slice
+# at about 60 s there, a third of its budget. `ctest -R '^og_test_parity'`
+# selects all three entries.
+set(OG_PARITY_GATES "Parity.coverage_gate:Parity.coverage_gate_*")
+set(OG_PARITY_A_TO_M)
+foreach(letter a b c d e f g h i j k l m)
+    list(APPEND OG_PARITY_A_TO_M "Parity.${letter}*")
+endforeach()
+list(JOIN OG_PARITY_A_TO_M ":" OG_PARITY_A_TO_M)
+og_add_filtered_test(og_test_parity_gates og_test_parity "${OG_PARITY_GATES}")
+og_add_filtered_test(og_test_parity_a_m og_test_parity
+    "${OG_PARITY_A_TO_M}-${OG_PARITY_GATES}")
+og_add_filtered_test(og_test_parity og_test_parity
+    "-${OG_PARITY_GATES}:${OG_PARITY_A_TO_M}")
 # og_unit_modes_water: the full-water-band stationarity test (about 106 s
 # under ASan) alone, the other six tests together.
 og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
@@ -1465,7 +1500,11 @@ og_add_filtered_test(og_unit_data og_unit_data "-*CampaignTest.*")
 # in most runs and on none of three on 2026-10-29. og_unit_stage: the five
 # staged_world_matrix tests (about 70 s there) alone, the other StagedRules
 # tests (about 43 s), and the rest (about 66 s). og_unit_basketball: tests
-# starting a-f (about 48 s) and the rest (about 60 s).
+# starting a-f (about 48 s) and the rest (about 60 s). The six shipped-court
+# games (ModesBasketballRealCampaign, one test per court) each get an entry
+# of their own: a full game is 14400 ticks of Lua-driven bots, and under the
+# coverage lane's Lua line hook the six together outran the rest entry's
+# 180 s on 2026-11-05.
 og_add_filtered_test(og_unit_stage_matrix og_unit_stage
     "StagedRules.staged_world_matrix_*")
 og_add_filtered_test(og_unit_stage_rules og_unit_stage
@@ -1476,12 +1515,33 @@ set(OG_BASKETBALL_A_TO_F
 og_add_filtered_test(og_unit_basketball_a_f og_unit_basketball
     "${OG_BASKETBALL_A_TO_F}")
 og_add_filtered_test(og_unit_basketball og_unit_basketball
-    "-${OG_BASKETBALL_A_TO_F}")
+    "-${OG_BASKETBALL_A_TO_F}:ModesBasketballRealCampaign.*")
+foreach(court IN ITEMS 824 825 826 827 828 829)
+    og_add_filtered_test(og_unit_basketball_court_${court} og_unit_basketball
+        "ModesBasketballRealCampaign.scen${court}_*")
+endforeach()
+# og_unit_westlands_fire: the var==0 byte-identity check (four Westlands
+# levels, 300 ticks each, run with the pack and without) took 150 s of the
+# group's 167 s under ASan and the group ran out of its 180 s on 2026-11-09.
+# It is one test per level now, each its own entry; the other 58 tests keep
+# the group's entry.
+og_add_filtered_test(og_unit_westlands_fire og_unit_westlands_fire
+    "-WestlandsFireSim.var_zero_is_byte_identical_to_a_packless_run_scen*")
+foreach(lvl IN ITEMS 11 15 21 26)
+    og_add_filtered_test(og_unit_westlands_fire_identity_${lvl} og_unit_westlands_fire
+        "WestlandsFireSim.var_zero_is_byte_identical_to_a_packless_run_scen${lvl}")
+endforeach()
 
 # Every property set on one of these binaries below names its list, so all
 # of its slices get it, never the binary's own entry alone.
-set(OG_PARITY_TESTS og_test_parity og_test_parity_gates)
+set(OG_PARITY_TESTS og_test_parity og_test_parity_a_m og_test_parity_gates)
 set(OG_MODES_WATER_TESTS og_unit_modes_water og_unit_modes_water_band)
+# The semantic test batches (docs/sim-semantics.md): one unit binary each,
+# registered in their own files so the batches never edit this one.
+foreach(og_sem_area walker ai world script families libs)
+    include(${CMAKE_SOURCE_DIR}/cmake/semantics/${og_sem_area}.cmake)
+endforeach()
+
 set(OG_UNIT_DATA_TESTS og_unit_data og_unit_data_campaigns og_unit_data_westlands)
 
 # The picker and menu UI suites include the live networking menu/client
@@ -2065,6 +2125,46 @@ set_tests_properties(lint_scenario_facts_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# Every branch point in src/gameplay and the class-pack Lua carries a
+# semantics comment above it (docs/sim-semantics.md): a rule naming the tests
+# that assert it, or a plumbing line saying why there is nothing to assert.
+# The check fails on a branch line no comment covers, a line two comments
+# cover, a comment that covers no branch, a cited TEST or parity row that does
+# not exist or is disabled, a rule that names no test (and is neither
+# deferred to an issue nor unreachable with a reason), and a comment that
+# breaks the grammar. Its self-test builds small trees in a temp dir and pins
+# every verdict and count exactly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME semantics_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_semantics.py
+            --self-test
+    )
+    add_test(NAME semantics_check
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_semantics.py
+            --repo ${CMAKE_SOURCE_DIR}
+    )
+else()
+    foreach(_og_sem_test semantics_selftest semantics_check)
+        add_test(NAME ${_og_sem_test}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                "${_og_sem_test}: this check needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+        )
+        set_tests_properties(${_og_sem_test} PROPERTIES
+            FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+        )
+    endforeach()
+endif()
+set_tests_properties(semantics_selftest semantics_check PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # The counter box's wave row was renamed in PR #292 (0464c673) and the prose
 # that named it by the old label was left pointing at a row that no longer
 # exists -- in campaign READMEs, mapgen comments and test comments, three of
@@ -2242,7 +2342,7 @@ set(OG_ASAN_SHARD1
     og_test_level ${OG_PARITY_TESTS} mutation_canary_plan_cli
     og_test_menu_ui og_test_special_scenes og_test_view og_test_curses
     og_unit_basketball og_unit_families og_unit_modes og_unit_stage
-    og_unit_westlands_fire openglad_demo_restart
+    og_unit_imaginations_asteroid og_unit_westlands_fire openglad_demo_restart
 )
 set(OG_ASAN_SHARD2
     og_unit_sim ${OG_UNIT_DATA_TESTS} og_test_matchup og_test_picker_network

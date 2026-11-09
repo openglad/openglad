@@ -34,7 +34,7 @@ struct TickWalker : walker {
 
 using SimWorldR15Fixture = TestGameWorld;
 
-TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, short x, short y, bool dead = false)
+TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, short x, short y, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -49,7 +49,7 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     return out;
 }
 
-TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -60,7 +60,7 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
     return out;
 }
 
-TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -169,6 +169,7 @@ TEST(SimWorld, r15_freeze_uses_friendliness_not_team_zero)
     GameWorld& world = fx.world();
     world.rng_.state_ = 11;
     world.my_team = 1;
+    world.gameplay_fixes = 1;  // fix AF: friendliness is the setting's rule
 
     TickWalker* friendly = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 64, 64);
     TickWalker* hostile = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
@@ -183,6 +184,31 @@ TEST(SimWorld, r15_freeze_uses_friendliness_not_team_zero)
     ASSERT_TRUE(!world.game_ended);
     ASSERT_TRUE(friendly->acts > 0);
     ASSERT_TRUE(hostile->acts == 0);
+}
+
+// Fix AF off (#461): the old game lets a Living act during FREEZE TIME only
+// when it is on team 0 itself. With the player's team 1, the player's own
+// soldier is frozen and the team-0 orc acts (the classic #86 shape); the
+// level census still reads friendliness, so the orc holds the level open.
+TEST(SimWorld, r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off)
+{
+    SimWorldR15Fixture fx;
+    GameWorld& world = fx.world();
+    world.rng_.state_ = 11;
+    world.my_team = 1;
+    world.gameplay_fixes = 0;
+
+    TickWalker* own = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 64, 64);
+    TickWalker* orc = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
+    ASSERT_TRUE(own && orc);
+
+    world.enemy_freeze = 11;
+    world.tick();
+
+    EXPECT_EQ(0, own->acts) << "fixes off: the player's team-1 soldier is frozen";
+    EXPECT_EQ(1, orc->acts) << "fixes off: the team-0 orc acts";
+    EXPECT_EQ(0, world.level_done) << "the census reads friendliness: the orc is a foe";
+    EXPECT_FALSE(world.game_ended);
 }
 
 TEST(SimWorld, r15_end_flag_and_auto_advance_paths)

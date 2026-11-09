@@ -112,6 +112,24 @@ class statistics
 		// The same step asked through GameWorld::query_passable's quiet probe
 		// when quiet is true (no side effect); false is the call above.
 		bool forward_blocked(bool quiet);
+		// The right-hand walk's three probes in the same shape (Gameplay
+		// Fixes Y): quiet asks without a side effect; false is the call above.
+		bool right_blocked(bool quiet);
+		bool right_forward_blocked(bool quiet);
+		bool right_back_blocked(bool quiet);
+		// The right-hand walk's four probes, counted from the facing.
+		enum class Side : short { Front = 0, RightFront = 1, Right = 2, RightBack = 3 };
+		// Gameplay Fixes Y: one of the four probes asked with `quiet`, then
+		// the bump the classic loud probe gave: with the setting on, a
+		// melee-only bot (BIT_NO_RANGED) whose own live foe stands where the
+		// probe looked runs into it (living::collide: collide_ob, a swing
+		// along its heading). Everything else the probe met stays untouched.
+		// Off, the probe alone. See right_walk.
+		bool path_probe(Side side, bool quiet);
+		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
+		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
+		// first, and only a free half takes the classic loud step. Off, the loud step.
+		bool slide_half_clear(short dx, short dy);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
@@ -127,7 +145,7 @@ class statistics
 
 		std::string name; // for NPC's, normally ..
         OG_STATS_DIRTY_FIELD(Order, old_order, og::dirty::BIT_OLD_ORDER);
-        OG_STATS_DIRTY_FIELD(char, old_family, og::dirty::BIT_OLD_FAMILY);
+        OG_STATS_DIRTY_FIELD(std::uint8_t, old_family, og::dirty::BIT_OLD_FAMILY);
         OG_STATS_DIRTY_FIELD(std::uint32_t, last_distance, og::dirty::BIT_LAST_DISTANCE);
         OG_STATS_DIRTY_FIELD(std::int32_t, current_distance, og::dirty::BIT_CURRENT_DISTANCE);
         OG_STATS_DIRTY_FIELD(short, delete_me, og::dirty::BIT_DELETE_ME);
@@ -156,6 +174,16 @@ class statistics
         // masked getter).
         [[nodiscard]] short frozen_delay() const noexcept
         {
+            // rule: A walker in its post-thaw immunity window (negative raw freeze timer, written
+            //   only by the player-side drain statistics::player_thaw_tick,
+            //   src/gameplay/sim_input_handler.cpp) counts as NOT frozen for every reader: it
+            //   can act and move, the HUD/snapshot/replay show 0, and every legacy freeze guard
+            //   sees the classic value. The immunity itself is read through frozen_delay_raw
+            //   (living.cpp climbs it +1/tick back to 0; transfer_stats copies the raw value so
+            //   immunity follows the body, walker.cpp).
+            // tests: StatsFright.frozen_delay_masked_getter_and_raw
+            // tests: StatsFright.sim_player_thaw_immunity_window
+            // tests: SemWalker1.a_thawing_walker_reads_as_unfrozen_in_the_snapshot
             return frozen_delay_ < 0 ? static_cast<short>(0) : frozen_delay_;
         }
         [[nodiscard]] short frozen_delay_raw() const noexcept { return frozen_delay_; }
@@ -175,12 +203,16 @@ class statistics
         OG_STATS_DIRTY_FIELD(std::uint32_t, controller_id, og::dirty::BIT_CONTROLLER_ID);
         [[nodiscard]] unsigned short special_cost(int index) const noexcept
         {
+            // plumbing: Bounds guards on special_cost[] index (getter returns 0, setter ignores)
+            //   for out-of-range slot indices from Lua/snapshot; no game semantic.
             if (index < 0 || index >= NUM_SPECIALS)
                 return 0;
             return special_cost_[index];
         }
         void set_special_cost(int index, unsigned short value)
         {
+            // plumbing: Bounds guards on special_cost[] index (getter returns 0, setter ignores)
+            //   for out-of-range slot indices from Lua/snapshot; no game semantic.
             if (index < 0 || index >= NUM_SPECIALS)
                 return;
             special_cost_[index] = value;
@@ -203,7 +235,7 @@ class statistics
         void mark_dirty(std::uint8_t bit_index);
 
         Order old_order_ = Order::Living;
-        char old_family_ = FAMILY_SOLDIER;
+        std::uint8_t old_family_ = FAMILY_SOLDIER;
         std::uint32_t last_distance_ = 0;
         std::int32_t current_distance_ = 0;  // Distances (to foe) are used for AI walking
         std::int32_t bit_flags_ = 0;         // holds (currently) 32 bit flags
@@ -233,6 +265,9 @@ class statistics
 
 // The classic front probe is the loud one.
 inline bool statistics::forward_blocked() { return forward_blocked(false); }
+inline bool statistics::right_blocked() { return right_blocked(false); }
+inline bool statistics::right_forward_blocked() { return right_forward_blocked(false); }
+inline bool statistics::right_back_blocked() { return right_back_blocked(false); }
 
 #undef OG_STATS_DIRTY_FIELD
 

@@ -143,6 +143,29 @@ protected:
         }
         return w;
     }
+
+    // A wall cell at grid (tx, ty): what the quiet probes of CHARGE's front
+    // and path and every weapon probe on a pad meet on a level.
+    static void pad_wall(GameWorld& w, int tx, int ty)
+    {
+        w.grid.data[static_cast<std::size_t>(tx + w.grid.w * ty)] =
+            static_cast<std::uint8_t>(PIX_H_WALL1);
+    }
+
+    // The obmap files a body under every cell its box covers when it moves,
+    // so a body whose size the test set after it was placed is moved once
+    // more: the quiet probes and the pad probe read the obmap, not positions.
+    template <class W>
+    static W* settle_body(W* w)
+    {
+        if (w != nullptr) {
+            const short x = w->xpos();
+            const short y = w->ypos();
+            w->setxy(static_cast<short>(x + 1), y);
+            w->setxy(x, y);
+        }
+        return w;
+    }
 };
 
 }  // namespace og::test::bot_gates

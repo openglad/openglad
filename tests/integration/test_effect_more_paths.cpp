@@ -80,7 +80,7 @@ static walker* find_spawned_fx(GameWorld& world, int family, int* out_count)
     for (auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        if (w && w->query_order() == Order::FX && w->family() == static_cast<char>(family))
+        if (w && w->query_order() == Order::FX && w->family() == static_cast<std::uint8_t>(family))
         {
             ++count;
             if (!found)
@@ -462,7 +462,7 @@ TEST(EffectMorePaths, effect_batch3_explosion_owner_fallback_and_skip_exit_range
     walker* blast = world.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_NE(nullptr, blast) << "blast created";
     blast->set_owner(nullptr);
-    blast->stats()->set_level(20);  // level*4 = 80 -> 15 + 80 = 95 without the zeroing
+    blast->stats()->set_level(20);  // level*4 = 80 -> 15 + 80 = 95 without the skip_exit collapse
     blast->set_skip_exit(1);
     blast->set_damage(1.0f);        // exactly one hit point against an armor-0 target
     blast->setxy(100, 100);

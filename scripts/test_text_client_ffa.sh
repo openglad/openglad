@@ -111,8 +111,13 @@ for c in taken:
     if mode_vars[32 + c] == 0:
         print(f'FAIL: taken slot {c} holds no fighter entity id', file=sys.stderr)
         sys.exit(1)
+# A fighter is a living (order 0). A fighter's shots and effects wear its
+# band byte too: with Gameplay Fixes AT (#446) the elf's blows on the
+# soldier leave three of its hit effects standing at tick 150, and they
+# are not fighters.
 alive_band = [e['team'] for e in state.get('entities', [])
-              if 16 <= e.get('team', 0) < 32 and not e.get('dead')]
+              if e.get('order') == 0 and 16 <= e.get('team', 0) < 32
+              and not e.get('dead')]
 if len(alive_band) < 2:
     print(f'FAIL: Expected >= 2 live band fighters at tick 150, got {len(alive_band)}',
           file=sys.stderr)

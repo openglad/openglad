@@ -345,8 +345,8 @@ with no rim standing on it, so the live baskets are obvious at a glance.
 - **A kill is a point.** Killing another fighter scores 1. Killing yourself
   — in practice, dying on your own color while charmed — costs 1, and a
   count can go below zero. Wildlife, your own summons, and deaths the map
-  hands out score nothing; a kill your generator or your summon lands
-  counts as yours.
+  hands out score nothing; a kill your summon lands counts as yours (FFA
+  has no generators: the mode clears them from the map at the start).
 - **First to 15 kills wins** — the limit every arena authors; the Score
   Limit setting forces 1-10 as it does everywhere else. If the ten minutes
   run out first the most kills wins, and a tie goes to the earlier color in
@@ -411,8 +411,10 @@ than the number above and they all play, up to sixteen.
 - **Onslaught** (800-803): sprawling generator fields. A lethal hit on a
   generator never destroys it — it flips, full-HP, to the attacker's team
   and starts pumping that team's fighters (existing troops keep their old
-  colors and their old loyalty: they fight on for the side they wear, their
-  kills count for it, and they can take the post back). A team whose last
+  colors and their old loyalty: they fight on for the side they wear and
+  they can take the post back). Every troop's kills count for the color it
+  wears, a post's own troops and released ones alike: a generator is not a
+  fighter, so its troop is credited with its own kills. A team whose last
   generator flips away has a short grace to take one back — its HUD row
   counts the seconds down — and is eliminated when the clock runs out.
   Last team standing wins.

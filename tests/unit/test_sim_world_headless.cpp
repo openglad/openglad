@@ -960,7 +960,7 @@ struct FoeTick
 
 // One ACT_CONTROL tick of a hunter locked onto a cloaked prey, with the world
 // RNG pinned. The foe-validity roll is the FIRST world draw living::act makes
-// (living.cpp:101) — bonus_rounds, apply_z_motion (single-floor early return)
+// (living.cpp:94) — bonus_rounds, apply_z_motion (single-floor early return)
 // and update_exit_latch draw nothing — and ACT_CONTROL returns before any
 // later draw site, so the tick costs exactly one draw of bound
 // invisibility/20, or none at all when that span is 0.

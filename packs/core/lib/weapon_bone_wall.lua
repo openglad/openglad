@@ -14,12 +14,18 @@ local FRAME_CRACKED = 1
 function M.on_animate(self)
   local left = self:lifetime() - 1
   self:set_lifetime(left)
+  -- rule: A skeleton's bone-wall segment stands for exactly its lifetime in ticks (decrement
+  --   first): lifetime 2 survives one act and falls on the second.
+  -- tests: KitSkeleton.wall_cracks_below_half
   if left <= 0 then
     self:set_dead(1)
     return false
   end
   -- hp and max_hp are C++ floats: the comparison is exact, the halving is
   -- one float division.
+  -- rule: A bone wall shows its cracked frame strictly below half health; at exactly half or above
+  --   it looks whole.
+  -- tests: KitSkeleton.wall_cracks_below_half
   if self.hp < og.fdiv(self.max_hp, 2.0) then
     self:set_frame(FRAME_CRACKED)
   else

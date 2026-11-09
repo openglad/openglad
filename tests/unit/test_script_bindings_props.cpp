@@ -32,6 +32,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
@@ -46,6 +47,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
@@ -946,10 +948,13 @@ TEST_F(ScriptBindingPropsTest, family_flag_answers_each_flag_from_the_descriptor
 // so a probe that dropped the argument would report "clear" for a spot that
 // would wall the summon in.
 //
-// The OBJECT probe is the documented exception (game_world.cpp: obmap's floor
-// band keys off ob->floor(), not the argument), so its arm pins what it
-// really promises — the 4-arg form answers its own floor's occupancy, open
-// spot against blocked spot.
+// The two loud probes that also meet bodies (og.query_passable and
+// og.query_object_passable) take the prober's OWN floor only (#465): their
+// bodies half reads the prober's floor (obmap's floor band keys off
+// ob->floor()), so naming another floor is a script error
+// (SemScriptEntity.a_loud_passability_probe_refuses_a_floor_not_the_probers),
+// and naming the prober's own floor is the no-floor answer. Their arms here
+// pin exactly that; og.query_grid_passable is the probe for floor 1's terrain.
 TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probers)
 {
     TestGameWorld tw;
@@ -1011,20 +1016,20 @@ TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probe
         "           b(og.query_grid_passable(" + probe + ", 1)),\n"
         "           b(og.query_grid_passable(" + probe + ", 0)))\n"
         "    og.log('both', b(og.query_passable(" + probe + ")),\n"
-        "           b(og.query_passable(" + probe + ", 1)),\n"
         "           b(og.query_passable(" + probe + ", 0)))\n"
         "    og.log('object', b(og.query_object_passable(" + probe + ", 0)),\n"
         "           b(og.query_object_passable(" + blocked + ", 0)))\n",
         self));
 
-    // Each triple is: the prober's own floor (open), floor 1 (walled), floor 0
-    // named explicitly (open again — so the middle answer is the argument
-    // talking and not a probe that simply broke).
+    // The grid triple is: the prober's own floor (open), floor 1 (walled),
+    // floor 0 named explicitly (open again — so the middle answer is the
+    // argument talking and not a probe that simply broke).
     const std::vector<std::string>& log =
         og::script::active_world_scripts().host().log();
     ASSERT_EQ(3u, log.size());
     EXPECT_EQ("grid\t1\t0\t1", log[0]);
-    EXPECT_EQ("both\t1\t0\t1", log[1]);
+    EXPECT_EQ("both\t1\t1", log[1])
+        << "own floor, then the own floor named: the same answer";
     EXPECT_EQ("object\t1\t0", log[2]);
 }
 
@@ -1429,4 +1434,86 @@ TEST_F(ScriptBindingPropsTest, kit_alternate_cost_and_blocks_placement_read_the_
                         "alternate_cost index out of range");
     expect_errored_with(run_do_special("    self:alternate_cost(-1)\n", self),
                         "alternate_cost index out of range");
+}
+
+// walker:cast_cost(slot [, shifted]) answers og::sim::cast_cost, the price
+// the engine gates a cast on and charges (#437: the bot gates' price check
+// G.can_pay reads it). The soldier's descriptor is patched as in the test
+// above: slot 1's alternate has no price of its own, slot 2's is a new-kit
+// alternate at 77, slot 3's a classic one at 40, and slot 4 is a New
+// Specials kit slot. With New Specials on: slot 1 shifted costs the slot's
+// own price, slot 2 shifted 77, slot 3 shifted 40, slot 4 its own price.
+// Off: slot 2 shifted falls back to the slot's price (its alternate is out
+// of play) and slot 4 is priced out at 5000. A channelling walker's next
+// press costs 0 on every slot in play; slot 4 out of play stays 5000. A
+// slot outside 0..NUM_SPECIALS-1 is a script error.
+// RED (planted): m_cast_cost answering alternate_cost_in_play (or the
+// slot's price) instead: the channel and out-of-play arms differ.
+TEST_F(ScriptBindingPropsTest, kit_cast_cost_answers_the_engines_price)
+{
+    struct Restore {
+        FamilyDescriptor soldier = *get_family_descriptor(FAMILY_SOLDIER);
+        ~Restore() { set_family_descriptor(FAMILY_SOLDIER, soldier); }
+    } restore;
+    FamilyDescriptor priced = restore.soldier;
+    priced.alternate_cost[1] = 0;
+    priced.alternate_new_kit[1] = false;
+    priced.alternate_cost[2] = 77;
+    priced.alternate_new_kit[2] = true;
+    priced.special_new_kit[2] = false;
+    priced.alternate_cost[3] = 40;
+    priced.alternate_new_kit[3] = false;
+    priced.special_new_kit[3] = false;
+    priced.special_new_kit[4] = true;
+    ASSERT_TRUE(set_family_descriptor(FAMILY_SOLDIER, priced));
+
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    const std::string body =
+        "    og.log('cost', self:cast_cost(1), self:cast_cost(1, true),\n"
+        "           self:cast_cost(2, true), self:cast_cost(3, true), self:cast_cost(4))\n";
+    const auto engine = [&]() {
+        return std::format("cost\t{}\t{}\t{}\t{}\t{}",
+                           og::sim::cast_cost(*self, 1, false),
+                           og::sim::cast_cost(*self, 1, true),
+                           og::sim::cast_cost(*self, 2, true),
+                           og::sim::cast_cost(*self, 3, true),
+                           og::sim::cast_cost(*self, 4, false));
+    };
+    const int s1 = self->stats()->special_cost(1);
+    const int s2 = self->stats()->special_cost(2);
+    const int s4 = self->stats()->special_cost(4);
+    ASSERT_NE(0, s1);
+    ASSERT_NE(0, s2);
+
+    w.new_specials = 1;
+    expect_ran_clean(run_do_special(body, self));
+    std::vector<std::string> got = logged();
+    ASSERT_EQ(1u, got.size());
+    EXPECT_EQ(std::format("cost\t{}\t{}\t77\t40\t{}", s1, s1, s4), got[0])
+        << "New Specials on: the slot's price, the alternates' own prices";
+    EXPECT_EQ(engine(), got[0]);
+
+    w.new_specials = 0;
+    expect_ran_clean(run_do_special(body, self));
+    got = logged();
+    ASSERT_EQ(1u, got.size());
+    EXPECT_EQ(std::format("cost\t{}\t{}\t{}\t40\t5000", s1, s1, s2), got[0])
+        << "New Specials off: the new-kit alternate falls back, the kit slot is priced out";
+    EXPECT_EQ(engine(), got[0]);
+
+    self->set_kit_state(KIT_CHANNEL);
+    expect_ran_clean(run_do_special(body, self));
+    got = logged();
+    ASSERT_EQ(1u, got.size());
+    EXPECT_EQ("cost\t0\t0\t0\t0\t5000", got[0])
+        << "a channelling walker's next press is free; a slot out of play is not";
+    EXPECT_EQ(engine(), got[0]);
+
+    expect_errored_with(run_do_special("    self:cast_cost(-1)\n", self),
+                        "cast_cost index out of range");
+    expect_errored_with(run_do_special(std::format("    self:cast_cost({})\n", NUM_SPECIALS), self),
+                        "cast_cost index out of range");
 }

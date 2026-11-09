@@ -581,7 +581,7 @@ std::vector<std::string> audit_generator_spawn_exits(GameWorld& world)
     for (walker* gen : generators)
     {
         // Probe the family this generator actually pours out (walker.cpp
-        // :1164): the spawn's own size sets both the fire() offsets and the
+        // :1388): the spawn's own size sets both the fire() offsets and the
         // footprint that has to fit.
         walker* probe =
             world.add_ob(Order::Living, static_cast<int>(gen->default_weapon()));

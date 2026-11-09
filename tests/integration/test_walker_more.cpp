@@ -621,8 +621,8 @@ TEST(WalkerMore, walker_base_hooks_and_set_difficulty_scaling)
     // -------------------------------------------------------------------
     // walker::set_difficulty at a known difficulty percent. This is the BASE
     // implementation, so the subject has to be a walker that does not override
-    // it: living::set_difficulty is a different rule (family Lua scaling, plus
-    // an A12a arm that scales myguy-less team-0 NPCs too).
+    // it: living::set_difficulty is a different rule (family Lua scaling first,
+    // then the same team-0 exemption).
     // -------------------------------------------------------------------
     GameWorld& world = test_world();
     const auto old_difficulty = world.difficulty;
@@ -639,7 +639,7 @@ TEST(WalkerMore, walker_base_hooks_and_set_difficulty_scaling)
     EXPECT_FALSE(subject->check_special())
         << "walker::check_special is the base no-op: no special is available";
 
-    // Player characters (team 0) are never scaled.
+    // Team 0 is never scaled (#493).
     subject->set_team_num(0);
     subject->stats()->set_max_hitpoints(70.0f);
     subject->stats()->set_max_magicpoints(30.0f);

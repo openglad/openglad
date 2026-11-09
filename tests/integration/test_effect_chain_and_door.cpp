@@ -30,7 +30,7 @@ static std::vector<walker*> new_of_family(const std::list<std::unique_ptr<walker
     for (auto& up : lst) {
         walker* w = up.get();
         if (w && !before.contains(w) && w->query_order() == order &&
-            w->family() == static_cast<char>(family))
+            w->family() == static_cast<std::uint8_t>(family))
             out.push_back(w);
     }
     return out;

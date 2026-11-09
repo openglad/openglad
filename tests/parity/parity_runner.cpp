@@ -7,6 +7,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/sound_ids.h>
+#include <openglad/core/view_box.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
@@ -127,20 +128,17 @@ bool classic_fullscreen_view_contains(const walker* source,
     if (source == nullptr)
         return true;
 
+    // The old game's one full-screen view: 320 x 200 at the map's corner. The
+    // box test is the client's own (#468), so the rows check it against the
+    // old game.
     constexpr std::int32_t kTopX = 0;
     constexpr std::int32_t kTopY = 0;
     constexpr std::int32_t kXView = 320;
     constexpr std::int32_t kYView = 200;
 
-    if (source->xpos() + source->sizex() < kTopX)
-        return false;
-    if (source->xpos() > kTopX + kXView)
-        return false;
-    if (source->ypos() + source->sizey() < kTopY)
-        return false;
-    if (source->ypos() > kTopY + kYView)
-        return false;
-    return true;
+    return og::core::box_on_view(source->xpos(), source->ypos(),
+                                 source->sizex(), source->sizey(),
+                                 kTopX, kTopY, kXView, kYView);
 }
 
 bool is_classic_display_text_notification(std::string_view text)

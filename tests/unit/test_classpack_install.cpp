@@ -25,11 +25,13 @@
 
 #include "family_registry_dump.h"
 #include "registry_difference.h"
+#include "test_game_world_fixture.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/family_presentation.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/classpack_data.h>
@@ -45,6 +47,9 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/pack_transfer_io.h>
@@ -54,6 +59,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -1777,6 +1783,134 @@ TEST(ClasspackInstall, reinstalling_a_slot_without_tuning_clears_it)
     ASSERT_EQ(og::resources::install_classpack_data(std::move(second)), 1);
     EXPECT_EQ(og::script::family_tuning(Order::Living, 255), nullptr)
         << "the replacing entry declared no tuning, so the slot is bare";
+}
+
+// #443: a pack may pin a living family at any wire_id in 0..255, and an id
+// from 128 up is its own family everywhere the simulation keeps it. The
+// walker kept its family in a signed char, so on x86 an id of 200 read back
+// as -56: the walker found no family descriptor, a tent or a summon of that
+// family made a family 0 body, a corpse remembered family 0, and a mirror
+// clamped the byte to family 0. Here the id is followed end to end: the
+// loader's walker, a world's spawn, a tent's spawn, a summon, a corpse and
+// a keyframe applied on a second world.
+// RED with the loader's narrowing planted back (128..255 stand as family 0).
+TEST(ClasspackInstall, a_living_family_at_wire_id_200_spawns_as_itself)
+{
+    ModSlotGuard guard;
+    constexpr int kHigh = 200;
+    og::data::ClasspackData data;
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.family('living', { id = 'mod:high', wire_id = 200, name = 'HIGH',\n"
+        "                      sprite = 'orc.png',\n"
+        "                      combat = { hp = 140, melee_damage = 23,\n"
+        "                                 stepsize = 3, fire_delay = 7,\n"
+        "                                 fire_mp_cost = 2 } })\n",
+        data);
+    ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    const FamilyDescriptor* high = get_family_descriptor(kHigh);
+    ASSERT_NE(nullptr, high);
+    ASSERT_STREQ("HIGH", high->name);
+
+    // Built after the install, so reload_graphics fills slot 200.
+    loader ldr{EntityFactory{}};
+    const std::unique_ptr<walker> w = ldr.create_walker_owned(Order::Living, kHigh);
+    ASSERT_NE(nullptr, w);
+    EXPECT_EQ(kHigh, static_cast<int>(w->family()));
+    EXPECT_EQ(high, get_family_descriptor(w->family()))
+        << "the walker finds its own family";
+    EXPECT_EQ(140.0f, w->stats()->max_hitpoints()) << "read from slot 200's row";
+    const PixieData* own_art = ldr.graphics_for(Order::Living, kHigh);
+    ASSERT_NE(nullptr, own_art) << "slot 200 carries the declared sprite";
+    EXPECT_EQ(own_art, ldr.graphics_for(w->query_order(), w->family()))
+        << "the walker draws with its own art";
+    EXPECT_NE(ldr.graphics_for(Order::Living, FAMILY_SOLDIER), own_art)
+        << "not family 0's";
+
+    const auto wire = [&ldr](GameWorld& world) {
+        loader* const l = &ldr;
+        world.entity_factory = [l](Order order, std::int32_t family) {
+            return l->create_walker_owned(order, family);
+        };
+        world.entity_configurator =
+            [l](walker& entity, Order order,
+                std::int32_t family) -> const PixieData* {
+            l->set_walker(&entity, order, family);
+            return l->graphics_for(entity.query_order(), entity.family());
+        };
+        world.entity_derived_stats = [l](walker* entity, Order order,
+                                         std::int32_t family) {
+            if (entity != nullptr)
+                l->set_derived_stats(entity, order, family);
+        };
+        world.resize_grid(32, 32);
+        std::fill_n(world.grid.data.get(),
+                    static_cast<std::size_t>(world.grid.w) * world.grid.h,
+                    static_cast<std::uint8_t>(PIX_GRASS1));
+    };
+
+    og::sim::WorldSnapshot keyframe;
+    std::uint32_t body_id = 0;
+    {
+        TestGameWorld tw;
+        GameWorld& world = tw.world();
+        wire(world);
+
+        walker* body = world.add_ob(Order::Living, kHigh);
+        ASSERT_NE(nullptr, body);
+        EXPECT_EQ(kHigh, static_cast<int>(body->family())) << "a world's spawn";
+        body->setxy(64, 64);
+        body_id = body->entity_id();
+
+        // A tent of that family (walker::create_weapon's generator spawn).
+        walker* tent = world.add_ob(Order::Generator, FAMILY_TENT);
+        ASSERT_NE(nullptr, tent);
+        tent->set_team_num(1);
+        tent->setxy(320, 360);
+        tent->stats()->set_level(1);
+        tent->set_default_weapon(static_cast<unsigned short>(kHigh));
+        walker* spawn = tent->fire();
+        ASSERT_NE(nullptr, spawn);
+        EXPECT_EQ(kHigh, static_cast<int>(spawn->family())) << "a tent's spawn";
+        EXPECT_EQ(high, get_family_descriptor(spawn->family()));
+
+        // A summon of that family (living::do_summon).
+        walker* caster = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, caster);
+        caster->setxy(160, 64);
+        walker* summon = caster->do_summon(static_cast<std::uint8_t>(kHigh), 50);
+        ASSERT_NE(nullptr, summon);
+        EXPECT_EQ(kHigh, static_cast<int>(summon->family())) << "a summon";
+        EXPECT_EQ(caster, summon->owner());
+
+        // A corpse that remembers it.
+        walker* stain = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        ASSERT_NE(nullptr, stain);
+        stain->stats()->set_old_family(static_cast<std::uint8_t>(kHigh));
+        EXPECT_EQ(kHigh, static_cast<int>(stain->stats()->old_family()))
+            << "a corpse";
+
+        keyframe = og::sim::capture_keyframe_snapshot(world);
+    }
+    const og::sim::EntitySnapshot* captured = nullptr;
+    for (const og::sim::EntitySnapshot& e : keyframe.oblist)
+        if (e.entity_id == body_id)
+            captured = &e;
+    ASSERT_NE(nullptr, captured);
+    EXPECT_EQ(kHigh, static_cast<int>(captured->family)) << "the snapshot";
+
+    TestGameWorld mirror_tw;
+    GameWorld& mirror = mirror_tw.world();
+    wire(mirror);
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, keyframe));
+    walker* const mirrored = mirror.find_by_id(body_id);
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(kHigh, static_cast<int>(mirrored->family())) << "a mirror";
+    EXPECT_EQ(high, get_family_descriptor(mirrored->family()));
+    EXPECT_EQ(og::sim::compute_snapshot_hash(keyframe),
+              og::sim::compute_snapshot_hash(
+                  og::sim::peek_keyframe_snapshot(mirror)))
+        << "the mirror's own capture agrees with the authority's";
 }
 
 // ---------------------------------------------------------------------------

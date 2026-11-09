@@ -34,6 +34,8 @@ end
 -- a countdown. Returns the marker, or nil when the world is full.
 function M.spawn(owner, role, lifetime)
   local marker = og.summon(owner, "fx", FX_KIT_MARKER)
+  -- plumbing: og.summon nil (world full): spawn answers nil, each kit refuses its own COULD NOT ...
+  --   reason
   if not marker then
     return nil
   end
@@ -49,6 +51,9 @@ end
 -- killing the marker when its owner is gone.
 function M.on_act(self)
   local handler = M.roles[self:ani_type()]
+  -- rule: A kit marker runs its role's handler every tick; a marker whose role has no handler (its
+  --   kit not loaded, or a stray role byte from a snapshot) dies at once.
+  -- tests: KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role
   if handler then
     handler(self)
     return true
@@ -67,8 +72,20 @@ end
 -- summon puts every non-weapon in the oblist, so that is the list to scan.
 function M.find(owner, role)
   local obs = og.oblist()
+  -- rule: A kit's live marker is found by owner AND role: another walker's marker, a dead one or
+  --   another role's never answers (so IMMOLATE's second press, PHASE's ALREADY PHASED and the HUD
+  --   countdown see only their own).
+  -- tests: KitElemental.second_press_ends_it_free_after_the_latch
+  -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
+  -- tests: KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role
+  -- tests: SemLibsMarker.a_kit_marker_answers_only_for_its_live_owner
   for i = 1, #obs do
     local ob = obs[i]
+    -- rule: A kit's live marker is found by owner AND role.
+    -- tests: KitElemental.second_press_ends_it_free_after_the_latch
+    -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
+    -- tests: KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role
+    -- tests: SemLibsMarker.a_kit_marker_answers_only_for_its_live_owner
     if ob:order() == C.ORDER_FX
         and ob:family() == FX_KIT_MARKER
         and ob:dead() == 0

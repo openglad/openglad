@@ -1169,7 +1169,8 @@ struct ScenarioRosterReport {
     // level, whose count-only fallback block renders instead.
     bool mode_census = false;
     // The staged mode attempted init and refused (init_attempted && !active
-    // with a registered on_mode_init): the verbatim refusal sentence. A
+    // with an on_mode_init that dispatches for the level, its own or the -1
+    // wildcard): the verbatim refusal sentence. A
     // scripted level with NO on_mode_init hook is not refusing — it has no
     // mode, and the count-only fallback answers instead.
     bool refusing = false;

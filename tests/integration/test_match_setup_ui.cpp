@@ -1588,8 +1588,11 @@ struct PagerState
     bool side_pagers_gone = false;
     std::string more_row_label;
     std::string more_row_label_window_1;
+    bool window_2_published = false;
+    bool window_1_published = false;
     bool current_on_entry = false;
     bool random_row_on_last_window = false;
+    std::string window_2_row_0;
     std::string first_window_row_0;
     bool stepped = false;
     bool stepped_back = false;
@@ -1618,7 +1621,11 @@ int pager_injector(void* data)
         return escape(3, "the ARENA step never came up");
     (void)wait_for_menu_frames(2);
     // Round 4: the window's LAST slot is the pager ROW, and there is no
-    // side pager column at all.
+    // side pager column at all. The read waits for the row to be up, by
+    // completed frames, and never for the face it should wear, so a wrong
+    // face is still read and reported by value.
+    state->window_2_published =
+        wait_for_interactable_within_frames("setup_row_4", 2);
     state->more_row_label = interactable_label("setup_row_4");
     state->side_pagers_gone = !has_interactable("setup_page_next") &&
         !has_interactable("setup_page_prev");
@@ -1633,6 +1640,8 @@ int pager_injector(void* data)
     for (int r = 0; r < og::ui::kSetupRowsMax; ++r) {
         const std::string label =
             interactable_label("setup_row_" + std::to_string(r));
+        if (r == 0)
+            state->window_2_row_0 = label;
         if (label.find("[CURRENT]") != std::string::npos)
             state->current_on_entry = true;
         if (label.find("RANDOM ARENA") != std::string::npos)
@@ -1645,8 +1654,17 @@ int pager_injector(void* data)
     state->stepped_back = click_and_acknowledge_trace(
         "setup_row_4", "setup", "page 1/2",
         /*waits_for_autosave=*/false, 10000);
-    state->first_window_row_0 = interactable_label("setup_row_0");
+    // The "page 1/2" trace fires inside the press's own frame, and the
+    // acknowledgement runs in the next frame's top pump, BEFORE that
+    // frame's locked row-state pass republishes the rows: read here, the
+    // rows can still be window 2's (#489). Slot 7 is hidden on window 2
+    // and is the pager on window 1, so its appearance IS window 1's
+    // publication. That one locked pass writes every row, so row 7 is read
+    // first and row 0 after it.
+    state->window_1_published =
+        wait_for_interactable_within_frames("setup_row_7", 2);
     state->more_row_label_window_1 = interactable_label("setup_row_7");
+    state->first_window_row_0 = interactable_label("setup_row_0");
     // The other window, so the read-back can see a FULL band closed by
     // the pager row as well as a short one.
     capture_presented_frame("setup_arena_paged_window_1", uxshots_dir());
@@ -1692,6 +1710,12 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
     EXPECT_EQ(0, thread_result)
         << "the injector gave up at leg " << thread_result;
     ASSERT_TRUE(state.opened);
+    EXPECT_TRUE(state.window_2_published)
+        << "the pager row is up within two completed frames of the step "
+           "opening";
+    EXPECT_TRUE(state.window_1_published)
+        << "window 1's pager row is up within two completed frames of the "
+           "acknowledged press";
     EXPECT_TRUE(state.side_pagers_gone)
         << "round 4: the wizard has no side pager column at all";
     EXPECT_EQ("MORE ARENAS - 2/2  >", state.more_row_label)
@@ -1708,6 +1732,14 @@ TEST(MatchSetupUi, paged_arena_window_steps_and_opens_on_the_cursor)
     EXPECT_TRUE(state.stepped_back)
         << "the pager row wraps from the last window home to 1/2";
     EXPECT_TRUE(state.stepped) << "and steps on to 2/2";
+    EXPECT_NE(std::string::npos,
+              state.window_2_row_0.find("DUNGEON OF STARS"))
+        << "window 2 opens on 507: '" << state.window_2_row_0 << "'";
+    EXPECT_NE(std::string::npos,
+              state.first_window_row_0.find("FIRST BLOOD"))
+        << "the pager row moved the window home to 1/2, which opens on "
+           "500: '"
+        << state.first_window_row_0 << "'";
     EXPECT_EQ(std::string::npos,
               state.first_window_row_0.find("RANDOM"))
         << "window 1 is arenas only (500 up): '"

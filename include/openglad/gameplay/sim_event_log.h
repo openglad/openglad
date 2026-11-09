@@ -38,8 +38,12 @@ public:
     // Push a sound event.
     // target_player addresses one global player index; -1 broadcasts. A
     // seat-addressed cue's clang travels with its line, so a machine that
-    // holds no matching view stays quiet.
-    void push_sound(std::uint32_t sound_id, std::int32_t target_player = -1);
+    // holds no matching view stays quiet. source is the packed box of the
+    // walker the sound comes from (sound_source.h), carried in Event::c; a
+    // machine plays a placed sound only while one of its views shows that
+    // box (#468). 0 leaves it unplaced: a cue every machine plays.
+    void push_sound(std::uint32_t sound_id, std::int32_t target_player = -1,
+                    std::uint32_t source = 0);
 
     // Access the accumulated events.
     const std::vector<Event>& events() const { return events_; }

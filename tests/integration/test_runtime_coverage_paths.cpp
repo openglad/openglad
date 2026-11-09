@@ -16,6 +16,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sound_source.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/save_data.h>
@@ -1160,6 +1161,74 @@ TEST(RuntimeCoveragePaths, screen_dispatch_filters_targeted_sounds_per_machine)
         << "an out-of-range target must not alias onto a local seat";
     ASSERT_TRUE(s->viewob[0]->textlist[0].empty())
         << "nor must its line reach seat 0";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+}
+
+// #468: an in-world sound is placed at its source (Event::c, sound_source.h),
+// and a machine plays it only while one of its own seat views shows that box:
+// the old game's on-screen test (touching an edge counts as on), asked per
+// machine. An unplaced cue plays everywhere, and the seat check still comes
+// first: a placed sound addressed to a seat on another machine stays silent
+// even inside a local view.
+TEST(RuntimeCoveragePaths, screen_dispatch_plays_a_placed_sound_only_where_a_local_view_shows_it)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    ScopedViewCount two_views(*s, 2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr)
+        << "two views should exist for the placed-sound dispatch test";
+    s->viewob[0]->global_player_index_ = 0;
+    s->viewob[1]->global_player_index_ = 6;
+    // View 0 shows world x 0..160, y 0..200; view 1 x 1000..1160, y 1000..1200.
+    s->viewob[0]->topx = 0;
+    s->viewob[0]->topy = 0;
+    s->viewob[0]->xview = 160;
+    s->viewob[0]->yview = 200;
+    s->viewob[1]->topx = 1000;
+    s->viewob[1]->topy = 1000;
+    s->viewob[1]->xview = 160;
+    s->viewob[1]->yview = 200;
+
+    ScopedPlatformBridgeState restore_bridge;
+    std::vector<int> played;
+    PlatformBridge recorder = platform_bridge();
+    recorder.play_sound = [&played](int sound_id) { played.push_back(sound_id); };
+    set_platform_bridge(recorder);
+
+    auto sound_at = [](std::uint32_t id, std::int32_t x, std::int32_t y,
+                       std::int32_t target = -1) {
+        og::sim::Event ev;
+        ev.kind = og::sim::EventKind::PlaySound;
+        ev.a = id;
+        ev.target_player = target;
+        ev.c = og::sim::pack_sound_source(x, y, 16, 16);
+        return ev;
+    };
+    og::sim::Event cue;
+    cue.kind = og::sim::EventKind::PlaySound;
+    cue.a = 25;  // c == 0: unplaced
+
+    og::sim::SimEventBatch batch;
+    batch.events.push_back(sound_at(21, 50, 50));        // inside view 0
+    batch.events.push_back(sound_at(22, 1050, 1050));    // inside view 1
+    batch.events.push_back(sound_at(23, 160, 50));       // on view 0's right edge
+    batch.events.push_back(sound_at(24, 161, 50));       // one pixel past every view
+    batch.events.push_back(cue);                         // unplaced: everywhere
+    batch.events.push_back(sound_at(26, 50, 50, 3));     // in view, another machine's seat
+    batch.events.push_back(sound_at(27, 1000 - 16, 1100)); // touching view 1's left edge
+    batch.events.push_back(sound_at(28, 1000 - 17, 1100)); // one pixel short of it
+    s->dispatch_cosmetic_events(batch);
+
+    EXPECT_EQ((std::vector<int>{21, 22, 23, 25, 27}), played)
+        << "placed sounds play only inside (or touching) a local view; the cue "
+           "plays everywhere; another machine's seat hears its own";
 
     for (short view_index = 0; view_index < s->numviews; ++view_index)
         s->viewob[view_index]->clear_text();

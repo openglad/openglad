@@ -815,7 +815,7 @@ walker  *loader::set_walker(walker *ob,
 		idx = PIX(order, family);
 	}
 
-	ob->set_order_family(order, static_cast<char>(family));
+	ob->set_order_family(order, static_cast<std::uint8_t>(family));
 	ob->set_act_type(act_types[static_cast<std::size_t>(idx)]);
 	ob->ani = animations[static_cast<std::size_t>(idx)];
 	ob->ani_count = animation_counts[static_cast<std::size_t>(idx)];

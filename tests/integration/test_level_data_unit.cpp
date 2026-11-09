@@ -49,7 +49,7 @@ struct LevelFixture {
 
 template <typename WalkerList>
 walker* add_to_list(LevelFixture& fx, WalkerList& ls,
-                    Order o, char family, unsigned char team, short x, short y)
+                    Order o, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
@@ -247,7 +247,7 @@ struct LevelR11Fixture {
 
 template <typename WalkerList>
 walker* add_to(LevelR11Fixture& fx, WalkerList& ls,
-               Order o, char family, unsigned char team, short x, short y)
+               Order o, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
@@ -489,7 +489,7 @@ struct LevelR12Fixture {
 
 template <typename WalkerList>
 walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
-               Order o, char family, unsigned char team, short x, short y)
+               Order o, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);

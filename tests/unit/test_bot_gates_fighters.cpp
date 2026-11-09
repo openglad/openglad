@@ -17,10 +17,15 @@
 #include <gtest/gtest.h>
 
 #include "bot_gate_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/special_result.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -29,33 +34,6 @@
 #include <memory>
 
 using og::test::bot_gates::GameplayFixesBots;
-
-namespace {
-
-// A wall cell at grid (tx, ty): what the quiet probes of CHARGE's front and
-// path and of the elf's rock pad meet on a level.
-void wall(GameWorld& w, int tx, int ty)
-{
-    w.grid.data[static_cast<std::size_t>(tx + w.grid.w * ty)] =
-        static_cast<std::uint8_t>(PIX_H_WALL1);
-}
-
-// The obmap files a body under every cell its box covers when it moves, so
-// a body whose size the test set after it was placed is moved once more:
-// the quiet probes read the obmap, not positions.
-template <class W>
-W* settle(W* w)
-{
-    if (w != nullptr) {
-        const short x = w->xpos();
-        const short y = w->ypos();
-        w->setxy(static_cast<short>(x + 1), y);
-        w->setxy(x, y);
-    }
-    return w;
-}
-
-}  // namespace
 
 // ---------------------------------------------------------------------------
 // The soldier
@@ -216,8 +194,8 @@ TEST_F(GameplayFixesBots, soldier_disarm_wants_a_foe_blocking_its_front)
 // the wall and the gate says yes with the setting on.
 TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_in_front)
 {
-    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 232, 192, 1), 16, 16));
+    living* soldier = settle_body(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 232, 192, 1), 16, 16));
     ASSERT_TRUE(soldier && foe);
     soldier->set_stepsize(4.0f);
     soldier->set_lastx(4.0f);
@@ -225,7 +203,7 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_in_front)
     soldier->set_enddir(FACE_RIGHT);
 
     EXPECT_TRUE(gate(soldier, 1, 1)) << "open grass: the rush runs into the foe";
-    wall(world(), 13, 12);
+    pad_wall(world(), 13, 12);
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer: a foe inside the window";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "a wall one pixel ahead: the cast says PATH BLOCKED";
 }
@@ -240,8 +218,8 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_in_front)
 // step meets the tower and the gate says yes.
 TEST_F(GameplayFixesBots, soldier_charge_refuses_a_touching_foe)
 {
-    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_TOWER1, 2, 207, 179, 1), 25, 29));  // gap -1
+    living* soldier = settle_body(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 207, 179, 1), 25, 29));  // gap -1
     ASSERT_TRUE(soldier && foe);
     soldier->set_stepsize(4.0f);
     soldier->set_lastx(4.0f);
@@ -264,8 +242,8 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_touching_foe)
 // gate says yes.
 TEST_F(GameplayFixesBots, soldier_charge_refuses_an_ally_in_front)
 {
-    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    living* soldier = settle_body(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
     ASSERT_TRUE(soldier && foe);
     soldier->set_stepsize(4.0f);
     soldier->set_lastx(4.0f);
@@ -273,7 +251,7 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_an_ally_in_front)
     soldier->set_enddir(FACE_RIGHT);
 
     EXPECT_TRUE(gate(soldier, 1, 1)) << "nobody in the way: the ninth step strikes the foe";
-    living* ally = settle(body(add(FAMILY_SOLDIER, 1, 207, 192, 1), 16, 16));  // gap -1
+    living* ally = settle_body(body(add(FAMILY_SOLDIER, 1, 207, 192, 1), 16, 16));  // gap -1
     ASSERT_NE(nullptr, ally);
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "an ally against the front: PATH BLOCKED";
@@ -288,8 +266,8 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_an_ally_in_front)
 // found and the gate says yes.
 TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_between_the_soldier_and_its_foe)
 {
-    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    living* soldier = settle_body(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
     ASSERT_TRUE(soldier && foe);
     soldier->set_stepsize(4.0f);
     soldier->set_lastx(4.0f);
@@ -297,7 +275,7 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_between_the_soldier_and_
     soldier->set_enddir(FACE_RIGHT);
 
     EXPECT_TRUE(gate(soldier, 1, 1)) << "without the wall the ninth step strikes the foe";
-    wall(world(), 14, 12);
+    pad_wall(world(), 14, 12);
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "the fifth step meets the wall";
 }
@@ -310,8 +288,8 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_between_the_soldier_and_
 // found and the gate says yes.
 TEST_F(GameplayFixesBots, soldier_charge_refuses_a_door_in_the_rush_path)
 {
-    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    living* soldier = settle_body(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
     ASSERT_TRUE(soldier && foe);
     soldier->set_stepsize(4.0f);
     soldier->set_lastx(4.0f);
@@ -324,7 +302,7 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_door_in_the_rush_path)
     door->set_team_num(2);
     door->stats()->set_level(1);
     door->setxy(224, 192);
-    settle(body(door, 16, 16));
+    settle_body(body(door, 16, 16));
     EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(soldier, 1, 1)) << "the fifth step meets the door";
 }
@@ -480,14 +458,14 @@ TEST_F(GameplayFixesBots, elf_mega_rocks_wants_two_foes_in_flight)
 // in flight beyond it, and the gate says yes with the setting on.
 TEST_F(GameplayFixesBots, elf_rocks_refuse_a_pad_on_a_wall)
 {
-    living* elf = settle(body(add(FAMILY_ELF, 1, 192, 192, 1, 100.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_TOWER1, 2, 230, 186, 1), 25, 29));  // a 22 px gap east
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 230, 186, 1), 25, 29));  // a 22 px gap east
     ASSERT_TRUE(elf && foe);
     elf->set_lastx(1.0f);
     elf->set_lasty(0.0f);
 
     EXPECT_TRUE(gate(elf, 1, 1)) << "open grass: faced, in flight, the pad clear";
-    wall(world(), 13, 12);
+    pad_wall(world(), 13, 12);
     EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
     EXPECT_FALSE(gate(elf, 1, 1)) << "a wall under the pad: COULD NOT FIRE";
 }
@@ -500,8 +478,8 @@ TEST_F(GameplayFixesBots, elf_rocks_refuse_a_pad_on_a_wall)
 // RED (the gate without the pad): the gate says yes with the setting on.
 TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
 {
-    living* elf = settle(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_TOWER1, 2, 196, 171, 1), 25, 29));  // touching above
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 196, 171, 1), 25, 29));  // touching above
     ASSERT_TRUE(elf && foe);
 
     EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
@@ -509,6 +487,85 @@ TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
 
     foe->setxy(196, 140);  // a 31 px gap above: off the pad, still in flight
     EXPECT_TRUE(gate(elf, 1, 1)) << "the pad clear, the tower in flight";
+}
+
+// Gameplay Fixes AV (#451): the rock's pad held by an enemy weapon-order
+// body. A weapon in flight, a door or a grown tree of the foes' passes the
+// quiet pad question (the clash is a roll a rule may not draw), and the
+// loud fire() meets it on 4 rolls in 10: the cast then refuses COULD NOT
+// FIRE. With the setting on the rule asks the strict question
+// (G.pad_clear_of_weapons) and says no; the classic elf casts every roll.
+// The elf (level 1, 16x16 at 200,200, heading UP at spawn) faces a tower
+// 31 px above, off the pad and in flight; the pad is read from fire()'s
+// table (weapon_pad). The stream is pinned to a state whose clash roll
+// would lose, and no question moves it. The enemy arrow 5 px above the pad
+// still meets it (collide() shrinks both boxes by a pixel), 6 px above it
+// is off it; an own-team rock on the pad passes; BOUNCING ROCKS shares the
+// rule, as all four volleys do.
+// RED (planted): living-01-elf.lua:213 `G.pad_clear_of_weapons(self)` ->
+// `G.pad_clear(self)`: gate(elf, 1, 1) reads true with the arrow on the pad.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_an_enemy_weapon_on_the_pad)
+{
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 196, 140, 1), 25, 29));  // a 31 px gap above
+    ASSERT_TRUE(elf && foe);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "the control: the pad clear, the tower faced in flight";
+
+    walker probe(walker::WeaponProfileProbeTag{});
+    const PixieData* rock_data =
+        world().configure_existing_entity(probe, Order::Weapon, FAMILY_ROCK);
+    ASSERT_NE(nullptr, rock_data);
+    probe.set_data(*rock_data);
+    short px = 0, py = 0;
+    elf->weapon_pad(probe, px, py);
+    ASSERT_EQ(205, px) << "the rock's 6 px pad, centred above the elf";
+    ASSERT_EQ(193, py);
+
+    const auto weapon_on = [&](int family, unsigned char team, short x, short y,
+                               short sx, short sy) {
+        walker* w = world().add_weap_ob(Order::Weapon, family);
+        if (w != nullptr) {
+            w->set_team_num(team);
+            body(w, sx, sy)->setxy(x, y);
+            settle_body(w);
+        }
+        return w;
+    };
+    walker* arrow = weapon_on(FAMILY_ARROW, 2, px, py, 7, 7);
+    ASSERT_NE(nullptr, arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, elf->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, elf->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_FALSE(gate(elf, 2, 1)) << "BOUNCING ROCKS asks the same pad";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->setxy(px, static_cast<short>(py - 5));
+    EXPECT_FALSE(gate(elf, 1, 1)) << "5 px above: the shrunk boxes still share a row";
+    arrow->setxy(px, static_cast<short>(py - 6));
+    EXPECT_TRUE(gate(elf, 1, 1)) << "6 px above: off the pad";
+    arrow->set_dead(1);
+
+    walker* door = weapon_on(FAMILY_DOOR, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, door);
+    door->stats()->set_level(2);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy door on the pad";
+    door->set_dead(1);
+
+    walker* tree = weapon_on(FAMILY_TREE, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, tree);
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy grown tree on the pad";
+    tree->set_dead(1);
+
+    walker* own = weapon_on(FAMILY_ROCK, 1, px, py, 6, 6);
+    ASSERT_NE(nullptr, own);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "a rock of the elf's own team passes";
+    EXPECT_EQ(lost, world().rng_.state_) << "nothing drew";
 }
 
 // A weapon passes its own team's bodies, so an ally on the pad is not in
@@ -519,9 +576,9 @@ TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
 // team the gate says yes with the setting on.
 TEST_F(GameplayFixesBots, elf_rocks_an_ally_on_the_pad_is_not_in_the_way)
 {
-    living* elf = settle(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
-    living* ally = settle(body(add(FAMILY_TOWER1, 1, 196, 171, 1), 25, 29));  // touching above
-    living* foe = settle(body(add(FAMILY_TOWER1, 2, 196, 130, 1), 25, 29));  // a 41 px gap above
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* ally = settle_body(body(add(FAMILY_TOWER1, 1, 196, 171, 1), 25, 29));  // touching above
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 196, 130, 1), 25, 29));  // a 41 px gap above
     ASSERT_TRUE(elf && ally && foe);
 
     EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
@@ -542,8 +599,8 @@ TEST_F(GameplayFixesBots, elf_rocks_an_ally_on_the_pad_is_not_in_the_way)
 // on.
 TEST_F(GameplayFixesBots, elf_rocks_refuse_a_pad_off_the_map)
 {
-    living* elf = settle(body(add(FAMILY_ELF, 1, 300, 6, 1, 100.0f), 16, 16));
-    living* foe = settle(body(add(FAMILY_TOWER1, 2, 284, 0, 1), 8, 8));
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 300, 6, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 284, 0, 1), 8, 8));
     ASSERT_TRUE(elf && foe);
     elf->set_lastx(-1.0f);
     elf->set_lasty(-1.0f);
@@ -618,6 +675,63 @@ TEST_F(GameplayFixesBots, archer_barrage_wants_its_foe_faced_in_flight)
     EXPECT_FALSE(gate(archer, 2, 1)) << "a generator foe: the barrage is for a fighter";
 }
 
+// Gameplay Fixes AS (#436): BARRAGE's arrows leave from the pad fire()
+// places the archer's arrow on, and with the setting on the cast refuses
+// COULD NOT FIRE when the first cannot leave. The rule asks that pad with
+// fix AV's strict question (G.pad_clear_of_weapons): a wall face, a foe's
+// body, or an enemy arrow in flight on it is a no (the stream pinned to a
+// state whose clash roll would lose, and unmoved); an arrow of the archer's
+// own team passes. The archer (level 4, 16x16 at 192,183, heading UP)
+// holds the tower 85 px above as its foe; its 7x7 arrow pad (196,175)
+// reaches grid row 10.
+// RED (planted): living-02-archer.lua `return G.pad_clear_of_weapons(self)`
+// -> `return true`: every refusing arm reads true.
+TEST_F(GameplayFixesBots, archer_barrage_wants_its_pad_clear)
+{
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 183, 4, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 188, 69, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    archer->set_lasty(-1.0f);
+    archer->set_foe(foe);
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 2, 1)) << "open grass: faced, in flight, the pad clear";
+
+    pad_wall(world(), 12, 10);
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer())
+        << "precondition: the arrow's pad reaches the wall";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a wall under the pad: three arrows that never fly";
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_GRASS1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "the wall gone";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 2, 192, 166, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, archer->fire_pad_answer())
+        << "precondition: a foe's body on the arrow's pad";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a foe's body on the pad: the first arrow is a blow";
+    on_pad->setxy(600, 600);
+
+    walker* arrow = world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(2);
+    body(arrow, 7, 7)->setxy(196, 175);
+    settle_body(arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, archer->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->set_team_num(1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "an arrow of the archer's own team passes";
+}
+
 // EXPLODING BOLT goes off on its foe (a blast of 15 + 4 px a level, 43 at
 // level 7; allies take half, the archer a quarter). With the setting on the
 // foe must be faced and in flight (169 px straight at level 7), and neither
@@ -652,6 +766,62 @@ TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_a_foe_past_its_own_blast_w
     EXPECT_TRUE(gate(archer, 3, 1)) << "a 160 px gap is inside the straight flight of 169";
     foe->setxy(200, 1);
     EXPECT_FALSE(gate(archer, 3, 1)) << "a 170 px gap is past it";
+}
+
+// EXPLODING BOLT swaps the fire arrow in for its one fire()
+// (living-02-archer.lua, exploding_shot), and the fire arrow (9 by 9) is
+// wider than the archer's own arrow (7 by 7): the gate asks the pad with
+// the fire arrow's family, the weapon the cast fires. The archer faces UP
+// (the spawn heading) from (192, 184); a wall row at grid (12, 10), y 160 ..
+// 175: the arrow's pad (196, 176) lies wholly in row 11 and is clear, the
+// fire arrow's (195, 174) reaches into row 10 and is not. The foe is faced,
+// in flight and past the archer's own blast.
+//
+// RED (the gate asks G.pad_clear(self), the archer's own arrow): the arrow's
+// pad is clear and the gate says yes with the setting on; the cast then
+// refuses COULD NOT FIRE.
+TEST_F(GameplayFixesBots, archer_exploding_bolt_asks_the_fire_arrows_own_pad)
+{
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 184, 7, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 188, 70, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    const int fire_arrow = og::families::resolve_family_string_id(Order::Weapon, "core:fire_arrow");
+    ASSERT_GE(fire_arrow, 0);
+
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 3, 1)) << "open grass: faced, in flight, past the blast, the pad clear";
+
+    pad_wall(world(), 12, 10);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+        << "precondition: the archer's own arrow would fly";
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(fire_arrow))
+        << "precondition: the fire arrow's wider pad reaches the wall";
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "the fire arrow's pad is on the wall";
+
+    // A tree crown in the same cell: the fire arrow does not walk the
+    // forest, so the crown is terrain for it as the wall is.
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_TREE_T1);
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(fire_arrow))
+        << "precondition: a tree crown under the fire arrow's pad";
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "a tree crown under the fire arrow's pad";
+
+    // What the gate spares the bot: the cast itself refuses.
+    world().gameplay_fixes = 1;
+    archer->set_current_special(3);
+    const auto cast = og::script::hooks::do_special(get_family_descriptor(FAMILY_ARCHER), archer);
+    ASSERT_TRUE(cast.has_value());
+    EXPECT_FALSE(cast->succeeded());
+    EXPECT_EQ("COULD NOT FIRE", cast->reason());
+
+    // The same cast with the wall gone fires its arrow.
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_GRASS1);
+    const auto open = og::script::hooks::do_special(get_family_descriptor(FAMILY_ARCHER), archer);
+    ASSERT_TRUE(open.has_value());
+    EXPECT_TRUE(open->succeeded()) << open->reason();
 }
 
 // ---------------------------------------------------------------------------
@@ -721,4 +891,35 @@ TEST_F(GameplayFixesBots, barbarian_exploding_boulder_wants_a_cluster_with_no_al
     second->setxy(220, 175);
     EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer";
     EXPECT_FALSE(gate(barbarian, 2, 1)) << "the barbarian would stand in its own blast";
+}
+
+// HURL BOULDER and EXPLODING BOULDER both fire() the hammer the boulder is
+// made from (living-16-barbarian.lua, do_special): with a wall under the
+// hammer's pad fire() makes nothing and the throw refuses COULD NOT FIRE.
+// With the setting on the gate asks the pad; the classic gate says yes. The
+// level-4 barbarian faces RIGHT from (192, 192) (its boulder rolls 64 px):
+// the pad starts at x 209, inside grid cell (13, 12); the foe stands 40 px
+// past the barbarian with a second foe 20 px from it, both past that cell.
+//
+// RED (the gate's pad term removed): gate(barbarian, 1, 1) and
+// gate(barbarian, 2, 1) are true with the wall under the pad.
+TEST_F(GameplayFixesBots, barbarian_boulder_refuses_a_pad_on_a_wall)
+{
+    living* barbarian = settle_body(body(add(FAMILY_BARBARIAN, 1, 192, 192, 4, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 248, 192, 1), 16, 16));  // a 40 px gap east
+    living* beside = settle_body(body(add(FAMILY_SOLDIER, 2, 248, 212, 1), 16, 16));  // 20 px from it
+    ASSERT_TRUE(barbarian && foe && beside);
+    barbarian->set_lastx(1.0f);
+    barbarian->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "open grass: HURL BOULDER, faced, in flight";
+    EXPECT_TRUE(gate(barbarian, 2, 1)) << "open grass: EXPLODING BOULDER, two foes in the blast";
+
+    pad_wall(world(), 13, 12);
+    ASSERT_EQ(walker::PadAnswer::Terrain, barbarian->fire_pad_answer())
+        << "precondition: the wall is under the hammer's pad";
+    for (const int slot : {1, 2}) {
+        EXPECT_TRUE(gate(barbarian, slot, 0)) << "the classic answer: always, slot " << slot;
+        EXPECT_FALSE(gate(barbarian, slot, 1)) << "a wall under the hammer's pad, slot " << slot;
+    }
 }

@@ -359,10 +359,17 @@ id patches the fields it declares (the `tuning` map is replaced whole).
 
 **Unknown keys are load errors, with a did-you-mean suggestion.** That
 applies at the top level, inside `stats` / `combat` / `costs`, inside a
-specials entry, and to hook names. There is no silent forward-compatibility
-tier: a key the engine does not know is a key that would have done nothing,
-and a pack is better off being told. Two escape hatches for a pack straddling
-engine releases: `ext = { ... }` is accepted and ignored (opaque, reserved),
+specials entry, and to hook names (family hooks, level hooks and the
+entity hook table alike). A list (`flags`, `names`, `authors`, the
+`specials` list, `og.anims` frames and each row) takes positional entries
+only: a named entry or a key that is not a position 1..n is a load error
+naming it. `ext` is not accepted inside a pure list (`flags`, `names`,
+`authors`, frames: a list holds values and has no block to extend); the
+`specials` list keeps its named keys, `default_cast` and `ext`. There is no
+silent forward-compatibility tier: a key the engine does not know is a key
+that would have done nothing, and a pack is better off being told. Two
+escape hatches for a pack straddling engine releases: `ext = { ... }` is
+accepted and ignored in a block (opaque, reserved),
 and `og.api.version` reports the format version so a pack can branch. The
 current format version is 5.
 
@@ -378,7 +385,8 @@ Fields, by order (names match the descriptor struct members):
 ```lua
 og.family("living", {
   id = "core:soldier",             -- required declared id; qualified ids are scoped (§5)
-  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21; weapons >= 22)
+  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21; weapons >= 22);
+                                   -- anything else is a load error
   name = "SOLDIER",                -- display name and bare-id fallback (§5)
   short_name = og.NIL,             -- nullable: picker label override
   stats = {                        -- attribute scores; all six required
@@ -735,8 +743,10 @@ block.
 
 ## 5. Identity: string ids, wire bytes, palette
 
-- Runtime keeps int8 family bytes everywhere (walker, snapshots, saves,
-  level entities) — zero hot-path cost, wire format shape unchanged.
+- Runtime keeps one-byte family ids: unsigned (0..255) on the walker, its
+  corpse and in snapshots since #443, the same byte in level files and
+  saves (a company character's record still holds a signed byte) — zero
+  hot-path cost, wire format shape unchanged.
 - Registries resolve string ids to bytes per order. **Core pack ids are
   pinned** to the legacy bytes (soldier=0 … tower1=20; likewise for the legacy
   weapon/effect/treasure/generator numeric ids), so existing levels, saves,
@@ -900,6 +910,11 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   from `on_load` or `on_entity_spawn`, after selecting the entity via
   `og.oblist()`, position or family). The registration is consumed when it
   fires, so an entity id never fires twice, and it requires a tracked entity.
+- Any key but the nine level hook names (`on_load`, `on_tick`,
+  `on_entity_death`, `on_entity_spawn`, `on_damage`, `on_mode_init`,
+  `on_mode_tick`, `on_respawn`, `on_lineup_stage`) is a load error with a
+  did-you-mean, in the declaration pass too, and the refused call installs
+  nothing; `og.set_entity_hooks` takes `on_death` alone.
 
 Every level dispatcher early-outs when no pack registered that hook kind, so
 script-less sims pay nothing and stay byte-identical.

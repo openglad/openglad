@@ -288,6 +288,43 @@ inline bool wait_for_menu_frames(int n, int timeout_ms = 15000)
     return false;
 }
 
+// The same counts-not-clocks rule for an edge: the screen `id` is up within
+// `frames` completed engine frames from now. A menu thread that is stalled
+// (a disk write, a starved CPU) completes no frame, so a stall spends none of
+// the budget, while a screen that keeps composing frames without ever
+// publishing `id` exhausts it and fails by name. The clock is only the
+// ceiling for a dead pump, generous on purpose; its name says it is a poll
+// bound (tier 2 of scripts/check_injector_settles.sh).
+inline bool wait_for_interactable_within_frames(const std::string& id,
+                                                int frames,
+                                                int dead_pump_poll_ms = 60000)
+{
+    const std::uint64_t start =
+        og::ui::menu_screen_testing_completed_frames();
+    const std::uint64_t budget =
+        static_cast<std::uint64_t>(frames < 0 ? 0 : frames);
+    int elapsed = 0;
+    const int poll_interval = 5;
+    while (elapsed < dead_pump_poll_ms) {
+        if (has_interactable(id))
+            return true;
+        if (og::ui::menu_screen_testing_completed_frames() - start > budget) {
+            fprintf(stderr,
+                    "  [interact] '%s' not up within %d completed menu "
+                    "frame(s)\n",
+                    id.c_str(), frames);
+            return false;
+        }
+        SDL_Delay(static_cast<Uint32>(poll_interval));
+        elapsed += poll_interval;
+    }
+    fprintf(stderr,
+            "  [interact] TIMEOUT waiting for '%s' (%d ms, fewer than %d "
+            "menu frames completed)\n",
+            id.c_str(), dead_pump_poll_ms, frames);
+    return has_interactable(id);
+}
+
 // The consumption proof for a click whose effect the button table cannot
 // show. Engine screens trace their own dispatch ("confirm"/"popup" from the
 // dialogs, "company_list page 2/2", "basecamp deploy slot=0 off"), so waiting

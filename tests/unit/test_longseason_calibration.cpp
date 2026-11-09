@@ -1,33 +1,34 @@
-/* F4 fresh-team calibration pins for The Long Season
+/* Curve-level battle sanity for The Long Season
  * (campaigns/longseason/README.md, "Campaign metadata" >
  * "F4 CALIBRATION TABLE").
  *
- * The campaign contract: a fresh team at the campaign_meta difficulty-curve
- * crew power can reasonably attempt every level, with the campaign ANCHORED
- * at crew 1 (levels 1-2 gate on a brand-new team). The full contract was
- * swept with the playtest harness (scripts/longseason_playtest.sh, crew
- * brackets {curve-1, curve, curve+1} x 3 seeds x 2 rosters, 6000-tick
- * runs); CI cannot afford that, so this test pins the CHEAP invariant per
- * level: the 8-unit mixed fresh team (4 soldiers, elf, archer, cleric,
- * barbarian — the harness's representative full-lobby roster; the
- * 4-soldier stand-in is a pessimistic floor) at the curve level, deployed
- * exactly the way the harness deploys it, still has at least `floor`
- * members alive at tick 600 on the pinned seed. Since the text client's
- * context-before-load fix, this fixture and openglad_text --protocol
- * produce bit-identical simulations, so these floors hold for the harness
- * verbatim.
+ * Per level, the 8-unit mixed fresh team (4 soldiers, elf, archer, cleric,
+ * barbarian, the playtest harness's representative full-lobby roster) is
+ * deployed at the campaign_meta difficulty-curve crew level exactly the way
+ * the harness deploys it (the campaign is anchored at crew 1: levels 1-2
+ * run a brand-new team), and the sim runs 600 ticks on seed 42. The test
+ * asserts that the fight happened: the level loads and deploys the whole
+ * crew, it fields an army against it, the crew takes damage and the crew
+ * deals damage.
  *
- * Floors are the MINIMUM measured across seeds {42, 1337, 2025} at the
- * time of calibration (the test runs seed 42 only; the min-across-seeds
- * floor absorbs future engine-side drift without going stale on the first
- * cosmetic change — and without dead slack: every floor is an actually
- * measured minimum, not a guess). A failure here means a builder or
- * engine change made some level MEANINGFULLY hotter for a fresh team —
- * re-run the F4 bracket sweeps and re-calibrate deliberately instead of
- * bumping the number.
+ * Survivor counts are no longer asserted (2026-11-02). Until then every row
+ * carried a survival floor measured on seeds {42, 1337, 2025} and asserted
+ * on seed 42, and a second test held Ashfall Fair's team 0 at four or more
+ * standing at tick 3000 on those three seeds. These brawls are chaotic: on
+ * the three Westlands rows measured over a hundred seeds the unchanged game
+ * missed its own band on 5 to 28 of them, so the four campaign calibration
+ * suites went red on nearly every simulation change and were re-pinned
+ * eight times. The pins were a seed lottery, not a contract, and the
+ * maintainer deleted them once the semantic tests in
+ * tests/unit/test_sem_*.cpp asserted every game rule directly. Campaign
+ * balance is the playtest harness's business
+ * (scripts/longseason_playtest.sh).
  *
  * Measurement mode: set LONGSEASON_CALIBRATION_MEASURE=1 to print the
- * per-seed survivor counts for all three seeds instead of asserting.
+ * per-seed survivor counts for seeds {42, 1337, 2025} and the seed-42
+ * battle line (alive / host / damage taken / damage dealt) instead of
+ * asserting. It is a measuring tool for balance work: it asserts nothing
+ * and runs only when asked.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -43,9 +44,8 @@
 
 namespace {
 
-using westlands_fixture::LoadedWestlandsLevel;
 using westlands_fixture::MountedCampaignTest;
-using westlands_fixture::deploy_crew;
+using westlands_fixture::CurveBattle;
 
 class LongSeasonCalibration : public MountedCampaignTest
 {
@@ -56,204 +56,79 @@ protected:
     }
 };
 
-struct CurvePin
+struct CurveLevel
 {
     int level_id;
     int crew_level; // campaign_meta curve ("crew power entering")
-    int floor;      // min 8-mixed-crew survivors at tick 600 across 3 seeds
 };
 
-// The difficulty-curve contract (campaign_meta.md, F4 calibration table)
-// with the measured 600-tick survival floors. The crew-1 anchor is real:
-// levels 1 and 2 run at crew level 1, the fresh-team start. Floors of 1-5
-// mark the brawl levels (the ferry hold's boat flank, the summer line
-// fights, the Undermill, the wagon run, and above all the Warm Mint's
-// three-way gatehall) where the stand-in crew bleeds by design — their
-// win/hold gates live in the harness sweeps, not here.
-// (Recalibrated 2026-07-10 for the B1/B2 stair fixes — the re-trigger
-// latch + blocked-arrival nudge, docs/z-axis-design.md: enemies that used
-// to bounce back down 6 ticks after climbing now COMMIT to floor
-// crossings, so the multi-floor levels 10, 11 and 18 got genuinely hotter
-// for a fresh crew (18 the Warm Mint drops to a war-level 0 — its win
-// gate lives in the harness sweeps, like the westlands war levels). New
-// floors are the re-measured minima across seeds {42, 1337, 2025}; every
-// single-floor level re-measured identical, as the floor_count>1 gate
-// guarantees. Re-sweep with scripts/longseason_playtest.sh before the
-// next balance pass.)
-// (Recalibrated again 2026-07-10 for the multi-floor pathing fixes —
-// A* no-corner-cut, the follow-path alignment assist, floor-keyed
-// find_near_foe, and the flyer cross-floor bypass (all floor_count>1
-// gated; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): upper-floor enemies that
-// used to wedge on convex corners or hunt ground-floor shadows now fight
-// where they stand, so multi-floor scen11 runs hotter (6 -> 5 across the
-// three seeds) while scen10 actually eased (measured min 7; its pin keeps
-// the older minimum). Single-floor levels re-measured identical again.)
-// (Recalibrated 2026-07-10 for the forest-pathing wave — the SINGLE-floor
-// un-gating of the A* no-corner-cut + alignment assist, the shove
-// command-theft probe, and the guard facing gate (see
-// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): enemy packs that used to wedge on
-// corners and allied columns now arrive and fight on every level, so the
-// brawl levels got hotter for the pessimistic stand-in crew. Re-measured
-// minima across seeds {42, 1337, 2025}: 8: 8->3 (the summer line's flank
-// now closes), 10: 4->3, 12: 8->7. All other levels re-measured at or
-// above their pinned floors. Re-sweep the win/hold gates with
-// scripts/longseason_playtest.sh before the next balance pass.)
-// (Recalibrated 2026-07-11 for the guard wake rule (wake-on-sight +
-// hold-post policy, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): allied posts —
-// the Assessor's door-wards, ferrymen, fort garrisons, the winter watch —
-// now provably hold (hold-post bit), easing the escort beats they anchor
-// (3: 7->8, 9: 7->8), while enemy ambush posts spring and hunt once
-// sighted. The guard-dense encounter levels got sharply hotter for the
-// pessimistic stand-in crew: 4: 7->1 (the toll ambush now closes on the
-// Assessor's porch), 6: 7->4, 12: 7->2, 13: 4->2, 16: 8->2, and 17: 7->0
-// joins 18 in the 0-floor war class (its 34 mixed posts converge once the
-// crew is seen; a real crew that kites and heals plays it, the stand-in
-// cannot). Re-sweep the F4 win/hold gates on 4/12/16/17 with
-// scripts/longseason_playtest.sh before the next balance pass.)
-//
-// (Recalibrated 2026-07-13 for the v10 loader obmap fix: loaded
-// upper-story objects used to be bucketed in the FLOOR-0 collision piles
-// (setxy ran before set_floor), so enemies authored on upper stories were
-// collision ghosts. With the fix they engage for real and the multi-story
-// levels got hotter for the stand-in: 3: 8->7, 10: 3->1 (the tower's
-// upper garrison now fires down the stair line). Re-sweep the F4 gates on
-// 3/10/18 with scripts/longseason_playtest.sh before the next balance
-// pass — their shipped balance was measured under ghost physics.)
-// Recalibrated 2026-09-26 for #295: retarget-before-yell preserves the
-// flee command and changes Ashfall Fair's battle. The isolated ordering
-// change reproduces scen9's 8->7; self-exclusion and #294 do not. Full
-// {4,5,6} crew x three seeds x two rosters x 6000-tick brackets preserve
-// its defense contract: mixed crew at curve has team0 [8,8,10] at tick
-// 3000, above band 4 on every seed. Crew survivors at 600 are [7,8,8],
-// so 7 is the measured minimum. See the dated README calibration update;
-// the dedicated defense test below also pins the actual F4 contract.
-// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
-// Specials on), which the asserting run now plays: HEAL capped at full
-// health took levels 2, 5 and 8 under their floors on seed 42 (5, 2, 2
-// against 6, 5, 3) because their orders of battle had been tuned against
-// a quietly overhealed crew; the levels were eased in the builders (2: one
-// brigand fewer, 5: one picket fewer, 8: the terrace-2 bruisers at lvl 1),
-// and they now read 7 6 6, 7 8 7 and 5 8 5 across seeds {42, 1337, 2025}.
-// Every floor holds, no floor moved; see the README's 2026-10-17 update.)
-// (Re-measured 2026-10-19 after the bot payoff gates: the soldier bots'
-// CHARGE now waits for a living foe in the path its rush runs, and seed
-// 42's curve-6 crew kept 1 of 8 at tick 600 on The Old Count's Vault
-// against its floor of 2. The level was eased in the builder (the second
-// breach-watch skeleton, at (7,25), from lvl 3 to lvl 2) and now reads
-// 6 6 7 across seeds {42, 1337, 2025}. No floor moved; see the README's
-// 2026-10-19 update on level 12.)
-constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
-    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 1},
-    {11, 5, 5}, {12, 6, 2}, {13, 6, 2}, {14, 7, 7}, {15, 7, 8},
-    {16, 7, 2}, {17, 8, 0}, {18, 8, 0}, {19, 8, 8},
+// The difficulty-curve contract (campaign_meta.md, F4 calibration table):
+// each level and the crew level a fresh team enters it at.
+constexpr CurveLevel kCurve[] = {
+    {1, 1},  {2, 1},  {3, 2},  {4, 2},  {5, 3},  {6, 3},  {7, 4},
+    {8, 4},  {9, 5},  {10, 5}, {11, 5}, {12, 6}, {13, 6}, {14, 7},
+    {15, 7}, {16, 7}, {17, 8}, {18, 8}, {19, 8},
 };
 
 constexpr int kCalibrationTicks = 600;
 
-int survivors_at_600(int level_id, int crew_level, std::uint32_t seed)
+CurveBattle battle_at_600(int level_id, int crew_level, std::uint32_t seed)
 {
-    LoadedWestlandsLevel fx(level_id, seed);
-    if (!fx.loaded)
-        return -1;
-    GameWorld& world = fx.world();
-    // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
-    // measures the classic value (westlands_sim_fixture.h).
-    world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
-    world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
-    std::vector<walker*> crew = deploy_crew(
-        fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
-                          FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
-                          FAMILY_CLERIC, FAMILY_BARBARIAN},
-        crew_level);
-    if (crew.size() != 8u)
-        return -1;
-    for (int t = 0; t < kCalibrationTicks; ++t)
-        world.tick();
-    int alive = 0;
-    for (walker* w : crew)
-        if (w != nullptr && !w->dead())
-            ++alive;
-    return alive;
+    // The suite plays the shipped default (both settings on);
+    // OG_CALIBRATION_<NAME>=0 measures the classic value
+    // (westlands_sim_fixture.h).
+    return westlands_fixture::mixed_crew_battle(level_id, crew_level, seed,
+                                                kCalibrationTicks);
 }
 
 } // namespace
 
-TEST_F(LongSeasonCalibration, curve_crew_survival_floors_at_600_ticks)
+TEST_F(LongSeasonCalibration,
+       curve_levels_load_field_an_army_and_fight_at_600_ticks)
 {
-    // Balance floors are measured on the GCC ci-test lane. Under
-    // ThreadSanitizer (the one clang lane) the sim's floating-point codegen
-    // diverges just enough that these chaotic 600-tick battles drift off the
-    // pinned floors — a compiler-determinism property, not a thread-safety
-    // one. The suite finds no races (single-threaded sim), so it is skipped
-    // there; the ci-test and coverage (GCC) lanes enforce the pins.
-    //
-    // Also skipped under AddressSanitizer, for BUDGET not correctness: the
-    // guard wake rule (2026-07-11) made these battles converge instead of
-    // holding posts, and at ASan's ~20x sim cost the two calibration suites
-    // pushed the ASan+UBSan job past its 30-minute cap (see the identical
-    // block in test_westlands_calibration.cpp for the full accounting).
+    // Skipped under ThreadSanitizer and AddressSanitizer for job budget,
+    // like the Westlands suite (see the identical block in
+    // test_westlands_calibration.cpp for the accounting): the battle sim is
+    // single-threaded, and the ci-test and coverage lanes run this test.
 #if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
-                    "skipped under TSan (float drift) and ASan (job budget)";
+    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
+                    "lanes; skipped under TSan and ASan (job budget)";
 #elif defined(__has_feature)
 #if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
-                    "skipped under TSan (float drift) and ASan (job budget)";
+    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
+                    "lanes; skipped under TSan and ASan (job budget)";
 #endif
 #endif
 
     const bool measure =
         std::getenv("LONGSEASON_CALIBRATION_MEASURE") != nullptr;
 
-    for (const CurvePin& pin : kCurve)
+    for (const CurveLevel& lvl : kCurve)
     {
-        SCOPED_TRACE("scen" + std::to_string(pin.level_id) + " at crew level " +
-                     std::to_string(pin.crew_level));
+        SCOPED_TRACE("scen" + std::to_string(lvl.level_id) + " at crew level " +
+                     std::to_string(lvl.crew_level));
         if (measure)
         {
-            std::printf("CALIB level=%d cl=%d survivors@600:", pin.level_id,
-                        pin.crew_level);
+            std::printf("CALIB level=%d cl=%d survivors@600:", lvl.level_id,
+                        lvl.crew_level);
             for (std::uint32_t seed : {42u, 1337u, 2025u})
-                std::printf(" %d", survivors_at_600(pin.level_id,
-                                                    pin.crew_level, seed));
-            std::printf("\n");
+                std::printf(" %d", battle_at_600(lvl.level_id,
+                                                 lvl.crew_level, seed).alive);
+            const CurveBattle m =
+                battle_at_600(lvl.level_id, lvl.crew_level, 42u);
+            std::printf("  [seed42 alive=%d host=%d taken=%.0f dealt=%.0f]\n",
+                        m.alive, m.host_alive, m.crew_taken, m.crew_dealt);
             std::fflush(stdout);
             continue;
         }
-        const int alive = survivors_at_600(pin.level_id, pin.crew_level, 42u);
-        ASSERT_GE(alive, 0) << "level failed to load or deploy";
-        EXPECT_GE(alive, pin.floor)
-            << "a curve-level fresh crew fell below its F4 survival floor — "
-               "the level got meaningfully hotter; re-run the F4 bracket "
-               "sweeps before touching this pin";
-    }
-}
-
-TEST_F(LongSeasonCalibration, ashfall_fair_holds_defense_band_at_curve)
-{
-    // F4 defense contract: the curve-level mixed crew and allied garrison
-    // retain at least four defenders at tick 3000 on all three seeds.
-    // This measures the campaign objective alongside the cheap 600-tick
-    // crew floor.
-    for (std::uint32_t seed : {42u, 1337u, 2025u})
-    {
-        SCOPED_TRACE("seed " + std::to_string(seed));
-        LoadedWestlandsLevel fx(9, seed);
-        ASSERT_TRUE(fx.loaded);
-        GameWorld& world = fx.world();
-        // The suite plays the shipped default (both on); OG_CALIBRATION_<NAME>=0
-        // measures the classic value (westlands_sim_fixture.h).
-        world.new_specials = westlands_fixture::calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
-        world.gameplay_fixes = westlands_fixture::calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
-        const auto crew = deploy_crew(
-            fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
-                              FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
-                              FAMILY_CLERIC, FAMILY_BARBARIAN}, 5);
-        ASSERT_EQ(8u, crew.size());
-        for (int tick = 0; tick < 3000; ++tick)
-            world.tick();
-        EXPECT_GE(westlands_fixture::alive_livings_on_team(world, 0), 4)
-            << "Ashfall Fair fell below its F4 defense band at curve";
+        const CurveBattle r = battle_at_600(lvl.level_id, lvl.crew_level, 42u);
+        ASSERT_GE(r.alive, 0) << "level failed to load or deploy the crew";
+        EXPECT_GT(r.host_alive, 0) << "the level must field an army";
+        EXPECT_GT(r.crew_taken, 0.0f)
+            << "the crew came home untouched: the level stopped biting (a "
+               "damage sink that never lands, foes that never engage)";
+        EXPECT_GT(r.crew_dealt, 0.0f)
+            << "the crew never landed a hit in 600 ticks: it is not fighting "
+               "the level at all";
     }
 }

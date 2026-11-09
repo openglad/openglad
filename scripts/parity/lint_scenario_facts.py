@@ -671,27 +671,29 @@ def parse_spawn_arrays(text: str) -> dict[str, list[dict]]:
 
 
 # Count predicates whose [min, max] pair does NOT sit at args[1]/args[2].
-# WalkerOfOrderFamilyCount(family, order, min, max) carries the Order
-# ordinal in args[1], so its bounds are one position to the right; reading
-# args[1] there would compare a min against an Order and silently exempt
-# every widened range on the kind.
+# WalkerOfOrderFamilyCount(family, order, min, max) and its live-only twin
+# WalkerOfOrderFamilyAlive carry the Order ordinal in args[1], so their
+# bounds are one position to the right; reading args[1] there would compare
+# a min against an Order and silently exempt every widened range on the kind.
 COUNT_BOUND_ARG_INDEX = {
     "WalkerFamilyCount":        (1, 2),
     "WeaponFamilyCount":        (1, 2),
     "WalkerOfTeamAlive":        (1, 2),
     "EffectFamilyCount":        (1, 2),
     "WalkerOfOrderFamilyCount": (2, 3),
+    "WalkerOfOrderFamilyAlive": (2, 3),
 }
 
 
 def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
     """Return (is_widened, human-readable predicate signature). Widened
     iff WalkerFamilyCount/WeaponFamilyCount/WalkerOfTeamAlive/
-    WalkerOfOrderFamilyCount with min != max OR WalkerHpRangeAtFinalTick
-    with (arg2-arg1) > 200. Unparseable args short-circuit to "not widened"
-    so the lint never false-fires on a novel call shape."""
+    WalkerOfOrderFamilyCount/WalkerOfOrderFamilyAlive with min != max OR
+    WalkerHpRangeAtFinalTick with (arg2-arg1) > 200. Unparseable args
+    short-circuit to "not widened" so the lint never false-fires on a novel
+    call shape."""
     if kind in ("WalkerFamilyCount", "WeaponFamilyCount", "WalkerOfTeamAlive",
-                "WalkerOfOrderFamilyCount"):
+                "WalkerOfOrderFamilyCount", "WalkerOfOrderFamilyAlive"):
         lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]
         if len(args) <= hi_i:
             return False, kind
@@ -1143,6 +1145,12 @@ _SELF_TEST_CASES: list[
            "WalkerOfOrderFamilyCount(arg0=0, 1, 2) missing "
            "`// intended_diff:` or `// rng_drift:` justification (grammar: "
            "kind ':' reason '; commit ' <hex 7..40>)")),
+    ("widen_order_alive_kind",
+     _pred("pred::WalkerOfOrderFamilyAlive(0, 1, 1, 2),"), {}, 1, "",
+     _fail("kFacts_one[#1]: widened predicate "
+           "WalkerOfOrderFamilyAlive(arg0=0, 1, 2) missing "
+           "`// intended_diff:` or `// rng_drift:` justification (grammar: "
+           "kind ':' reason '; commit ' <hex 7..40>)")),
     ("widen_hp_span",
      _pred("pred::WalkerHpRangeAtFinalTick(0, 100, 301),"), {}, 1, "",
      _fail("kFacts_one[#1]: widened predicate "
@@ -1204,6 +1212,16 @@ _SELF_TEST_CASES: list[
            "WalkerOfOrderFamilyCount(arg0=4, 0, 0) needs inline "
            "`// negative_assertion: <reason>` comment between this predicate "
            "and the next (policy P3)")),
+    ("zero_zero_order_alive_kind",
+     _add_pred("pred::WalkerOfOrderFamilyAlive(4, 1, 0, 0),"), {}, 1, "",
+     _fail("kFacts_one[#2]: zero_zero_count_no_negation — "
+           "WalkerOfOrderFamilyAlive(arg0=4, 0, 0) needs inline "
+           "`// negative_assertion: <reason>` comment between this predicate "
+           "and the next (policy P3)")),
+    ("zero_zero_order_alive_negation_ok",
+     _add_pred("pred::WalkerOfOrderFamilyAlive(4, 1, 0, 0), "
+               "// negative_assertion: the treasure is taken\n"),
+     {}, 0, _ok(1, 3), ""),
 
     # Policy P6, family_alias_mismatch: a family id named by a predicate has to
     # be the family the row actually spawns, per order kind.
@@ -1329,7 +1347,7 @@ _SELF_TEST_CASES: list[
     ("rc_missing_table", None, {}, 2, "", "lint: cannot read {table}\n"),
 ]
 
-_SELF_TEST_CASE_COUNT = 59
+_SELF_TEST_CASE_COUNT = 62
 
 
 def _self_test() -> int:
@@ -1498,9 +1516,10 @@ def run_lint(table: Path) -> int:
 
     # Phase 04-prep — zero_zero_count_no_negation rule. A
     # `WalkerFamilyCount(F, 0, 0)`, `WeaponFamilyCount(F, 0, 0)`,
-    # `EffectFamilyCount(F, 0, 0)` or
-    # `WalkerOfOrderFamilyCount(F, order, 0, 0)` predicate is an assertion
-    # that the family is absent. That is
+    # `EffectFamilyCount(F, 0, 0)`,
+    # `WalkerOfOrderFamilyCount(F, order, 0, 0)` or
+    # `WalkerOfOrderFamilyAlive(F, order, 0, 0)` predicate is an assertion
+    # that the family is absent (the live-only kind: that none is alive). That is
     # only honest as a paired negative assertion (policy P3), so the
     # source row MUST carry an inline `// negative_assertion: <reason>`
     # comment that the lint can grep for. Absent comment -> violation.
@@ -1509,7 +1528,8 @@ def run_lint(table: Path) -> int:
         for i, pred in enumerate(preds):
             kind = pred["kind"]
             if kind not in ("WalkerFamilyCount", "WeaponFamilyCount",
-                            "EffectFamilyCount", "WalkerOfOrderFamilyCount"):
+                            "EffectFamilyCount", "WalkerOfOrderFamilyCount",
+                            "WalkerOfOrderFamilyAlive"):
                 continue
             args = pred["args"]
             lo_i, hi_i = COUNT_BOUND_ARG_INDEX[kind]

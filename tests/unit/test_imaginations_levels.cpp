@@ -12,6 +12,10 @@
  * audits on the SHIPPED package, so a regeneration that breaks footing
  * or seals the castle goes red here, not in a playtest.
  *
+ * Scen 3's own pins live in test_imaginations_asteroid.cpp (its own unit
+ * group, for the instrumented lanes' time budget); the shared fixture is
+ * imaginations_levels_fixture.h.
+ *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
  * This program is free software; you can redistribute it and/or modify
@@ -21,131 +25,11 @@
  */
 #include <gtest/gtest.h>
 
-#include <openglad/core/constants.h>
-#include <openglad/core/decordefs.h>
-#include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/game_world.h>
-#include <openglad/gameplay/mapgen/builders.h>
-#include <openglad/gameplay/pixie_data.h>
-#include <openglad/gameplay/script/family_hooks.h>
-#include <openglad/gameplay/script/script_host.h>
-#include <openglad/gameplay/sim_event_log.h>
-#include <openglad/gameplay/statistics.h>
-#include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/world_snapshot.h>
-#include <openglad/interface/level_runtime_data.h>
-#include <openglad/interface/game_context.h>
-#include <openglad/resources/gloader.h>
-#include <openglad/resources/gparser.h>
-#include <openglad/resources/io_common.h>
-#include <openglad/resources/level_data_hooks.h>
-#include <openglad/resources/save_data.h>
-
-#include "test_gameplay_context_scope.h"
-
-#include <algorithm>
-#include <cstdint>
-#include <cstdlib>
-#include <iterator>
-#include <utility>
-#include <string>
-#include <vector>
+#include "imaginations_levels_fixture.h"
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Entity wiring: one shared loader for every level load (mirrors the
-// production headless wiring; the campaign uses only stock families).
-// ---------------------------------------------------------------------------
-loader& imaginations_levels_loader()
-{
-    static loader instance{EntityFactory{}};
-    return instance;
-}
-
-void wire_imaginations_world_entity_services(GameWorld* world,
-                                             LevelRuntimeData* level)
-{
-    (void)level;
-    if (world == nullptr)
-        return;
-    loader* game_loader = &imaginations_levels_loader();
-    world->entity_factory = [game_loader](Order order, std::int32_t family) {
-        return game_loader->create_walker_owned(order, family);
-    };
-    world->entity_configurator =
-        [game_loader](walker& entity, Order order,
-                      std::int32_t family) -> const PixieData* {
-        game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(), entity.family());
-    };
-    world->entity_derived_stats =
-        [game_loader](walker* entity, Order order, std::int32_t family) {
-            if (entity != nullptr)
-                game_loader->set_derived_stats(entity, order, family);
-        };
-}
-
-const LevelDataHooks& imaginations_levels_hooks()
-{
-    static const LevelDataHooks hooks = [] {
-        LevelDataHooks h{};
-        h.wire_world_entity_services = wire_imaginations_world_entity_services;
-        return h;
-    }();
-    return hooks;
-}
-
-// Mounts the shipped imaginations campaign for the duration of one test
-// and restores the previous mount in teardown.
-class ImaginationsCampaignTest : public ::testing::Test
-{
-protected:
-    void SetUp() override
-    {
-        restore_default_campaigns();
-        previous_ = get_mounted_campaign();
-        ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("imaginations"))
-            << "builtin/imaginations.glad should restore and mount";
-    }
-
-    void TearDown() override
-    {
-        (void)unmount_campaign_package_with_error("imaginations");
-        if (!previous_.empty())
-            (void)mount_campaign_package_with_error(previous_);
-    }
-
-private:
-    std::string previous_;
-};
-
-// A campaign level loaded with full sim context.
-struct LoadedImaginationsLevel
-{
-    LevelRuntimeData level;
-    SaveData save;
-    og::sim::SimEventLog events;
-    FixedRandom rng{0};
-    GameContext gc;
-    ScopedGameplayContext gameplay;
-    bool loaded = false;
-
-    explicit LoadedImaginationsLevel(int id)
-        : level(id, true, &imaginations_levels_hooks())
-        , gameplay(level, save, events, cfg)
-    {
-        level.set_sim_context(&save, &events, &cfg);
-        gc.rng = &rng;
-        push_test_context(&gc);
-        loaded = level.load();
-    }
-
-    ~LoadedImaginationsLevel() { pop_test_context(); }
-
-    GameWorld& world() { return level.world(); }
-};
+using namespace imaginations_levels_fixture;
 
 // One row per shipped level — the tool's ExpectedLevel table and this pin
 // table move in LOCKSTEP with the package.
@@ -371,6 +255,247 @@ TEST_F(ImaginationsCampaignTest, ward_survives_the_level_start_snapshot_seed)
         ADD_FAILURE() << err.where << ": " << err.message;
 }
 
+// #431: on the isle every fifth college spawn (its entity id a multiple of
+// five) defects to the crew at birth and is named Dreamkin. The bone tent
+// keeps its spawns as its own (owner the tent, a clock of 800 + 11 x its
+// level, death with the tent), so its Dreamkin wore team 0 while every
+// question of sides climbed to the tent and answered for the college. The
+// level script now drops the owner and the clock with the colour, as a
+// mage tower's or a treehouse's spawn is born. Fired by hand, as
+// castle_ghost_tent_spawns_are_stillborn fires its tent; one Dreamkin and
+// one loyal troop are kept, any other spawn is cleared off the pad.
+// RED with the owner and the clock kept (the old script): the crew's
+// soldier sees a foe. RED with the owner dropped and the clock kept: the
+// Dreamkin dies on its first act.
+namespace {
+
+// The first tile at or right of (tx, ty), scanning rows ty..ty+3, where `w`
+// stands clear of terrain and bodies.
+bool park_at_open_tile(GameWorld& world, walker* w, int tx, int ty)
+{
+    for (int dy = 0; dy < 4; ++dy)
+        for (int dx = 0; dx < 8; ++dx)
+        {
+            const int x = (tx + dx) * GRID_SIZE;
+            const int y = (ty + dy) * GRID_SIZE;
+            if (world.query_passable(static_cast<float>(x),
+                                     static_cast<float>(y), w))
+            {
+                w->setxy(static_cast<short>(x), static_cast<short>(y));
+                return true;
+            }
+        }
+    return false;
+}
+
+} // namespace
+
+TEST_F(ImaginationsCampaignTest, isle_bone_tent_dreamkin_fights_for_the_crew)
+{
+    // One level per value of Gameplay Fixes; a failed ASSERT ends that
+    // value's run only.
+    const auto run = [](short fixes) {
+        SCOPED_TRACE(fixes);
+        LoadedImaginationsLevel fx(1);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+        world.gameplay_fixes = fixes;
+        world.tick(); // on_load
+
+        walker* tent = nullptr;
+        for (const auto& uptr : world.oblist)
+            if (uptr && uptr->query_order() == Order::Generator &&
+                uptr->family() == FAMILY_TENT && uptr->team_num() == 1)
+                tent = uptr.get();
+        ASSERT_NE(nullptr, tent) << "the bone tent";
+        tent->stats()->set_max_hitpoints(1.0e6f); // it outlives the shots
+        tent->stats()->set_hitpoints(1.0e6f);
+        const std::int32_t tent_level = tent->stats()->level();
+        const int tent_tx = tent->xpos() / GRID_SIZE;
+        const int tent_ty = tent->ypos() / GRID_SIZE;
+
+        // The crew's ground for the test: the landing marker farthest from
+        // every live body of the college's side (the tent included), so
+        // nothing of theirs is in sight while the world ticks.
+        constexpr std::pair<int, int> kMarkers[] = {
+            {31, 55}, {31, 7}, {55, 31}, {7, 31}, {14, 14}, {48, 14},
+            {14, 48}, {48, 48}, {25, 55}, {38, 55}, {25, 7}, {38, 7},
+            {7, 25}, {7, 38}, {55, 25}, {55, 38}};
+        std::pair<int, int> camp = kMarkers[0];
+        int camp_clearance = -1;
+        for (const auto& m : kMarkers)
+        {
+            int nearest = 1 << 20;
+            for (const auto& uptr : world.oblist)
+                if (uptr && !uptr->dead() && uptr->team_num() == 1)
+                    nearest = std::min(
+                        nearest, std::abs(uptr->xpos() / GRID_SIZE - m.first) +
+                                     std::abs(uptr->ypos() / GRID_SIZE - m.second));
+            if (nearest > camp_clearance)
+            {
+                camp_clearance = nearest;
+                camp = m;
+            }
+        }
+        ASSERT_GE(camp_clearance, 16) << "a camp out of the college's sight";
+
+        walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, hero);
+        hero->set_team_num(0);
+        hero->set_real_team_num(0);
+        hero->set_act_type(ACT_SIT);
+        ASSERT_TRUE(park_at_open_tile(world, hero, camp.first, camp.second));
+        const int hero_tx = hero->xpos() / GRID_SIZE;
+        const int hero_ty = hero->ypos() / GRID_SIZE;
+
+        // Fire the tent by hand, one shot a tick. The Dreamkin waits at the
+        // camp, the loyal troop by its tent; anything else is cleared off
+        // the pad (a dead body never holds it) and swept by the tick. The
+        // two kept spawns sit (the script posts them as guards): a sitting
+        // walker still runs living::act's owner and clock rules, and picks
+        // no fight while the world ticks.
+        std::uint32_t dk_id = 0;
+        std::uint32_t loyal_id = 0;
+        std::int32_t dk_birth_lifetime = -1;
+        int dk_birth_real_team = -1;
+        std::int32_t loyal_birth_lifetime = -1;
+        constexpr std::pair<float, float> kFacings[] = {
+            {0.0f, 1.0f}, {1.0f, 0.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f}};
+        for (int shot = 0; shot < 30 && (dk_id == 0 || loyal_id == 0); ++shot)
+        {
+            walker* spawn = nullptr;
+            for (const auto& facing : kFacings)
+            {
+                tent->set_lastx(facing.first);
+                tent->set_lasty(facing.second);
+                spawn = tent->fire();
+                if (spawn != nullptr && !spawn->dead())
+                    break;
+                spawn = nullptr;
+            }
+            ASSERT_NE(nullptr, spawn) << "the tent fires (shot " << shot << ")";
+            const bool defects = spawn->entity_id() % 5 == 0;
+            if (defects && dk_id == 0)
+            {
+                dk_id = spawn->entity_id();
+                dk_birth_lifetime = spawn->lifetime();
+                dk_birth_real_team = spawn->real_team_num();
+                EXPECT_EQ(ACT_GUARD, spawn->act_type()) << "born posted";
+                spawn->set_act_type(ACT_SIT);
+                ASSERT_TRUE(park_at_open_tile(world, spawn, hero_tx + 2, hero_ty));
+            }
+            else if (!defects && loyal_id == 0)
+            {
+                loyal_id = spawn->entity_id();
+                loyal_birth_lifetime = spawn->lifetime();
+                EXPECT_EQ(ACT_GUARD, spawn->act_type()) << "born posted";
+                spawn->set_act_type(ACT_SIT);
+                ASSERT_TRUE(park_at_open_tile(world, spawn, tent_tx + 3, tent_ty));
+            }
+            else
+            {
+                spawn->set_dead(1);
+            }
+            world.tick();
+        }
+        ASSERT_NE(0u, dk_id) << "a Dreamkin was born";
+        ASSERT_NE(0u, loyal_id) << "a loyal troop was born";
+        hero = world.find_by_id(hero->entity_id());
+        walker* dk = world.find_by_id(dk_id);
+        walker* loyal = world.find_by_id(loyal_id);
+        ASSERT_NE(nullptr, hero);
+        ASSERT_NE(nullptr, dk)
+            << "the Dreamkin lives through the ticks after its birth (a body "
+               "with a clock and no owner dies on its first act)";
+        ASSERT_NE(nullptr, loyal);
+        ASSERT_FALSE(dk->dead());
+        ASSERT_FALSE(loyal->dead());
+
+        // The defector: the crew's colour, no owner, no clock.
+        EXPECT_EQ("Dreamkin", dk->stats()->name);
+        EXPECT_EQ(0, dk->team_num());
+        // Its real team, 0 at birth, is the record a charm's end reads;
+        // living::act clears an uncharmed walker's record on its first act.
+        EXPECT_EQ(0, dk_birth_real_team);
+        EXPECT_EQ(nullptr, dk->owner()) << "it leaves its college whole";
+        EXPECT_EQ(0, dk_birth_lifetime) << "and its clock, at birth";
+        EXPECT_EQ(0, dk->lifetime());
+        // The control: the hook turns only every fifth spawn.
+        EXPECT_NE("Dreamkin", loyal->stats()->name);
+        EXPECT_EQ(1, loyal->team_num());
+        EXPECT_EQ(tent, loyal->owner());
+        EXPECT_EQ(800 + 11 * tent_level, loyal_birth_lifetime)
+            << "the tent's clock";
+
+        // Friendly to the crew, a foe of the college.
+        ASSERT_TRUE(park_at_open_tile(world, loyal,
+                                      dk->xpos() / GRID_SIZE + 2,
+                                      dk->ypos() / GRID_SIZE));
+        EXPECT_EQ(1, hero->is_friendly(dk));
+        EXPECT_EQ(1, dk->is_friendly(hero));
+        EXPECT_EQ(1, dk->is_friendly_to_team(0));
+        EXPECT_EQ(0, dk->is_friendly_to_team(1));
+        EXPECT_EQ(0, loyal->is_friendly(dk));
+
+        // Counted that way by the crew's bots: the gates' finders
+        // (packs/core/lib/gates.lua G.allies / G.living_foes) are
+        // og.find_friends_in_range and og.find_foes_in_range.
+        constexpr std::int32_t kReach = 64;
+        ASSERT_LE(hero->distance_to_ob(dk), kReach);
+        ASSERT_LE(loyal->distance_to_ob(dk), kReach);
+        const auto holds = [](const std::list<walker*>& found, const walker* w) {
+            return std::find(found.begin(), found.end(), w) != found.end();
+        };
+        std::int32_t n = 0;
+        EXPECT_TRUE(holds(world.find_friends_in_range(world.oblist, kReach, &n, hero), dk))
+            << "the crew's bots count it a friend";
+        EXPECT_FALSE(holds(world.find_foes_in_range(world.oblist, kReach, &n, hero), dk))
+            << "and never a foe";
+        EXPECT_TRUE(holds(world.find_foes_in_range(world.oblist, kReach, &n, loyal), dk))
+            << "the college sees a foe";
+
+        // Blows: the crew's is refused, the Dreamkin's on the college lands.
+        const float dk_hp_before_blow = dk->stats()->hitpoints();
+        hero->set_damage(40.0f);
+        EXPECT_FALSE(hero->attack(dk));
+        EXPECT_EQ(dk_hp_before_blow, dk->stats()->hitpoints());
+        loyal->stats()->set_hitpoints(1000.0f);
+        dk->set_damage(40.0f);
+        EXPECT_TRUE(dk->attack(loyal));
+        EXPECT_LT(loyal->stats()->hitpoints(), 1000.0f);
+
+        // It lives on: with no owner a clock would kill it on its first act.
+        // The loyal troop goes back by its tent, out of the Dreamkin's
+        // reach, so no blow can land on it while the world ticks: its hit
+        // points stay as they are, and only the clock rule could kill it.
+        ASSERT_TRUE(park_at_open_tile(world, loyal, tent_tx + 3, tent_ty));
+        const float dk_hp = dk->stats()->hitpoints();
+        const std::uint32_t hero_id = hero->entity_id();
+        for (int t = 0; t < 3; ++t)
+            world.tick();
+        dk = world.find_by_id(dk_id);
+        ASSERT_NE(nullptr, dk);
+        EXPECT_FALSE(dk->dead()) << "the Dreamkin lives on";
+        EXPECT_EQ(dk_hp, dk->stats()->hitpoints()) << "untouched while it ticked";
+
+        // It outlives its tent; the loyal troop goes down with it.
+        tent = world.find_by_id(tent->entity_id());
+        ASSERT_NE(nullptr, tent);
+        tent->set_dead(1);
+        tent->death();
+        world.tick();
+        dk = world.find_by_id(dk_id);
+        ASSERT_NE(nullptr, dk);
+        EXPECT_FALSE(dk->dead()) << "the Dreamkin outlives the tent";
+        EXPECT_EQ(nullptr, world.find_by_id(loyal_id))
+            << "the tent's own troop died with it on its next act and was reaped";
+        EXPECT_NE(nullptr, world.find_by_id(hero_id));
+        expect_no_script_errors(world);
+    };
+    run(0);
+    run(1);
+}
+
 TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)
 {
     for (const ShippedLevel& expected : kLevels)
@@ -465,22 +590,6 @@ walker* spawn_keeper(GameWorld& world)
     k->set_real_team_num(0);
     k->set_act_type(ACT_CONTROL);
     return k;
-}
-
-bool saw_notification(og::sim::SimEventLog& events, const char* needle)
-{
-    bool seen = false;
-    for (const og::sim::Event& ev : events.drain())
-        if (ev.kind == og::sim::EventKind::Notification &&
-            ev.text.find(needle) != std::string::npos)
-            seen = true;
-    return seen;
-}
-
-void expect_no_script_errors(GameWorld& world)
-{
-    for (const auto& err : world.scripts().host().errors())
-        ADD_FAILURE() << err.where << ": " << err.message;
 }
 
 constexpr std::pair<int, int> kCastleBars[] = {
@@ -1059,592 +1168,6 @@ TEST_F(ImaginationsCampaignTest, castle_on_load_survives_the_level_start_seed)
     world.tick();
     EXPECT_TRUE(saw_notification(fx.events, "The gate knows us"))
         << "a level-start seed must leave on_load armed";
-    expect_no_script_errors(world);
-}
-
-
-// ---------------------------------------------------------------------------
-// Scen 3, The Asteroid Castle: the asteroid's shape and the dream script's
-// beats (asteroid.lua).
-// ---------------------------------------------------------------------------
-constexpr int kAsteroidLevel = 3;
-
-walker* find_big_one(GameWorld& world)
-{
-    for (const auto& uptr : world.oblist)
-    {
-        walker* ob = uptr.get();
-        if (ob != nullptr && ob->query_order() == Order::Living &&
-            !ob->dead() && ob->family() == FAMILY_GOLEM &&
-            ob->team_num() == 1)
-            return ob;
-    }
-    return nullptr;
-}
-
-// A passive, non-regenerating living parked at a tile on floor 0.
-walker* park_living(GameWorld& world, int team, int tx, int ty, float hp)
-{
-    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    if (w == nullptr)
-        return nullptr;
-    w->set_team_num(static_cast<unsigned char>(team));
-    w->set_real_team_num(static_cast<unsigned char>(team));
-    w->set_act_type(ACT_SIT);
-    w->set_floor(0);
-    w->setxy(static_cast<short>(tx * GRID_SIZE),
-             static_cast<short>(ty * GRID_SIZE));
-    w->stats()->set_max_hitpoints(hp);
-    w->stats()->set_hitpoints(hp);
-    w->stats()->set_heal_per_round(0.0f);
-    return w;
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    const PixieData& g0 = world.grid_for_floor(0);
-    const PixieData& g1 = world.grid_for_floor(1);
-    auto at = [](const PixieData& g, int x, int y) {
-        return g.data[static_cast<std::size_t>(x + y * g.w)];
-    };
-    auto jagged = [](unsigned char t) {
-        return t >= PIX_JAGGED_GROUND_1 && t <= PIX_JAGGED_GROUND_4;
-    };
-
-    // Black space all around the rock.
-    for (const auto& c : {std::pair{0, 0}, {63, 0}, {0, 63}, {63, 63},
-                          {31, 1}, {1, 31}, {62, 31}, {31, 62}})
-        EXPECT_EQ(PIX_VOID1, at(g0, c.first, c.second))
-            << c.first << "," << c.second;
-    // The spike band hugs the outer wall on every side, broken only by
-    // the gate apron.
-    for (const auto& c : {std::pair{6, 30}, {7, 20}, {24, 20}, {25, 40},
-                          {15, 13}, {20, 14}, {15, 47}, {10, 48}})
-        EXPECT_TRUE(jagged(at(g0, c.first, c.second)))
-            << c.first << "," << c.second;
-    for (int y = 29; y <= 31; ++y)
-        EXPECT_EQ(PIX_COBBLE_1, at(g0, 24, y)) << "the apron row " << y;
-    // The rainbow round the big door's middle (tile 15, row 46): rings 3..7
-    // by rounded distance, rows 49 and down, in the tileset's spectrum:
-    // outer red lava, white snow, green grass, blue water, inner purple.
-    auto ring_of = [](int x, int y) {
-        if (y < 49)
-            return 0;
-        const int d2x4 = 4 * ((x - 15) * (x - 15) + (y - 46) * (y - 46));
-        for (int r = 3; r <= 7; ++r)
-            if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
-                d2x4 < (2 * r + 1) * (2 * r + 1))
-                return r;
-        return 0;
-    };
-    const unsigned char kBands[8] = {0, 0, 0, PIX_CARPET_M, PIX_WATER1,
-                                     PIX_GRASS1, PIX_SNOW1, PIX_LAVA1};
-    int rainbow_cells[8] = {};
-    for (int y = 47; y <= 55; ++y)
-        for (int x = 7; x <= 23; ++x)
-        {
-            const int r = ring_of(x, y);
-            const unsigned char t = at(g0, x, y);
-            if (r != 0)
-            {
-                EXPECT_EQ(kBands[r], t) << "rainbow ring " << r << " at " << x
-                                        << "," << y;
-                ++rainbow_cells[r];
-                continue;
-            }
-            // Its frame stays plain rock (or the rim's space): no stardust,
-            // glitter or dust between or round the bands.
-            if (y >= 49)
-            {
-                EXPECT_TRUE(t == PIX_COBBLE_1 || t == PIX_COBBLE_2 ||
-                            t == PIX_COBBLE_3 || t == PIX_COBBLE_4 ||
-                            t == PIX_VOID1)
-                    << "the rainbow's rock frame at " << x << "," << y;
-            }
-        }
-    for (int r = 3; r <= 7; ++r)
-        EXPECT_GE(rainbow_cells[r], 3) << "ring " << r << " is an arc";
-    // The arc's legs and its foot: the outer ring reaches row 49 at both
-    // ends and row 53 under the door.
-    EXPECT_EQ(PIX_LAVA1, at(g0, 9, 49));
-    EXPECT_EQ(PIX_LAVA1, at(g0, 21, 49));
-    EXPECT_EQ(PIX_LAVA1, at(g0, 15, 53));
-    EXPECT_EQ(PIX_CARPET_M, at(g0, 15, 49));
-    // An asteroid, not a meadow: no grass anywhere on the rock but the
-    // rainbow's green band.
-    for (int y = 0; y < 64; ++y)
-        for (int x = 0; x < 64; ++x)
-        {
-            if (ring_of(x, y) == 5 && x >= 7 && x <= 23)
-                continue;
-            const unsigned char t = at(g0, x, y);
-            const bool grass =
-                t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 ||
-                t == PIX_GRASS4 ||
-                (t >= PIX_GRASS_DARK_1 && t <= PIX_GRASS_DARK_4) ||
-                (t >= PIX_GRASS_DARK_B1 && t <= PIX_GRASS_DARK_R2) ||
-                (t >= PIX_GRASS_LIGHT_1 && t <= PIX_GRASS_LIGHT_LEFT_TOP);
-            EXPECT_FALSE(grass) << x << "," << y;
-        }
-    // The Balloon pit: void under the whole deck but the three up-stairs.
-    for (int y = 7; y <= 13; ++y)
-        for (int x = 46; x <= 52; ++x)
-        {
-            const bool stair = y == 7 && x >= 48 && x <= 50;
-            EXPECT_EQ(stair ? PIX_ZSTAIR_UP : PIX_VOID1, at(g0, x, y))
-                << x << "," << y;
-            EXPECT_EQ(stair ? PIX_ZSTAIR_DOWN
-                            : (y - 7) % 2 == 0 ? PIX_CARPET_M
-                                               : PIX_PAVEMENT1,
-                      at(g1, x, y))
-                << "the purple-striped deck at " << x << "," << y;
-        }
-    // The crown of spikes in the north hall: a jagged V on the court.
-    for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
-                          {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
-                          {16, 21}})
-        EXPECT_TRUE(jagged(at(g0, v.first, v.second)))
-            << "the crown of spikes at " << v.first << "," << v.second;
-    // The striped vestibule: a purple row and an ash row.
-    for (int x = 14; x <= 16; ++x)
-    {
-        EXPECT_EQ(PIX_CARPET_M, at(g0, x, 44)) << "the vestibule at " << x;
-        EXPECT_EQ(PIX_ASH1, at(g0, x, 45)) << "the vestibule at " << x;
-    }
-    // The rest of floor 1 is sky.
-    int sky = 0;
-    for (std::size_t c = 0; c < static_cast<std::size_t>(g1.w * g1.h); ++c)
-        if (g1.data[c] == PIX_AIR)
-            ++sky;
-    EXPECT_EQ(64 * 64 - 7 * 7, sky);
-    // The space wind: enough stardust to force the snow weather (40+).
-    int snow = 0;
-    for (std::size_t c = 0; c < static_cast<std::size_t>(g0.w * g0.h); ++c)
-        if (g0.data[c] == PIX_SNOW1 || g0.data[c] == PIX_SNOW2)
-            ++snow;
-    EXPECT_GE(snow, 40) << "the stardust drifts force snow";
-
-    // The cast: the Big One on the rock, the Purple Man holding the gate
-    // ground, the key under the mast, the big door locked at key 3.
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    EXPECT_EQ(1, golem->floor());
-    EXPECT_EQ("Big One", golem->stats()->name);
-    walker* ally = nullptr;
-    for (const auto& uptr : world.oblist)
-        if (uptr && uptr->query_order() == Order::Living &&
-            uptr->team_num() == 0)
-            ally = uptr.get();
-    ASSERT_NE(nullptr, ally);
-    EXPECT_EQ("Purple Man", ally->stats()->name);
-    EXPECT_EQ(FAMILY_BARBARIAN, ally->family());
-    EXPECT_TRUE(ally->guard_hold_post());
-    walker* key = nullptr;
-    for (const auto& uptr : world.fxlist)
-        if (uptr && uptr->family() == FAMILY_KEY)
-            key = uptr.get();
-    ASSERT_NE(nullptr, key);
-    EXPECT_EQ(1, key->floor());
-    EXPECT_EQ(3, key->stats()->level());
-    int doors = 0;
-    for (const auto& uptr : world.weaplist)
-        if (uptr && uptr->family() == FAMILY_DOOR &&
-            uptr->ypos() == 43 * GRID_SIZE)
-        {
-            ++doors;
-            EXPECT_EQ(3, uptr->stats()->level());
-        }
-    EXPECT_EQ(3, doors) << "the big door is three wide";
-}
-
-// The jagged band is too sharp to cross (jagged ground blocks walkers and
-// flyers), so raiders pile up against it; the spikes bite any hostile
-// whose centre tile is on or beside a spike, never one of ours.
-TEST_F(ImaginationsCampaignTest, asteroid_spikes_bite_bad_guys_only)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    world.tick();
-    walker* probe = park_living(world, 1, 31, 50, 500.0f);
-    ASSERT_NE(nullptr, probe);
-    for (const auto& c : {std::pair{6, 25}, {25, 20}, {15, 13}, {15, 48}})
-        EXPECT_FALSE(world.query_grid_passable(
-            static_cast<float>(c.first * GRID_SIZE),
-            static_cast<float>(c.second * GRID_SIZE), probe))
-            << "the band at " << c.first << "," << c.second
-            << " is too sharp to cross";
-    probe->set_dead(1);
-
-    walker* raider = park_living(world, 1, 5, 25, 500.0f);  // against it
-    walker* crewman = park_living(world, 0, 5, 36, 500.0f); // against it
-    walker* inside = park_living(world, 1, 13, 32, 500.0f); // in the court
-    walker* crowned = park_living(world, 1, 15, 22, 500.0f); // at the crown
-    walker* back = park_living(world, 1, 4, 30, 500.0f);    // a step back
-    walker* dying = park_living(world, 1, 5, 40, 5.0f);     // against it
-    ASSERT_NE(nullptr, raider);
-    ASSERT_NE(nullptr, crewman);
-    ASSERT_NE(nullptr, inside);
-    ASSERT_NE(nullptr, crowned);
-    ASSERT_NE(nullptr, back);
-    ASSERT_NE(nullptr, dying);
-    // Any ten consecutive ticks hold exactly one bite.
-    for (int t = 0; t < 10; ++t)
-        world.tick();
-    // Exactly one bite of twelve (a soldier's slow regen can win back a
-    // point or two between bites; a second bite could never hide in it).
-    auto expect_bites = [&](int bites) {
-        const float hp = raider->stats()->hitpoints();
-        EXPECT_LE(hp, 500.0f - 12.0f * static_cast<float>(bites) + 2.0f)
-            << bites << " bite(s) of twelve, one per ten ticks";
-        EXPECT_GT(hp, 500.0f - 12.0f * static_cast<float>(bites + 1))
-            << "no more than " << bites << " bite(s)";
-    };
-    expect_bites(1);
-    EXPECT_FLOAT_EQ(500.0f, crewman->stats()->hitpoints())
-        << "the spikes know their own";
-    EXPECT_FLOAT_EQ(500.0f, inside->stats()->hitpoints())
-        << "no spikes in the open court";
-    EXPECT_LE(crowned->stats()->hitpoints(), 500.0f - 12.0f + 2.0f)
-        << "the crown of spikes bites a raider that runs up to it";
-    EXPECT_FLOAT_EQ(500.0f, back->stats()->hitpoints())
-        << "two tiles off the band is out of reach";
-    EXPECT_TRUE(dying->dead()) << "the spikes kill";
-    for (int t = 0; t < 30; ++t)
-        world.tick();
-    expect_bites(4);
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_big_one_holds_fire_until_the_crew_comes)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    world.tick();
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    EXPECT_EQ(0, golem->lineofsight()) << "he never throws from the rock";
-    EXPECT_EQ(ACT_GUARD, golem->act_type());
-    for (const auto& uptr : world.oblist)
-    {
-        if (uptr && uptr->query_order() == Order::Living &&
-            uptr->team_num() == 1)
-        {
-            EXPECT_LE(uptr->lineofsight(), 7) << "the mist caps sight at 7";
-        }
-    }
-
-    // Ten tiles off (his centre tile is 48,11): he sleeps on.
-    walker* lure = park_living(world, 0, 38, 11, 30000.0f);
-    ASSERT_NE(nullptr, lure);
-    (void)fx.events.drain();
-    for (int t = 0; t < 30; ++t)
-        world.tick();
-    EXPECT_EQ(ACT_GUARD, golem->act_type()) << "ten tiles is too far";
-    EXPECT_EQ(1, golem->floor());
-    // Nine tiles: he wakes.
-    lure->setxy(static_cast<short>(39 * GRID_SIZE),
-                static_cast<short>(11 * GRID_SIZE));
-    world.tick();
-    EXPECT_EQ(ACT_RANDOM, golem->act_type());
-    EXPECT_EQ(0, golem->lineofsight()) << "awake on the rock, still no throw";
-    EXPECT_TRUE(saw_notification(fx.events, "The Big One wakes up!"));
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_big_one_walks_off_the_rock_and_falls)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    world.tick();
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    const float max_hp = golem->stats()->max_hitpoints();
-    // A crew member at the pit's west edge, three tiles from the deck.
-    ASSERT_NE(nullptr, park_living(world, 0, 44, 12, 30000.0f));
-    (void)fx.events.drain();
-    int ticks = 0;
-    while (golem->stats()->name == "Big One" && ticks < 60)
-    {
-        world.tick();
-        ++ticks;
-        if (golem->floor() == 1)
-        {
-            EXPECT_FALSE(golem->stats()->has_commands() &&
-                         golem->stats()->commands.front().commandtype !=
-                             COMMAND_WALK)
-                << "on the rock he only walks straight";
-        }
-    }
-    ASSERT_EQ("Fallen One", golem->stats()->name)
-        << "he walks off the deck and falls within " << ticks << " ticks";
-    EXPECT_EQ(0, golem->floor());
-    EXPECT_GE(golem->stats()->hitpoints(), 89.0f);
-    EXPECT_LE(golem->stats()->hitpoints(), 92.0f) << "hurt: 90 of " << max_hp;
-    EXPECT_FLOAT_EQ(24.0f, golem->damage());
-    EXPECT_EQ(7, golem->lineofsight()) << "down here he throws again";
-    EXPECT_TRUE(saw_notification(fx.events, "The Big One falls off the rock!"));
-    // He stays slow on the asteroid.
-    for (int t = 0; t < 120; ++t)
-    {
-        world.tick();
-        if (golem->dead())
-            break;
-        EXPECT_FLOAT_EQ(4.0f, golem->stepsize()) << "slow at tick " << t;
-    }
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_big_one_down_the_stairs_is_the_stomper)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    world.tick();
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    // Arriving on floor 0 with the deck (not sky) above him.
-    golem->change_floor(0);
-    golem->setxy(static_cast<short>(48 * GRID_SIZE),
-                 static_cast<short>(7 * GRID_SIZE));
-    (void)fx.events.drain();
-    world.tick();
-    EXPECT_EQ("Stomper", golem->stats()->name);
-    EXPECT_GE(golem->stats()->hitpoints(), 179.0f);
-    EXPECT_LE(golem->stats()->hitpoints(), 182.0f);
-    EXPECT_FLOAT_EQ(40.0f, golem->damage());
-    EXPECT_FLOAT_EQ(6.0f, golem->stepsize());
-    EXPECT_EQ(7, golem->lineofsight());
-    EXPECT_TRUE(saw_notification(fx.events, "The Big One stomps down!"));
-    expect_no_script_errors(world);
-}
-
-// The stand-down beat posts every hostile hunter but the Big One on the
-// rock (posted up there with sight 0, nothing could ever re-wake him).
-TEST_F(ImaginationsCampaignTest, asteroid_stand_down_spares_the_big_one_on_the_rock)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    while (world.level_tick_count() < 48)
-        world.tick();
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    walker* orc = nullptr;
-    for (const auto& uptr : world.oblist)
-        if (uptr && uptr->query_order() == Order::Living &&
-            uptr->family() == FAMILY_ORC && !uptr->dormant())
-            orc = uptr.get();
-    ASSERT_NE(nullptr, orc);
-    golem->set_act_type(ACT_RANDOM);
-    orc->set_act_type(ACT_RANDOM);
-    while (world.level_tick_count() < 52)
-        world.tick();
-    EXPECT_EQ(1, golem->floor());
-    EXPECT_EQ(ACT_RANDOM, golem->act_type()) << "the rock is the script's";
-    EXPECT_EQ(ACT_GUARD, orc->act_type()) << "a yard hunter stands down";
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_raider_waves_wake_on_schedule)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    struct Wave
-    {
-        int delay;
-        int size;
-        const char* line;
-    };
-    constexpr Wave kWaves[] = {
-        {300, 4, "Raiders ride the space wind!"},
-        {800, 3, "Falling stars from the south!"},
-        {1400, 4, "Black Dash brings his band!"},
-    };
-    std::vector<std::vector<walker*>> members(std::size(kWaves));
-    int delayed = 0;
-    for (const auto& uptr : world.oblist)
-    {
-        walker* ob = uptr.get();
-        if (ob == nullptr || ob->query_order() != Order::Living ||
-            ob->spawn_delay() == 0)
-            continue;
-        ++delayed;
-        for (std::size_t i = 0; i < std::size(kWaves); ++i)
-            if (ob->spawn_delay() == kWaves[i].delay)
-                members[i].push_back(ob);
-    }
-    EXPECT_EQ(11, delayed);
-    walker* captain = nullptr;
-    for (walker* ob : members[2])
-        if (ob->family() == FAMILY_BIG_ORC)
-            captain = ob;
-    ASSERT_NE(nullptr, captain);
-    EXPECT_EQ("Black Dash", captain->stats()->name);
-
-    for (std::size_t i = 0; i < std::size(kWaves); ++i)
-    {
-        SCOPED_TRACE(kWaves[i].line);
-        ASSERT_EQ(static_cast<std::size_t>(kWaves[i].size), members[i].size());
-        while (world.level_tick_count() <
-               static_cast<std::uint32_t>(kWaves[i].delay))
-            world.tick();
-        for (walker* ob : members[i])
-            EXPECT_TRUE(ob->dormant()) << "asleep until the gust";
-        (void)fx.events.drain();
-        while (world.level_tick_count() <
-               static_cast<std::uint32_t>(kWaves[i].delay + 2))
-            world.tick();
-        for (walker* ob : members[i])
-            EXPECT_FALSE(ob->dormant()) << "awake one tick past the delay";
-        EXPECT_TRUE(saw_notification(fx.events, kWaves[i].line));
-    }
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_last_bad_guy_lands_the_rainbow)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    world.tick();
-    (void)fx.events.drain();
-    std::vector<walker*> hostiles;
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    for (const auto& uptr : world.oblist)
-        if (uptr && uptr->query_order() == Order::Living &&
-            uptr->team_num() == 1 && uptr.get() != golem)
-            hostiles.push_back(uptr.get());
-    ASSERT_EQ(21u, hostiles.size());
-    auto fell = [&](walker* ob) {
-        ob->stats()->set_hitpoints(0);
-        ob->set_dead(1);
-        ob->death();
-    };
-    fell(golem);
-    EXPECT_TRUE(saw_notification(fx.events, "The Big One is beaten!"));
-    for (std::size_t i = 0; i + 1 < hostiles.size(); ++i)
-        fell(hostiles[i]);
-    EXPECT_FALSE(saw_notification(fx.events, "Dream won!"))
-        << "one bad guy is left (a dormant raider counts)";
-    // Rainbow ring (3..7) of a flash, or 0 when it is off the arc.
-    auto ring_of = [](const walker& ob) {
-        const int tx = ob.xpos() / GRID_SIZE;
-        const int ty = ob.ypos() / GRID_SIZE;
-        if (ty < 49 || tx < 7 || tx > 23)
-            return 0;
-        const int d2x4 = 4 * ((tx - 15) * (tx - 15) + (ty - 46) * (ty - 46));
-        for (int r = 3; r <= 7; ++r)
-            if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
-                d2x4 < (2 * r + 1) * (2 * r + 1))
-                return r;
-        return 0;
-    };
-    // Every rainbow flash not seen before, as (tick, ring) per new flash.
-    // The flashes alive last tick, keyed by address and tile: a flash is
-    // new when no flash at its address stood on its tile a tick ago.
-    struct Seen
-    {
-        const walker* ob;
-        int x;
-        int y;
-    };
-    std::vector<Seen> seen;
-    struct Spawn
-    {
-        std::uint32_t tick;
-        int ring;
-    };
-    std::vector<Spawn> spawns;
-    std::vector<Seen> now;
-    auto collect = [&](std::uint32_t tick) {
-        for (const auto& uptr : world.oblist)
-        {
-            if (!uptr || uptr->query_order() != Order::FX ||
-                uptr->family() != FAMILY_FLASH)
-                continue;
-            const int r = ring_of(*uptr);
-            if (r == 0)
-                continue;
-            const Seen key{uptr.get(), uptr->xpos(), uptr->ypos()};
-            now.push_back(key);
-            if (std::none_of(seen.begin(), seen.end(), [&](const Seen& o) {
-                    return o.ob == key.ob && o.x == key.x && o.y == key.y;
-                }))
-                spawns.push_back({tick, r});
-        }
-        seen.swap(now);
-        now.clear();
-    };
-    collect(0);
-    ASSERT_TRUE(spawns.empty()) << "no rainbow before the last one falls";
-    fell(hostiles.back());
-    EXPECT_TRUE(saw_notification(fx.events, "Dream won!"));
-    // The show: every ring of the arc sparkles, one ring at a time, outer
-    // to inner and round again, for about 180 ticks, so it outlasts the
-    // 100-tick win lines; then the arc is quiet.
-    collect(0);
-    for (std::uint32_t t = 1; t <= 300; ++t)
-    {
-        world.tick();
-        collect(t);
-    }
-    ASSERT_FALSE(spawns.empty());
-    // Group the spawns into sweeps: one tick, one ring.
-    std::vector<Spawn> sweeps;
-    int lit[8] = {};
-    for (const Spawn& sp : spawns)
-    {
-        ++lit[sp.ring];
-        if (sweeps.empty() || sweeps.back().tick != sp.tick)
-            sweeps.push_back(sp);
-        else
-            EXPECT_EQ(sweeps.back().ring, sp.ring)
-                << "one ring per sweep, tick " << sp.tick;
-    }
-    EXPECT_EQ(18u, sweeps.size()) << "eighteen sweeps";
-    EXPECT_EQ(0u, sweeps.front().tick) << "the outer ring flashes at once";
-    for (std::size_t k = 0; k < sweeps.size(); ++k)
-        EXPECT_EQ(7 - static_cast<int>(k % 5), sweeps[k].ring)
-            << "sweep " << k << " rolls outer to inner";
-    for (int r = 3; r <= 7; ++r)
-        EXPECT_GE(lit[r], 3 * 3) << "ring " << r << " sparkles, every pass";
-    EXPECT_GE(sweeps.back().tick, 160u) << "the show runs about 3 s";
-    EXPECT_LE(sweeps.back().tick, 180u) << "and then it ends";
-    expect_no_script_errors(world);
-}
-
-TEST_F(ImaginationsCampaignTest, asteroid_on_load_survives_the_level_start_seed)
-{
-    LoadedImaginationsLevel fx(kAsteroidLevel);
-    ASSERT_TRUE(fx.loaded);
-    GameWorld& world = fx.world();
-    const og::sim::WorldSnapshot seed =
-        og::sim::capture_keyframe_snapshot(world);
-    ASSERT_EQ(0u, seed.level_tick_count);
-    world.reset_level_progress();
-    ASSERT_TRUE(og::sim::apply_snapshot(world, seed));
-    world.tick();
-    EXPECT_TRUE(saw_notification(fx.events, "The spikes know their own."))
-        << "a level-start seed must leave on_load armed";
-    for (const auto& uptr : world.oblist)
-    {
-        if (uptr && uptr->query_order() == Order::Living &&
-            uptr->team_num() == 1)
-        {
-            EXPECT_LE(uptr->lineofsight(), 7);
-        }
-    }
-    walker* golem = find_big_one(world);
-    ASSERT_NE(nullptr, golem);
-    EXPECT_EQ(0, golem->lineofsight());
     expect_no_script_errors(world);
 }
 

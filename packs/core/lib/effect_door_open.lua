@@ -17,6 +17,11 @@ local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
 -- spot and retire this one. Anything mid-animation falls through to the
 -- default effect::act animate path.
 local function on_act(self)
+  -- rule: An opening door plays its opening animation first (default effect animate); only when it
+  --   has run out does the door settle.
+  -- tests: PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy
+  -- tests: EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx
+  -- tests: SemLibsDoorOpen.an_opening_door_plays_its_animation_before_it_settles
   if self:ani_type() ~= C.ANI_WALK then
     return false  -- let default animate() handle it
   end
@@ -24,6 +29,17 @@ local function on_act(self)
   -- The original comment called this "the amusing part": the final copy goes
   -- on the non-acting FX list, so it cannot continuously respawn itself.
   local opened = og.add_fx_ob("fx", FX_DOOR_OPEN)
+  -- rule: A finished door hands its open sprite to a fresh, ignored, non-acting copy on the fx list
+  --   at the same spot, floor, team and facing, then retires; in a full fx list the door simply
+  --   stays (handled, alive).
+  -- tests: PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy
+  -- tests: EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx
+  -- tests: SemLibsDoorOpen.a_settled_door_stays_on_the_floor_it_opened_on
+  -- unreachable: divergence: with no copy made the current door returns true and stays alive
+  --   (retries); the old game breaks to the default path and the door dies (dead = 1; death());
+  --   reachable only through a failing entity factory; the copy's floor arm is asserted | triage:
+  --   Unreachable in play: GameWorld::add_ob returns nullptr only when the entity factory fails (no
+  --   factory or unknown family), and the world has no object cap.
   if not opened then
     return true  -- handled (nothing to spawn)
   end

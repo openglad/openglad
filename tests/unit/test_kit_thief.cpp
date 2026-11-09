@@ -575,7 +575,7 @@ namespace {
 
 // A bot thief beside a foe (inside the bomb gate's 35 px), in ACT_RANDOM.
 // The hunter scene puts the foe 33 px off and has it hunting the thief:
-// past the level-1 bomb's 31 px blast (where a mine pays) and still inside
+// past the level-1 bomb's 19 px blast (where a mine pays) and still inside
 // the classic gate's 35 px (where the classic bot bombs).
 struct BotScene {
     TestGameWorld tw;
@@ -616,7 +616,7 @@ std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
 
 // The bot gate lays a MINE by its own rule, not by the shift coin
 // living::check_special draws: a foe 33 px off hunting the thief (past the
-// 31 px blast, so a mine pays) with the mine affordable and the setting on
+// 19 px blast, so a mine pays) with the mine affordable and the setting on
 // -> a MINE on either side of the coin; the same foe with the setting off
 // -> the classic gate's bomb (inside its 35 px); the mine unaffordable
 // (50 MP) -> the gate writes no shift -> the bomb; the foe not hunting the

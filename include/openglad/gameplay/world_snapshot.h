@@ -67,7 +67,7 @@ struct EntitySnapshot {
     std::int16_t flight_left = 0;
     std::int16_t bonus_rounds = 0;
     Order order = Order::Living;
-    std::int8_t family = 0;
+    std::uint8_t family = 0;
     std::int16_t frame = 0;
     float worldx = -1.0f;
     float worldy = -1.0f;
@@ -135,7 +135,7 @@ struct EntitySnapshot {
     std::int16_t weapon_cost = 0;
     std::uint16_t special_cost[NUM_SPECIALS] = {};
     Order old_order = Order::Living;
-    std::int8_t old_family = 0;
+    std::uint8_t old_family = 0;
     std::uint32_t last_distance = 0;
     std::int32_t current_distance = 0;
     std::uint32_t controller_id = 0;
@@ -364,7 +364,7 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, bonus_rounds))},
     {og::dirty::BIT_ORDER, sizeof(Order),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, order))},
-    {og::dirty::BIT_FAMILY, sizeof(std::int8_t),
+    {og::dirty::BIT_FAMILY, sizeof(std::uint8_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, family))},
     {og::dirty::BIT_FRAME, sizeof(std::int16_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, frame))},
@@ -495,7 +495,7 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, special_cost))},
     {og::dirty::BIT_OLD_ORDER, sizeof(Order),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, old_order))},
-    {og::dirty::BIT_OLD_FAMILY, sizeof(std::int8_t),
+    {og::dirty::BIT_OLD_FAMILY, sizeof(std::uint8_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, old_family))},
     {og::dirty::BIT_LAST_DISTANCE, sizeof(std::uint32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, last_distance))},

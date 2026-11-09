@@ -95,6 +95,10 @@ TEST(WalkerExtended, walker_turn_basic)
 
 TEST(WalkerExtended, walker_turn_all_targets)
 {
+    // The classic turn; with the setting on a walker asked to face the way it
+    // already faces stays put (fix AT, SemWalker4). The integration test
+    // runner (integration_main) resets the setting to on before every test.
+    og::runtime::current_session->myscreen_->world().gameplay_fixes = 0;
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
@@ -102,8 +106,8 @@ TEST(WalkerExtended, walker_turn_all_targets)
 
     // From FACE_UP (0) the turn distance is -target. Targets 1..4 sit in
     // [-4, 0) and rotate clockwise (+1 -> FACE_UP_RIGHT); every other target
-    // (including "turn to where I already face") rotates counter-clockwise
-    // (+7 mod 8 -> FACE_UP_LEFT).
+    // (with the setting off, including "turn to where I already face")
+    // rotates counter-clockwise (+7 mod 8 -> FACE_UP_LEFT).
     const int expected_dir[8] = { FACE_UP_LEFT, FACE_UP_RIGHT, FACE_UP_RIGHT, FACE_UP_RIGHT,
                                   FACE_UP_RIGHT, FACE_UP_LEFT, FACE_UP_LEFT, FACE_UP_LEFT };
 

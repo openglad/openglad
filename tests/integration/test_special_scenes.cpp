@@ -839,6 +839,31 @@ Keys fight_keys(const walker* me, const walker* foe, int reach = 24,
     return k;
 }
 
+// fight_keys' keys for a fighter that stands its ground once its foe is in
+// reach: it swings where it stands, and a direction goes through only to
+// turn it to face the foe. A player holding a diagonal against a body
+// slides along it, one pixel for every started unit of step size, so a
+// slow fighter slides too (the old game's slide, #470); one kept pushing
+// into its foe wanders off the line of its own blows. A player stops
+// pushing and swings; this does the same.
+Keys stand_and_swing(Keys k, const walker* me)
+{
+    if (me == nullptr || !k.fire)
+        return k;
+    int facing = -1;
+    if (k.up)
+        facing = k.right ? FACE_UP_RIGHT : k.left ? FACE_UP_LEFT : FACE_UP;
+    else if (k.down)
+        facing = k.right ? FACE_DOWN_RIGHT : k.left ? FACE_DOWN_LEFT : FACE_DOWN;
+    else if (k.right)
+        facing = FACE_RIGHT;
+    else if (k.left)
+        facing = FACE_LEFT;
+    if (facing < 0 || facing == static_cast<int>(me->curdir()))
+        k.up = k.down = k.left = k.right = false;
+    return k;
+}
+
 // ---- the scenes -----------------------------------------------------------
 
 // The 22 scenes, built at call time (family_of needs the packs loaded), in
@@ -1569,7 +1594,11 @@ std::vector<Scene> scenes()
     // the seat's hero on slot 2, as a press of that key would. His pool is
     // 25 and the howl spends all of it; a level-1 captain wins back one
     // point in about seven ticks, so the scene refills his pool when he
-    // reaches the corpse (the meal costs 20).
+    // reaches the corpse (the meal costs 20). After the meal he fights the
+    // nearest elf and stands his ground once it is in reach: held on a
+    // diagonal against an elf he would slide along it (the old game's
+    // slide, #470), off the line of his own blows, and the elves would kill
+    // him before the run ends.
     {
         Scene sc;
         sc.name = "captain_howl_eat";
@@ -1642,8 +1671,10 @@ std::vector<Scene> scenes()
                 eat.special = f == arrived + 2;
                 return eat;
             }
-            return fight_keys(captain,
-                              nearest_seen(run, captain, {"foe1", "foe2", "foe3"}));
+            return stand_and_swing(
+                fight_keys(captain,
+                           nearest_seen(run, captain, {"foe1", "foe2", "foe3"})),
+                captain);
         };
         sc.tells = {
             {"the captain is level 1",
@@ -1804,7 +1835,16 @@ std::vector<Scene> scenes()
         sc.name = "captain_banner_warband";
         sc.family = FAMILY_BIG_ORC;
         sc.slot = 4;
-        sc.frames = 130;
+        // Room for the grunts' turn, measured 2026-11-01: they close on the
+        // new banner at frame 165 (106 before Gameplay Fixes X). Two grunts
+        // stand in a column at x 432 from frame 59. Before X every blocked
+        // act of the lower one shoved the one above twice: once from its
+        // step up, which met it, and once more from its sideways step east,
+        // which met no body and was stopped by the ground. X keeps only the
+        // first, the draws and queues go another way, and the column comes
+        // apart later. Every other tell lands by frame 66, as before. A tell
+        // must show for 20 frames, so 165 + 20 <= 190 leaves 5 frames spare.
+        sc.frames = 190;
         sc.stage = [](Run& run) {
             // A held tap calls the warband on both of its frames (two grunts
             // each at level 10, under the cap of six): mana for the banner,
@@ -3161,10 +3201,22 @@ void play_side(const Pair& pair, int side, Result& out)
     sc.still_tell = static_cast<int>(sc.tells.size()) - 1;
     sc.still_offset = 0;
     effects_reset_for_testing();   // the render clock is global; each run starts it fresh
-    // A level load reloads the palette but leaves the display world's
-    // palette id alone, so a time stop still running when the setting-off
-    // run ended (b) would read as blue at the start of the next run.
-    og::runtime::current_session->myscreen_->world().current_palette_id = 0;
+    // Each half starts as a real mission does: the level's own colours, the
+    // bands at rotation 0, palette id 0. A level load reloads the palette
+    // but leaves the display world's palette id alone, so a time stop still
+    // running when the setting-off run ended (b) would read as blue at the
+    // start of the next run. And a run ends in live_game::finish_scene, not
+    // through the mission's end, so nothing sets the water and lava bands
+    // back: do_cycle turns them in the session's palette, and since the
+    // palette is painted only when its id changes (#414) the next run starts
+    // with them where the last run left them. The halves then differ from
+    // frame 0 or 4 whatever the setting does (measured 2026-11-01: 19 pairs
+    // red, each one whose two halves started on different rotations; the
+    // four whose halves started on the same rotation passed). The game makes
+    // this forced write on every way out of a mission
+    // (restore_mission_palette, src/platform/sdl/game_loop.cpp); it sets the
+    // palette id back to 0 as well (screen::show_palette_id).
+    og::runtime::current_session->myscreen_->show_palette_id(0, /*force=*/true);
     play(sc, out);
 }
 
@@ -4293,6 +4345,11 @@ std::vector<Pair> pairs()
     // L. A level-13 enemy mage bot rolls slot 5 with three towers close by:
     // the classic roll folds 5 into TELEPORT, whose gate says no (and the
     // 110 px rule shuts every slot anyway); the fix casts HEARTBURST.
+    // The towers are posted guards, held from fighting: they face the mage
+    // and stand. Left to the ordinary bot act, a tower searched for the mage,
+    // and its search kept asking it to face the way it already faced: a
+    // notch away and back with the setting off, no turn with it on (fix AT),
+    // so the halves parted at frame 6, long before this fix's cue.
     {
         Pair c;
         c.name = "l_slot_roll";
@@ -4304,7 +4361,7 @@ std::vector<Pair> pairs()
             for (int i = 0; i < 3; ++i)
             {
                 const std::string n = "tower" + std::to_string(i);
-                hold_fire(add_actor(run, n, FAMILY_TOWER1, 0, at[i][0], at[i][1]));
+                add_posted(run, n, FAMILY_TOWER1, 0, at[i][0], at[i][1], 0);
                 mark_hp(run, n);
             }
         };

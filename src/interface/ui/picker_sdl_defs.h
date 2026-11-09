@@ -1300,6 +1300,11 @@ bool picker_main_scope_remote_start_requested(int32_t& retvalue);
 // and the menu engine's RemoteStartScope::TeamBuildScope obligation.
 bool team_build_remote_start_requested(int32_t& retvalue);
 
+// The poll hook of a blocking prompt a host's GO must reach (defined in
+// picker.cpp): pumps the lobby, true while no accepted start is pending.
+// KEYMAP's key waits and TRAIN / HIRE's name editors pass it (#415).
+bool picker_lobby_poll_keep_waiting();
+
 // §2.6 GO/READY slot presentation (defined in picker_team_build.cpp): the
 // SDL-side gather over the lobby client + save feeding the pure
 // format_ready_go_button state table. Consumed by the base-camp spec's
