@@ -365,6 +365,17 @@ short viewscreen::refresh()
 	return 1;
 }
 
+// Port of the current game's og::sim::seat_may_claim (Gameplay Fixes M's
+// seat half, #354, for #450): with the setting on, the death searches below
+// never hand a seat a walker a charm put on its team. The charm is told by
+// its timer, as in the current game, so a fresh spawn whose record still
+// carries its own team stays claimable; the switch search further down has
+// always refused any walker with a real team recorded.
+static bool seat_may_claim(walker* w)
+{
+	return !myscreen->gameplay_fixes || w->charm_left <= 0 || w->real_team_num == 255;
+}
+
 short viewscreen::input(const SDL_Event& event)
 {
 	static char somemessage[80];
@@ -395,6 +406,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 		    walker* w = *e;
 			if (w &&
+			        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
 			        w->user == -1 && // mean's we're not player-controlled
@@ -413,6 +425,7 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = *e;
                 if (w &&
+                        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->user == -1 && // mean's we're not player-controlled
@@ -432,6 +445,7 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = *e;
                 if (w &&
+                        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->myguy)
@@ -900,6 +914,7 @@ short viewscreen::continuous_input()
 		{
 		    walker* w = *e;
 			if (w &&
+			        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
 			        w->user == -1 && // mean's we're not player-controlled
@@ -918,6 +933,7 @@ short viewscreen::continuous_input()
             {
                 walker* w = *e;
                 if (w &&
+                        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->user == -1 && // mean's we're not player-controlled
@@ -937,6 +953,7 @@ short viewscreen::continuous_input()
             {
                 walker* w = *e;
                 if (w &&
+                        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->myguy)
