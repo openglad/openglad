@@ -36,7 +36,7 @@ enum class FactKind : std::uint8_t
     LevelDoneEquals,                 // arg0 = expected level_done
     ScoreDelta,                      // arg0 = team, arg1 = min, arg2 = max
     WalkerFamilyCount,               // arg0 = family, arg1 = min, arg2 = max
-    WalkerOfTeamAlive,               // arg0 = team, arg1 = min, arg2 = max
+    WalkerOfTeamAlive,               // arg0 = team, arg1 = min, arg2 = max: live LIVING-order entries only (#448)
     WalkerHpRangeAtFinalTick,        // arg0 = family, arg1 = min_hp*100, arg2 = max_hp*100
     WalkerKeysApplied,               // arg0 = min_keys (Indeterminate if !inventory_keys)
     WalkerPositionMoved,             // arg0 = family, arg1 = min_xpos, arg2 = min_ypos
@@ -57,16 +57,6 @@ enum class FactKind : std::uint8_t
     // at the next tick boundary, so this counts LIVE circles/projectiles.
     // Searches dump.weapons[] ONLY — never effects[] — like the kind above.
     WeaponFamilyCount,               // arg0 = family, arg1 = min, arg2 = max
-    // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
-    // arg0 = family id, arg1 = Order ordinal (kOrderLiving / kOrderTreasure
-    // / kOrderGenerator / kOrderWeapon / kOrderFX). The evaluator renders
-    // (family, order) through `family_symbol_by_order`. A dump with no
-    // matching live entry satisfies the predicate; a dump with only live
-    // matching entries is indeterminate under schema-v1 because the harness
-    // cannot prove whether pickup/reap should have occurred. Treasure pickup
-    // rows use this kind so static binding no longer aliases onto a Living
-    // family name.
-    TreasureFamilyOfOrderRemovedFromOblist, // arg0 = family, arg1 = order
     // Weapon-trajectory predicates. Both are pure functions of
     // dump.weapon_tracks (the per-tick samples), so they evaluate
     // identically on the branch dump and the master golden (both arms
@@ -89,14 +79,16 @@ enum class FactKind : std::uint8_t
     // WalkerFamilyCount for FX/treasure entities, which the living-order
     // kinds cannot name.
     //
-    // APPEND-ONLY: this enumerator is last so every existing ordinal keeps
-    // its value (the companion header mirror must match ordinal for
-    // ordinal). The branch header carries WalkerOnFloor (a branch-only
-    // multi-floor kind) ahead of it; the companion has no floor concept and
-    // no table row names it, so the ordinals diverge by one here — harmless
-    // because the companion never evaluates a FactKind, it only has to
-    // declare the ones the shared table constructs.
+    // The branch header carries WalkerOnFloor (a branch-only multi-floor
+    // kind) ahead of this one; the companion has no floor concept and no
+    // table row names it, so the ordinals diverge by one from there on —
+    // harmless because the companion never evaluates a FactKind, it only
+    // has to declare the ones the shared table constructs.
     WalkerOfOrderFamilyCount,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
+    // The live-only twin of WalkerOfOrderFamilyCount: counts only the
+    // entries that are alive. The companion mirrors the declaration so
+    // the shared table compiles; it never evaluates it.
+    WalkerOfOrderFamilyAlive,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
 };
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
@@ -229,19 +221,6 @@ inline constexpr FactPredicate TreasureFamilyRemovedFromOblist(std::int32_t fami
 {
     return {FactKind::TreasureFamilyRemovedFromOblist, family, 0, 0, 0, 0, label};
 }
-// Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
-// `order` is the Order ordinal (Order::Treasure for treasure pickup rows).
-// The evaluator renders (family, order) through `family_symbol_by_order`.
-// Schema-v1 lacks enough provenance to hard-fail a live matching survivor,
-// so that state is reported indeterminate rather than aliased to Living.
-inline constexpr FactPredicate TreasureFamilyOfOrderRemovedFromOblist(
-    std::int32_t     family,
-    std::int32_t     order,
-    std::string_view label = {}) noexcept
-{
-    return {FactKind::TreasureFamilyOfOrderRemovedFromOblist,
-            family, order, 0, 0, 0, label};
-}
 inline constexpr FactPredicate StatDeltaOnPickup(std::int32_t stat_kind, std::int32_t mn, std::int32_t mx,
                                                  std::string_view label = {}) noexcept
 {
@@ -318,6 +297,15 @@ inline constexpr FactPredicate WalkerOfOrderFamilyCount(std::int32_t family, std
                                                         std::string_view label = {}) noexcept
 {
     return {FactKind::WalkerOfOrderFamilyCount, family, order, mn, mx, 0, label};
+}
+// How many LIVE dump.walkers[] entries render as `family` under
+// `order`. The companion mirrors the declaration so the shared table
+// compiles; it never evaluates it.
+inline constexpr FactPredicate WalkerOfOrderFamilyAlive(std::int32_t family, std::int32_t order,
+                                                        std::int32_t mn, std::int32_t mx,
+                                                        std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOfOrderFamilyAlive, family, order, mn, mx, 0, label};
 }
 
 // FactSide-gating helpers. Wrap any pred::* call to mark the predicate as
