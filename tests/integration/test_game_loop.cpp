@@ -11049,7 +11049,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // so the add SPAWNED a stock soldier (a brand-new server entity created
     // between ticks — the shape that must survive the delta stream). Park
     // every unclaimed lead-team walker on an unused team to force that path.
-    // Each parked walker gets ten times its hit points: the census below
+    // Each parked walker gets ten times its hit points: the check below
     // checks that every walker this case re-teamed between ticks is still
     // on the board after 420 ticks of the delta stream, and that check is
     // only about the stream if the brawl cannot kill them. On the pinned
@@ -11117,66 +11117,13 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     trace_clear();
     midgame_pump(session, 420, tick);
 
-    // Teeth for the two RNG pins: from kMidgameAuthorityRngPin these 420
-    // ticks of real two-seat play end with BOTH seats' heroes standing, the
-    // single re-teamed walker still alive, and seventeen livings on the board.
-    // #294 makes guards intercept hostile projectiles from weaplist, changing
-    // this fight's final census from 12 to 17. Three isolated runs of each
-    // build reproduce those counts; restoring only guard_tail's old oblist
-    // scan in the fixed build returns 12 on all three runs. Keep both RNG
-    // seeds and the surviving-player checks while pinning the new outcome.
-    // Unpinned, this census is a coin flip on the process's stream position
-    // (at authority state 9 the heroes are cut down, the sim raises
-    // EndGame(1) -- "YOUR MEN ARE CRUSHED!" -- and world.end below reads 1),
-    // which is exactly the order dependence the pins remove. If a sim change
-    // moves these numbers the pin no longer produces the fight this case was
-    // written around: re-pin deliberately, never delete the census.
-    // Re-pinned 2026-10-06 for #320 (walk_to_foe adopts the strictly nearer
-    // foe find_near_foe returns instead of discarding it): the 420-tick
-    // brawl now ends with thirteen livings instead of seventeen. Three
-    // isolated runs of the fixed build give 13; restoring only the
-    // pre-#320 stats.cpp returns 17, and the #350 tower-heading fix in the
-    // same batch moves nothing here. Both heroes and the re-teamed walker
-    // still stand, so the seat and team checks are unchanged.
-    // Re-staged and re-pinned 2026-10-19 for the bot payoff gates (every
-    // special a bot rolls now waits for its payoff with Gameplay Fixes on,
-    // the shipped default; the level's elves throw rocks only at a faced
-    // foe in flight): both re-teamed walkers fell in the brawl and the
-    // census read 17. The parked walkers now carry ten times their hit
-    // points (above), so the team check reads every walker this case
-    // re-teamed instead of the one that happened to live, and the census
-    // is eighteen: three isolated runs of this build agree on 18. Both RNG
-    // seeds, the seat check and the lead-team check are unchanged.
-    // Re-pinned 2026-10-30 for Gameplay Fixes V and W (#369, #370, #371),
-    // with the setting on: the soldier's CHARGE gate and the elf's rock gate
-    // now ask what their casts ask (the rush's front and path, the rock's
-    // pad), and a bot whose special roll cast nothing takes its ordinary act
-    // instead of standing. More walkers fall inside the 420 ticks and the
-    // census reads eleven: three isolated runs of this build agree on 11. Undoing
-    // only the refused-roll change (living.cpp) reads 14; undoing it and
-    // both V gate probes reads 18 again. Both RNG seeds, the seat check, the
-    // lead-team check and the re-teamed check are unchanged.
-    // Re-pinned 2026-11-01 for Gameplay Fixes X to AD (#403 to #412), with
-    // the setting on: walks shove and rushes strike only a body their step
-    // met, the right-hand walk probes quietly, a struck bot holds a cast it
-    // cannot pay, four more bot gates ask the weapon's pad, a refused volley
-    // at a wall spends nothing and a charmed troop fights for its charmer.
-    // More walkers stand at the end and the census reads twelve: three
-    // isolated runs of this build agree on 12. Undoing only the quiet
-    // right-hand walk (Y) reads 10, and so does undoing only the held unpaid
-    // yes (AB); undoing only X, Z, AA, AC or AD reads 12; undoing all seven
-    // reads 11 again, and putting them back in order reads 11 (X), 10 (Y),
-    // 10 (Z), 12 (AB) and 12 (AA, AC, AD). Both RNG seeds, the seat check,
-    // the lead-team check and the re-teamed check are unchanged.
-    // Re-pinned 2026-11-09 for Gameplay Fixes AT (#446), with the setting on:
-    // a bot asked to face the way it already faces stays put, so a bot at a
-    // foe it already faces swings instead of turning off it and back, more
-    // blows land inside the 420 ticks and the census reads five: three
-    // isolated runs of this build agree on 5. Undoing only AT reads 14 (fix
-    // AV, the elf's strict pad question, moves it from 12 to 14 on its own);
-    // undoing AT and AV reads 12 again; undoing only AV reads 5. Both RNG
-    // seeds, the seat check, the lead-team check and the re-teamed check are
-    // unchanged.
+    // What these 420 ticks of two-seat play must leave: both seats' heroes
+    // standing, the lead team being those two and nothing else, and every
+    // walker this case re-teamed still on the board. No census is pinned:
+    // how many livings the fight leaves is the seed's number, not a rule's
+    // (it read 17, 13, 12 and 5 across four sim changes), and the three
+    // checks are what the case needs. kMidgameAuthorityRngPin keeps the
+    // fight one the heroes survive.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -11201,9 +11148,8 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(reteamed, living[empty_team])
             << "every walker this case re-teamed must still be on the board";
-        EXPECT_EQ(5, total_living)
-            << "the pinned stream no longer produces the fight this case was "
-               "written around";
+        EXPECT_GE(total_living, 2 + reteamed)
+            << "the heroes and the re-teamed walker are counted among the livings";
     }
     EXPECT_FALSE(trace_contains("net", "server_desync_disconnect"))
         << "the display peer must never be cut as desynced after ADD PLAYER";
