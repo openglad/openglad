@@ -2130,7 +2130,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1190, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -2153,7 +2153,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize scale. FAMILY_ROCK remains emitted and travels straight, but its per-tick step falls below the exact 800-centipixel speed pin, flipping WeaponSpeed."
@@ -2176,7 +2176,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (descriptor installed from packs/core/families/weapon-02-arrow.lua, no script movement hook) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2206,7 +2206,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2285,7 +2285,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2309,7 +2309,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost. FAMILY_SPRINKLE fires right, so its speed drops below WeaponSpeed's 900 floor and its net displacement drops below WeaponNetTravel's 2500 threshold; both trajectory predicates flip."
@@ -2388,7 +2388,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1190 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2757,7 +2757,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1810,
+    "src/gameplay/walker.cpp", 1818,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier. HAMMER fires right, so its per-tick step falls from about 922 to 460 centipixels, below WeaponSpeed's 850 floor; emission and straight-path predicates remain satisfied."
@@ -4567,10 +4567,10 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 2375,
-    "if ( current_game->world->living_count < MAXOBS &&",
-    "if ( false &&",
-    "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
+    "src/gameplay/walker.cpp", 2384,
+    "if (current_game->world->living_count < MAXOBS)",
+    "if (false && current_game->world->living_count < MAXOBS)",
+    "Disables the act_generate emission-roll block; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 27, 27) fails."
 };
 
 
@@ -5093,7 +5093,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3730,
+    "src/gameplay/walker.cpp", 3756,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -8381,7 +8381,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 2055,
+    "src/gameplay/stats.cpp", 2065,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -10535,7 +10535,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
         "consequence: the classic probe's swing takes the tower down to 93 hp"),
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1455,
+    "src/gameplay/stats.cpp", 1465,
     "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
@@ -10803,7 +10803,7 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_scen99[] = {
         "consequence: the classic run ends with the orc at (105, 118); with the setting on it ends at (97, 108)"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
-    "src/gameplay/stats.cpp", 1469,
+    "src/gameplay/stats.cpp", 1479,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = true;",
     "right_walk's probes ask quietly with the setting off too, so the probe beside the orc never eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
@@ -10817,7 +10817,7 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
         "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
-    "src/gameplay/stats.cpp", 1469,
+    "src/gameplay/stats.cpp", 1479,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = false;",
     "right_walk's probes are loud again with the setting on, so right_blocked's probe eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
@@ -10855,7 +10855,7 @@ inline constexpr FactPredicate kFacts_player_slide_potion_scen99[] = {
         "the slide's end, the same on both values: 8 px right along the tower, never up"),
 };
 inline constexpr Mutation kMut_player_slide_potion_scen99 = {
-    "src/gameplay/stats.cpp", 2497,
+    "src/gameplay/stats.cpp", 2507,
     "if (og::sim::session_gameplay_fixes() != 0",
     "if (true",
     "The slide asks each half quietly first with the setting off too, so the half up stops at the tower without eating: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
@@ -10870,7 +10870,7 @@ inline constexpr FactPredicate kFacts_player_slide_potion_fixes_scen99[] = {
         "the slide's end, the same on both values: 8 px right along the tower, never up"),
 };
 inline constexpr Mutation kMut_player_slide_potion_fixes_scen99 = {
-    "src/gameplay/stats.cpp", 2497,
+    "src/gameplay/stats.cpp", 2507,
     "if (og::sim::session_gameplay_fixes() != 0",
     "if (false",
     "The slide's halves are loud again with the setting on, so the first round's half up eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
@@ -10903,7 +10903,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_ally_scen99[] = {
         "consequence: the classic rush's strikes at the ally erase its orders and force-walk it; its AI then takes it to (194, 162), below where the fixed run's orc ends"),
 };
 inline constexpr Mutation kMut_soldier_charge_ally_scen99 = {
-    "src/gameplay/stats.cpp", 775,
+    "src/gameplay/stats.cpp", 785,
     "controller_->attack(target);",
     "(void)target;",
     "The rush never calls attack, so its damage draw is gone and the stream parts from the classic one: WalkerPositionMoved(FAMILY_BIG_ORC, 194, 162) fails."
@@ -10915,7 +10915,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_ally_fixes_scen99[] = {
         "consequence: with the setting on the rush strikes no ally, so the orc keeps its orders and ends at (200, 150), east of where the classic run's orc ends"),
 };
 inline constexpr Mutation kMut_soldier_charge_ally_fixes_scen99 = {
-    "src/gameplay/stats.cpp", 768,
+    "src/gameplay/stats.cpp", 778,
     "!controller_->is_friendly(controller_->collide_ob())",
     "true",
     "The rush strikes a friend again with the setting on (the damage draw, the erased orders, the forced walk), so the orc ends where the classic one does: WalkerPositionMoved(FAMILY_BIG_ORC, 200, 150) fails."
@@ -11242,7 +11242,7 @@ inline constexpr FactPredicate kFacts_elemental_struck_short_pool_scen99[] = {
         "consequence: on the classic stream the struck orc ends at 82 hp"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
-    "src/gameplay/stats.cpp", 1112,
+    "src/gameplay/stats.cpp", 1122,
     "&& !rng(3) )",
     "&& false )",
     "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: the orc's 82 hp (WalkerHpRangeAtFinalTick) fails.",
@@ -11369,7 +11369,7 @@ inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
         "consequence: the charmed skeleton brings the tent down and the level is won"),
 };
 inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 769,
+    "src/gameplay/walker_specials.cpp", 773,
     "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
     "return false;",
     "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
