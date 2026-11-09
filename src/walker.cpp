@@ -2579,8 +2579,16 @@ short walker::special()
 				case 2:  // flurry of arrows
 					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
 						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
+					// port of the current game's 1146c4fb (Gameplay Fixes AS, #436): a barrage at terrain refuses before it pays
+					if (myscreen->gameplay_fixes && fire_pad_answer() == 1)
+						return 0;
 					stats->magicpoints += (3*stats->weapon_cost);
-					fire();
+					// port of the current game's 1146c4fb (Gameplay Fixes AS, #436): a first arrow that cannot leave refuses; the three refunded shots are taken back
+					if (!fire() && myscreen->gameplay_fixes)
+					{
+						stats->magicpoints -= (3*stats->weapon_cost);
+						return 0;
+					}
 					fire();
 					fire();
 					busy += (fire_frequency * 2);

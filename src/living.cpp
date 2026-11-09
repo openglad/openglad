@@ -673,7 +673,8 @@ short living::check_special()
 				if (!bg_in_flight(this, foe, 8, 12, 0, 1, 0))
 					return 0;
 				if (current_special == 2)
-					return 1;
+					// port of the current game's 1146c4fb (Gameplay Fixes AS, #436): and the arrow's pad clear, an enemy weapon on it included
+					return bg_pad_clear_of_weapons(this);
 				// port of the current game's 34417c86 (Gameplay Fixes AA): and the
 				// fire arrow's own pad is clear, or the cast refuses COULD NOT FIRE
 				return bg_blast_clear(this, foe, bg_blast_reach(stats->level), true)
