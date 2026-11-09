@@ -127,6 +127,8 @@ usage:
   run_mutation_canary.sh --touched <ref>
 options:
   --plan                      print the plan and run the preflight only
+  --shard INDEX/COUNT         partition independent mutation groups after selection
+  --manifest PATH            write the complete three-shard manifest
   --report <path>             write per-row verdicts as JSON
   --changed-files-from <file> test seam: changed-file list for --touched
 EOF
@@ -313,6 +315,8 @@ selector=""
 plan_only=0
 report_path=""
 changed_files_from=""
+shard=""
+manifest_path=""
 
 while (( $# > 0 )); do
     case "$1" in
@@ -329,6 +333,12 @@ while (( $# > 0 )); do
             mode="all"
             ;;
         --plan) plan_only=1 ;;
+        --shard|--manifest)
+            option="$1"
+            shift
+            [[ $# -gt 0 ]] || { usage; exit 2; }
+            if [[ "$option" == "--shard" ]]; then shard="$1"; else manifest_path="$1"; fi
+            ;;
         --report)
             shift
             [[ $# -gt 0 ]] || { usage; exit 2; }
@@ -384,6 +394,8 @@ case "${mode}" in
         ;;
 esac
 
+[[ -z "$shard" ]] || plan_args+=(--shard "$shard")
+[[ -z "$manifest_path" ]] || plan_args+=(--manifest "$manifest_path")
 PLAN_DIR="${TMPDIR_CANARY}/plan"
 plan_rc=0
 python3 "${PLAN_TOOL}" "${plan_args[@]}" --emit records --out "${PLAN_DIR}" \
@@ -439,8 +451,8 @@ fi
 
 # Scenario fixtures. Most rows load scen/scen1.fss, which the harness serves
 # from the gladiator campaign it mounts (campaigns/gladiator/scen/scen1.fss).
-# The scen99 rows read temp/scen/scen99.fss, which og_test_level PRODUCES and
-# exports into the checkout. A missing one turns every capture into an
+# The scen99 rows read temp/scen/scen99.fss, installed by the scenario99 CTest
+# fixture or tests/fixtures/scenario99.py. A missing one turns every capture into an
 # environment abort, one row at a time, with nothing saying why.
 while IFS= read -r fixture; do
     [[ -z "${fixture}" ]] && continue
@@ -454,7 +466,7 @@ while IFS= read -r fixture; do
 canary: scenario fixture ${fixture} is missing (looked for ${fixture},
 scen/${base}, temp/scen/${base} and campaigns/gladiator/${fixture} under
 ${REPO_ROOT}).
-run ctest -R ^og_test_level$ first — that suite produces temp/scen/scen99.fss.
+run python3 tests/fixtures/scenario99.py setup "$REPO_ROOT" first.
 EOF
     exit 7
 done < "${PLAN_DIR}/fixtures"

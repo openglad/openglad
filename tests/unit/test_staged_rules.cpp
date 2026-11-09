@@ -381,7 +381,6 @@ constexpr int kKnobStrong = og::sim::kFillStrong;    // 3
 constexpr int kKnobBrutal = og::sim::kFillBrutal;    // 4
 
 // The MAP UNITS box scale (lobby_state.h kMapUnits*).
-constexpr int kBoxOn = og::sim::kMapUnitsOn;    // 0
 constexpr int kBoxOff = og::sim::kMapUnitsOff;  // 1
 
 }  // namespace

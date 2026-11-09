@@ -32,9 +32,12 @@
 // populated via TEST(Parity, ...) in test_parity_scenarios.cpp. We
 // cannot mix TEST() and TEST_F() with the same suite name, so the
 // fixture-style "build the observed union once" pattern is replicated
-// here by a function-local static lazily populated on first read.
+// here by a function-local static lazily populated on first read. CTest
+// collects four disjoint partitions first; direct binary runs replay the
+// census in this process. Both routes use the same observations and gates.
 
 #include "coverage_targets.h"
+#include "coverage_census.h"
 #include "fact_predicate.h"
 #include "golden_evaluation_helper.h"
 #include "parity_runner.h"
@@ -46,6 +49,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -59,48 +63,11 @@
 
 namespace {
 
-struct ObservedUnion
-{
-    og::parity::CoverageObservation obs;
-    std::uint64_t                    exercises = 0;
-    // Rows whose level file never loaded. A stub run still contributes a
-    // (tiny) coverage observation and still serialises as valid JSON, so
-    // without this a broken PhysFS bootstrap reads as mass coverage loss
-    // scattered across every gate below instead of one clear message.
-    std::vector<std::string>         unloaded;
-};
+using og::parity::census::ObservedUnion;
 
 const ObservedUnion& observed_union()
 {
-    static const ObservedUnion built = []() {
-        ObservedUnion u;
-        for (const auto& spec : og::parity::kScenarios)
-        {
-            const og::parity::RunOutcome out = og::parity::run_scenario(spec);
-            // Same exemption as test_parity_scenarios: the four scen9301 rows
-            // deliberately point at a header-only fixture and build their
-            // arena from floor paints + spawns. Not the branch-internal set —
-            // treasure_exit_open_prompt_scen99 is in that one and loads a real
-            // level.
-            if (!out.loaded && !og::parity::builds_its_own_arena(spec))
-                u.unloaded.emplace_back(spec.id);
-            const auto& c = out.coverage;
-            u.obs.walker_families.insert(c.walker_families.begin(),
-                                          c.walker_families.end());
-            u.obs.weapon_families.insert(c.weapon_families.begin(),
-                                          c.weapon_families.end());
-            u.obs.treasure_families.insert(c.treasure_families.begin(),
-                                            c.treasure_families.end());
-            u.obs.generator_families.insert(c.generator_families.begin(),
-                                             c.generator_families.end());
-            u.obs.effect_families.insert(c.effect_families.begin(),
-                                          c.effect_families.end());
-            u.obs.event_kinds.insert(c.event_kinds.begin(),
-                                      c.event_kinds.end());
-            u.exercises |= static_cast<std::uint64_t>(spec.exercises);
-        }
-        return u;
-    }();
+    static const ObservedUnion built = og::parity::census::collect();
     return built;
 }
 
@@ -1303,4 +1270,118 @@ TEST(Parity, every_table_row_has_a_named_parity_test)
     orphan_report << "  Delete the macro line, or restore the row in "
                      "tests/parity/scenario_table.h.";
     EXPECT_TRUE(orphans.empty()) << orphan_report.str();
+}
+
+namespace {
+
+struct CensusRecordFixture
+{
+    std::filesystem::path directory;
+    std::string unloaded;
+
+    CensusRecordFixture()
+    {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        directory = std::filesystem::temp_directory_path()
+            / ("openglad-census-contract-" + std::to_string(stamp));
+        og::parity::census::require(std::filesystem::create_directory(directory),
+                                   "cannot create contract fixture");
+        reset();
+    }
+    ~CensusRecordFixture()
+    {
+        std::error_code ignored;
+        std::filesystem::remove_all(directory, ignored);
+    }
+    void reset()
+    {
+        using namespace og::parity;
+        unloaded.clear();
+        std::ofstream(directory / "nonce") << "0123456789abcdef0123456789abcdef\n";
+        for (std::size_t part = 0; part < census::kPartitions; ++part)
+        {
+            std::ofstream output(census::partition_path(directory, part));
+            output << "OG_CENSUS_1 0123456789abcdef0123456789abcdef " << part
+                   << ' ' << census::kPartitions << '\n';
+            std::size_t rows = 0;
+            for (std::size_t i = part; i < std::size(kScenarios); i += census::kPartitions)
+            {
+                const auto& spec = kScenarios[i];
+                const bool loaded = !unloaded.empty() || builds_its_own_arena(spec);
+                if (!loaded) unloaded = spec.id;
+                output << std::quoted(std::string(spec.id)) << ' ' << loaded << ' '
+                       << static_cast<std::uint64_t>(spec.exercises) << '\n';
+                CoverageObservation observation;
+                observation.walker_families = {101 + static_cast<std::int32_t>(part)};
+                observation.weapon_families = {202 + static_cast<std::int32_t>(part)};
+                observation.treasure_families = {303 + static_cast<std::int32_t>(part)};
+                observation.generator_families = {404 + static_cast<std::int32_t>(part)};
+                observation.effect_families = {505 + static_cast<std::int32_t>(part)};
+                observation.event_kinds = {"event " + std::to_string(part) + " with \"quotes\""};
+                census::write_observation(output, observation);
+                ++rows;
+            }
+            output << "END " << rows << '\n';
+        }
+    }
+    void replace_first(const std::string& from, const std::string& to)
+    {
+        const auto path = og::parity::census::partition_path(directory, 0);
+        std::ifstream input(path);
+        std::string content((std::istreambuf_iterator<char>(input)), {});
+        const auto at = content.find(from);
+        og::parity::census::require(at != std::string::npos, "contract mutation anchor missing");
+        content.replace(at, from.size(), to);
+        std::ofstream(path) << content;
+    }
+};
+
+} // namespace
+
+TEST(ParityCensusPersistence, preserves_every_observation_category_and_unloaded_identity)
+{
+    CensusRecordFixture fixture;
+    const auto result = og::parity::census::read_partitions(fixture.directory);
+    EXPECT_EQ((std::set<std::int32_t>{101, 102, 103, 104}), result.obs.walker_families);
+    EXPECT_EQ((std::set<std::int32_t>{202, 203, 204, 205}), result.obs.weapon_families);
+    EXPECT_EQ((std::set<std::int32_t>{303, 304, 305, 306}), result.obs.treasure_families);
+    EXPECT_EQ((std::set<std::int32_t>{404, 405, 406, 407}), result.obs.generator_families);
+    EXPECT_EQ((std::set<std::int32_t>{505, 506, 507, 508}), result.obs.effect_families);
+    EXPECT_EQ((std::set<std::string>{"event 0 with \"quotes\"", "event 1 with \"quotes\"",
+                                       "event 2 with \"quotes\"", "event 3 with \"quotes\""}), result.obs.event_kinds);
+    EXPECT_EQ((std::vector<std::string>{fixture.unloaded}), result.unloaded);
+    std::uint64_t exercises = 0;
+    for (const auto& spec : og::parity::kScenarios)
+        exercises |= static_cast<std::uint64_t>(spec.exercises);
+    EXPECT_EQ(exercises, result.exercises);
+}
+
+TEST(ParityCensusPersistence, rejects_missing_stale_duplicate_and_unexpected_records)
+{
+    using namespace og::parity::census;
+    CensusRecordFixture fixture;
+    std::filesystem::remove(partition_path(fixture.directory, 2));
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    fixture.replace_first("0123456789abcdef0123456789abcdef", "ffffffffffffffffffffffffffffffff");
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    fixture.replace_first(" 0 4\n", " 1 4\n");
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    fixture.replace_first(std::string(og::parity::kScenarios[0].id), "unexpected-scenario");
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    fixture.replace_first("1 101\n", "2 101 101\n");
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    fixture.replace_first("END ", "END 0 ");
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    std::ofstream(partition_path(fixture.directory, 0), std::ios::app) << "unexpected-record\n";
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
+    fixture.reset();
+    const auto path = partition_path(fixture.directory, 0);
+    std::filesystem::resize_file(path, std::filesystem::file_size(path) - 10);
+    EXPECT_THROW(read_partitions(fixture.directory), std::runtime_error);
 }

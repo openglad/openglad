@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/company.h>
+#include "company_clock_state.h"
 
 #include <openglad/core/campaign_ids.h>
 #include <openglad/core/util.h>
@@ -41,6 +42,14 @@
 
 namespace og::data {
 
+namespace detail {
+std::optional<std::int64_t>& company_clock_override()
+{
+    static std::optional<std::int64_t> fixed_now_s;
+    return fixed_now_s;
+}
+} // namespace detail
+
 namespace {
 
 constexpr std::string_view kNetsessionSlot = "netsession";
@@ -48,11 +57,6 @@ constexpr std::string_view kDefaultCompanySlot = "save0";
 constexpr std::size_t kMaxCompanySlugLength = 40;
 constexpr std::size_t kMaxVirtualBasenameLength = 64;
 
-std::optional<std::int64_t>& company_clock_override()
-{
-    static std::optional<std::int64_t> fixed_now_s;
-    return fixed_now_s;
-}
 
 std::string& active_company_slot_state()
 {
@@ -70,7 +74,7 @@ bool ends_with(std::string_view text, std::string_view suffix)
 
 std::int64_t company_clock_now_s()
 {
-    const auto& fixed = company_clock_override();
+    const auto& fixed = detail::company_clock_override();
     if (fixed.has_value())
         return *fixed;
     return std::chrono::duration_cast<std::chrono::seconds>(
@@ -78,10 +82,6 @@ std::int64_t company_clock_now_s()
         .count();
 }
 
-void set_company_clock_for_tests(std::optional<std::int64_t> fixed_now_s)
-{
-    company_clock_override() = fixed_now_s;
-}
 
 // ---------------------------------------------------------------------------
 // Active-company indirection (§3.4)

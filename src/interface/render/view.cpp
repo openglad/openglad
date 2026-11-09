@@ -1828,17 +1828,7 @@ unsigned char compute_mp_color(float mp, float maxmp)
 }
 
 #ifdef TESTING
-namespace
-{
-// One-shot pass budget for the compiled-out wait loop: view_team consumes it
-// to drive the poll callback exactly like real wait passes would.
-int s_view_team_testing_poll_passes = 0;
-} // namespace
-
-void view_team_testing_set_poll_passes(int passes)
-{
-	s_view_team_testing_poll_passes = passes;
-}
+#include "../../../tests/coverage_internal/view_team_observers.inc"
 #endif
 
 void viewscreen::view_team(KeyWaitPollCallback poll)
@@ -2020,3 +2010,7 @@ short options::load(viewscreen *viewp)
 
 options::~options()
 {}
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/view_glide_observers.inc"
+#endif

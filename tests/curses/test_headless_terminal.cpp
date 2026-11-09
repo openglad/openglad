@@ -1,7 +1,7 @@
 /* Unit tests for the HeadlessTerminal test double. */
 #include <gtest/gtest.h>
 
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include "transcript_capture.h"
 

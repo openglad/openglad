@@ -2096,54 +2096,45 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
 
 TEST(CoverageMisc, final_r16_smooth_targeted_grass_and_dark_variants)
 {
-    SeqRandom seq{1, 2, 0, 1, 0, 3};
-    GameContext gc;
-    gc.rng = &seq;
-    push_test_context(&gc);
-
+    // The complete shoreline and random-variant matrices live in
+    // coverage_r17_smooth_grass_water_and_dark_variants. This case owns the
+    // near miss: a missing corner diagonal must not manufacture a shoreline.
+    SeqRandom seq{0};
     smoother s;
-    PixieData pd;
-    pd.frames = 1;
-    pd.w = 5;
-    pd.h = 5;
-    pd.data = std::make_unique<unsigned char[]>(25);
-    for (int i = 0; i < 25; ++i)
-        pd.data[static_cast<std::size_t>(i)] = PIX_GRASS1;
+    s.set_rng(&seq);
+    PixieData pd(1, 9, 9, new unsigned char[81]);
+    std::fill_n(pd.data.get(), 81, PIX_GRASS1);
+    const auto set_at = [](PixieData& grid, int tx, int ty, unsigned char tile) {
+        grid.data[static_cast<std::size_t>(tx + ty * grid.w)] = tile;
+    };
     s.set_target(pd);
+    constexpr int x = 4;
+    constexpr int y = 4;
+    set_at(pd, x - 1, y - 1, PIX_WATER1);
+    set_at(pd, x - 1, y + 1, PIX_WATER1);
+    set_at(pd, x, y - 1, PIX_WATER1);
+    set_at(pd, x - 1, y, PIX_WATER1);
+    set_at(pd, x + 1, y + 1, PIX_WATER1);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS1, s.query_x_y(x, y))
+        << "the missing upper-right diagonal leaves ordinary grass";
 
-    const int x = 2;
-    const int y = 2;
+    set_at(pd, x + 1, y - 1, PIX_WATER1);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASSWATER_UL, s.query_x_y(x, y))
+        << "adding the missing diagonal completes the upper-left shoreline";
 
-    // Trigger TYPE_GRASS random cases 1 and 2.
-    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x + 1 + y * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x + (y + 1) * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x - 1 + y * pd.w)] = PIX_GRASS1;
-    ASSERT_TRUE(s.smooth(x, y) == 1);
-    ASSERT_TRUE(s.query_x_y(x, y) == PIX_GRASS2);
-    ASSERT_TRUE(s.smooth(x, y) == 1);
-    ASSERT_TRUE(s.query_x_y(x, y) == PIX_GRASS3);
-
-    // Trigger explicit water-corner conversions.
-    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x - 1 + (y - 1) * pd.w)] = PIX_WATER1;
-    pd.data[static_cast<std::size_t>(x - 1 + (y + 1) * pd.w)] = PIX_WATER1;
-    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_WATER1;
-    pd.data[static_cast<std::size_t>(x - 1 + y * pd.w)] = PIX_WATER1;
-    pd.data[static_cast<std::size_t>(x + 1 + (y + 1) * pd.w)] = PIX_WATER1;
-    ASSERT_TRUE(s.smooth(x, y) == 1);
-    const Sint32 g = s.query_x_y(x, y);
-    ASSERT_TRUE(g > 0);
-
-    pd.data[static_cast<std::size_t>(x + y * pd.w)] = PIX_GRASS_DARK_1;
-    pd.data[static_cast<std::size_t>(x + (y + 1) * pd.w)] = PIX_GRASS1;
-    pd.data[static_cast<std::size_t>(x + (y - 1) * pd.w)] = PIX_WALL3;
-    ASSERT_TRUE(s.smooth(x, y) == 1);
-    const Sint32 d = s.query_x_y(x, y);
-    ASSERT_TRUE(d > 0);
-
-    pop_test_context();
+    // A wall above alone does not cast the bottom-middle shadow: that needs
+    // a caster at upper-left too. Keep the original wall/grass near miss.
+    set_at(pd, x, y, PIX_GRASS_DARK_1);
+    set_at(pd, x, y + 1, PIX_GRASS1);
+    set_at(pd, x, y - 1, PIX_WALL3);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS_DARK_1, s.query_x_y(x, y));
+    set_at(pd, x - 1, y - 1, PIX_WALL3);
+    ASSERT_EQ(1, s.smooth(x, y));
+    EXPECT_EQ(PIX_GRASS_RUBBLE, s.query_x_y(x, y))
+        << "two casters over grass enable the zero-draw rubble shadow";
 }
 
 TEST(CoverageMisc, final_r16_stats_walker_level_data_and_picker_state)

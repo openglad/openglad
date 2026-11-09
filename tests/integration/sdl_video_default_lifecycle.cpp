@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <vector>
 
+bool verify_production_game_frame();
+
 namespace {
 
 bool require(bool condition, const char* message)
@@ -235,6 +237,7 @@ int main(int argc, char* argv[])
                       "explicit Borderless constructor releases its Screen");
         ok &= require(SDL_WasInit(SDL_INIT_VIDEO) == 0,
                       "explicit Borderless constructor balances SDL lifecycle");
+        ok &= verify_production_game_frame();
         io_exit();
     }
     catch (const std::exception& ex)

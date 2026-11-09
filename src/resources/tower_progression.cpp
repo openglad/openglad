@@ -71,7 +71,9 @@ std::uint32_t draw_run_seed()
         *current_game->session_rng_ref != nullptr)
     {
         IRandom& rng = **current_game->session_rng_ref;
-        return (rng.next(0x10000u) << 16) | rng.next(0x10000u);
+        const std::uint32_t high = rng.next(0x10000u);
+        const std::uint32_t low = rng.next(0x10000u);
+        return (high << 16) | low;
     }
     std::random_device rd;
     return static_cast<std::uint32_t>(rd());

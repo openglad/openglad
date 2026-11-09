@@ -3,72 +3,118 @@ name: Fuzz Testing
 on:
   pull_request:
   schedule:
-    # Nightly at 03:00 UTC
     - cron: '0 3 * * *'
-
-env:
-  # Disable leak detection: SDL has known benign leaks that would
-  # cause false positives in fuzz runs.
-  ASAN_OPTIONS: detect_leaks=0
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: nix develop .#ci-fuzz --command bash -e {0}
+
 jobs:
-  fuzz:
-    name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
+  build:
+    name: Build production fuzz targets once
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 20 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: fuzz_scenario
-            corpus: tests/fuzz/corpus/scenario
-          - target: fuzz_savefile
-            corpus: tests/fuzz/corpus/savefile
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Install dependencies
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Key immutable compiled output by exact derivation
+        id: nar-key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build clang libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+          drv="$(nix eval --raw .#packages.x86_64-linux.ci-fuzz.drvPath)"
+          drv_basename="${drv##*/}"
+          drv_hash="${drv_basename%%-*}"
+          echo "key=native-nar-v1-${{ runner.os }}-fuzz-${drv_hash}" >> "$GITHUB_OUTPUT"
+      - name: Restore exact compiled NAR closure
+        id: nar-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          key: ci-fuzz-${{ matrix.target }}
-
-      - name: Configure (ci-fuzz preset)
-        run: cmake --preset ci-fuzz -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build ${{ matrix.target }}
-        run: cmake --build --preset ci-fuzz --target ${{ matrix.target }} -j"$(nproc)"
-
-      - name: Create crash artifact directory
-        run: mkdir -p fuzz/crashes
-
-      - name: Run ${{ matrix.target }}
-        timeout-minutes: 5
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+      - name: Import exact cached output before realizing current source
+        if: steps.nar-cache.outputs.cache-hit == 'true'
+        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
+      - name: Build and export instrumented game and both harnesses
         run: |
-          # Keep each fuzz target bounded so PR verification remains fast and
-          # deterministic. The outer `timeout` is a hard cap; max_total_time
-          # controls libFuzzer's own execution budget.
-          DURATION=240
-          timeout 295s ./build/ci-fuzz/${{ matrix.target }} \
-            ${{ matrix.corpus }} \
-            -max_total_time=$DURATION \
-            -timeout=15 \
-            -artifact_prefix=fuzz/crashes/${{ matrix.target }}_ \
-            -print_final_stats=1
-
-      - name: Upload crash artifacts
-        if: failure()
+          which cmake c++
+          realization_started="$(date +%s)"
+          nix build .#ci-fuzz --out-link build/bundle-fuzz --cores 3
+          realization_seconds="$(( $(date +%s) - realization_started ))"
+          echo "Nix fuzz realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-fuzz --cache build/nix-cache
+          python3 scripts/ci/sanitizer_diagnostics.py --lane fuzz --binary build/bundle-fuzz/build/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
+          python3 -m unittest discover -s scripts/fuzz -p 'test_*.py' -v
+          python3 scripts/ci/nix_bundle_test.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-bundle
+          path: build/nix-cache/
+          compression-level: 0
+          if-no-files-found: error
+      - name: Cache successful producer output for exact-derivation reruns
+        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+  fuzz:
+    name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'short' }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'schedule' && 50 || 15 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [scenario, savefile]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: fuzz-bundle
+          path: build/nix-cache
+      - name: Restore compiled artifacts without a store copy
+        run: |
+          python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/fuzz-corpus/${{ matrix.target }}
+          key: fuzz-corpus-v2-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-v2-${{ matrix.target }}-
+      - name: Replay every seed, then explore production parser branches
+        env:
+          FUZZ_SECONDS: ${{ github.event_name == 'schedule' && '1800' || '120' }}
+          FUZZ_SEED: ${{ github.event_name == 'schedule' && github.run_number || '1' }}
+          FUZZ_NIGHTLY: ${{ github.event_name == 'schedule' && 'yes' || 'no' }}
+        run: |
+          extra=()
+          if [[ "$FUZZ_NIGHTLY" == yes ]]; then extra+=(--minimize); fi
+          python3 scripts/fuzz/run.py --target '${{ matrix.target }}' \
+            --output 'build/fuzz-results/${{ matrix.target }}' \
+            --corpus 'build/fuzz-corpus/${{ matrix.target }}' \
+            --seconds "$FUZZ_SECONDS" --seed "$FUZZ_SEED" "${extra[@]}"
+      - name: Persist only successful nightly minimized corpora
+        if: success() && github.event_name == 'schedule'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/fuzz-corpus/${{ matrix.target }}
+          key: fuzz-corpus-v2-${{ matrix.target }}-${{ github.run_id }}
+      - name: Retain logs, generated seeds, statistics, and crash reproducers
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: fuzz-crashes-${{ matrix.target }}-${{ github.event_name }}
-          path: fuzz/crashes/
-          if-no-files-found: ignore
+          name: fuzz-evidence-${{ matrix.target }}
+          path: build/fuzz-results/${{ matrix.target }}/
+          if-no-files-found: error
+          compression-level: 0

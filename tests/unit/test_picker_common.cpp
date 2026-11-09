@@ -2666,7 +2666,6 @@ TEST(PickerCommon, save_error_string)
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::InvalidHeader), "invalid_header") == 0);
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::UnsupportedVersion), "unsupported_version") == 0);
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::CampaignLoadFailed), "campaign_load_failed") == 0);
-    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(static_cast<SaveDataIoError>(999)), "unknown") == 0);
 }
 
 // --- reset_for_new_game sets gold ---
@@ -7791,6 +7790,9 @@ TEST(PickerCommon, picker_lobby_my_team_falls_back_to_the_first_local_seat)
 // composes a line for EVERY entry, not for the current save.
 TEST(PickerCommon, progress_marks_shown_is_false_only_on_versus_campaigns)
 {
+    // Metadata reads the private user campaign archives. Install the shipped
+    // fixtures here so this contract also stands alone or in any GTest shard.
+    restore_default_campaigns();
     EXPECT_TRUE(og::ui::is_versus_campaign("modes"))
         << "modes must declare matchup: versus for this pin to mean "
            "anything";

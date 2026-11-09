@@ -38,7 +38,9 @@
 
 #include "westlands_sim_fixture.h"
 
+#include <cstddef>
 #include <cstdio>
+#include <iterator>
 #include <cstdlib>
 
 namespace {
@@ -141,26 +143,17 @@ int survivors_at_600(std::uint32_t run_seed, int floor_number, int crew_level)
 
 } // namespace
 
-TEST(TowerCalibration,
-     curve_floors_generate_field_an_army_and_fight_at_600_ticks)
+// Each original curve row still runs once with the same seed/ticks and
+// assertions. Separate cases bound instrumentation cost without a sanitizer
+// skip; the original semantic test ID owns partition zero.
+namespace {
+void check_curve_partition(std::size_t partition)
 {
-    // Skipped under ThreadSanitizer and AddressSanitizer for job budget,
-    // like the Westlands suite (see the identical block in
-    // test_westlands_calibration.cpp for the accounting).
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
-                    "lanes; skipped under TSan and ASan (job budget)";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
-                    "lanes; skipped under TSan and ASan (job budget)";
-#endif
-#endif
-
     const bool measure = std::getenv("TOWER_CALIBRATION_MEASURE") != nullptr;
 
-    for (const CurveFloor& fl : kFloors)
+    for (std::size_t index = partition; index < std::size(kFloors); index += 4)
     {
+        const CurveFloor& fl = kFloors[index];
         SCOPED_TRACE("floor " + std::to_string(fl.floor_number) +
                      " at crew level " + std::to_string(fl.crew_level));
         if (measure)
@@ -199,4 +192,25 @@ TEST(TowerCalibration,
         }
     }
     prune_all_floors();
+}
+} // namespace
+
+TEST(TowerCalibration, curve_floors_generate_field_an_army_and_fight_at_600_ticks)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(0));
+}
+
+TEST(TowerCalibration, curve_floors_generate_field_an_army_and_fight_at_600_ticks_part_1)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(1));
+}
+
+TEST(TowerCalibration, curve_floors_generate_field_an_army_and_fight_at_600_ticks_part_2)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(2));
+}
+
+TEST(TowerCalibration, curve_floors_generate_field_an_army_and_fight_at_600_ticks_part_3)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(3));
 }

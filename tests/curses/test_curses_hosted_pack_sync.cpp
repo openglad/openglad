@@ -8,11 +8,12 @@
  * lobby downloading a pack for a campaign nobody is playing (and, before the
  * session-end seam, keep it mounted for the rest of the process).
  */
+#include "fake_clock.h"
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/clock.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/net_transport_inprocess.h>

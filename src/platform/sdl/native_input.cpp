@@ -508,17 +508,7 @@ int num_joysticks()
 }
 
 #ifdef TESTING
-namespace
-{
-// Bit i = "device i enumerates but its node will not open" (the udev
-// permission case). See set_joystick_open_failure_mask.
-unsigned int g_joystick_open_failure_mask = 0;
-}
-
-void set_joystick_open_failure_mask(unsigned int mask)
-{
-    g_joystick_open_failure_mask = mask;
-}
+#include "../../../tests/coverage_internal/native_joystick_observers.inc"
 #endif
 
 JoystickHandle joystick_open(int index)
@@ -608,27 +598,7 @@ void joystick_init_subsystem()
 }
 
 #ifdef TESTING
-namespace
-{
-std::atomic<unsigned long> g_yield_count{0};
-}
-
-unsigned long yield_count()
-{
-    return g_yield_count.load(std::memory_order_relaxed);
-}
-
-namespace
-{
-// Atomic mirror of s_text_input_active for cross-thread readers (injector
-// threads). The production flag itself is untouched.
-std::atomic<bool> g_testing_text_input_active{false};
-}
-
-bool text_input_is_active()
-{
-    return g_testing_text_input_active.load(std::memory_order_acquire);
-}
+#include "../../../tests/coverage_internal/native_input_observers.inc"
 #endif
 
 void sleep_ms(int ms)
@@ -706,10 +676,7 @@ void set_mission_keyboard_grab(bool grab)
 }
 
 #ifdef TESTING
-bool testing_keyboard_grab_requested()
-{
-    return g_testing_keyboard_grab_requested.load(std::memory_order_acquire);
-}
+#include "../../../tests/coverage_internal/native_grab_observers.inc"
 #endif
 
 void start_text_input(const char* initial_value, int max_bytes,

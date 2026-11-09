@@ -118,24 +118,13 @@ Cast turn_undead(walker* cleric)
     return c;
 }
 
-// Whether the cleric wins turn_undead's roll `next(bound) > next(level * 10)`
-// from `seed`. C++ leaves the order of the two draws to the compiler, so
-// `cleric_first` says which operand draws first.
-bool roll_wins(std::uint32_t seed, std::uint32_t bound, std::uint32_t resist,
-               bool cleric_first)
+// Whether the cleric wins from `seed`. The caster draw is first by contract.
+bool roll_wins(std::uint32_t seed, std::uint32_t bound, std::uint32_t resist)
 {
     og::sim::SimRandom probe(seed);
-    const std::uint32_t first = probe.next(cleric_first ? bound : resist);
-    const std::uint32_t second = probe.next(cleric_first ? resist : bound);
-    return cleric_first ? first > second : second > first;
-}
-
-// The same answer whichever operand draws first.
-bool roll_wins_either_order(std::uint32_t seed, std::uint32_t bound,
-                            std::uint32_t resist, bool want)
-{
-    return roll_wins(seed, bound, resist, true) == want &&
-           roll_wins(seed, bound, resist, false) == want;
+    const std::uint32_t caster = probe.next(bound);
+    const std::uint32_t victim = probe.next(resist);
+    return caster > victim;
 }
 
 class GameplayFixesCleric : public ::testing::Test {
@@ -238,8 +227,8 @@ TEST_F(GameplayFixesCleric, turn_undead_refuses_without_undead_when_on)
 TEST_F(GameplayFixesCleric, turn_undead_roll_keeps_the_classic_strength)
 {
     std::uint32_t start = 1;
-    while (!roll_wins_either_order(start, 800, 100, false) ||
-           !roll_wins_either_order(start, 2400, 100, true))
+    while (roll_wins(start, 800, 100) ||
+           !roll_wins(start, 2400, 100))
         ++start;
     og::sim::SimRandom two_draws(start);
     (void)two_draws.next(800);

@@ -461,8 +461,8 @@ TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
     // index on failure), so pinning the count catches a helper that bailed
     // out early as well as one that failed a check. The literal moves only
     // when a check is deliberately added or removed.
-    EXPECT_EQ(35, help_testing_exercise_internal_paths())
-        << "all 35 loader/composer/tab/bounds checks must run and pass";
+    EXPECT_EQ(34, help_testing_exercise_internal_paths())
+        << "all 34 loader/composer/tab/bounds checks must run and pass";
 }
 
 // #168: the engine-hook exerciser — the null-state (bare-sweep) shape, tab

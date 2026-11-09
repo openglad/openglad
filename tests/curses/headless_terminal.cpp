@@ -5,7 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include <openglad/platform/curses/text_util.h>
 

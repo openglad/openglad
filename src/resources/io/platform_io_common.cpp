@@ -133,10 +133,7 @@ std::string get_mounted_campaign()
 }
 
 #ifdef TESTING
-void set_mounted_campaign_for_testing(const std::string& id)
-{
-    mounted_campaign_state() = id;
-}
+#include "../../../tests/coverage_internal/mounted_campaign_observers.inc"
 #endif
 
 namespace {

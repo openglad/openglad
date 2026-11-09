@@ -154,13 +154,6 @@ WakeResult observe_attack(GameWorld& world, walker* subject, walker* victim)
 
 TEST_F(ImaginationsTwitchers, no_living_jams_against_the_moat)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     LoadedWestlandsLevel fx(1, 42u);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
@@ -304,13 +297,6 @@ TEST_F(ImaginationsTwitchers, no_living_jams_against_the_moat)
 // screenshot: the player's unit beside a posted guard in open field.
 TEST_F(ImaginationsTwitchers, posted_hostiles_wake_and_attack_adjacent_enemy)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     // (1) PLACED SENTRIES, one per garrison art: a causeway head, the
     // bailey orc and archer, and an immobile watchtower (which cannot
     // close and must therefore land arrows — its walkstep is a turn).
@@ -446,13 +432,6 @@ TEST_F(ImaginationsTwitchers, posted_hostiles_wake_and_attack_adjacent_enemy)
 // damage within the wake window WITHOUT ever leaving ACT_GUARD.
 TEST_F(ImaginationsTwitchers, hold_post_guard_fires_on_adjacent_east_enemy)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     LoadedWestlandsLevel fx(1, 42u);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
@@ -482,13 +461,6 @@ TEST_F(ImaginationsTwitchers, hold_post_guard_fires_on_adjacent_east_enemy)
 // mod-50 tick, freezing the player's own character on the beach.
 TEST_F(ImaginationsTwitchers, company_members_are_never_reposted)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     LoadedWestlandsLevel fx(1, 42u);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
@@ -537,13 +509,6 @@ constexpr float kWallEngageRange = 2.5f * 16.0f;
 
 TEST_F(ImaginationsTwitchers, no_faerie_jams_against_the_castle_walls)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     LoadedWestlandsLevel fx(2, 42u);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
@@ -647,13 +612,6 @@ TEST_F(ImaginationsTwitchers, no_faerie_jams_against_the_castle_walls)
 // script drives him there; he has no foe within reach by design).
 TEST_F(ImaginationsTwitchers, no_raider_jams_against_the_asteroid_castle)
 {
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
-#endif
-#endif
     LoadedWestlandsLevel fx(3, 42u);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();

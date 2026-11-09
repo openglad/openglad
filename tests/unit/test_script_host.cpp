@@ -16,7 +16,7 @@
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/pack_scripts.h>
-#include <openglad/gameplay/script/script_coverage.h>
+#include "../support/script_coverage.h"
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
@@ -1466,6 +1466,42 @@ TEST(ScriptCoverage, sha256_matches_the_published_test_vectors)
             "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"));
 }
 
+TEST(ScriptCoverage, equal_source_bytes_keep_distinct_labels_and_refresh_only_their_origin)
+{
+    cov::ScopedRecording recording;
+    const std::string source = "local value = 7\nreturn value\n";
+    const std::string changed = "local value = 8\nreturn value\n";
+    const std::string first = "packs/identity/scripts/a.lua";
+    const std::string second = "packs/identity/scripts/b.lua";
+    cov::declare_pack_source(first, source, "first-origin");
+    cov::declare_pack_source(second, source, "second-origin");
+    cov::declare_pack_source(first, source, "updated-origin");
+    ScriptHost host;
+    ASSERT_TRUE(host.run_chunk(first, source));
+    ASSERT_TRUE(host.run_chunk(second, source));
+    // Matching the label alone must not bind different, undeclared bytes.
+    ASSERT_TRUE(host.run_chunk(first, changed));
+    const auto sources = cov::pack_sources();
+    ASSERT_EQ(2u, sources.size());
+    EXPECT_EQ(first, sources[0].chunk);
+    EXPECT_EQ("updated-origin", sources[0].origin);
+    EXPECT_EQ(second, sources[1].chunk);
+    EXPECT_EQ("second-origin", sources[1].origin);
+    EXPECT_EQ(source, sources[0].source);
+    EXPECT_EQ(source, sources[1].source);
+    const auto digest = cov::sha256_hex(source);
+    EXPECT_EQ(digest, sources[0].digest);
+    EXPECT_EQ(digest, sources[1].digest);
+    std::map<std::pair<std::string, std::string>, std::uint64_t> counts;
+    for (const auto& hit : cov::line_hits())
+        if (hit.line == 1) counts[{hit.chunk, hit.digest}] += hit.count;
+    EXPECT_EQ(1u, counts[std::make_pair(first, digest)]);
+    EXPECT_EQ(1u, counts[std::make_pair(second, digest)]);
+    EXPECT_EQ(1u, counts[std::make_pair(first, std::string())]);
+    EXPECT_EQ(3u, counts.size());
+}
+
+
 // One chunk name really can carry two different sources in one process —
 // tests/unit/test_pack_transfer_errors.cpp regenerates a cached pack and
 // mounts both generations under packs/org.test.regen/scripts/a.lua. While
@@ -1695,9 +1731,13 @@ std::filesystem::path find_repo_root()
 {
     std::filesystem::path dir = test_exe_dir();
     for (int hops = 0; hops < 8 && !dir.empty(); hops++) {
-        if (std::filesystem::exists(
-                dir / "scripts" / "coverage" / "coverage_report.py"))
-            return dir;
+        const auto reporter = dir / "scripts" / "coverage" / "coverage_report.py";
+        if (std::filesystem::exists(reporter))
+            // Private test workspaces expose read-only source symlinks. The
+            // inventory oracle needs the checkout behind them, with its Git
+            // index and complete shipped-source tree.
+            return std::filesystem::canonical(reporter).parent_path()
+                .parent_path().parent_path();
         const std::filesystem::path parent = dir.parent_path();
         if (parent == dir)
             break;
@@ -1944,6 +1984,8 @@ protected:
                 continue;
             add_record(path);
         }
+        // Public inline bodies belong to the production C++ scope too.
+        add_record("include/openglad/core/util.h");
         for (const std::string& path : extra_paths)
             add_record(path);
         const std::filesystem::path file = scratch_ / "cpp.info.forged";
@@ -1998,6 +2040,7 @@ TEST(CoverageReportGcovr, selects_the_advertised_lcov_1x_flag_once)
     ASSERT_FALSE(scratch.empty());
 
     write_text_file(scratch / "driver.py", std::string(R"PY(
+import json
 import pathlib
 import sys
 import types
@@ -2015,12 +2058,19 @@ def exercise(help_text, expected):
         if cmd[-1] == "--help":
             return types.SimpleNamespace(
                 returncode=0, stdout=help_text, stderr="")
-        assert expected in cmd, cmd
-        other = ("--lcov-format-1.x" if expected.startswith(
-            "--lcov-format-version") else "--lcov-format-version=1.x")
-        assert other not in cmd, cmd
-        out = pathlib.Path(cmd[cmd.index("--lcov") + 1])
-        out.write_text("TN:fake\n", encoding="utf-8")
+        data = pathlib.Path(cmd[cmd.index("--json") + 1])
+        data.write_text(json.dumps({"gcovr/format_version": "0.14", "files": []}))
+        if "--lcov" in cmd:
+            assert "--add-tracefile" in cmd, cmd
+            assert expected in cmd, cmd
+            other = ("--lcov-format-1.x" if expected.startswith(
+                "--lcov-format-version") else "--lcov-format-version=1.x")
+            assert other not in cmd, cmd
+            out = pathlib.Path(cmd[cmd.index("--lcov") + 1])
+            out.write_text("TN:fake\n", encoding="utf-8")
+        else:
+            assert cmd[-1] == str(root / "build"), cmd
+            assert "--add-tracefile" not in cmd, cmd
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     saved_which = coverage_report.shutil.which
@@ -2036,8 +2086,9 @@ def exercise(help_text, expected):
         coverage_report.shutil.which = saved_which
         coverage_report.subprocess.run = saved_run
 
-    assert calls[0] == ["/fake/gcovr", "--help"], calls
-    assert len(calls) == 2, calls  # one capability probe, one real report
+    assert calls[1] == ["/fake/gcovr", "--help"], calls
+    assert len(calls) == 3, calls  # one profile pass, one probe, one JSON formatting pass
+    assert "--add-tracefile" in calls[2], calls
 
 exercise("  --lcov-format-1.x  Write LCOV 1.x\n",
          "--lcov-format-1.x")
@@ -2924,6 +2975,43 @@ print("SUFFIX-CASE-OK")
     EXPECT_EQ(0, exit_code) << output;
     EXPECT_NE(std::string::npos, output.find("SUFFIX-CASE-OK")) << output;
     std::filesystem::remove_all(scratch);
+}
+
+TEST(ScriptCoverage, warmed_closure_counts_stay_private_across_recording_scopes)
+{
+    cov::ScopedRecording outer;
+    ScriptHost host;
+    const std::string chunk = "probe/cache_scope.lua";
+    const std::string body = "function cached_tick()\n  return 7\nend\n";
+    cov::declare_pack_source(chunk, body, "cache-scope-test");
+    ASSERT_TRUE(host.run_chunk(chunk, body, "cache-scope"));
+    const auto body_hits = [&]() -> std::uint64_t {
+        for (const auto& fn : cov::function_records()) {
+            if (fn.chunk == chunk && fn.line_defined == 1)
+                return fn.body_hits;
+        }
+        return 0;
+    };
+    const auto run_existing_closure = [&]() {
+        return host.run_chunk("probe/cache_runner.lua", "return cached_tick()", "cache-scope");
+    };
+    ASSERT_TRUE(run_existing_closure());
+    const std::uint64_t before = body_hits();
+    ASSERT_EQ(1u, before);
+    {
+        cov::ScopedRecording inner;
+        cov::declare_pack_source(chunk, body, "cache-scope-test");
+        // No recompilation: this reuses the already warmed prototype.
+        ASSERT_TRUE(run_existing_closure());
+        ASSERT_EQ(1u, body_hits());
+    }
+    EXPECT_EQ(before, body_hits());
+    ASSERT_TRUE(run_existing_closure());
+    EXPECT_EQ(before + 1u, body_hits());
+    cov::reset();
+    cov::declare_pack_source(chunk, body, "cache-scope-test");
+    ASSERT_TRUE(run_existing_closure());
+    EXPECT_EQ(1u, body_hits());
 }
 
 // P7-A: a compile while the recorder was DISABLED used to skip

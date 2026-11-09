@@ -248,7 +248,7 @@ struct CursesTerminal::Impl {
 CursesTerminal::CursesTerminal() : CursesTerminal(Options{}) {}
 
 #ifdef TESTING
-CursesTerminal::CursesTerminal(TestingTag) : impl_(std::make_unique<Impl>()) {}
+#include "../../../tests/coverage_internal/curses_terminal_constructor.inc"
 #endif
 
 CursesTerminal::CursesTerminal(Options opt) : impl_(std::make_unique<Impl>())

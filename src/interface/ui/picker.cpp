@@ -184,35 +184,7 @@ void picker_request_start_game()
 }
 
 #ifdef TESTING
-void picker_testing_mark_game_start()
-{
-    g_test_game_epoch.fetch_add(1, std::memory_order_release);
-    g_test_game_frame_ticks.store(0, std::memory_order_release);
-    g_test_in_game.store(true, std::memory_order_release);
-}
-
-void picker_testing_mark_frame_advance()
-{
-    g_test_game_frame_ticks.fetch_add(1, std::memory_order_release);
-    std::function<void()> observer;
-    {
-        std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
-        observer.swap(g_test_frame_observer);
-    }
-    if (observer)
-        observer();
-}
-
-void picker_testing_observe_next_game_frame(std::function<void()> observer)
-{
-    std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
-    g_test_frame_observer = std::move(observer);
-}
-
-void picker_testing_mark_game_end()
-{
-    g_test_in_game.store(false, std::memory_order_release);
-}
+#include "../../../tests/coverage_internal/picker_frame_observers.inc"
 #endif
 
 // allowable_guys moved to og::ui::kAllowableGuys in picker_common.h
@@ -3047,28 +3019,7 @@ void render_family_abilities(text& mytext, const guy* g,
 } // namespace
 
 #ifdef TESTING
-namespace {
-// The family the open DETAILS page shows, -1 while none is open (an
-// injector reads it on the menu thread).
-int g_detail_menu_testing_family = -1;
-int g_detail_menu_testing_page = -1;
-int g_detail_menu_testing_pages = -1;
-}  // namespace
-
-int detail_menu_testing_family()
-{
-    return g_detail_menu_testing_family;
-}
-
-int detail_menu_testing_page()
-{
-    return g_detail_menu_testing_page;
-}
-
-int detail_menu_testing_pages()
-{
-    return g_detail_menu_testing_pages;
-}
+#include "../../../tests/coverage_internal/picker_detail_observers.inc"
 #endif
 
 #ifdef TESTING

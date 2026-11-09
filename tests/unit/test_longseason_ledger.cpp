@@ -1117,16 +1117,16 @@ TEST_F(LedgerCampaignTest, fair_helpers_repin_to_guard_when_woken)
         ADD_FAILURE() << e.where << ": " << e.message;
 }
 
-// The door-hold smoke: with the fair pressing the strongroom for 300
-// ticks, the helpers must not leave their doorway tiles — a plain allied
-// ACT_GUARD (no scripted hold-post) wakes on first sighting and hunts.
+// The long-running hold-post oracle: on every tick the script must turn each
+// helper's simulated wake back into ACT_GUARD before the helper acts. Position
+// is deliberately not the oracle: combat recoil can displace a stationary
+// guard without it ever taking a walk action.
 //
 // Red-proof (2026-08-15, this worktree): with level_hooks.lua's
 // `hooks.on_tick = fair_on_tick` registration commented out and the
-// archive restaged, Stallkeeper wandered 113px off the door within 300
-// ticks (this test failed at the position assert) and the repin test
-// failed with it; restored, both hold.
-TEST_F(LedgerCampaignTest, fair_helpers_hold_the_door_for_300_ticks)
+// archive restaged, the first forced wake remains ACT_RANDOM; restored,
+// both helpers are re-pinned on every tick.
+TEST_F(LedgerCampaignTest, fair_helpers_repin_on_each_of_300_ticks)
 {
     LoadedLedgerLevel fx(9, 77u);
     ASSERT_TRUE(fx.loaded);
@@ -1138,15 +1138,26 @@ TEST_F(LedgerCampaignTest, fair_helpers_hold_the_door_for_300_ticks)
     const std::vector<walker*> potboy = find_living_by_name(world, "Potboy");
     ASSERT_EQ(1u, stall.size());
     ASSERT_EQ(1u, potboy.size());
+    // Keep genuine sight wakes out of the post-act observation; the test
+    // injects the wake immediately before each on_tick instead.
+    silence_hostiles_near(world, 30, 15, 1000);
+    walker* sentinel = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, sentinel);
+    sentinel->set_team_num(1);
+    sentinel->set_real_team_num(1);
+    sentinel->setxy(GRID_SIZE, GRID_SIZE);
+    sentinel->set_act_type(ACT_CONTROL);
     for (int i = 1; i < 300 && !world.game_ended; ++i)
+    {
+        stall[0]->set_act_type(ACT_RANDOM);
+        potboy[0]->set_act_type(ACT_RANDOM);
         world.tick();
-    // A guard never walks; accumulated hit recoil from the door fight can
-    // nudge it (measured 21px on Potboy over 300 ticks), but a woken
-    // hunter crosses ten-plus tiles — two tiles cleanly separates them.
-    EXPECT_LE(std::abs(stall[0]->xpos() - 29 * GRID_SIZE), 2 * GRID_SIZE);
-    EXPECT_LE(std::abs(stall[0]->ypos() - 15 * GRID_SIZE), 2 * GRID_SIZE);
-    EXPECT_LE(std::abs(potboy[0]->xpos() - 31 * GRID_SIZE), 2 * GRID_SIZE);
-    EXPECT_LE(std::abs(potboy[0]->ypos() - 15 * GRID_SIZE), 2 * GRID_SIZE);
+        ASSERT_EQ(ACT_GUARD, static_cast<int>(stall[0]->act_type()))
+            << "Stallkeeper tick " << i;
+        ASSERT_EQ(ACT_GUARD, static_cast<int>(potboy[0]->act_type()))
+            << "Potboy tick " << i;
+    }
+    EXPECT_FALSE(world.game_ended) << "the 300-tick oracle must run in full";
     for (const og::script::ScriptError& e : world.scripts().host().errors())
         ADD_FAILURE() << e.where << ": " << e.message;
 }

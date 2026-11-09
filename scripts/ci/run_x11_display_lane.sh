@@ -187,7 +187,7 @@ run_ctest() {
     # --no-tests=error: a build dir configured without the option (no
     # x11-* entries) must fail, not pass vacuously.
     ctest --test-dir "$build_dir" -L "$label" --no-tests=error \
-        --output-on-failure --repeat until-pass:3 --timeout 420
+        --output-on-failure --timeout 420
 }
 
 status=0

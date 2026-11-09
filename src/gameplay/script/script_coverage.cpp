@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/gameplay/script/script_coverage.h>
+#include "script_coverage_state.h"
 
 // This TU is deliberately dependency-free apart from Lua: it is compiled
 // both into og_gameplay (the runtime recorder) and standalone into the
@@ -52,6 +53,8 @@ namespace detail {
 bool g_enabled = false;
 void (*g_between_dump_write_and_publish)() = nullptr;
 }  // namespace detail
+
+using namespace detail;
 
 namespace {
 
@@ -148,77 +151,6 @@ std::string current_program_name()
 #endif
 }
 
-struct FnEntry {
-    std::string label;  // smallest registered label (stable across runs)
-    std::uint64_t body_hits = 0;  // line events inside this prototype
-};
-
-// A prototype's identity WITHIN one generation of one chunk: the SPAN of
-// source lines it occupies. The span, not `linedefined` alone — two
-// prototypes can start on the same line, and merging them let one cover the
-// other. See the header.
-using SpanKey = std::pair<int, int>;  // (line_defined, last_line_defined)
-
-// A declared source's identity: the chunk it was loaded under AND the
-// sha256 of its bytes. The chunk name alone is NOT unique — one process can
-// mount two different sources under one name (a regenerated pack cache does
-// exactly that) — and while the name alone was the key the second
-// declaration erased the first, which silently moved one source's recorded
-// hits onto another source's grid. See the header.
-using SourceKey = std::pair<std::string, std::string>;  // (chunk, digest)
-
-struct SourceEntry {
-    std::string source;
-    std::string origin;
-};
-
-// Hits recorded against ONE generation of one chunk. Keyed by the digest of
-// the source whose compiled prototype executed, never pooled per chunk:
-// pooling is what forced the report to guess which declared generation a hit
-// belonged to, and its guess — every generation whose grid contained the
-// line — let execution of one file's bytes credit a different file's.
-struct GenerationHits {
-    std::map<int, std::uint64_t> lines;   // line → hit count
-    std::map<SpanKey, FnEntry> functions; // prototype span → record
-};
-
-struct ChunkState {
-    // digest ("" = the executing code was compiled from bytes no declaration
-    // covers) → hits under that generation.
-    std::map<std::string, GenerationHits> generations;
-};
-
-struct Recorder {
-    std::mutex mu;
-    // chunk → per-generation hit grids.
-    std::map<std::string, ChunkState> chunks;
-    // (chunk, sha256(source)) → (source, real directory/archive), for every
-    // script the engine loaded.
-    std::map<SourceKey, SourceEntry> sources;
-    // THE GENERATION BINDING (see the header): compiled prototype → the
-    // (chunk, digest) it was compiled from, written by bind_compiled_chunk
-    // at compile time and read by record_hook_line at execution time. One
-    // shared key object per compile, since a chunk's whole tree binds to one
-    // generation. Entries are overwritten or erased on address reuse — never
-    // proactively unregistered — which is sound because a Proto alive enough
-    // to execute is alive enough to still own its entry (the full argument
-    // sits on bind_compiled_chunk's declaration). Maintained on EVERY
-    // compile, recorder on or off — the off path only erases — so the map
-    // cannot go stale across an enable-state transition.
-    //
-    // Deliberately NOT part of ScopedRecording's swapped state and NOT
-    // touched by reset(): it is a fact about live VM objects ("this
-    // prototype was compiled from these bytes"), not recorded measurement,
-    // and a closure compiled before a scope keeps executing inside it.
-    std::map<const void*, std::shared_ptr<const SourceKey>> protos;
-    // Chosen on the first flush and reused after, so flushing twice (an
-    // explicit pre-_exit flush plus the exit-time one) atomically republishes
-    // one file instead of double-counting the same hits across two.
-    std::string dump_path;
-
-    ~Recorder();
-};
-
 // Resolved once at static-init time; see the header's determinism contract.
 // The value is validated, not just read — see validate_output_dir().
 std::string read_output_dir()
@@ -233,17 +165,21 @@ std::string read_output_dir()
 // destroyed first whenever it happened to be constructed later (it is: the
 // recorder starts recording long before anything asks where to write), and
 // the flush would read a dead string and silently write nothing.
-std::string& output_dir_storage()
+}  // namespace
+
+std::string& detail::output_dir_storage()
 {
     static std::string* dir = new std::string(read_output_dir());
     return *dir;
 }
 
-Recorder& recorder()
+Recorder& detail::recorder()
 {
     static Recorder r;
     return r;
 }
+
+namespace {
 
 // One dump file per process. The name only has to be distinct across the test
 // binaries a run launches — the report merges whatever it finds — so a 64-bit
@@ -266,10 +202,6 @@ std::string unique_dump_path(const std::string& dir)
     return (std::filesystem::path(dir) / std::string(name)).string();
 }
 
-Recorder::~Recorder()
-{
-    flush_to_output_dir();
-}
 
 // Static initializer: arms the recorder before main() and therefore before
 // any Lua can run. Ordering is safe because nothing else in the program runs
@@ -278,6 +210,11 @@ Recorder::~Recorder()
     (detail::g_enabled = !read_output_dir().empty());
 
 }  // namespace
+
+detail::Recorder::~Recorder()
+{
+    flush_to_output_dir();
+}
 
 std::string sha256_hex(std::string_view data)
 {
@@ -348,24 +285,6 @@ std::string validate_output_dir(std::string_view value)
     return {};
 }
 
-void set_enabled_for_testing(bool on)
-{
-    detail::g_enabled = on;
-}
-
-void set_output_dir_for_testing(std::string dir)
-{
-    output_dir_storage() = std::move(dir);
-    // Forget the memoized dump path with the directory that produced it.
-    // Without this a test that redirects the output somewhere temporary
-    // permanently poisons the process: the exit-time flush would keep
-    // rewriting the old (by then deleted) path and the binary's whole Lua
-    // contribution would vanish from the run with no diagnostic at all.
-    Recorder& r = recorder();
-    const std::lock_guard<std::mutex> lock(r.mu);
-    r.dump_path.clear();
-}
-
 void flush_to_output_dir()
 {
     if (!detail::g_enabled) return;
@@ -381,14 +300,6 @@ void flush_to_output_dir()
     }
     // Outside the lock: write_raw_report snapshots under it itself.
     write_raw_report(path);
-}
-
-void reset()
-{
-    Recorder& r = recorder();
-    const std::lock_guard<std::mutex> lock(r.mu);
-    r.chunks.clear();
-    r.sources.clear();
 }
 
 namespace {
@@ -410,10 +321,10 @@ void note_label(FnEntry& entry, std::string_view label)
 // collect_protos.
 void bind_protos(const Proto* p,
                  const std::shared_ptr<const SourceKey>& binding,
-                 std::map<const void*, std::shared_ptr<const SourceKey>>& map)
+                 std::map<const void*, ProtoBinding>& map)
 {
     if (binding != nullptr)
-        map[p] = binding;
+        map[p] = ProtoBinding{binding};
     else
         map.erase(p);
     for (int i = 0; i < p->sizep; i++)
@@ -435,6 +346,27 @@ const Proto* executing_proto(const lua_Debug* ar)
 }
 
 }  // namespace
+
+namespace {
+
+// A declaration already owns both the exact bytes and their digest. Repeated
+// level loads normally find one generation for this chunk; compare its bytes
+// instead of hashing the same script at declaration and compilation again.
+// The measurement owns this index, so reset/scoped recordings retain no extra
+// source payloads. Different bytes under the same chunk never share a binding.
+auto find_declared_source(Recorder& recorder_state, std::string_view chunk,
+                          std::string_view source)
+{
+    auto it = recorder_state.sources.lower_bound(SourceKey{std::string(chunk), {}});
+    while (it != recorder_state.sources.end() && it->first.first == chunk) {
+        if (it->second.source == source)
+            return it;
+        ++it;
+    }
+    return recorder_state.sources.end();
+}
+
+} // namespace
 
 void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
                          std::string_view source)
@@ -459,9 +391,9 @@ void bind_compiled_chunk(lua_State* L, int index, std::string_view chunk,
     // live test Lua.
     std::shared_ptr<const SourceKey> binding;
     if (detail::g_enabled && !chunk.empty()) {
-        SourceKey key{std::string(chunk), sha256_hex(source)};
-        if (r.sources.find(key) != r.sources.end())
-            binding = std::make_shared<const SourceKey>(std::move(key));
+        const auto declared = find_declared_source(r, chunk, source);
+        if (declared != r.sources.end())
+            binding = std::make_shared<const SourceKey>(declared->first);
     }
     bind_protos(cl->p, binding, r.protos);
 }
@@ -482,13 +414,20 @@ void record_hook_line(lua_State* L, lua_Debug* ar)
             // after a re-declaration credits ITS OWN generation, which is
             // both the honest numerator and the fix for the off-grid false
             // failure (see the header).
-            const SourceKey& key = *it->second;
-            GenerationHits& gen =
-                r.chunks[key.first].generations[key.second];
+            ProtoBinding& binding = it->second;
+            if (binding.measurement_epoch != r.measurement_epoch) {
+                const SourceKey& key = *binding.source;
+                binding.generation = &r.chunks[key.first].generations[key.second];
+                binding.function = &binding.generation->functions[
+                    SpanKey{proto->linedefined, proto->lastlinedefined}];
+                binding.measurement_epoch = r.measurement_epoch;
+            }
+            // The binding still names the exact compiled generation. Cache
+            // its stable map nodes so each line event avoids two string-key
+            // lookups and another prototype-span lookup under the mutex.
             if (ar->currentline > 0)
-                gen.lines[ar->currentline]++;
-            gen.functions[SpanKey{proto->linedefined, proto->lastlinedefined}]
-                .body_hits++;
+                binding.generation->lines[ar->currentline]++;
+            binding.function->body_hits++;
             return;
         }
     }
@@ -528,7 +467,7 @@ void declare_function_closure(lua_State* L, int index, std::string_view label)
                 // function — creating its zero-hit record when the body has
                 // not run — so a registered-but-never-entered hook is a miss
                 // on the right generation's grid.
-                const SourceKey& key = *it->second;
+                const SourceKey& key = *it->second.source;
                 note_label(
                     r.chunks[key.first]
                         .generations[key.second]
@@ -567,9 +506,14 @@ void declare_pack_source(std::string_view chunk, std::string_view source,
     // still collapses onto one entry. Declaring never rebinds existing
     // prototypes: it only makes a LATER compile of these bytes bindable
     // (bind_compiled_chunk consults this set at compile time).
-    SourceKey key{std::string(chunk), sha256_hex(source)};
     Recorder& r = recorder();
     const std::lock_guard<std::mutex> lock(r.mu);
+    const auto declared = find_declared_source(r, chunk, source);
+    if (declared != r.sources.end()) {
+        declared->second.origin = std::string(origin);
+        return;
+    }
+    SourceKey key{std::string(chunk), sha256_hex(source)};
     r.sources[std::move(key)] = {std::string(source), std::string(origin)};
 }
 
@@ -609,36 +553,6 @@ std::vector<PackSourceRecord> pack_sources()
     for (const auto& [key, entry] : r.sources)
         out.push_back({key.first, entry.source, entry.origin, key.second});
     return out;
-}
-
-struct ScopedRecording::State {
-    std::map<std::string, ChunkState> chunks;
-    std::map<SourceKey, SourceEntry> sources;
-};
-
-ScopedRecording::ScopedRecording()
-    : saved_(std::make_unique<State>()), previously_enabled_(detail::g_enabled)
-{
-    {
-        Recorder& r = recorder();
-        const std::lock_guard<std::mutex> lock(r.mu);
-        // Hits and declarations travel together; the Proto registry stays
-        // put on purpose — it is a fact about live VM objects, not recorded
-        // measurement (see the Recorder declaration).
-        saved_->chunks = std::move(r.chunks);
-        saved_->sources = std::move(r.sources);
-    }
-    reset();  // the moved-from maps are unspecified; make them empty
-    detail::g_enabled = true;
-}
-
-ScopedRecording::~ScopedRecording()
-{
-    detail::g_enabled = previously_enabled_;
-    Recorder& r = recorder();
-    const std::lock_guard<std::mutex> lock(r.mu);
-    r.chunks = std::move(saved_->chunks);
-    r.sources = std::move(saved_->sources);
 }
 
 namespace {

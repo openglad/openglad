@@ -1937,6 +1937,25 @@ TEST(PickerNetworkClient,
         return result;
     };
 
+    og::server::MatchStage* const host_stage = host_client->take_match_stage();
+    ASSERT_NE(nullptr, host_stage);
+    const auto wait_for_settled_stage = [&] {
+        return wait_until([&] {
+            host_client->poll_and_apply();
+            const bool current = host_stage->status() == og::server::StageStatus::Staged
+                && !host_stage->dirty();
+            const auto generation = host_stage->stage_generation();
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            std::uint32_t received_generation = 0;
+            const std::vector<std::uint8_t>* setup_bytes = nullptr;
+            const std::vector<std::uint8_t>* keyframe_bytes = nullptr;
+            return current && join_client->staged_keyframe_bytes(
+                received_generation, setup_bytes, keyframe_bytes)
+                && received_generation == generation;
+        });
+    };
+
     std::vector<og::sim::LobbyPlayer> local_players;
     {
         auto join_scope = join_session.activate();
@@ -1953,6 +1972,12 @@ TEST(PickerNetworkClient,
     const og::sim::LobbyPlayer removed = local_players[1];
     const og::sim::LobbyPlayer third = local_players[2];
 
+    // Roster echoes can precede a debounced world rebuild. Let staging and
+    // snapshot delivery settle before this one-shot Ready request so the host
+    // is available to acknowledge it within the existing request window.
+    ASSERT_TRUE(wait_for_settled_stage())
+        << "stage status=" << static_cast<int>(host_stage->status())
+        << " dirty=" << host_stage->dirty() << " error=" << host_stage->error();
     EXPECT_TRUE(run_join_request([&] {
         return join_client->set_ready(true);
     }));
@@ -2077,6 +2102,12 @@ TEST(PickerNetworkClient,
             << "spectator [+] reuses its server-private dormant token";
     }
 
+    // Roster echoes can precede a debounced world rebuild. Let staging and
+    // snapshot delivery settle before this one-shot Ready request so the host
+    // is available to acknowledge it within the existing request window.
+    ASSERT_TRUE(wait_for_settled_stage())
+        << "stage status=" << static_cast<int>(host_stage->status())
+        << " dirty=" << host_stage->dirty() << " error=" << host_stage->error();
     EXPECT_TRUE(run_join_request([&] {
         return join_client->set_ready(true);
     }));

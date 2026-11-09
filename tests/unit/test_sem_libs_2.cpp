@@ -728,8 +728,6 @@ constexpr int kHookHp = 30;
 constexpr int kHookStart = 12;
 constexpr int kHookGrowth = 2;
 constexpr int kHookReach = 60;
-constexpr int kHookReelMax = 8;
-constexpr int kHookStun = 12;
 
 constexpr std::array<int, 16> kOrbitX = {0,  -9, -17, -22, -24, -22, -17, -9,
                                          0,  9,  17,  22,  24,  22,  17,  9};

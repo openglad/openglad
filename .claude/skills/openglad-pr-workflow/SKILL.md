@@ -12,16 +12,19 @@ CONCLUDED. Block on `gh pr checks <n> --watch` (or poll `gh run list
 --commit <sha>`); report the final counts. "CI is running" is not a
 completion report.
 
-- Expected wall-clock: ASan+UBSan runs as three shards, "ASan+UBSan (1/3)"
-  to "(3/3)", about 20 min each with a warm cache and 40-45 min cold;
-  Coverage ~21–34 min, Campaign Regeneration Drift ~2 min. Slower than that is "slow", not "stuck" —
-  keep waiting.
-- Every push to a PR branch produces DUPLICATE push-triggered and
-  pull_request-triggered runs on the same SHA; concurrency rules cancel
-  the redundant one. Dedupe by SHA + workflow name. A canceled duplicate
-  is NOT a failure — never report it as one.
-- Known flake: the wasm-jitter E2E on PR runs. Remedy: `gh run rerun <id>
-  --failed`, then PROVE it green. A flake explained away is a red check.
+- Required native gates consume one build per configuration at the exact
+  revision. ASan uses four runtime shards and coverage uses six; the generated
+  CTest inventory, not a hand-maintained test list, determines membership.
+  Require the aggregate completeness result as well as each shard result.
+- Read the workflow's configured triggers and concurrency group before
+  interpreting cancellations. A canceled duplicate does not replace a
+  required completed run for the same revision.
+- First-attempt failures stay failures. A diagnostic rerun may establish a
+  reproduction rate, but it does not make the original check green. Fix the
+  cause and obtain fresh complete results; retain the original failure log.
+- Historical duration estimates are not current performance evidence. Report
+  measured build and test times for this revision; keep waiting while a job
+  makes progress within its stated budget.
 - Former flake, root-caused (#309): the Windows release build froze after
   a static-library link in ~1 of 3 attempts because the shell-script lint
   targets ran a bare `scripts/x.sh`, which on Windows is `cmd.exe` +

@@ -42,7 +42,8 @@ Selection rules
               and the escalation flag ``all_required``, set when the change
               touches the harness itself (``scripts/parity/``, ``tests/parity``
               sources other than the table — (c) already covers that one —,
-              ``cmake/OpenGladTests.cmake`` or the canary workflow). A change to
+              ``cmake/OpenGladTests.cmake``, the canary workflow, Nix/build presets,
+              ``scripts/ci/``, or ``tests/fixtures/``). A change to
               the machinery can detooth a pin without editing any pin, so the
               subset stops being an argument and the run escalates to ``--all``.
 
@@ -239,6 +240,11 @@ def escalation_reasons(changed_files) -> list:
             out.append(f"{f} (test wiring)")
         elif f == ".github/workflows/parity-canary.yml":
             out.append(f"{f} (canary workflow)")
+        elif (f in ("flake.nix", "flake.lock", "CMakePresets.json")
+              or f.startswith("nix/")
+              or f.startswith("scripts/ci/")
+              or f.startswith("tests/fixtures/")):
+            out.append(f"{f} (canary build or execution machinery)")
     return out
 
 
@@ -361,6 +367,41 @@ def plan(table_text, facts_json=None, mode="all", changed_files=None,
     return Plan(groups=groups, rows=tuple(selected), all_required=all_required,
                 escalation=tuple(escalation), unresolved=unresolved,
                 fixtures=tuple(fixtures))
+
+
+def shard_plan(p: Plan, index: int, count: int) -> Plan:
+    """Keep mutation groups indivisible and balance expensive C++ rebuilds.
+
+    Selection/escalation happens BEFORE partitioning. Unresolved rows remain
+    failures on shard one; no shard can discard them as unassigned work.
+    """
+    if count < 1 or index < 1 or index > count:
+        raise PlanError("shard must be INDEX/COUNT with 1 <= INDEX <= COUNT")
+    bins = [[] for _ in range(count)]
+    loads = [0.0] * count
+    ordered = sorted(enumerate(p.groups),
+                     key=lambda pair: (pair[1].mode != REBUILD_CPP, pair[0]))
+    for original_index, group in ordered:
+        slot = min(range(count), key=lambda i: (loads[i], i))
+        bins[slot].append((original_index, group))
+        loads[slot] += 30.0 if group.mode == REBUILD_CPP else 0.5
+    groups = tuple(group for _, group in sorted(bins[index - 1]))
+    unresolved = p.unresolved if index == 1 else ()
+    selected = {row for group in groups for row in group.rows}
+    selected.update(row for row, _ in unresolved)
+    return Plan(groups=groups, rows=tuple(row for row in p.rows if row in selected),
+                all_required=p.all_required, escalation=p.escalation,
+                unresolved=unresolved, fixtures=p.fixtures)
+
+
+def shard_manifest(p: Plan, count: int) -> dict:
+    if count < 1:
+        raise PlanError("shard count must be positive")
+    return {"format": 1, "rows": list(p.rows),
+            "all_required": p.all_required, "escalation": list(p.escalation),
+            "shards": [{"id": i, "rows": list(shard_plan(p, i, count).rows),
+                        "groups": [list(g.key) for g in shard_plan(p, i, count).groups]}
+                       for i in range(1, count + 1)]}
 
 
 # --- emitters ---------------------------------------------------------------
@@ -690,6 +731,9 @@ def main(argv=None) -> int:
     ap.add_argument("--emit", choices=["text", "records"], default="text")
     ap.add_argument("--out")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--shard", help="1-based INDEX/COUNT; partitions groups after full selection")
+    ap.add_argument("--shard-count", type=int, default=3, help="manifest shard count")
+    ap.add_argument("--manifest", type=Path, help="write complete pre-partition shard manifest")
     args = ap.parse_args(argv)
 
     if args.self_test:
@@ -730,6 +774,18 @@ def main(argv=None) -> int:
     except PlanError as exc:
         sys.stderr.write(f"canary_plan: {exc}\n")
         return 3 if "selection is empty" in str(exc) or "unknown scenario" in str(exc) else 2
+
+    try:
+        count = int(args.shard.split("/")[1]) if args.shard else args.shard_count
+        if args.manifest:
+            args.manifest.parent.mkdir(parents=True, exist_ok=True)
+            args.manifest.write_text(json.dumps(shard_manifest(p, count), indent=2) + "\n")
+        if args.shard:
+            index, count = (int(part) for part in args.shard.split("/"))
+            p = shard_plan(p, index, count)
+    except (ValueError, IndexError, PlanError) as exc:
+        sys.stderr.write(f"canary_plan: invalid shard: {exc}\n")
+        return 2
 
     if args.emit == "records":
         if not args.out:

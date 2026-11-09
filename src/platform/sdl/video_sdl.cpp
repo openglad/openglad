@@ -3955,39 +3955,7 @@ int sdl_video::fade_between(void* old_surface, void* new_surface,
 }
 
 #ifdef TESTING
-namespace og::video_testing
-{
-std::atomic<int> g_fade_violations{0};
-void (*g_fade_midpoint_hook)() = nullptr;
-
-namespace
-{
-std::mutex s_fade_violation_mutex;
-std::vector<std::string> s_fade_violation_messages;
-} // namespace
-
-void report_fade_violation(const char* what)
-{
-    TRACE("video", "FADE VIOLATION: %s", what);
-    LogError("FADE VIOLATION: {}\n", what);
-    ++g_fade_violations;
-    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
-    s_fade_violation_messages.emplace_back(what);
-}
-
-std::vector<std::string> fade_violation_messages()
-{
-    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
-    return s_fade_violation_messages;
-}
-
-void reset_fade_violations()
-{
-    std::lock_guard<std::mutex> lock(s_fade_violation_mutex);
-    s_fade_violation_messages.clear();
-    g_fade_violations.store(0);
-}
-} // namespace og::video_testing
+#include "../../../tests/coverage_internal/video_fade_observers.inc"
 #endif
 
 bool sdl_video::window_is_black()
@@ -3996,16 +3964,7 @@ bool sdl_video::window_is_black()
 }
 
 #ifdef TESTING
-void sdl_video::testing_reset_window_state()
-{
-    if (E_Screen != nullptr)
-        E_Screen->testing_reset_window_state();
-}
-
-void sdl_video::testing_report_fade_violation(const char* what)
-{
-    og::video_testing::report_fade_violation(what);
-}
+#include "../../../tests/coverage_internal/video_window_observers.inc"
 #endif
 
 int sdl_video::fadeblack(bool fade_in)

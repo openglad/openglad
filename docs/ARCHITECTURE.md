@@ -974,12 +974,24 @@ ctest --preset ci-test         # Run tests
 
 **Test executables (run via `ctest --preset ci-test`):**
 - `og_unit_*` (e.g. `og_unit_sim`, `og_unit_families`, `og_unit_entity`, `og_unit_data`) — headless unit binaries
+- `og_unit_network` — headless transport/network tests; the focused TSan target
 - `og_test_*` (e.g. `og_test_walker_combat` … `og_test_mass_coverage`) — SDL integration group binaries
 - `og_test_curses` — ncurses client unit + integration + networking tests (SDL-free, TTY-free)
 - `openglad_text_sim` — Text client simulation tests
 - `openglad_text_picker_interactive` — Text client picker tests
 - `openglad_text_unsupported` — Text client unsupported-operation tests
-- `emscripten_build_test` — WebAssembly build verification (skipped on native)
+- `emscripten_build_test` — WebAssembly build verification; native CI records its delegation to the WASM workflow
+
+Native groups run through `tests/fixtures/run_isolated.py`, which gives each
+process private writable copies of its runtime assets and configuration. CTest
+owns the `scenario99_setup` / `scenario99_cleanup` fixture needed by parity and
+the canary preflight CLI test. Direct canary invocations install that input with
+`python3 tests/fixtures/scenario99.py setup "$PWD"`.
+
+Cinematic recording scenarios live in `tools/capture_gameplay/` and run through
+`og_capture_gameplay`. Behavioral scene tests continue to assert
+their state and rendered output on ordinary test runs; recording commands
+supply requested proof media.
 
 ### Compiler Settings
 
@@ -1109,42 +1121,106 @@ TEST(MenuFlow, picker_main_unwinds) {
 
 ### CI Pipeline
 
-The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
+Native CI builds each configuration once with the locked Nix flake. The
+producer exports its compiled bundle and dependency closure. It reads the
+CTest plan through a read-only link to that output. Fresh runners check out
+the same SHA, import the dependencies, and verify and restore the product NAR
+directly into their writable build tree before running tests. Moving the
+restored tree into place avoids a second product copy in the Nix store. Test execution happens on every run, including a Nix cache hit.
+Each consumer depends on its own configuration's producer, so a slower build
+does not hold up unrelated lanes.
 
-1. **test** — Build all test binaries and run `ctest --parallel`
-2. **build** — Native release build (`openglad`, `openscen`)
-3. **headless-server** — SDL-free `openglad_text` / `openglad_server` build and test
-4. **campaign-drift** — Reruns every `tools/<x>_mapgen` generator against the
-   checkout and fails when a committed campaign tree drifts from its generator
-   (generated content under `campaigns/<id>/` is committed like a lockfile)
-5. **asan** — ASan + UBSan build and test, as three shards, "ASan+UBSan (1/3)"
-   to "(3/3)". Shards 1 and 2 run the tests labelled `asan-shard-1` and
-   `asan-shard-2` (the lists at the end of `cmake/OpenGladTests.cmake`; a test
-   in both fails configure); shard 3 runs every other test. About 20 minutes
-   each with a warm cache, 40-45 cold. Tests registered after that block can
-   only land in shard 3, so it stays the last thing in the file
-6. **tsan** — ThreadSanitizer build and test
-7. **x11-display** — `og_test_display_x11` on SDL's real x11 driver under Xvfb,
-   through `scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes
-   and openbox (the mode selector and a real exclusive mode switch), then two X
-   screens with no window manager (the multi-display Exclusive guard and an
-   unacknowledged fullscreen request). The group is built only with
-   `-DOPENGLAD_X11_DISPLAY_TESTS=ON`; locally, run the same script inside
-   `nix develop`, whose shell provides Xvfb, xrandr and openbox
+Each native producer also restores an exported NAR cache keyed by its exact
+Nix derivation hash. A hit is imported before `nix build`, which still realizes
+the current source. Successful producers save that exact closure for reruns;
+there is no product restore prefix. A new commit normally changes the product
+derivation and rebuilds it. Nix may substitute unchanged dependencies from its
+configured binary caches. Worker artifacts remain local to the workflow run,
+and tests execute afresh even when the producer restores a cached bundle.
+Producer summaries record measured realization/export time and closure size;
+end-to-end CI timing must be read from completed runs.
 
-Alongside it: `coverage.yml` (the line/function coverage gate), `fuzz.yml`,
-`parity-canary.yml` (the parity mutation canary — the teeth oracle for
-`tests/parity`: on a pull request it mutates every pin whose file the PR
-touched plus the whole free Lua arm, nightly and on `workflow_dispatch` it
-mutates all of them, and it is red when a scenario's own predicates fail to
-notice their pin's mutation; see `.claude/skills/openglad-parity/SKILL.md`),
-`release.yml` (triggered directly by pushes to master, queuing native packaging
-and the reusable `wasm-e2e.yml` workflow for each commit; publication requires
-both to succeed, while pull requests validate packages and web previews), and
-`wasm-e2e.yml` (Playwright WebAssembly end-to-end tests, PR preview deploys with
-a sticky preview comment, and when called by Release on master: relay worker →
-the permanent `v2-<n>` archive alias → the production Pages deploy, with `/versions/`
-regenerated from the Cloudflare Pages deployment list).
+Coverage uses GCC; ASan, TSan and fuzzing use the pinned Clang toolchain.
+Native CI bundles use minimal debug information, packed relative relocations
+and compressed debug sections. Their producer checks execute a bundled
+diagnostic fixture afresh and require exact source lines for memory errors,
+integer overflow, float conversion errors, or the TSan data race. The Nix
+environments disable the wrapping arithmetic flag that would otherwise hide
+signed integer overflow from UBSan. Instrumented transport and PNG dependencies
+retain their debug line tables.
+
+| Workflow | Gates |
+|---|---|
+| `test.yml` | Full ASan + UBSan suite in four shards, focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
+| `coverage.yml` | Full semantic and parity suite in six shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
+| `parity-canary.yml` | One normal configuration feeds three mutation workers, the real X11 display lane, and all campaign drift generators |
+| `fuzz.yml` | Instrumented libFuzzer targets; crashes retain reproducers |
+| `release.yml` | Portable optimized native packages and the reusable WASM workflow; publish only after both pass for the commit |
+| `wasm-e2e.yml` | One WASM artifact feeds four browser shards, the advisory WebKit touch lane, and deployment after required tests pass |
+
+`scripts/ci/test_matrix.py` reads CTest's complete inventory and groups fixture
+setup, consumers and cleanup on the same worker. Recorded test times affect
+placement only; new tests always enter the plan. The timing manifest records
+the configuration and outcome of local measurements. Each lane uses its own
+measurements when available. Each test runs once. The aggregate
+requires every planned shard and every JUnit result, rejects skipped or failed
+CTest entries, and checks that the disjoint shard union equals the inventory.
+GoogleTest partitions retain one compiled binary and divide its cases across
+bounded CTest entries. Their complete index sets and filters are checked before
+execution; inherited GoogleTest filters and repeat settings are cleared. The
+three cleanup-leak pairs remain in their own unsplit processes. Full JUnit
+output exposes internal GoogleTest skips: semantic skips fail, while existing
+opt-in recording, benchmarking, live-relay and unavailable dummy-display checks
+are reported by name and reason.
+`emscripten_build_test` is the one explicit delegation to the required WASM
+build and browser graph. TSan records its focused network selection separately.
+
+Coverage workers scan the complete compiler-note inventory, including zero-hit
+code. They emit gcovr JSON and raw per-process Lua dumps, retaining source
+sidecars. The aggregate checks identical compiler notes and source grids before
+merging JSON into LCOV, HTML and text reports. It then invokes the combined
+reporter with the merged trace and all Lua evidence; missing artifacts fail
+before the percentage gate. Profiles are never copied over another worker's
+`.gcda` files. The C++ population includes `src/` and first-party
+`include/openglad/` headers; the Lua population comes from the static inventory.
+
+A second diagnostic trace uses the same product roots but omits profiles from
+objects compiled with `TESTING`, as identified by `compile_commands.json`.
+Workers collect and merge that object population separately. The report lists
+its uncovered functions and missed lines inside `TESTING` conditionals, so a
+covered aggregate function cannot hide an unexecuted production alternative.
+This diagnostic has no additional percentage floor; its required artifacts
+and object/source inventories are still checked for completeness.
+
+The parity observation census runs four disjoint scenario partitions before
+the original coverage gates. A fresh fixture nonce, exact scenario IDs, counts
+and observations bind all four records to that run. Missing, duplicated or
+stale records fail the aggregate. Fixture dependencies keep those processes
+on one matrix worker; no partial census can stand in for the complete corpus.
+
+The canary selects its complete corpus before partitioning mutation groups.
+PRs select the whole Lua arm, touched C++ pins, and changed scenario specs;
+harness, fixture, Nix or CI machinery edits escalate to all rows. Master pushes,
+nightly runs and manual dispatches also select all rows. Three private writable
+checkouts apply independent groups, and the aggregate requires every selected
+row's own predicates to detect its mutation. Golden byte drift alone cannot
+satisfy that check. No workflow recaptures parity goldens.
+
+The real-display consumer runs `og_test_display_x11` through
+`scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes and openbox,
+then two X screens without a window manager. Campaign drift runs all six
+compiled mapgens against `campaigns/` and requires a clean generated tree.
+These consumers reuse the normal canary configuration without compilation.
+
+Release keeps the system toolchain for portable native archives: Nix-linked
+ELF binaries require `/nix/store` and cannot replace the Linux tarball. The
+Linux optimized package build also compiles the server and curses client and
+verifies the server's SDL-free link. The WASM build uses the Nix toolchain.
+Its immutable artifact and embedded version stamp pass unchanged through
+browser testing to the PR preview or master deployment. Release is the sole
+caller, avoiding duplicate branch-push WASM builds. On master, deployment
+remains relay worker → permanent `v2-<n>` archive alias → production Pages;
+PRs retain their preview link and sticky comment.
 
 ---
 

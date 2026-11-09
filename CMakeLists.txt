@@ -78,6 +78,17 @@ option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
 option(OPENGLAD_INSTALL_ASSETS "Install OpenGlad runtime asset directories" ON)
 option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
 option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
+option(ENABLE_FUZZING "Build production parser fuzz targets with Clang/libFuzzer" OFF)
+if(ENABLE_FUZZING)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ENABLE_FUZZING requires Clang (for libFuzzer support)")
+    endif()
+    # Instrument the implementation, Lua, and harness alike. The old harness-only
+    # flags left production parser branches invisible to libFuzzer and ASan.
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined,float-cast-overflow
+                        -fno-omit-frame-pointer -fno-sanitize-recover=all)
+    add_link_options(-fsanitize=fuzzer-no-link,address,undefined,float-cast-overflow)
+endif()
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
 option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
@@ -143,7 +154,7 @@ endif()
 # optimization" per TU. That warning is truthful noise: fortify is inert
 # without __OPTIMIZE__, so the measured code is unaffected. Environments
 # that inject neither flag (CI's stock gcc) build warning-free.
-set(OG_COVERAGE_COMPILE_OPTIONS --coverage -O0)
+set(OG_COVERAGE_COMPILE_OPTIONS --coverage -O0 -fprofile-update=atomic)
 
 if(ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
@@ -280,6 +291,21 @@ if(ENABLE_SANITIZERS)
     if(NOT OG_HAS_TSAN EQUAL -1)
         list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
             "TSAN_OPTIONS=halt_on_error=1")
+    endif()
+endif()
+
+# This fixture is compiled by the producer, then executed afresh outside the
+# derivation. It proves diagnostic behavior even when Nix substitutes the build.
+if(NOT EMSCRIPTEN AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+   AND (ENABLE_SANITIZERS OR ENABLE_FUZZING))
+    add_executable(og_sanitizer_diagnostics tests/fixtures/sanitizer_diagnostics.cpp)
+    target_link_libraries(og_sanitizer_diagnostics PRIVATE project_warnings project_sanitizers)
+    target_compile_features(og_sanitizer_diagnostics PRIVATE cxx_std_20)
+    if(ENABLE_FUZZING AND NOT ENABLE_SANITIZERS)
+        target_compile_options(og_sanitizer_diagnostics PRIVATE
+            -fno-omit-frame-pointer -fsanitize=address,undefined,float-cast-overflow)
+        target_link_options(og_sanitizer_diagnostics PRIVATE
+            -fsanitize=address,undefined,float-cast-overflow)
     endif()
 endif()
 
@@ -1333,7 +1359,6 @@ if(NOT EMSCRIPTEN)
     set(OG_CURSES_LIB_SOURCES
         ${SRC_DIR}/platform/curses/curses_app.cpp
         ${SRC_DIR}/platform/curses/curses_terminal.cpp
-        ${SRC_DIR}/platform/curses/headless_terminal.cpp
         ${SRC_DIR}/platform/curses/clock.cpp
         ${SRC_DIR}/platform/curses/glyph_map.cpp
         ${SRC_DIR}/platform/curses/kitty_keys.cpp
@@ -1682,39 +1707,17 @@ include(${CMAKE_SOURCE_DIR}/cmake/OpenGladCoverage.cmake)
 # Fuzz targets (libFuzzer / clang)
 # --------------------------------------------------------------------------
 
-option(ENABLE_FUZZING "Build fuzz testing harnesses (requires clang with libFuzzer)" OFF)
-
 if(ENABLE_FUZZING)
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "ENABLE_FUZZING requires Clang (for libFuzzer support)")
-    endif()
-
-    set(FUZZ_SANITIZER_FLAGS -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
-    set(FUZZ_LINK_FLAGS -fsanitize=fuzzer,address,undefined)
-
-    # Each fuzz target is a standalone executable that links only what it needs.
-    # The harnesses use SDL_IOFromConstMem to feed data, so they need SDL3 but
-    # not the full game engine.
-
-    function(add_fuzz_target name source)
-        add_executable(${name} ${source})
-        target_include_directories(${name} PRIVATE
-            $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
-        )
-        target_compile_definitions(${name} PRIVATE ${COMMON_DEFINITIONS})
-        target_link_libraries(${name} PRIVATE project_warnings)
-        target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
-        target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
-    endfunction()
-
-    # fuzz_scenario: exercises .fss scenario binary parsing
-    add_fuzz_target(fuzz_scenario ${SRC_DIR}/fuzz/fuzz_scenario.cpp)
-    target_link_libraries(fuzz_scenario PRIVATE ${OG_SDL3_TARGET})
-
-    # fuzz_savefile: exercises .gtl save file binary parsing
-    add_fuzz_target(fuzz_savefile ${SRC_DIR}/fuzz/fuzz_savefile.cpp)
-    target_link_libraries(fuzz_savefile PRIVATE ${OG_SDL3_TARGET})
-
+    add_library(og_fuzz_runtime STATIC tests/fuzz/runtime.cpp)
+    configure_openglad_library(og_fuzz_runtime)
+    target_link_libraries(og_fuzz_runtime PUBLIC og_game project_warnings)
+    target_include_directories(og_fuzz_runtime PUBLIC "${CMAKE_SOURCE_DIR}/tests/fuzz")
+    foreach(name IN ITEMS fuzz_scenario fuzz_savefile)
+        add_executable(${name} "${CMAKE_SOURCE_DIR}/tests/fuzz/${name}.cpp")
+        target_link_libraries(${name} PRIVATE og_fuzz_runtime)
+        target_link_options(${name} PRIVATE -fsanitize=fuzzer,address,undefined,float-cast-overflow)
+        add_runtime_assets_dependency(${name})
+    endforeach()
 endif()
 
 # --------------------------------------------------------------------------

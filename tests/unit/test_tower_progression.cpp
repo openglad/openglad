@@ -16,6 +16,8 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/tower_constants.h>
+#include <openglad/core/irandom.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/game_mode.h>
 #include <openglad/resources/io_common.h>
@@ -26,6 +28,8 @@
 #include "westlands_sim_fixture.h"
 #include "../test_save_state_guard.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <format>
@@ -43,6 +47,37 @@ using og::mode::ModePopup;
 using og::mode::ProgressionKind;
 
 const std::string kTowerId{og::kTowerCampaignId};
+
+class SeedSequence final : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        bounds.push_back(max_exclusive);
+        const std::uint32_t value = values[index++ % values.size()];
+        return max_exclusive == 0 ? 0 : value % max_exclusive;
+    }
+
+    std::vector<std::uint32_t> bounds;
+    std::array<std::uint32_t, 2> values{0x1234u, 0xABCDu};
+    std::size_t index = 0;
+};
+
+class ScopedSessionRandom
+{
+public:
+    explicit ScopedSessionRandom(IRandom* replacement)
+        : slot_(current_game->session_rng_ref), previous_(*slot_)
+    {
+        *slot_ = replacement;
+    }
+
+    ~ScopedSessionRandom() { *slot_ = previous_; }
+
+private:
+    IRandom** slot_;
+    IRandom* previous_;
+};
 
 void prune_all_floors()
 {
@@ -133,6 +168,8 @@ TEST_F(TowerProgressionTest, fresh_run_draws_seed_prunes_and_prefetches)
 
     SaveData save;
     init_tower_save(save, og::kTowerGateLevel, 777u);
+    SeedSequence seed_draws;
+    ScopedSessionRandom scripted_seed(&seed_draws);
     ASSERT_TRUE(tower().prepare_launch(save, /*networked_session=*/false));
 
     // Floor 1 regenerated (prefetch — the Gate's exit prompt reads its
@@ -142,6 +179,16 @@ TEST_F(TowerProgressionTest, fresh_run_draws_seed_prunes_and_prefetches)
         og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel + 1));
     EXPECT_EQ(og::kTowerGateLevel, save.scen_num)
         << "prepare_launch never moves the cursor";
+    EXPECT_EQ(0x1234ABCDu, save.tower_run_seed)
+        << "the first session draw is the high half, then the low half";
+    std::vector<std::uint32_t> seed_bounds;
+    for (const std::uint32_t bound : seed_draws.bounds)
+    {
+        if (bound == 0x10000u)
+            seed_bounds.push_back(bound);
+    }
+    EXPECT_EQ((std::vector<std::uint32_t>{0x10000u, 0x10000u}), seed_bounds)
+        << "exactly the two run-seed halves use the 16-bit bound";
 }
 
 TEST_F(TowerProgressionTest, resume_heals_current_and_prefetches_next)

@@ -606,16 +606,28 @@ TEST_F(SemAi3, a_random_walk_order_becomes_a_forced_walk_in_a_rolled_direction)
         EXPECT_EQ((std::vector<std::uint32_t>{3u, 3u}), rolls.bounds) << "two rng(3) draws";
     }
     {
-        // Mixed rolls: the two draws are one call's arguments (unsequenced),
-        // so only the pair is pinned.
+        // The legacy GCC stream draws y before x. Pin the mixed pair so a
+        // compiler cannot silently swap the axes again.
         CountingSequence rolls({0, 2});
         ScopedSimRandom scripted(&rolls);
         st->clear_command();
         st->set_command(COMMAND_RANDOM_WALK, 3);
         ASSERT_EQ(1u, st->commands.size());
         const command& c = st->commands.front();
-        EXPECT_EQ(0, c.com1 + c.com2) << "one axis -1, the other +1";
-        EXPECT_EQ(1, c.com1 * c.com1);
+        EXPECT_EQ(1, c.com1) << "second draw is x";
+        EXPECT_EQ(-1, c.com2) << "first draw is y";
+        EXPECT_EQ((std::vector<std::uint32_t>{3u, 3u}), rolls.bounds);
+    }
+    {
+        CountingSequence rolls({0, 2});
+        ScopedSimRandom scripted(&rolls);
+        st->clear_command();
+        st->try_random_walk(7);
+        ASSERT_EQ(1u, st->commands.size());
+        const command& c = st->commands.front();
+        EXPECT_EQ(7, c.commandcount);
+        EXPECT_EQ(1, c.com1) << "try_random_walk also draws y before x";
+        EXPECT_EQ(-1, c.com2);
         EXPECT_EQ((std::vector<std::uint32_t>{3u, 3u}), rolls.bounds);
     }
     {

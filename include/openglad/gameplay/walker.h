@@ -99,7 +99,7 @@ class walker : public og::sim::SimEntity
 #ifdef TESTING
 			// Test-only oracle for the fall-damage accumulator (fall_stories_
 			// below); compiled out of production builds.
-			int fall_stories_for_test() const { return fall_stories_; }
+			int fall_stories_for_test() const;
 #endif
 			virtual bool setxy(short x, short y);
 			// Overloads to avoid implicit narrowing at call sites. These forward to the virtual short-based API.

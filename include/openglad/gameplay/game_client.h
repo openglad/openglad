@@ -216,9 +216,11 @@ public:
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
         float alpha) const;
+#ifdef TESTING
     void testing_set_render_interpolation_elapsed_ms(float elapsed_ms);
     void testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms);
     void testing_set_transport_disconnect_elapsed_ms(float elapsed_ms);
+#endif
 
 private:
     struct EntityInterpolationState {

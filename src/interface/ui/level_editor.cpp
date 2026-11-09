@@ -3615,6 +3615,7 @@ Sint32 level_editor()
 	// the first poll; from then on the loop only refreshes a screen the fade
 	// already owns.
 	compose_and_present();
+    TRACE("editor", "input_ready");
 
 	//
 	// This is the main program loop
@@ -3831,6 +3832,9 @@ Sint32 level_editor()
             default:
                 break;
             }
+            // Observe completion after the handler (including modal work),
+            // not merely removal from SDL's event queue.
+            TRACE("editor", "input_processed kind=%d", static_cast<int>(event_data.type));
         }
 
 		// Pointer handoff (docs/menu-engine.md): the editor pumps its own

@@ -24,6 +24,14 @@ package build configures with `OPENGLAD_REQUIRE_SYSTEM_DEPS=ON` and
 | IXWebSocket | `ixwebsocket::ixwebsocket` or `ixwebsocket` | `64fae7676bd8fe31f7cb4bcde7a6841892dad65e` | https://github.com/machinezone/IXWebSocket |
 | Lua | `og_lua` (always vendored; **no system fallback**) | `v5.4.8` | https://github.com/lua/lua |
 
+IXWebSocket also requires `cmake/patches/ixwebsocket-message-callback.patch`.
+The Nix package and FetchContent build both apply it. Packaged installations
+must expose `IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK` in their headers;
+CMake rejects an unpatched package. The patch synchronizes callback replacement
+and dispatch during server shutdown, retains an executing callback until it
+returns, and preserves mutable callback state. Callbacks and their destructors
+run outside the configuration mutex so they can reenter the public API.
+
 SDL2_mixer was removed with the SDL3 migration: audio is implemented directly
 on SDL3 audio streams in `src/platform/sdl/sound.cpp`, so there is no separate
 mixer dependency. The Emscripten build uses the upstream emscripten-ports SDL3

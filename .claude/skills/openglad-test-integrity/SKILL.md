@@ -7,29 +7,64 @@ description: The rules that keep OpenGlad's test and coverage numbers honest —
 
 ## The honest-denominator invariant
 
-The coverage denominator is a pure function of repo contents. NEVER:
-- add a gcovr/lcov `--exclude` or `--filter` narrowing,
-- add a ctest `-E`/`-R` selection to the coverage workflow,
-- add or raise a `--repeat until-pass` retry to turn a red run green
-  (the `until-pass:3` pinned in test.yml and coverage.yml is deliberate
-  and moves only in lockstep across both; a test that fails every
-  attempt fails the gate, and a flake "fixed" by more retries is still
-  a flake to root-cause),
-- move a file out of src/, lower a threshold, or delete/disable/skip a
-  test to go green.
+The coverage denominator is a pure function of repository contents. NEVER:
+- narrow the measured source/header inventory with a gcovr/lcov exclusion,
+- omit tests from the required coverage population,
+- use `--repeat until-pass` or replace a failed attempt's results with a rerun,
+- move production code out of the measured roots, lower a threshold, or
+  delete/disable/skip a behavioral test to make a gate pass.
+
+Every required native CTest entry runs once. A later diagnostic run may help
+explain a failure, but the first failure remains a failed gate until its cause
+is fixed. Keep failed logs and profiles separate from a new measurement.
+
+Coverage sharding is allowed only through the complete inventory contract in
+`scripts/ci/test_matrix.py`: generate a plan from CTest, keep fixture setup,
+consumers and cleanup together, and require exactly one result per planned test
+and one report per shard. The union must equal the original inventory. The
+explicit delegation of `emscripten_build_test` to the required WASM graph is
+recorded in that plan; it is not a discretionary exclusion. An absent, skipped,
+disabled, duplicated or failed result fails the gate. TSan's focused network
+selection is a separate lane and never defines the coverage population.
+
+Within a GoogleTest binary, bounded CTest entries use the upstream shard
+protocol with a complete, unique index set and the original case filter. Each
+case must run exactly once across those entries. Preserve deliberate fixture
+leak pairs in one process; splitting an A/B cleanup oracle makes it vacuous.
+Native result parsing retains full process output and rejects internal
+GoogleTest skips of mandatory cases, even if the CTest entry exits zero.
+Existing opt-in recording, benchmark, deployed-relay and unavailable display
+checks are reported by exact name and reason; sanitizer budget skips are not
+allowed.
+
+Every coverage shard starts with clean profiles and the same compiler notes.
+Collect the complete C++ source/header grid, including zero-hit translation
+units, and verify identical grids before merging counts. Merge all Lua process
+evidence and source sidecars; require the full recorder-process manifest.
+Never copy one shard's profiles into another or merge failed/retried attempts.
 
 One sanctioned exclusion list exists: `scripts/coverage/cpp_excluded.txt`
 — tracked src/ TUs the coverage build genuinely cannot measure
-(fuzz-only, emscripten-only), one per line with a mandatory reason,
-rot-checked in both directions by scripts/coverage/coverage_report.py.
-It makes an unmeasured TU an error instead of a silently smaller
-denominator; it is never a lever for dodging poorly covered code. Any
-coverage-gate PR reports the no-exclude numbers before and after and
-states "denominator unchanged" explicitly. Raising a CI floor is a
-separate, announced act — never a silent side effect. Read the current
-thresholds from coverage.yml; never trust remembered numbers. CI's
-retried runs can read slightly higher than a local single pass — judge
-local work by its before/after delta.
+(no executable lines, Emscripten-only), one per line with a mandatory reason,
+rot-checked in both directions by `scripts/coverage/coverage_report.py`.
+Tracked `include/openglad/` headers also belong to the C++ denominator; a header
+with executable lines or functions cannot disappear from the report. Test-only
+exerciser implementations belong in `tests/coverage_internal/` or linked
+`tests/support/` code, with guarded declarations at the production boundary.
+Check callers with `rg -uu` or `git grep` before classifying an unguarded API as
+test-only; ignored source files can contain production callers. Runtime reads
+of injected state and all shared behavior remain in the measured product.
+`OPENGLAD_TEST_SUPPORT` may include test observers when a unit group links the
+production archive; it must not select alternate runtime behavior.
+
+Report before/after counts and percentages over the same declared inventory.
+Say "denominator unchanged" only when it actually is; an authorized expansion
+or a test-only helper relocation must be itemized with its effect on the counts.
+Raising a CI floor is a separate, announced act. Read thresholds from the current
+workflow and reporter configuration, never remembered values. Do not claim a
+percentage until the complete fresh run and merged report have passed.
+The current C++ gate requires strictly more than 98% line coverage and 100%
+function coverage; exactly 98% does not pass.
 
 ## Banned assertion shapes
 
@@ -52,9 +87,9 @@ number, self-audit your new tests against this list.
 Every fixed or new test is proven by breaking the product and watching it
 go red:
 
-1. Plant the break in src/ — the most natural one-line break of the rule
-   the test names: an early return, a flipped comparison, a wrong
-   constant. For a source tripwire (a test whose oracle is the source
+1. Plant the break in the product implementation (`src/`, or the measured
+   `include/openglad/` header that defines the rule): an early return, a
+   flipped comparison, or a wrong constant. For a source tripwire (a test whose oracle is the source
    tree) the plant goes in the sources it scans, not in src/.
 2. Batch independent mutations in different functions: one build, one run
    of the group's binaries, each test red for ITS mutation. Two mutations
@@ -103,23 +138,25 @@ survive -Werror:
 
 ## Coverage run mechanics (local)
 
-- Judge a change by the local baseline→change DELTA in a worktree, not
-  the absolute number: CI's retried runs accumulate `.gcda` and read
-  higher than any local single pass.
+- Compare baseline and change using one complete first-attempt population
+  each, the same toolchain, and clean profiles. Report counts with the delta;
+  partial or diagnostic runs do not establish the required coverage result.
 - Incremental ci-coverage rebuilds leave stale `.gcda` ("overwriting ...
   different checksum" corrupts the number) — delete them after building,
   before running tests.
-- Guard style: a one-line `if (!x) return v;` keeps the bad-path return
-  on a covered line; a two-line if/return leaves an uncovered line each.
-- To find CI's exact uncovered functions, read `FNDA:0` records from the
-  run artifact's combined.info; local function HIT/no-hit is reliable
-  even where line counts undercount.
-- A function whose last caller was deleted is dead code that reds the
-  function floor — delete it, don't write a test for it.
-- Coverage-lane unit groups run ~10x slower under instrumentation
-  against a fixed ctest timeout ceiling. When a group nears it, SPLIT
-  the group (new binary + recorder_processes.txt line); never bump the
-  ceiling.
+- Keep branches readable. Do not combine an unexecuted return with a covered
+  line to improve the percentage; test the bad path through an observable result.
+- Read uncovered function identities and declaration lines from the canonical
+  report's `summary.json` or `cpp.json`. Compare the same source/header scope
+  and compiler settings before interpreting a local/CI difference.
+- A missing direct caller does not prove an API or default interface contract
+  is obsolete. Audit callers and contracts before deleting an implementation;
+  preserve required behavior and test its observable effects.
+- Instrumented groups keep their existing CTest timeout ceilings. Partition a
+  slow group's cases into bounded CTest entries with a complete, disjoint union;
+  keep cross-test cleanup pairs together. A new `recorder_processes.txt` entry
+  is needed only when a new executable actually records Lua, not for another
+  CTest entry using the same binary. Never raise the timeout to avoid a split.
 
 ## Rejected deletion classes
 
@@ -231,6 +268,12 @@ test after the failure never ran.
    set; one scene is selected with `--gtest_filter`, never with an env var
    of its own. The shared play-through helpers live once, in
    `tests/test_live_game.h`.
+   Cinematic utilities with no behavioral regression oracle belong in the
+   explicit `og_capture_gameplay` tool (`tools/capture_gameplay/scenes.inc`),
+   which has no CTest registration. Moving one requires retaining its recording
+   behavior and proving no semantic case or coverage obligation was removed.
+   The real-gameplay, spectator, split-screen and physical-HUD regressions stay
+   unconditional; `OG_FX_CAPTURE_DIR` controls only their output files.
 2. Never feed malformed YAML to gparser as a coverage target; it does
    not return.
 3. Run ctest with stdin PIPED, never under a pty — headless clients

@@ -12,6 +12,15 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for full codebase documentation.
 
 The primary build system is **CMake 3.25+** with presets. The project targets **C++20**.
 
+Run build and test commands inside the Nix shell. Start a build task with
+`nix develop --command bash -c 'which cmake c++ emcc'`; the command blocks below
+assume that shell. Use the full default shell for a fresh CMake configure.
+The lean `nix develop .#ci-native` shell runs imported CI bundles. Canary bundles
+retain objects for incremental rebuilds with their cached dependency paths and
+lane options; other bundles must be rebuilt through their Nix producer.
+Do not source another SDK or install a second toolchain. See the dev-environment
+skill for bundle activation and compiler/hardening differences.
+
 ### Quick Build & Test
 
 ```bash
@@ -42,23 +51,17 @@ cmake --build --preset dev-debug
 | `ci-fuzz` | libFuzzer targets |
 | `web-emscripten` | Emscripten WebAssembly build |
 
-### Dependencies (Debian/Ubuntu)
+### Dependencies
 
-```bash
-sudo apt-get install cmake ninja-build libgtest-dev libssl-dev
-```
-
-OpenSSL (`libssl-dev`) is required by the native WebSocket transport: the
-default multiplayer relay lives on Cloudflare (`https://` room create,
-`wss://` room sockets).
-
-SDL3 is auto-fetched (pinned `release-3.4.8`) when no system sdl3 is found;
-install `libsdl3-dev` (where available) or nix `sdl3` to use a system copy.
+`flake.nix` pins the compiler, CMake, SDL3, GoogleTest and the native dependencies.
+The default development shell also supplies Emscripten and media tools. OpenSSL
+is required by the native WebSocket transport for HTTPS room creation and WSS
+room sockets. Add a genuinely missing build tool to the flake; do not work around
+the pinned toolchain with system-package or SDK installations.
 
 ### Web Build
 
 ```bash
-source /path/to/emsdk/emsdk_env.sh
 ./scripts/build_web.sh
 cd dist && python3 -m http.server 8080
 # Open http://localhost:8080/index.html
@@ -162,22 +165,42 @@ cmake --build --preset ci-test
 ctest --preset ci-test
 ```
 
-GoogleTest is a system dependency for native test builds:
-
-```bash
-sudo apt-get install libgtest-dev   # Debian/Ubuntu
-brew install googletest             # macOS
-```
+GoogleTest comes from the Nix environment. Required native gates run each
+planned CTest entry once; a diagnostic rerun cannot replace a failed result.
+ASan and coverage shard the complete generated CTest inventory, keep fixture
+lifecycles together, and verify that every planned result exists exactly once.
+Coverage also verifies identical compiler-note and source/header inventories
+before merging counts. See the test-integrity skill for the full contract.
 
 ### Test Binaries
 
 | Binary | Description |
 |--------|-------------|
-| `og_unit_*` | Headless unit group binaries |
+| `og_unit_sim` | Deterministic gameplay, snapshots, replay and input |
+| `og_unit_network` | Real transports and server/client/lobby handoffs; focused TSan target |
+| Other `og_unit_*` | Headless unit group binaries |
 | `og_test_*` | SDL integration group binaries |
 | `openglad_text` | Headless text client exercised via CTest script entries |
 
 Integration groups use `tests/integration/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
+
+CTest group entries launch through `tests/fixtures/run_isolated.py`, which gives
+each invocation private installed assets, campaigns, scratch directories and
+executable companions. Source-oracle tests resolve the actual checkout. Filtered
+direct runs should use the same launcher; invoking a binary directly bypasses
+this isolation. Keep network and CPU scheduling constraints until concurrent
+runs prove they are unnecessary.
+
+Parity's scen99 input has an independent CTest fixture: `scenario99_setup`
+creates the historical bytes, consumers declare `FIXTURES_REQUIRED`, and
+`scenario99_cleanup` removes them. A filtered parity run automatically includes
+the fixture lifecycle; it does not run `og_test_level` first.
+
+Recording regressions assert their behavior on every run and write media only
+when `OG_FX_CAPTURE_DIR` is set. Long cinematic commands without a regression
+oracle live in the explicitly built `og_capture_gameplay` tool under
+`tools/capture_gameplay/`; they have no CTest registration. The FX review script
+runs that tool alongside the ordinary regression recordings.
 
 Integration test sources live in `tests/integration/`; the shared fixture
 headers stay at `tests/` root, where `tests/unit/`, `tests/curses/` and

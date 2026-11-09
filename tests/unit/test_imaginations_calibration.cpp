@@ -36,7 +36,9 @@
  */
 #include "westlands_sim_fixture.h"
 
+#include <cstddef>
 #include <cstdio>
+#include <iterator>
 #include <cstdlib>
 
 namespace {
@@ -83,28 +85,18 @@ CurveBattle battle_at_600(int level_id, int crew_level, std::uint32_t seed)
 
 } // namespace
 
-TEST_F(ImaginationsCalibration,
-       curve_levels_load_field_an_army_and_fight_at_600_ticks)
+// Each original curve row still runs once with the same seed/ticks and
+// assertions. Separate cases bound instrumentation cost without a sanitizer
+// skip; the original semantic test ID owns partition zero.
+namespace {
+void check_curve_partition(std::size_t partition)
 {
-    // Skipped under ThreadSanitizer and AddressSanitizer for job budget,
-    // like the Westlands suite (see the identical block in
-    // test_westlands_calibration.cpp for the accounting): the battle sim is
-    // single-threaded, and the ci-test and coverage lanes run this test.
-#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
-                    "lanes; skipped under TSan and ASan (job budget)";
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
-                    "lanes; skipped under TSan and ASan (job budget)";
-#endif
-#endif
-
     const bool measure =
         std::getenv("IMAGINATIONS_CALIBRATION_MEASURE") != nullptr;
 
-    for (const CurveLevel& lvl : kCurve)
+    for (std::size_t index = partition; index < std::size(kCurve); index += 4)
     {
+        const CurveLevel& lvl = kCurve[index];
         SCOPED_TRACE("scen" + std::to_string(lvl.level_id) + " at crew level " +
                      std::to_string(lvl.crew_level));
         if (measure)
@@ -131,4 +123,20 @@ TEST_F(ImaginationsCalibration,
             << "the crew never landed a hit in 600 ticks: it is not fighting "
                "the level at all";
     }
+}
+} // namespace
+
+TEST_F(ImaginationsCalibration, curve_levels_load_field_an_army_and_fight_at_600_ticks)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(0));
+}
+
+TEST_F(ImaginationsCalibration, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_1)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(1));
+}
+
+TEST_F(ImaginationsCalibration, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_2)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(2));
 }

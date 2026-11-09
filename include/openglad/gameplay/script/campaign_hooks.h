@@ -353,7 +353,9 @@ std::vector<std::string> campaign_registered_vars();
 // Diagnostic/test seam: every key of the active VM's og table whose value
 // is a function, sorted. The sandbox has no pairs(), so the fence-walk
 // test enumerates the surface here. No sim path reads it.
+#ifdef TESTING
 std::vector<std::string> og_function_names();
+#endif
 
 // --- LINEUP (docs/lineup-design.md §3.3, §4) ---------------------------
 //

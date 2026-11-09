@@ -161,13 +161,7 @@ void DamageNumberRenderContext::prune_dead_owners(const GameWorld& world)
 }
 
 #ifdef TESTING
-std::size_t DamageNumberRenderContext::state_count() const noexcept
-{
-    std::size_t count = 0u;
-    for (const auto& owner_state : state_by_owner_)
-        count += owner_state.second.size();
-    return count;
-}
+#include "../../../tests/coverage_internal/damage_number_context_observers.inc"
 #endif
 
 static bool float_eq(float a, float b)
@@ -177,10 +171,7 @@ static bool float_eq(float a, float b)
 }
 
 #ifdef TESTING
-std::size_t damage_number_render_state_count(const screen* screen_ctx)
-{
-    return screen_ctx->damage_number_render_context().state_count();
-}
+#include "../../../tests/coverage_internal/damage_number_screen_observers.inc"
 #endif
 
 static screen* active_game_screen()

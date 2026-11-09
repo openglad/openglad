@@ -82,9 +82,11 @@ public:
     void finish_network_round(const GameRunResult& result);
 
     // Accessors for tests.
-    const SaveData& save_data() const { return save_data_; }
-    SaveData& save_data() { return save_data_; }
-    int difficulty() const { return options_.difficulty; }
+#ifdef TESTING
+    const SaveData& save_data() const;
+    SaveData& save_data();
+    int difficulty() const;
+#endif
 
 private:
     ITerminal& term_;

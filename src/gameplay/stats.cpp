@@ -473,7 +473,11 @@ bool statistics::has_commands() const
 
 short statistics::try_random_walk(Sint32 iterations)
 {
-	return try_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+	// GCC historically evaluated the final argument first. Preserve that
+	// simulation stream explicitly: y is drawn before x on every compiler.
+	const Sint32 info2 = static_cast<Sint32>(rng(3)) - 1;
+	const Sint32 info1 = static_cast<Sint32>(rng(3)) - 1;
+	return try_command(COMMAND_WALK, iterations, info1, info2);
 }
 
 short statistics::try_command(Sint32 whatcommand, Sint32 iterations,
@@ -489,7 +493,13 @@ void statistics::set_command(Sint32 whatcommand, Sint32 iterations)
 	//   (0,0) roll becomes SE per above); any other order is forced with zero arguments.
 	// tests: SemAi3.a_random_walk_order_becomes_a_forced_walk_in_a_rolled_direction
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		set_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+	{
+		// This used to rely on GCC's right-to-left argument evaluation. Draw
+		// y then x explicitly so Clang and GCC advance the same sim stream.
+		const Sint32 info2 = static_cast<Sint32>(rng(3)) - 1;
+		const Sint32 info1 = static_cast<Sint32>(rng(3)) - 1;
+		set_command(COMMAND_WALK, iterations, info1, info2);
+	}
 	else
 		set_command(whatcommand, iterations, 0, 0);
 }

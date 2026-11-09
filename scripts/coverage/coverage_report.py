@@ -69,7 +69,9 @@ grids diverged, the same hits landed off-grid and stopped the run).
 Outputs (into --output-dir)
 ---------------------------
     lua.info        lcov tracefile for every Lua source the repository ships
-    cpp.info        lcov tracefile for src/            (when C++ was measured)
+    cpp.info        lcov tracefile for src/ and include/openglad/
+    cpp.json        canonical gcovr data, including zero-hit bodies
+    production.*    diagnostic coverage of objects compiled without TESTING
     combined.info   the two concatenated — feed to genhtml/gcovr
     summary.json    machine-readable totals and per-half gate verdicts
 
@@ -86,6 +88,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -132,6 +135,10 @@ FIXTURE_DIGESTS_FILE = Path(__file__).resolve().parent / "runtime_only_lua.txt"
 # emitted .gcno for, so an absent TU is otherwise invisible; this committed
 # ledger is what turns "invisible" into "on the record, with a reason".
 CPP_EXCLUDED_FILE = Path(__file__).resolve().parent / "cpp_excluded.txt"
+
+# The product includes inline and template bodies in public headers. Keep
+# this scope explicit in collection, imported-trace validation and reporting.
+CPP_SCOPE_ROOTS = ("src/", "include/openglad/")
 
 # The processes a full suite run is expected to have collected dumps from.
 # A suite that quietly loses processes does not look broken, it looks like
@@ -250,7 +257,7 @@ def repo_relative(path_text: str, repo_root: Path) -> str:
 
 
 def git_tracked_src(repo_root: Path, errors: List[str]) -> Optional[Set[str]]:
-    """Git-tracked paths under src/, repo-relative. None (plus an error) when
+    """Git-tracked implementation/header paths, repo-relative. None when
     git cannot answer — the same no-fallback stance as the Lua inventory: a
     denominator check that silently ran against a guess is worse than one
     that refused. The executable comes from the inventory's resolver
@@ -260,7 +267,7 @@ def git_tracked_src(repo_root: Path, errors: List[str]) -> Optional[Set[str]]:
     try:
         git = lua_inventory.git_executable()
         proc = subprocess.run(
-            [git, "-C", str(repo_root), "ls-files", "--", "src"],
+            [git, "-C", str(repo_root), "ls-files", "--", "src", "include/openglad"],
             capture_output=True,
             text=True,
             check=False,
@@ -379,7 +386,7 @@ def check_cpp_completeness(
     """
     if tracked_src is None:
         return  # git already failed with its own error
-    tracked_cpp = {p for p in tracked_src if p.endswith(".cpp")}
+    tracked_cpp = {p for p in tracked_src if p.startswith("src/") and p.endswith(".cpp")}
     measured = {repo_relative(f.path, repo_root) for f in files}
 
     excluded: Dict[str, str] = {}
@@ -1229,34 +1236,216 @@ def gcovr_lcov_1x_flag(base: List[str], repo_root: Path) -> str:
     )
 
 
-def gcovr_tracefile(build_dir: Path, repo_root: Path, out: Path) -> None:
+def production_variant_exclusions(build_dir: Path) -> List[str]:
+    """Exclude object directories compiled with TESTING, never source files."""
+    database = build_dir / "compile_commands.json"
+    if not database.is_file():
+        raise ValueError(f"production variant needs compilation records: {database}")
+    excluded = set()
+    for entry in json.loads(database.read_text()):
+        arguments = entry.get("arguments") or shlex.split(entry["command"])
+        if not any(argument == "-DTESTING" or argument.startswith("-DTESTING=")
+                   for argument in arguments):
+            continue
+        output = entry.get("output")
+        if output is None:
+            try:
+                output = arguments[arguments.index("-o") + 1]
+            except (ValueError, IndexError) as error:
+                raise ValueError(f"TESTING compilation has no object output: {entry['file']}") from error
+        match = re.search(r"(?:^|/)(CMakeFiles/[^/]+\.dir)(?:/|$)", output)
+        if match is None:
+            raise ValueError(f"unrecognized TESTING object directory: {output}")
+        excluded.add(r"(?:.*/)?" + re.escape(match.group(1)) + r"(?:/|$)")
+    if not excluded:
+        raise ValueError("production variant found no TESTING object directories to separate")
+    return sorted(excluded)
+
+
+def testing_conditional_lines(path: Path) -> Set[int]:
+    """Source lines inside a preprocessor conditional involving TESTING.
+
+    The gcov production trace determines which side was actually compiled;
+    this scanner only marks the source regions for the diagnostic gap list.
+    """
+    stack = []
+    marked = set()
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        directive = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)", line)
+        if directive:
+            kind, expression = directive.groups()
+            if kind in ("if", "ifdef", "ifndef"):
+                stack.append([number, bool(re.search(r"\bTESTING\b", expression))])
+            elif kind == "elif" and stack:
+                stack[-1][1] |= bool(re.search(r"\bTESTING\b", expression))
+            elif kind == "endif" and stack:
+                first, involves_testing = stack.pop()
+                if involves_testing:
+                    marked.update(range(first, number + 1))
+    return marked
+
+
+def production_variant_summary(
+    files: List[FileCoverage], aggregate: List[FileCoverage], repo_root: Path,
+) -> dict:
+    union = {repo_relative(item.path, repo_root): item for item in aggregate}
+    missing_functions = []
+    conditional_misses = []
+    for item in sorted(files, key=lambda item: item.path):
+        path = repo_relative(item.path, repo_root)
+        combined = union.get(path, FileCoverage(path))
+        for name, (line, count) in sorted(item.functions.items()):
+            if count <= 0:
+                missing_functions.append({
+                    "path": path, "line": line, "name": name,
+                    "covered_in_union": combined.functions.get(name, (0, 0))[1] > 0,
+                })
+        conditional = testing_conditional_lines(repo_root / path)
+        source_lines = (repo_root / path).read_text().splitlines()
+        for line, count in sorted(item.lines.items()):
+            if count <= 0 and line in conditional:
+                conditional_misses.append({
+                    "path": path, "line": line,
+                    "covered_in_union": combined.lines.get(line, 0) > 0,
+                    "source_text": source_lines[line - 1],
+                })
+    return {
+        "totals": vars(totals_of(files)),
+        "scope": "src/ + include/openglad/; profiles from objects compiled without TESTING",
+        "gated": False,
+        "uncovered_functions": missing_functions,
+        "uncovered_testing_conditional_lines": conditional_misses,
+    }
+
+
+def canonical_cpp_source(path_text: str, repo_root: Path) -> str:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = repo_root / path
+    relative = repo_relative(str(path), repo_root)
+    # CMake can copy component headers on filesystems that cannot symlink.
+    # Such a copy has the same identity only while its bytes match the source.
+    alias = re.search(r"(?:^|/)component_includes/[^/]+/openglad/(.+)$", relative)
+    if alias is not None:
+        original = repo_root / "include/openglad" / alias.group(1)
+        if path.read_bytes() != original.read_bytes():
+            raise ValueError(f"component header differs from its production source: {path}")
+        relative = original.relative_to(repo_root).as_posix()
+    return relative
+
+
+def canonicalize_cpp_records(files: List[FileCoverage], repo_root: Path) -> List[FileCoverage]:
+    """Unify physical source aliases without discarding any emitted body."""
+    merged: Dict[str, FileCoverage] = {}
+    for item in files:
+        path = canonical_cpp_source(item.path, repo_root)
+        target = merged.setdefault(path, FileCoverage(path))
+        for line, count in item.lines.items():
+            target.lines[line] = target.lines.get(line, 0) + count
+        for name, (line, count) in item.functions.items():
+            previous_line, previous_count = target.functions.get(name, (line, 0))
+            if previous_line != line:
+                raise ValueError(f"conflicting function locations for {path}: {name}")
+            target.functions[name] = (line, previous_count + count)
+    return list(merged.values())
+
+
+def canonicalize_cpp_json(
+    path: Path, repo_root: Path, *, lcov_output: Optional[Path] = None,
+    html_output: Optional[Path] = None,
+) -> None:
+    """Merge component-header aliases using gcovr's mangled function IDs.
+
+    This reads saved JSON, never profiles. The formatter can produce all final
+    formats while merging, so HTML and the gate share exactly one inventory.
+    """
+    payload = json.loads(path.read_text())
+    for item in payload["files"]:
+        item["file"] = canonical_cpp_source(item["file"], repo_root)
+        if not item["file"].startswith(CPP_SCOPE_ROOTS):
+            raise ValueError(f"coverage JSON is outside production scope: {item['file']}")
     gcovr = shutil.which("gcovr")
     base = [gcovr] if gcovr else [sys.executable, "-m", "gcovr"]
-    lcov_1x_flag = gcovr_lcov_1x_flag(base, repo_root)
-    base += [
-        "--root",
-        str(repo_root),
-        "--filter",
-        "src/",
-        "--gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file",
-        "--gcov-ignore-parse-errors=negative_hits.warn_once_per_file",
+    text_output = html_output.parent / "coverage-summary.txt" if html_output is not None else None
+    outputs = [output for output in (lcov_output, html_output, text_output) if output is not None]
+    for output in outputs:
+        output.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="cpp-canonical-", dir=path.parent) as directory:
+        normalized = Path(directory) / "input.json"
+        merged = Path(directory) / "merged.json"
+        normalized.write_text(json.dumps(payload))
+        command = base + ["--root", str(repo_root), "--add-tracefile", str(normalized),
+                          "--json", str(merged)]
+        if lcov_output is not None:
+            command += [gcovr_lcov_1x_flag(base, repo_root), "--lcov", str(lcov_output)]
+        if html_output is not None:
+            command += ["--html-details", str(html_output), "--txt", str(text_output)]
+        result = subprocess.run(command, cwd=repo_root, check=False)
+        if result.returncode != 0 or not all(output.exists() for output in [merged, *outputs]):
+            raise SystemExit(f"gcovr failed to format canonical C++ coverage (exit status {result.returncode})")
+        merged.replace(path)
+
+
+# GCC counters are signed 64-bit. The complete instrumented suite legitimately
+# executes SHA-256 rotations over 53 billion times (576 per compression), so
+# gcovr's default 2**32 heuristic rejects valid counts. Keep overflow detection
+# at the signed counter limit; negative counts remain fatal and are never zeroed.
+GCOVR_SUSPICIOUS_HITS_THRESHOLD = (1 << 63) - 1
+
+
+def gcovr_tracefile(
+    build_dir: Path, repo_root: Path, out: Path,
+    *, json_output: Optional[Path] = None, html_output: Optional[Path] = None,
+    exclude_profile_dirs: Iterable[str] = (),
+) -> None:
+    gcovr = shutil.which("gcovr")
+    base = [gcovr] if gcovr else [sys.executable, "-m", "gcovr"]
+    raw_json = json_output if json_output is not None else out.with_suffix(".json")
+    raw_json.unlink(missing_ok=True)
+    command = base + [
+        "--root", str(repo_root), "--filter", "(?:src/|include/openglad/)",
+        "-j", "3",
+        "--gcov-suspicious-hits-threshold", str(GCOVR_SUSPICIOUS_HITS_THRESHOLD),
     ]
-    tail = ["--lcov", str(out), str(build_dir)]
-    # Classic FN:/FNDA: records. Besides matching what the Lua side emits,
-    # 1.x skips the per-file VER: checksum — and computing that checksum means
-    # opening every source, which hard-fails on the stale .gcno an incremental
-    # build keeps for sources the branch deleted.
-    cmd = base + [lcov_1x_flag] + tail
-    if out.exists():
-        out.unlink()
-    proc = subprocess.run(cmd, cwd=repo_root, check=False)
-    if proc.returncode == 0 and out.exists():
-        return
-    raise SystemExit(
-        "gcovr failed to produce a C++ tracefile "
-        f"(exit status {proc.returncode}); install gcovr 8.4 or newer "
-        "or pass --cpp-tracefile"
-    )
+    for pattern in exclude_profile_dirs:
+        command += ["--gcov-exclude-directory", pattern]
+    command += ["--json", str(raw_json), str(build_dir)]
+    result = subprocess.run(command, cwd=repo_root, check=False)
+    if result.returncode != 0 or not raw_json.exists():
+        raise SystemExit(f"gcovr failed to collect C++ coverage (exit status {result.returncode})")
+    canonicalize_cpp_json(raw_json, repo_root, lcov_output=out, html_output=html_output)
+
+
+def check_cpp_scope(
+    files: List[FileCoverage], repo_root: Path, errors: List[str],
+) -> Dict[str, Totals]:
+    """Reject test/vendor padding and a legacy src-only imported tracefile.
+
+    Header declarations with no emitted code have no gcov records. We report
+    compiler-emitted bodies, not a count of every declaration in a header.
+    TU completeness remains a separate check against the tracked source list.
+    """
+    grouped = {root: [] for root in CPP_SCOPE_ROOTS}
+    outside = []
+    for coverage in files:
+        relative = repo_relative(coverage.path, repo_root)
+        root = next((root for root in CPP_SCOPE_ROOTS if relative.startswith(root)), None)
+        if root is None:
+            outside.append(relative)
+        else:
+            grouped[root].append(coverage)
+    if outside:
+        errors.append(
+            "C++ tracefile includes records outside the production scope "
+            "src/ + include/openglad/: " + ", ".join(sorted(outside)[:5])
+        )
+    totals = {root: totals_of(group) for root, group in grouped.items()}
+    if files and totals["include/openglad/"].functions_found == 0:
+        errors.append(
+            "C++ tracefile has no compiler-emitted public-header functions: "
+            "include/openglad/ must be collected together with src/"
+        )
+    return totals
 
 
 # ---------------------------------------------------------------------------
@@ -1284,7 +1473,7 @@ def bar_verdicts(
     An empty denominator meets nothing.
     """
     line_ok = t.lines_found > 0 and (
-        t.lines_hit * 100.0 >= line_threshold * t.lines_found
+        t.lines_hit * 100.0 > line_threshold * t.lines_found
     )
     if function_threshold >= 100.0:
         func_ok = t.functions_found > 0 and (
@@ -1310,8 +1499,14 @@ def main() -> int:
                     help="gcov build directory; runs gcovr over it")
     ap.add_argument("--cpp-tracefile", type=Path, default=None,
                     help="pre-made lcov tracefile for the C++ side")
+    ap.add_argument("--cpp-production-tracefile", type=Path, default=None,
+                    help="separate trace from objects compiled without TESTING; diagnostic only")
+    ap.add_argument("--cpp-html", action="store_true",
+                    help="write HTML and text alongside LCOV/JSON in the same "
+                         "gcovr collection; requires --cpp-build-dir")
     ap.add_argument("--output-dir", type=Path, required=True)
-    ap.add_argument("--line-threshold", type=float, default=98.0)
+    ap.add_argument("--line-threshold", type=float, default=98.0,
+                    help="line coverage must be strictly greater than this percentage")
     ap.add_argument("--function-threshold", type=float, default=100.0)
     ap.add_argument("--processes-manifest", type=Path,
                     default=PROCESS_MANIFEST_FILE,
@@ -1336,6 +1531,8 @@ def main() -> int:
                          "passes through the environment). Default: that "
                          "variable if set, else PATH.")
     args = ap.parse_args()
+    if args.cpp_html and (args.cpp_build_dir is None or args.cpp_tracefile is not None):
+        ap.error("--cpp-html requires --cpp-build-dir without --cpp-tracefile")
     if args.git_exe:
         os.environ[lua_inventory.GIT_ENV_VAR] = args.git_exe
 
@@ -1380,9 +1577,14 @@ def main() -> int:
         cpp_files = parse_tracefile(cpp_info)
         cpp_measured = True
     elif args.cpp_build_dir is not None:
-        gcovr_tracefile(args.cpp_build_dir.resolve(), repo_root, cpp_info)
+        gcovr_tracefile(
+            args.cpp_build_dir.resolve(), repo_root, cpp_info,
+            json_output=out_dir / "cpp.json",
+            html_output=out_dir / "coverage.html" if args.cpp_html else None,
+        )
         cpp_files = parse_tracefile(cpp_info)
         cpp_measured = True
+    cpp_scope_totals: Dict[str, Totals] = {}
     if cpp_measured:
         tracked_src = git_tracked_src(repo_root, errors)
         cpp_files = drop_deleted_sources(
@@ -1392,7 +1594,34 @@ def main() -> int:
         check_cpp_completeness(
             cpp_files, repo_root, tracked_src, args.cpp_excluded, errors,
         )
+        cpp_files = canonicalize_cpp_records(cpp_files, repo_root)
+        cpp_scope_totals = check_cpp_scope(cpp_files, repo_root, errors)
     cpp_totals = totals_of(cpp_files)
+
+    production_summary = None
+    production_path = args.cpp_production_tracefile
+    excluded_profile_dirs = []
+    if args.cpp_build_dir is not None and production_path is None:
+        excluded_profile_dirs = production_variant_exclusions(args.cpp_build_dir.resolve())
+        production_path = out_dir / "production.info"
+        gcovr_tracefile(
+            args.cpp_build_dir.resolve(), repo_root, production_path,
+            json_output=out_dir / "production.json",
+            exclude_profile_dirs=excluded_profile_dirs,
+        )
+    if production_path is not None:
+        if not cpp_measured:
+            ap.error("--cpp-production-tracefile requires the aggregate C++ measurement")
+        production_files = drop_deleted_sources(
+            parse_tracefile(production_path.resolve()), repo_root, tracked_src,
+            args.strict_cpp, errors, warnings,
+        )
+        production_files = canonicalize_cpp_records(production_files, repo_root)
+        check_cpp_scope(production_files, repo_root, errors)
+        production_summary = production_variant_summary(production_files, cpp_files, repo_root)
+        production_summary["excluded_profile_directories"] = excluded_profile_dirs
+        if not production_summary["totals"]["functions_found"]:
+            errors.append("the production C++ variant was requested but measured no functions")
 
     # The mirror of the empty-Lua guard above: a REQUESTED C++ half that
     # found nothing to measure is a broken run, not a smaller union.
@@ -1425,7 +1654,7 @@ def main() -> int:
     # true and practically false.
     halves: List[Tuple[str, str, Totals]] = []
     if cpp_measured:
-        halves.append(("C++ (src/)", "cpp", cpp_totals))
+        halves.append(("C++ product", "cpp", cpp_totals))
     halves.append(("Lua", "lua", lua_totals))
     halves.append(("COMBINED", "combined", combined))
     verdicts = {
@@ -1438,13 +1667,18 @@ def main() -> int:
     print("Coverage (line / function), the same bar for each language and the union")
     print(f"  {'Component':<14}{'Lines':>16}{'Line%':>10}{'Functions':>14}{'Func%':>10}")
     if cpp_measured:
-        print(fmt_row("C++ (src/)", cpp_totals))
+        print(fmt_row("C++ product", cpp_totals))
+        print(fmt_row("  src/", cpp_scope_totals["src/"]))
+        print(fmt_row("  headers", cpp_scope_totals["include/openglad/"]))
     else:
-        print("  C++ (src/)      not measured — pass --cpp-build-dir or --cpp-tracefile")
+        print("  C++ product     not measured — pass --cpp-build-dir or --cpp-tracefile")
+    if production_summary is not None:
+        print(fmt_row("C++ nonTESTING", Totals(**production_summary["totals"])))
+        print("    separate production variant: diagnostic only; aggregate bars unchanged")
     print(fmt_row("Lua (packs/)", lua_totals))
     print(fmt_row("COMBINED", combined))
     print(
-        f"  thresholds (per half AND combined): line >= "
+        f"  thresholds (per half AND combined): line > "
         f"{args.line_threshold:g}%  function >= {args.function_threshold:g}%"
     )
     for label, key, _ in halves:
@@ -1461,7 +1695,20 @@ def main() -> int:
 
     summary = {
         "cpp_measured": cpp_measured,
+        "cpp_production_variant": production_summary,
         "cpp": vars(cpp_totals),
+        "cpp_scope": {
+            "roots": list(CPP_SCOPE_ROOTS),
+            "functions": "compiler-emitted bodies, including inline/template instantiations",
+            "build_variants": "union of production and TESTING objects",
+            "source_identity": "canonical physical paths; component-header aliases merged",
+            "totals_by_root": {root: vars(totals) for root, totals in cpp_scope_totals.items()},
+        },
+        "cpp_uncovered_functions": [
+            {"path": repo_relative(f.path, repo_root), "line": line, "name": name}
+            for f in sorted(cpp_files, key=lambda f: f.path)
+            for name, (line, count) in sorted(f.functions.items()) if count <= 0
+        ],
         "lua": vars(lua_totals),
         "combined": vars(combined),
         "line_threshold": args.line_threshold,

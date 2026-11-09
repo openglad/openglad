@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate the FX review site from scratch: build, run every env-gated
-# capture test, encode the APNG site. Frames and site are build artifacts —
+# Regenerate the FX review site from scratch: build, run regression recordings and cinematic
+# capture commands, encode the APNG site. Frames and site are build artifacts —
 # they are rendered dynamically, never committed.
 #
 # Usage: scripts/fx_review/generate.sh [output-dir]
@@ -20,7 +20,7 @@ BUILD=build/ci-test
 mkdir -p "$ANIM"
 
 cmake --preset ci-test
-cmake --build --preset ci-test --target og_test_rendering og_test_game_core og_test_menu_ui og_test_special_scenes
+cmake --build --preset ci-test --target og_test_rendering og_test_game_core og_test_menu_ui og_test_special_scenes og_capture_gameplay
 
 # The capture flows overwrite save/save0.gtl (they build their own rosters);
 # preserve the real save around the run.
@@ -50,6 +50,9 @@ OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_render
 echo "=== live gameplay + split-screen + epic battles ==="
 OG_FX_CAPTURE_DIR="$PWD/$ANIM" ${OG_FX_CAPTURE_ONLY:+OG_FX_CAPTURE_ONLY="$OG_FX_CAPTURE_ONLY"} \
     timeout "$CAPTURE_TIMEOUT" "$BUILD/og_test_game_core" --gtest_filter='GameLoop.zz_capture_*'
+
+echo "=== cinematic campaign tours ==="
+OG_FX_CAPTURE_DIR="$PWD/$ANIM" timeout "$CAPTURE_TIMEOUT" "$BUILD/og_capture_gameplay"
 
 echo "=== New Specials and Gameplay Fixes scenes ==="
 # Ordinary tests of og_test_special_scenes; OG_FX_CAPTURE_DIR is what makes

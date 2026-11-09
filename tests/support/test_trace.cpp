@@ -5,8 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/core/test_trace.h>
-#ifdef TESTING
+#include "test_trace.h"
 
 #include <cstring>
 #include <cstdio>
@@ -50,4 +49,23 @@ void trace_dump() {
     fprintf(stderr, "=== End Trace Dump ===\n");
 }
 
-#endif // TESTING
+
+bool trace_stderr_enabled() {
+    static const bool enabled = []() {
+        const char* value = std::getenv("OG_TEST_TRACE_STDERR");
+        return value && value[0] != '\0' && std::strcmp(value, "0") != 0;
+    }();
+    return enabled;
+}
+
+void trace_write(const char* category, const char* format, ...) {
+    std::array<char, 1024> buf{};
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buf.data(), buf.size(), format, args);
+    va_end(args);
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    g_trace_buffer.push_back({category, buf.data()});
+    if (trace_stderr_enabled())
+        fprintf(stderr, "[TRACE:%s] %s\n", category, buf.data());
+}

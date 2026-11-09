@@ -657,6 +657,18 @@ int main(int argc, char** argv)
     std::signal(SIGPIPE, SIG_IGN);
 #endif
 
+#ifdef OPENGLAD_CAPTURE_TOOL
+    if (std::getenv("OG_FX_CAPTURE_DIR") == nullptr)
+    {
+        std::fprintf(stderr, "og_capture_gameplay: set OG_FX_CAPTURE_DIR to the media output directory\n");
+        return 2;
+    }
+    ::testing::GTEST_FLAG(filter) =
+        "GameLoop.zz_capture_epic_battles:GameLoop.zz_capture_westlands:"
+        "GameLoop.zz_capture_westlands_decor:GameLoop.zz_capture_longseason:"
+        "GameLoop.zz_capture_imaginations:GameLoop.zz_capture_imaginations_moments:"
+        "GameLoop.zz_capture_imaginations_overview";
+#endif
     ::testing::InitGoogleTest(&argc, argv);
     // #338: one match seed for the whole process (tests/test_match_seed.h).
     // Without it every lobby/GO/solo launch stages a std::random_device world

@@ -1,6 +1,6 @@
 # Golden ledger
 
-Old-game commit the goldens are captured from: `d4fa405f`
+Old-game commit the goldens are captured from: `fbea813d`
 
 The rule since 2026-10-04 (Yan): a parity golden is a capture from the old game — branch `parity-companion`, built
 into `parity_dump_master` by `scripts/parity/build_parity_dump_master.sh` and captured by
@@ -22,6 +22,16 @@ Terms used below: "the old game" is the `parity-companion` branch (older entries
 "master"); "the current game" is this repository's game (older entries call it "the branch"); "the golden capture
 tool" is `parity_dump_master` with `capture_master_golden.sh`; "the parity test driver" is `tests/parity`.
 
+The testing refresh (2026-11-09) moved test-only support out of production
+sources. Companion table mirror `b518f501` changes only two mutation-pin line
+numbers in `game_world.cpp` (2662 to 2659, and 2880 to 2877). Follow-up mirror
+`fbea813d` re-points the pins moved by explicit cross-compiler RNG sequencing
+and retargets the generator-saturation mutation to the equivalent separated
+gate. Both mirrors port no behavior, change no scenario assertion, and leave
+every golden untouched. No capture was taken for these metadata-only mirrors;
+the capture evidence at `d4fa405f` remains applicable. The current and
+companion tables are byte-identical.
+
 ## Recapturing every golden from the old game
 
 Anyone can rebuild the old game at the pin above and reproduce every golden byte for byte:
@@ -30,12 +40,10 @@ Anyone can rebuild the old game at the pin above and reproduce every golden byte
     git fetch origin parity-companion           # never with --depth: ancestry needs history
     PIN=$(sed -n 's/^Old-game commit the goldens are captured from: `\([0-9a-f]*\)`$/\1/p' tests/parity/golden/DRIFT_LEDGER.md)
     git worktree add --detach ../openglad-old "$PIN"
-    # the scen99 fixture the scen99 rows load (og_test_level writes temp/scen/)
-    cmake --preset ci-test && cmake --build --preset ci-test --target og_test_level
-    ctest --preset ci-test -R '^og_test_level$'
+    # Materialize the pinned scen99 fixture independently of the level tests.
+    nix develop . -c python3 tests/fixtures/scenario99.py setup "$PWD"
     # build the golden capture tool (2013 C++, SDL2, a hand g++ script, no CMake; ~5 min)
     nix develop . -c bash ../openglad-old/scripts/parity/build_parity_dump_master.sh
-    #   without nix: apt-get install g++ pkg-config libsdl2-dev libsdl2-mixer-dev, then run the script directly
     MASTER_WORKTREE=$PWD/../openglad-old \
     OG_PARITY_SCEN99_FSS=$PWD/temp/scen/scen99.fss \
       scripts/parity/capture_master_golden.sh --all --out-dir /tmp/recapture 2>&1 | tee /tmp/recapture.log

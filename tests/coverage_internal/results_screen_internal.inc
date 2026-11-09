@@ -223,7 +223,7 @@ int results_screen_test_exercise_internal()
     after_owned.myguy->scen_min_hp = 1000;
     after_owned.stats()->set_hitpoints(1);
     TroopResult t4(nullptr, &after_owned);
-    check(t4.get_HP() >= 0.99f);
+    check(t4.get_HP() == 1.0f);
     check(t4.get_name() == "After" &&
         !t4.get_class_name().empty() &&
         t4.get_level() == calculate_level(after_owned.myguy->exp) &&
@@ -243,7 +243,7 @@ int results_screen_test_exercise_internal()
     check(capture_guy_region() == dead_draw_before);
 
     trace_clear();
-    return failed_check == 0 ? 0 : -failed_check;
+    return failed_check == 0 ? check_index : -failed_check;
 }
 
 // The ability names a troop's results row announces for the level it reached

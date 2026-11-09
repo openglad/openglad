@@ -112,6 +112,14 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
       }
+    },
+    {
+      "name": "ci-headless",
+      "inherits": "dev-release",
+      "binaryDir": "${sourceDir}/build/ci-headless",
+      "cacheVariables": {
+        "CMAKE_DISABLE_FIND_PACKAGE_SDL3": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -164,6 +172,11 @@
       "name": "web-emscripten",
       "configurePreset": "web-emscripten",
       "jobs": 24
+    },
+    {
+      "name": "ci-headless",
+      "configurePreset": "ci-headless",
+      "jobs": 3
     }
   ],
   "testPresets": [
@@ -193,7 +206,7 @@
       "configurePreset": "ci-tsan",
       "filter": {
         "include": {
-          "name": "^og_unit_sim$"
+          "name": "^og_unit_network$"
         }
       },
       "output": {

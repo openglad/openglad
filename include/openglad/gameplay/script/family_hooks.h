@@ -149,8 +149,9 @@ void reset_hook_failures();
 // LevelHook enum's bit positions (Load 0, Tick 1, EntityDeath 2,
 // EntitySpawn 3, ModeInit 4, ModeTick 5, Damage 6, Respawn 7,
 // LineupStage 8). Reads the level's OWN registrations; the -1 "every level"
-// wildcard is not folded in. Diagnostic/test seam — no sim path reads it, so
-// it cannot change behavior. Answers 0 when no packs are loaded.
+// wildcard is not folded in. The picker checks the ModeInit bit to distinguish
+// a mode that refuses to initialize from a level without that hook.
+// Answers 0 when no packs are loaded.
 std::uint32_t level_hook_kinds_for(int level_id);
 
 // Living-family hooks (FamilyDescriptor). Pure script hooks: descriptors no

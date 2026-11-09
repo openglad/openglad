@@ -30,6 +30,8 @@
             hash = "sha256-2QWIpLVIs2vGuMEhewDyihYdDQBz7SsOtfZ6pE67j2Q=";
           };
 
+          patches = [ ./cmake/patches/ixwebsocket-message-callback.patch ];
+
           nativeBuildInputs = with pkgs; [
             cmake
             ninja
@@ -95,6 +97,19 @@
           };
         };
 
+      # Lua is compiled as C++ by the project, never replaced by a system VM.
+      # Supplying the pinned source keeps every Nix build network-independent.
+      mkLuaSource = pkgs: pkgs.fetchFromGitHub {
+        owner = "lua";
+        repo = "lua";
+        rev = "v5.4.8";
+        hash = "sha256-1K/cjW5VO1K9YthvAzYYbv6HYgu1Ph1w/tcPoIrsmH8=";
+      };
+
+      mkNativeCI = pkgs: import ./nix/native-ci.nix {
+        inherit pkgs self mkIXWebSocket mkLodePNG mkLuaSource;
+      };
+
       mkOpenGlad =
         pkgs:
         let
@@ -133,6 +148,8 @@
           ];
 
           cmakeFlags = [
+            "-DFETCHCONTENT_SOURCE_DIR_LUA=${mkLuaSource pkgs}"
+            "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
             "-DBUILD_EDITOR=ON"
             "-DBUILD_TESTING=OFF"
             "-DOPENGLAD_INSTALL_ASSETS=ON"
@@ -144,10 +161,6 @@
             "-DOPENGLAD_COMMIT_COUNT=${toString (self.revCount or 0)}"
             "-DOPENGLAD_GIT_HASH=${if self ? rev then builtins.substring 0 8 self.rev else "nogit"}"
           ];
-
-          postPatch = ''
-            patchShebangs scripts
-          '';
 
           postInstall = ''
             asset_dir="$out/share/openglad"
@@ -200,6 +213,8 @@
           lodepngHead = mkLodePNG pkgs;
         in
         pkgs.mkShell {
+          # Nix wrapping arithmetic masks signed-overflow UBSan diagnostics.
+          hardeningDisable = [ "strictoverflow" ];
           packages = with pkgs; [
             actionlint
             sdl3
@@ -211,6 +226,7 @@
             bash
             binutils
             clang
+            llvmPackages.llvm
             cmake
             coreutils
             findutils
@@ -243,6 +259,7 @@
             # Local coverage runs use the same gcovr report input as CI.
             gcovr
             zlib
+            zstd
             # Web target: emcmake/emcc for the web-emscripten preset, so the
             # wasm build is reachable from the dev shell instead of needing a
             # separately installed emsdk.
@@ -306,6 +323,7 @@
           ixwebsocket = mkIXWebSocket pkgs;
           lodepng = mkLodePNG pkgs;
           openglad = mkOpenGlad pkgs;
+          inherit (mkNativeCI pkgs) ci-coverage ci-asan ci-tsan ci-canary ci-fuzz;
         }
       );
 
@@ -326,6 +344,9 @@
         in
         {
           default = mkDevShell pkgs;
+          ci-native = (mkNativeCI pkgs).nativeShell;
+          ci-tsan = (mkNativeCI pkgs).tsanShell;
+          ci-fuzz = (mkNativeCI pkgs).fuzzShell;
         }
       );
     };

@@ -6744,11 +6744,9 @@ void refresh_main_menu_company_view()
 
 // Test seam: pin the company view (present flag + display name) without a
 // filesystem, so the no-company gate/rewire/caption shape is deterministic.
-void set_main_menu_company_view_for_tests(bool present, std::string display_name)
-{
-    g_main_menu_company_view.present = present;
-    g_main_menu_company_view.display_name = std::move(display_name);
-}
+#ifdef TESTING
+#include "../../../tests/coverage_internal/menu_company_observers.inc"
+#endif
 
 const MenuScreenSpec& main_menu_screen_spec()
 {
@@ -8986,34 +8984,7 @@ int picker_help_button_count()
 }
 
 #ifdef TESTING
-namespace {
-std::vector<std::string>& cloud_passphrase_queue_ref()
-{
-    static std::vector<std::string> queue;
-    return queue;
-}
-} // namespace
-
-void picker_testing_cloud_passphrase_queue_clear()
-{
-    cloud_passphrase_queue_ref().clear();
-}
-
-void picker_testing_cloud_passphrase_queue_push(const char* value)
-{
-    cloud_passphrase_queue_ref().push_back(
-        value != nullptr ? std::string(value) : std::string());
-}
-
-bool picker_testing_cloud_passphrase_queue_pop(std::string& out)
-{
-    auto& queue = cloud_passphrase_queue_ref();
-    if (queue.empty())
-        return false;
-    out = queue.front();
-    queue.erase(queue.begin());
-    return true;
-}
+#include "../../../tests/coverage_internal/cloud_passphrase_observers.inc"
 #endif
 
 int picker_company_backups_button_count()

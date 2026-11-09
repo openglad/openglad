@@ -1,0 +1,177 @@
+{ pkgs, self, mkIXWebSocket, mkLodePNG, mkLuaSource }:
+let
+  lib = pkgs.lib;
+  python = pkgs.python3.withPackages (ps: [ ps.pillow ]);
+  luaSource = mkLuaSource pkgs;
+  tools = with pkgs; [
+    bash binutils cmake coreutils dejavu_fonts findutils gawk git gnugrep gnused
+    ninja pkg-config python ripgrep zstd
+  ];
+  dependencies = with pkgs; [
+    sdl3 gtest libyaml libzip libsndfile ncurses openssl physfs zlib
+  ];
+  # Nix strictoverflow hardening injects -fwrapv, which suppresses signed
+  # integer overflow diagnostics. Keep ordinary arithmetic semantics in every
+  # producer, instrumented dependency, and matching consumer shell.
+  mkLane = lane:
+    let
+      tsan = lane == "tsan";
+      asan = lane == "asan";
+      fuzz = lane == "fuzz";
+      canary = lane == "canary";
+      stdenv = if tsan || asan || fuzz then pkgs.clangStdenv else pkgs.stdenv;
+      sanitizer = if tsan then "thread" else
+        lib.optionalString fuzz "fuzzer-no-link," + "address,undefined,float-cast-overflow";
+      # Minimal debug info keeps sanitizer file/line stacks without repeating
+      # full C++ type/local-variable DWARF in every statically linked test.
+      flags = "-O0 -g1" + lib.optionalString (tsan || asan || fuzz)
+        " -fno-omit-frame-pointer -fsanitize=${sanitizer}"
+        + lib.optionalString fuzz " -fno-sanitize-recover=all";
+      # IXWebSocket owns worker threads: using an uninstrumented package in
+      # TSan hides races across the transport boundary. Build it with the
+      # lane's compiler and sanitizer, at the same pinned upstream revision.
+      ix = (mkIXWebSocket (pkgs // { inherit stdenv; })).overrideAttrs (old: {
+        pname = "ixwebsocket-ci-${lane}";
+        dontStrip = true;
+        hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
+        cmakeFlags = old.cmakeFlags ++ [ "-DCMAKE_BUILD_TYPE=Debug" ];
+        preConfigure = ''
+          cmakeFlagsArray+=(
+            "-DCMAKE_C_FLAGS_DEBUG=${flags}"
+            "-DCMAKE_CXX_FLAGS_DEBUG=${flags}"
+          )
+        '';
+      });
+      lodepng = (mkLodePNG (pkgs // { inherit stdenv; })).overrideAttrs (old: {
+        pname = "lodepng-ci-${lane}";
+        dontStrip = true;
+        hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
+        buildPhase = builtins.replaceStrings [ "-O2" ] [ flags ] old.buildPhase;
+      });
+      preset = if canary then "ci-test" else "ci-${lane}";
+      targets = if tsan then [ "og_unit_network" "og_sanitizer_diagnostics" ]
+        else if fuzz then [ "fuzz_scenario" "fuzz_savefile" "stage_runtime_assets" "og_sanitizer_diagnostics" ]
+        else if canary then [
+        "og_test_parity" "parity_runner_smoke" "og_test_display_x11"
+        "concept_mapgen" "imaginations_mapgen" "longseason_mapgen"
+        "modes_mapgen" "tower_mapgen" "westlands_mapgen" "grid_migrate"
+      ] else [];
+      canonicalSource = "/tmp/openglad-ci-${lane}/source";
+    in stdenv.mkDerivation {
+      pname = "openglad-ci-${lane}";
+      version = "2.${toString (self.revCount or 0)}";
+      src = self;
+      ciCommitCount = toString (self.revCount or 0);
+      ciGitHash = if self ? rev then builtins.substring 0 8 self.rev
+        else if self ? dirtyRev then builtins.substring 0 8 self.dirtyRev
+        else "nogit";
+      ciSourceHasHistory = self ? rev || self ? dirtyRev;
+      nativeBuildInputs = tools;
+      buildInputs = dependencies ++ [ ix lodepng ];
+      OG_KEYBOARD_FONT_DIR = "${pkgs.dejavu_fonts}/share/fonts/truetype";
+      hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
+      # Test execution is deliberately NOT a derivation checkPhase. Every
+      # consumer runs its shard afresh even when this output is substituted.
+      doCheck = false;
+      dontUseCmakeConfigure = true;
+      dontUseNinjaBuild = true;
+      dontUseNinjaInstall = true;
+      dontStrip = true;
+      dontPatchELF = true;
+      configurePhase = ''
+        runHook preConfigure
+        if [ "$ciSourceHasHistory" = 1 ] && [ "$ciCommitCount" = 0 ]; then
+          echo "Dirty Git builds need history metadata: use scripts/ci/nix_bundle.py build --lane ${lane}" >&2
+          exit 1
+        fi
+        # Also safe on single-user Nix installations without mount isolation.
+        # Never reuse another build's directory or a consumer's checkout alias.
+        if [ -e ${canonicalSource} ] || [ -L ${canonicalSource} ]; then
+          echo "Native CI source path already in use: ${canonicalSource}" >&2
+          exit 1
+        fi
+        trap 'rm -rf ${canonicalSource}' EXIT
+        mkdir -p ${canonicalSource}
+        cp -a . ${canonicalSource}/
+        chmod -R u+w ${canonicalSource}
+        cd ${canonicalSource}
+        # Build-time inventory lints require git ls-files. This index describes
+        # exactly the flake source; consumers use their actual checkout and
+        # history for heritage/companion gates, never this temporary index.
+        git init --quiet
+        git add --all --force
+        # CMake invokes build scripts through the discovered bash/Python.
+        # Rewriting shebangs would invalidate checked generator source hashes.
+        # Nix wrappers learn dependency include/link paths through these
+        # flags. CMake then treats those paths as implicit and may omit them
+        # after regeneration. Upstream launchers retain the exact producer
+        # options for incremental builds in a lean consumer shell.
+        compilerLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
+          --env ${pkgs.coreutils}/bin/env)"
+        cmake --preset ${preset} \
+          -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_EXE_LINKER_FLAGS='-Wl,-z,pack-relative-relocs -Wl,--compress-debug-sections=zlib' \
+          -DCMAKE_C_COMPILER_LAUNCHER="$compilerLauncher" \
+          -DCMAKE_CXX_COMPILER_LAUNCHER="$compilerLauncher" \
+          -DCMAKE_C_LINKER_LAUNCHER="$compilerLauncher" \
+          -DCMAKE_CXX_LINKER_LAUNCHER="$compilerLauncher" \
+          -DCMAKE_C_FLAGS_DEBUG='${flags}' \
+          -DCMAKE_CXX_FLAGS_DEBUG='${flags}' \
+          ${lib.optionalString canary "-DOPENGLAD_X11_DISPLAY_TESTS=ON"} \
+          -DVALIDATE_SERIALIZATION=ON \
+          -DOPENGLAD_REQUIRE_SYSTEM_DEPS=ON \
+          -DOPENGLAD_FETCH_DEPS=OFF \
+          -DOPENGLAD_FETCH_IXWEBSOCKET=OFF \
+          -DFETCHCONTENT_SOURCE_DIR_LUA=${luaSource} \
+          -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+          -DOPENGLAD_COMMIT_COUNT="$ciCommitCount" \
+          -DOPENGLAD_GIT_HASH="$ciGitHash"
+        runHook postConfigure
+      '';
+      buildPhase = ''
+        runHook preBuild
+        cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
+          ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
+        # Observe the completed build graph before pack removes objects and
+        # archives. This is a disk snapshot, not an exact peak measurement.
+        du --bytes --summarize build/${preset}
+        runHook postBuild
+      '';
+      installPhase = ''
+        runHook preInstall
+        python3 scripts/ci/nix_bundle.py pack \
+          --source ${canonicalSource} --build build/${preset} \
+          --output "$out" --lane ${lane} --revision '${self.rev or "dirty"}'
+        runHook postInstall
+      '';
+      passthru = { inherit preset canonicalSource; };
+    };
+  mkShell = stdenv: extraPackages: pkgs.mkShell.override { inherit stdenv; } {
+    # Bundle-consuming lanes pass no extras: their instrumented IXWebSocket/
+    # LodePNG closures and cached CMake paths are already retained.
+    packages = tools ++ dependencies ++ extraPackages ++ [
+      pkgs.emscripten pkgs.gcovr pkgs.lcov pkgs.lua-language-server
+      pkgs.llvmPackages.llvm
+      pkgs.xvfb-run pkgs.xvfb pkgs.xrandr pkgs.openbox pkgs.xprop pkgs.xdpyinfo
+    ];
+    hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
+    shellHook = ''
+      export CMAKE_BUILD_PARALLEL_LEVEL="''${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
+      export OG_KEYBOARD_FONT_DIR="${pkgs.dejavu_fonts}/share/fonts/truetype"
+    '';
+  };
+in {
+  ci-coverage = mkLane "coverage";
+  ci-asan = mkLane "asan";
+  ci-tsan = mkLane "tsan";
+  ci-canary = mkLane "canary";
+  ci-fuzz = mkLane "fuzz";
+  # The native incremental shell configures from source, so its dependency
+  # set must include the same patched custom packages as the native producer.
+  # Sanitizer shells consume a bundle whose instrumented closures are already
+  # retained and must not pick up separate uninstrumented custom packages.
+  nativeShell = mkShell pkgs.stdenv [ (mkIXWebSocket pkgs) (mkLodePNG pkgs) ];
+  tsanShell = mkShell pkgs.clangStdenv [];
+  fuzzShell = mkShell pkgs.clangStdenv [];
+}

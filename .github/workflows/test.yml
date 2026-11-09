@@ -8,177 +8,303 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: nix develop .#ci-native --command bash -e {0}
+
 jobs:
-  test:
-    name: Run Tests
+  build-asan:
+    name: Build asan once
     runs-on: ubuntu-latest
-    # The expanded multi-seat menu/network matrix needs about 20 minutes for a
-    # clean compile plus tests on an uncached runner; leave room for the final
-    # curses, parity, and relay checks instead of cancelling a passing suite.
-    # PR #262 added the LINEUP flows (og_test_lineup, RUN_SERIAL) and the
-    # RUN_SERIAL tail alone is now ~13 minutes after the parallel bulk, so a
-    # fully passing 66/66 run was cancelled at 30:15. 40 kept the same margin.
-    # By October 2026 the lane runs about 37 minutes on a green tree (37:05 on
-    # PR #364, 37:46 on master at 25228f55; 24:32 a week earlier), leaving under
-    # three minutes of headroom. 50 restores a margin without touching the
-    # per-test 420 s limit or the until-pass retries below.
-    timeout-minutes: 50
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: nix develop .#ci-native --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: relay/package-lock.json
-      - name: Install dependencies
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Key immutable compiled output by exact derivation
+        id: nar-key
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - name: Install relay npm dependencies
-        working-directory: relay
-        run: npm ci
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+          drv="$(nix eval --raw .#packages.x86_64-linux.ci-asan.drvPath)"
+          drv_basename="${drv##*/}"
+          drv_hash="${drv_basename%%-*}"
+          echo "key=native-nar-v1-${{ runner.os }}-asan-${drv_hash}" >> "$GITHUB_OUTPUT"
+      - name: Restore exact compiled NAR closure
+        id: nar-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          key: ci-test
-
-      - name: Configure (ci-test preset)
-        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build all test binaries
-        run: cmake --build --preset ci-test -j"$(nproc)"
-
-      - name: Verify headless server link is SDL-free
-        run: bash scripts/test_headless_server_native_link.sh build/ci-test
-
-      - name: Run tests
-        # Gameplay parity tests (og_test_parity, plus any future og_unit_parity)
-        # are registered via og_add_test_group in CMakeLists.txt and are picked
-        # up here automatically. They run against the committed goldens under
-        # tests/parity/golden/ — CI MUST NOT re-capture goldens (that would
-        # defeat the parity contract). Fresh capture is a developer-driven
-        # step against the ../openglad-master companion; see
-        # .claude/skills/openglad-parity/SKILL.md `## Running it` and
-        # scripts/parity/capture_master_golden.sh.
-        #
-        # OG_EXPECT_VERSION_MINOR arms og_unit_core's Version.minor_matches_history:
-        # it asserts the version stamped into the binary equals the commit count of
-        # this checkout, so a checkout that ever loses its full history (a
-        # shallow clone stamps the "unknown history" version 2.0) fails here
-        # instead of shipping a build whose menu lies about which commit it is.
-        # OG_EXPECT_GIT_HASH arms Version.git_hash_matches_checkout: the stamp
-        # must equal this checkout's short hash exactly, so a broken hash probe
-        # (nogit) or a stale build tree fails here instead of shipping a menu
-        # stamp that names the wrong commit. Both variables are computed with
-        # the same git commands cmake/OpenGladVersion.cmake runs, on the same
-        # checkout, so the refs/pull/N/merge commit is what both sides see.
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+      - name: Import exact cached output before realizing current source
+        if: steps.nar-cache.outputs.cache-hit == 'true'
+        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
+      - name: Build and export immutable configuration
         run: |
-          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
-          export OG_EXPECT_VERSION_MINOR
-          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
-          export OG_EXPECT_GIT_HASH
-          ctest --test-dir build/ci-test --parallel "$(nproc)" --output-on-failure --timeout 420 --repeat until-pass:3
-
-      - name: Verify ncurses client built and its tests ran
-        # The curses targets are gated on finding ncurses at configure time, so a
-        # missing dependency would silently drop the whole client (and its tests)
-        # from the build. --no-tests=error turns that into a hard failure instead
-        # of a green run that tested nothing.
-        run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^(og_test_curses|openglad_curses_link_no_sdl)$' --no-tests=error
-
-      - name: Surface parity test results distinctly
-        # Re-runs only the parity groups so a parity failure is visible as
-        # its own step in the CI summary, separate from the broader suite.
-        # No re-capture: goldens are read from tests/parity/golden/ as
-        # committed on this branch.
-        run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^og_(test|unit)_parity'
-
-      - name: Typecheck relay worker
-        working-directory: relay
-        run: npm run typecheck
-
-      - name: Run relay worker tests
-        working-directory: relay
-        run: npm test
-
-  x11-display:
-    name: X11 Display Lane
+          which cmake c++
+          realization_started="$(date +%s)"
+          nix build .#ci-asan --out-link build/bundle-asan --cores 3
+          realization_seconds="$(( $(date +%s) - realization_started ))"
+          echo "Nix asan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-asan --cache build/nix-cache
+          python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-asan --repo "$PWD"
+          python3 scripts/ci/sanitizer_diagnostics.py --lane asan --binary build/ci-asan/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
+      - name: Validate real checkout and plan complete inventory
+        run: |
+          bash scripts/check_parity_companion_refs.sh
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+          python3 scripts/ci/nix_bundle_test.py
+          python3 scripts/ci/test_matrix.py plan --build build/ci-asan --lane asan --shards 4 --out build/plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: asan-bundle
+          path: build/nix-cache/
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: asan-plan
+          path: build/plan/
+          if-no-files-found: error
+      - name: Cache successful producer output for exact-derivation reruns
+        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+  test-asan:
+    name: asan (${{ matrix.shard }}/4)
+    needs: build-asan
     runs-on: ubuntu-latest
-    # The real-display lane (#329): og_test_display_x11 on SDL's x11 driver
-    # under Xvfb, where the offscreen driver every other Linux lane uses
-    # enumerates no video mode and is not "x11". Run A is one X screen with
-    # XRandR modes and openbox (mode selector, a real exclusive mode switch
-    # and its restore). Run B is two X screens with no window manager: SDL's
-    # x11 backend counts one display per X screen, so it trips
-    # exclusive_mode_switch_is_safe() exactly as a dual-monitor XRandR desktop
-    # would. It exercises OpenGlad's guard, which looks only at the driver and
-    # the display count; it does not reproduce SDL bug #9560 (the CRTC loss on
-    # a shared root) itself. A behaviour lane, outside the coverage gate.
-    #
-    # Sizing: a cold build of og_game_test plus one test binary, apt and two
-    # Xvfb runs. 30 minutes is the starting cap; it is sized from the first CI
-    # run of this job.
-    # First CI run (PR #345, 2026-10-03) took 3m53s end to end; 15 is ~4x that.
-    timeout-minutes: 15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: nix develop .#ci-native --command bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Install dependencies
-        # xvfb: the X server. x11-xserver-utils: xrandr (adds the video modes).
-        # x11-utils: xdpyinfo and xprop (topology and window-manager checks).
-        # openbox: the EWMH window manager that acknowledges fullscreen.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev xvfb x11-xserver-utils x11-utils openbox
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/download-artifact@v8
         with:
-          key: ci-x11
-
-      - name: Configure (ci-test preset, x11 display tests on)
-        run: cmake --preset ci-test -DOPENGLAD_X11_DISPLAY_TESTS=ON -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build the x11 display test binary
-        run: cmake --build --preset ci-test --target og_test_display_x11 -j"$(nproc)"
-
-      - name: Run the x11 display lane (one screen, then two)
-        # Exit 7 is an environment abort (Xvfb, the modes, the screen count or
-        # the window manager did not come up); nothing was tested.
-        run: bash scripts/ci/run_x11_display_lane.sh build/ci-test
-
-  build:
-    name: Native Build
+          name: asan-bundle
+          path: build/nix-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: asan-plan
+          path: build/plan
+      - name: Restore compiled artifacts without a store copy (no compilation)
+        run: |
+          python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
+      - name: Run every assigned test once
+        run: python3 scripts/ci/test_matrix.py run --build build/ci-asan --plan build/plan/plan.json --shard ${{ matrix.shard }} --out build/results/shard-${{ matrix.shard }}
+      - name: Upload all results, including the first failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: asan-result-${{ matrix.shard }}
+          path: build/results/
+          if-no-files-found: error
+          compression-level: 0
+  verify-asan:
+    name: asan completeness
+    if: always()
+    needs: [build-asan, test-asan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/download-artifact@v8
         with:
-          key: native-build
-
-      - name: Configure (dev-release preset)
-        run: cmake --preset dev-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build native binaries
-        run: cmake --build --preset dev-release --target openglad openscen openglad_server openglad_curses -j"$(nproc)"
-
-      - name: Verify release headless server link is SDL-free
-        run: bash scripts/test_headless_server_native_link.sh build/dev-release
+          name: asan-plan
+          path: build/plan
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: asan-result-*
+          merge-multiple: true
+          path: build/results
+      - name: Require every shard and test result
+        run: python3 scripts/ci/test_matrix.py verify --plan build/plan/plan.json --results build/results
+      - name: Require successful producer and every worker job
+        if: always()
+        env:
+          PRODUCER_RESULT: ${{ needs['build-asan'].result }}
+          WORKER_RESULT: ${{ needs['test-asan'].result }}
+        run: |
+          test "$PRODUCER_RESULT" = success
+          test "$WORKER_RESULT" = success
+  build-tsan:
+    name: Build tsan once
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: nix develop .#ci-tsan --command bash -e {0}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Key immutable compiled output by exact derivation
+        id: nar-key
+        run: |
+          drv="$(nix eval --raw .#packages.x86_64-linux.ci-tsan.drvPath)"
+          drv_basename="${drv##*/}"
+          drv_hash="${drv_basename%%-*}"
+          echo "key=native-nar-v1-${{ runner.os }}-tsan-${drv_hash}" >> "$GITHUB_OUTPUT"
+      - name: Restore exact compiled NAR closure
+        id: nar-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+      - name: Import exact cached output before realizing current source
+        if: steps.nar-cache.outputs.cache-hit == 'true'
+        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
+      - name: Build and export immutable configuration
+        run: |
+          which cmake c++
+          realization_started="$(date +%s)"
+          nix build .#ci-tsan --out-link build/bundle-tsan --cores 3
+          realization_seconds="$(( $(date +%s) - realization_started ))"
+          echo "Nix tsan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-tsan --cache build/nix-cache
+          python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-tsan --repo "$PWD"
+          python3 scripts/ci/sanitizer_diagnostics.py --lane tsan --binary build/ci-tsan/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
+      - name: Validate real checkout and plan complete inventory
+        run: |
+          bash scripts/check_parity_companion_refs.sh
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+          python3 scripts/ci/nix_bundle_test.py
+          python3 scripts/ci/test_matrix.py plan --build build/ci-tsan --lane tsan --shards 1 --out build/plan
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tsan-bundle
+          path: build/nix-cache/
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tsan-plan
+          path: build/plan/
+          if-no-files-found: error
+      - name: Cache successful producer output for exact-derivation reruns
+        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/nix-cache
+          key: ${{ steps.nar-key.outputs.key }}
+  test-tsan:
+    name: tsan (${{ matrix.shard }}/1)
+    needs: build-tsan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: nix develop .#ci-tsan --command bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: tsan-bundle
+          path: build/nix-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: tsan-plan
+          path: build/plan
+      - name: Restore compiled artifacts without a store copy (no compilation)
+        run: |
+          python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
+      - name: Run every assigned test once
+        run: python3 scripts/ci/test_matrix.py run --build build/ci-tsan --plan build/plan/plan.json --shard ${{ matrix.shard }} --out build/results/shard-${{ matrix.shard }}
+      - name: Upload all results, including the first failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tsan-result-${{ matrix.shard }}
+          path: build/results/
+          if-no-files-found: error
+          compression-level: 0
+  verify-tsan:
+    name: tsan completeness
+    if: always()
+    needs: [build-tsan, test-tsan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: tsan-plan
+          path: build/plan
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: tsan-result-*
+          merge-multiple: true
+          path: build/results
+      - name: Require every shard and test result
+        run: python3 scripts/ci/test_matrix.py verify --plan build/plan/plan.json --results build/results
+      - name: Require successful producer and every worker job
+        if: always()
+        env:
+          PRODUCER_RESULT: ${{ needs['build-tsan'].result }}
+          WORKER_RESULT: ${{ needs['test-tsan'].result }}
+        run: |
+          test "$PRODUCER_RESULT" = success
+          test "$WORKER_RESULT" = success
+  relay:
+    name: Relay typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - working-directory: relay
+        run: npm ci
+      - working-directory: relay
+        run: npm run typecheck
+      - working-directory: relay
+        run: npm test
 
   headless-server:
     name: Headless Server SDL-Off Build
@@ -187,178 +313,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Install dependencies
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Build the SDL-disabled configuration with native build dependencies
+        shell: nix develop --command bash -e {0}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          key: headless-server
-
-      - name: Configure headless server build
-        run: >
-          cmake -S . -B build/headless-server -GNinja
-          -DCMAKE_DISABLE_FIND_PACKAGE_SDL3=ON
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build headless server target
-        run: cmake --build build/headless-server --target openglad_server -j"$(nproc)"
-
-  campaign-drift:
-    name: Campaign Regeneration Drift Check
-    runs-on: ubuntu-latest
-    # Generated campaign content under campaigns/<id>/ is committed like a
-    # lockfile: the generator (tools/<x>_mapgen) is the source of truth.
-    # This job reruns every generator against the checkout and fails when
-    # the committed trees drift — a hand edit to generated content must be
-    # ported into its generator (or reverted), never left to be silently
-    # clobbered by the next regeneration. Builds only the six SDL-free
-    # generator tools plus the archive composition step; the dominant cost
-    # is compiling og_core/og_gameplay/og_resources once, shared with the
-    # test job through the ci-test ccache key (and its configure flags,
-    # which must match for the cache to hit).
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          key: ci-test
-
-      - name: Configure (ci-test preset)
-        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Regenerate every campaign
-        run: |
-          scripts/generate_concept_campaign.sh
-          scripts/generate_imaginations_campaign.sh
-          scripts/generate_longseason_campaign.sh
-          scripts/generate_modes_campaign.sh
-          scripts/generate_tower_campaign.sh
-          scripts/generate_westlands_campaign.sh
-
-      - name: Fail on drift
-        # Scoped to campaigns/ on purpose: this gate answers "did the
-        # committed campaign trees drift", and a repo-wide status also sees
-        # build cruft the regeneration step drops into the workspace
-        # (.ccache/ from the ccache action, scripts/__pycache__/ from the
-        # Lua-lint targets), which has nothing to do with drift. Still
-        # --porcelain rather than a diff, so a generator emitting a NEW
-        # uncommitted file under campaigns/ is caught too.
-        run: |
-          if [ -n "$(git status --porcelain -- campaigns/)" ]; then
-            echo "::error::Committed campaign trees drifted from their generators."
-            echo "The files below differ from what the campaign generators produce."
-            echo "Generated content under campaigns/<id>/ is committed like a lockfile:"
-            echo "the GENERATOR is the source of truth. Either port your hand edit into"
-            echo "the matching tools/<x>_mapgen generator and rerun"
-            echo "scripts/generate_<x>_campaign.sh, or revert the edit."
-            echo "(Hand-authored content — campaigns/<id>/packs/ and README.md, plus the"
-            echo "gladiator and tryxian campaigns — is never rewritten by regeneration.)"
-            echo
-            git status --porcelain -- campaigns/
-            git --no-pager diff --stat -- campaigns/
-            exit 1
-          fi
-          echo "campaign trees match their generators"
-
-  asan:
-    name: ASan+UBSan (${{ matrix.shard }}/3)
-    runs-on: ubuntu-latest
-    # The sanitizer suite outgrew 30 minutes once IXWebSocket gained a TLS
-    # build and the multi-seat networking tests landed, and then outgrew 60:
-    # by 2026-10-27 the tests alone took 37-50 minutes, most of it one heavy
-    # binary at a time, and every master push (cold cache, 21-26 minute
-    # build) was cancelled at the cap. So the tests run as three shards, each
-    # a full build plus a third of the tests, picked by the asan-shard-N
-    # labels cmake/OpenGladTests.cmake sets at its end (shard 3 is every test
-    # without a shard label). A cold shard needs about 45 minutes.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          key: ci-asan
-          max-size: 2G
-          # The three shards build the same objects. One cache entry is
-          # enough; three would triple what each push writes into a repo
-          # cache that is already past its 10 GB and evicting master's entry.
-          save: ${{ matrix.shard == 1 }}
-
-      - name: Configure (ci-asan preset)
-        run: cmake --preset ci-asan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build all test binaries
-        run: cmake --build --preset ci-asan -j"$(nproc)"
-
-      - name: Run tests
-        # Sanitizer failures must stay visible. In particular, do not retry a
-        # relay-shutdown regression after its test-local watchdog fails fast.
-        #
-        # og_unit_core's version teeth were dormant here (unarmed = skipped):
-        # this lane builds and runs the group but exported neither variable, so
-        # Version.minor_matches_history, git_hash_is_a_real_sha_when_the_tree_has_history
-        # and git_hash_matches_checkout all skipped. Both are computed with the
-        # same git commands cmake/OpenGladVersion.cmake runs, on the same
-        # checkout.
-        run: |
-          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
-          export OG_EXPECT_VERSION_MINOR
-          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
-          export OG_EXPECT_GIT_HASH
-          case "${{ matrix.shard }}" in
-            1) SELECT=(-L '^asan-shard-1$');;
-            2) SELECT=(-L '^asan-shard-2$');;
-            3) SELECT=(-LE '^asan-shard-[12]$');;
-          esac
-          ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error "${SELECT[@]}"
-
-  tsan:
-    name: TSan
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang pkg-config libpng-dev libgtest-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
-        with:
-          key: ci-tsan
-
-      - name: Configure (ci-tsan preset)
-        run: cmake --preset ci-tsan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build TSan unit binary
-        run: cmake --build --preset ci-tsan --target og_unit_sim -j"$(nproc)"
-
-      - name: Run TSan unit tests
-        run: ctest --preset ci-tsan
+          which cmake c++ emcc
+          cmake --preset ci-headless
+          cmake --build --preset ci-headless --target openglad_server -j3
+          bash scripts/test_headless_server_native_link.sh build/ci-headless

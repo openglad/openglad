@@ -20,11 +20,12 @@
  *   - Esc/'q'/Backspace cancel (Quit on Main, Back elsewhere).
  *   - show_text / "press a key" screens consume exactly one key.
  */
+#include "fake_clock.h"
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_picker_client.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/tower_constants.h>
