@@ -395,11 +395,17 @@ short statistics::do_command()
 				{
 					target = controller->collide_ob;
 					controller->attack(target);
-					target->stats->clear_command();
-					// A violent shove... we can't call shove since we
-					//  made shove unable to shove enemies.
-					target->stats->force_command(COMMAND_WALK,
-					                             4,com1,com2 );
+					// port of the current game's 77d0afaa (Gameplay Fixes AO): a body
+					// that is already dead (a door this rush's own step opened) keeps its
+					// orders and is not walked; attack still draws its damage roll.
+					if (!myscreen->gameplay_fixes || !target->dead)
+					{
+						target->stats->clear_command();
+						// A violent shove... we can't call shove since we
+						//  made shove unable to shove enemies.
+						target->stats->force_command(COMMAND_WALK,
+						                             4,com1,com2 );
+					}
 				}
 			}
 			break;
