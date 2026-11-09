@@ -856,8 +856,8 @@ rules hold 5371 rolls; the caps stay at 3.
   a user tag, or the player-control act). A skipped hero costs the caster
   no roll and gives no free hit; with nobody else eligible the charm is
   refused as `NO VALID TARGET`.
-- **A seat never claims a charmed walker** (issues #354 and #450, the
-  current game only). The seat scans skip a walker whose charm timer is
+- **A seat never claims a charmed walker** (issues #354 and #450, both
+  games). The seat scans skip a walker whose charm timer is
   running and whose real team is recorded: it is on our team only because
   our side charmed it. Every scan a seat takes a body through asks this:
   the hand-off when the walker a seat drives dies, the entry claim, the
@@ -879,8 +879,10 @@ rules hold 5371 rolls; the caps stay at 3.
   maintainer's ruling: refuse a charmed walker for the hand-off, keep one
   already controlled.
 
-The old game has the same seat scans, but no parity capture can run them, so
-#354 is not ported there.
+The old game's death searches (`viewscreen::input` and
+`viewscreen::continuous_input`, three passes each) ask the same question
+behind the setting since `787eb516` (#450). No parity capture runs them, so
+the port moved no golden.
 
 ## Parity
 
@@ -962,8 +964,21 @@ The parity goldens are captures from the old game (branch
   the setting, `d3d594e3` (#473: a team-0 walker with no player character
   and its shots take the difficulty) and `5a40b266` (#483: the bot gates'
   blast reach has no floor). Eight new goldens; no existing golden moved.
-  `5a40b266` is the commit the goldens are captured from: 360 of 360 goldens
-  `cmp` equal to a full capture there.
+  Fixes AO to AV, M's seat half for #450 and the revert for #493: the table
+  mirror `195a3a29` (the new arenas of AQ, AR, AS, AT and AV, each with the
+  setting off and on; the fact readings of #448 and #449; #438's three
+  re-staged arenas), then `8bf6f8e5` (AO), `e7fce82e` (AP), `442572be` (AQ;
+  its row with the setting on moved), `9ac9e49f` (AR; its row with the
+  setting on moved), `2efc30c6` (AV; its row with the setting on moved),
+  `1f5e0181` (AS; its three rows with the setting on moved), `915a99ee`
+  (AT; the 44 rows below and the setting-on rows of the new arenas of AS,
+  AT and AV moved), `787eb516` (M's seat half for #450), then `43f30937`
+  reverts `d3d594e3` (#493, not behind the setting), and the table mirror
+  `d4fa405f` (the facts the recaptures broke, worked out again from the
+  new goldens, and four setting-on rows on a seed of their own; those four
+  moved). Seventeen new goldens and 43 recaptured; no setting-off golden
+  moved. `d4fa405f` is the commit the goldens are captured from: 374 of
+  374 goldens `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1097,9 +1112,10 @@ orc's next swing waits for its own 30-round ATTACK, far past B. The pin
 inverts the gate: the classic row then lands the blow and the fixed row
 does not.
 
-Fix AT moves these 44 existing rows with the setting on, measured in the
-current game before the port; each is recaptured from the old game after
-the port: `archer_bolt_edge_pad`, `archer_bot_bolt_at_blows`,
+Fix AT moves these 44 existing rows with the setting on, as measured in the
+current game before the port; the old game's capture after `915a99ee` moves
+exactly these 44 (and the setting-on rows of the new arenas of AS, AT and
+AV), and each is recaptured from the old game after it: `archer_bolt_edge_pad`, `archer_bot_bolt_at_blows`,
 `archer_bot_ring_one_foe`, `archmage_bot_image_one_foe`,
 `archmage_bot_struck`, `archmage_hit_stale_shift`,
 `archmage_mind_control_berserk`, `archmage_summon_no_room`,
@@ -1122,11 +1138,24 @@ and `thief_charm_nearest` (each `_fixes_scen99`). In 26 of them the
 first difference is an event that now comes sooner (in 20, one tick
 sooner): a bot that faces its foe no longer spends an act turning off it
 and back. In six only the random stream at the end differs. The facts of
-18 of them no longer hold on the current game and are worked out again
-from the old game's captures. One of them, `archer_bot_bolt_at_blows`,
-was also re-staged for #438 (the archer one pixel lower), so its pair is
-captured anew rather than recaptured. No setting-off golden moves: every
-setting-off row passes unchanged.
+18 of them no longer held and were worked out again from the new goldens;
+one more, `soldier_bot_whirlwind_one_foe`, kept its facts, but its pin no
+longer flipped one (the spin at one foe now kills the tower too, only
+later), so it gained the fact the pin moves: the bot's hp. In four of them
+the recording no longer reached the fix the row is about, so their pins
+changed nothing, and the setting-on twin takes a seed of its own, found
+as before by asking for the first seed where the row's own pin changes the
+outcome: `archmage_mind_control_berserk` (176: on the old seed the control
+roll succeeded, so fix F's berserk colour was never drawn),
+`cleric_raise_blocked_corpse` (20: the faerie died beyond the corpse
+finder's reach), `thief_bot_charm_or_taunt` (107: the bot rolled no slot 3
+in the run) and `cleric_bot_resurrect_foe_stain` (3: the cleric never cast
+near the stain). The table mirror `d4fa405f` carries the seeds; the
+capture there moves those four rows alone, and each `cmp`s equal to the
+current game's dump. One of the 44, `archer_bot_bolt_at_blows`, was also
+re-staged for #438 (the archer one pixel lower), so its pair is captured
+anew rather than recaptured. No setting-off golden moves: every
+setting-off capture is byte-identical before and after `915a99ee`.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -2340,7 +2369,9 @@ in effect.
    a garbage number. Ruling: ported, not behind the setting, as its own
    commit (`cf5b1fe2`); no row reaches it and a full capture moved no
    golden.
-5. **#354 is fixed in the current game only.** Ruling: leave it.
+5. **#354 is fixed in the current game only.** Ruling: leave it. (Later
+   overtaken by #450, which asked for fix M's seat half in the old game
+   too: ported there behind the setting in `787eb516`; no golden moved.)
 6. **The calibration suites assert on the shipped default** (both settings
    on). Ruling: so; a dip where the crew does worse is a balance bug, never
    a lowered floor (see [Balance](#balance)).
