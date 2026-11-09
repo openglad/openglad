@@ -1166,7 +1166,7 @@ target_compile_definitions(og_unit_data PRIVATE
 # byte-identity against a pack-less baseline, taken-path spawns, footing).
 # Its own group beside og_unit_data so the 300-tick identity runs keep
 # their own time budget.
-og_add_unit_group(og_unit_westlands_fire FILES
+og_add_unit_group(og_unit_westlands_fire NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_fire.cpp
 )
 
@@ -1519,6 +1519,17 @@ og_add_filtered_test(og_unit_basketball og_unit_basketball
 foreach(court IN ITEMS 824 825 826 827 828 829)
     og_add_filtered_test(og_unit_basketball_court_${court} og_unit_basketball
         "ModesBasketballRealCampaign.scen${court}_*")
+endforeach()
+# og_unit_westlands_fire: the var==0 byte-identity check (four Westlands
+# levels, 300 ticks each, run with the pack and without) took 150 s of the
+# group's 167 s under ASan and the group ran out of its 180 s on 2026-11-09.
+# It is one test per level now, each its own entry; the other 58 tests keep
+# the group's entry.
+og_add_filtered_test(og_unit_westlands_fire og_unit_westlands_fire
+    "-WestlandsFireSim.var_zero_is_byte_identical_to_a_packless_run_scen*")
+foreach(lvl IN ITEMS 11 15 21 26)
+    og_add_filtered_test(og_unit_westlands_fire_identity_${lvl} og_unit_westlands_fire
+        "WestlandsFireSim.var_zero_is_byte_identical_to_a_packless_run_scen${lvl}")
 endforeach()
 
 # Every property set on one of these binaries below names its list, so all
