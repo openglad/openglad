@@ -1119,8 +1119,10 @@ and `thief_charm_nearest` (each `_fixes_scen99`). In 26 of them the
 first difference is an event that now comes sooner (in 20, one tick
 sooner): a bot that faces its foe no longer spends an act turning off it
 and back. In six only the random stream at the end differs. The facts of
-22 of them no longer hold on the current game and are worked out again
-from the old game's captures. No setting-off golden moves: every
+18 of them no longer hold on the current game and are worked out again
+from the old game's captures. One of them, `archer_bot_bolt_at_blows`,
+was also re-staged for #438 (the archer one pixel lower), so its pair is
+captured anew rather than recaptured. No setting-off golden moves: every
 setting-off row passes unchanged.
 
 The bot payoff gates moved five existing rows with the setting on, each
