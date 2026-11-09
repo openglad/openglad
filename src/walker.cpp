@@ -577,6 +577,12 @@ bool walker::turn(short targetdir)
 {
 	short distance;
 
+	// Port of the current game's 341a23e2 (Gameplay Fixes AT, #446): with the
+	// setting on, a walker asked to face the way it already faces stays put:
+	// its facing, heading and walk frame stay as they are.
+	if (myscreen->gameplay_fixes && curdir == targetdir)
+		return true;
+
 	//   We use a clock-ordered
 	//   of directions to numbers) to a clock-ordered
 	//   mapping of directions so we can calculate what
