@@ -2231,7 +2231,10 @@ Later work moved level 1 again: when fixes AO to AV began it read `7 7 6`
 (levels 2 and 3 `8 8 8` and `8 8 7`, sum 67), and on their merged tree, with
 the Raspberry Isle's bone-tent Dreamkin fighting for the crew (#431), it
 reads `5 8 8`, levels 2 and 3 `8 8 8` and `7 7 7` (sum 66). These are
-records, not pins: no Imaginations test asserts a survivor count.
+records, not pins: no Imaginations test asserts a survivor count. The other
+campaigns' sums over the same three seeds, before fixes AO to AV and on
+their merged tree: Westlands 317 and 322, Long Season 345 and 345, the
+Tower 32 and 41.
 
 The asserting runs (seed 42 against each level's floor and ceiling; every
 seed on the Tower): Long Season, Imaginations and the Tower are in band in
