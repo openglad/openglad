@@ -435,12 +435,16 @@ bool walker::walkstep(float x, float y)
                 {
                     for (i = 0; i < step; i++)
                     {
-                        if (myscreen->query_passable(xpos, ypos + dy, this))
+                        // port of the current game's 3410b694 (Gameplay Fixes AQ): each half
+                        // is asked quietly first; only a free half takes the loud step.
+                        if ((!myscreen->gameplay_fixes || myscreen->query_passable(xpos, ypos + dy, this, true))
+                                && myscreen->query_passable(xpos, ypos + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (myscreen->query_passable(xpos + dx, ypos, this))
+                        if ((!myscreen->gameplay_fixes || myscreen->query_passable(xpos + dx, ypos, this, true))
+                                && myscreen->query_passable(xpos + dx, ypos, this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
