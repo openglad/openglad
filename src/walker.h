@@ -79,6 +79,11 @@ class walker : public pixieN
 		// owner-chain climb stops here: a charmed troop or summon heads its
 		// own chain and fights for the colour it wears.
 		bool charmed_head();
+		// Gameplay Fixes AP (port of the current game's d7e20962): the head
+		// of the one owner-chain climb: up through every owner, a dead one
+		// included, stopping at a self-loop and at a charmed head. Read by
+		// is_friendly and is_friendly_to_team with the setting on.
+		walker* chain_head();
 		// Gameplay Fixes T (port of the current game's d80a7faa, its
 		// packs/core/lib/corpses.lua raise_spot): the stain a raise takes and
 		// the spot its body stands on. The stains find_nearest_blood would

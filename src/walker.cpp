@@ -5325,15 +5325,25 @@ Sint32 walker::is_friendly(walker *target)
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
-	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner;
-	headus = headguy;
-	// Now our target ..
-	headguy = target;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner;
-	headtarget = headguy;
+	if (myscreen->gameplay_fixes)
+	{
+		// port of the current game's d7e20962 (Gameplay Fixes AP): friendliness
+		// reads the one climb's head, through a dead owner.
+		headus = chain_head();
+		headtarget = target->chain_head();
+	}
+	else
+	{
+		headguy = this;
+		while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
+			headguy = headguy->owner;
+		headus = headguy;
+		// Now our target ..
+		headguy = target;
+		while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
+			headguy = headguy->owner;
+		headtarget = headguy;
+	}
 
 	// First, get our allied setting from screen ..
 	// 0 is "enemy," and non-zero is "friendly"
@@ -5389,10 +5399,19 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
-	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner;
-	headus = headguy;
+	if (myscreen->gameplay_fixes)
+	{
+		// port of the current game's d7e20962 (Gameplay Fixes AP): the one
+		// climb's head, through a dead owner.
+		headus = chain_head();
+	}
+	else
+	{
+		headguy = this;
+		while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
+			headguy = headguy->owner;
+		headus = headguy;
+	}
 	
 	// First, get our allied setting from screen ..
 	// 0 is "enemy," and non-zero is "friendly"
@@ -5512,6 +5531,16 @@ bool walker::fire_pad_clear(short weapon)
 bool walker::charmed_head()
 {
 	return myscreen->gameplay_fixes && charm_left > 0;
+}
+
+// port of the current game's d7e20962 (Gameplay Fixes AP): the one owner-chain
+// climb, through a dead owner, stopping at a self-loop and a charmed head.
+walker* walker::chain_head()
+{
+	walker* head = this;
+	while (head->owner && head->owner != head && !head->charmed_head())
+		head = head->owner;
+	return head;
 }
 
 // Gameplay Fixes T: where a raise's body stands (port of the current game's
