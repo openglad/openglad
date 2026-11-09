@@ -1100,7 +1100,8 @@ short living::check_special()
 				int v = (current_special >= 1 && current_special <= 4) ? current_special : 4;
 				// port of the current game's 9953b30b (Gameplay Fixes V): and the
 				// rock's pad is clear, or the cast refuses COULD NOT FIRE
-				if (!bg_pad_clear(this))
+				// port of the current game's b5e29f3c (Gameplay Fixes AV, #451): an enemy weapon on the pad is in the way too
+				if (!bg_pad_clear_of_weapons(this))
 					return 0;
 				walker *target = bg_nearest_living_foe(this, 320);
 				if (!target || !bg_faces(this, target)

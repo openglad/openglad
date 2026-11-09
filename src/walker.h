@@ -63,7 +63,10 @@ class walker : public pixieN
 		// for a weapon that neither flies nor walks the forest; every weapon
 		// crosses water); 2 a body (an enemy living or a generator, which
 		// fire() would strike in melee); 3 no probe (a non-living caster, or a
-		// weapon the loader cannot make). Own-team bodies pass, as the weapon
+		// weapon the loader cannot make); 4 an enemy weapon-order body (a
+		// weapon in flight, a door, a grown tree), asked strictly
+		// (weapons_block; port of the current game's b5e29f3c, Gameplay Fixes
+		// AV, #451). Own-team bodies pass, as the weapon
 		// passes them; an enemy door, tree or weapon in flight is passed by a
 		// weapon probe too (obmap.cpp's weapon-vs-weapon arm) and answers
 		// clear, though the loud fire() blocks on it 4 times in 10. weapon -1
@@ -71,9 +74,9 @@ class walker : public pixieN
 		// (the archer's EXPLODING BOLT) passes its family. No walker made, no
 		// draw, nothing eaten or opened. A bot gate's question. (port of the
 		// current game's 15053f4a and 6ae833d7)
-		short fire_pad_answer(short weapon = -1);
-		// fire_pad_answer(weapon) == 0
-		bool fire_pad_clear(short weapon = -1);
+		short fire_pad_answer(short weapon = -1, bool weapons_block = false);
+		// fire_pad_answer(weapon, weapons_block) == 0
+		bool fire_pad_clear(short weapon = -1, bool weapons_block = false);
 		// port of the current game's bf79ee0f (Gameplay Fixes AR, #435): room on fire()'s pad for a summon of this walker's own
 		bool pad_room(char order, char family, short weapon = -1);
 		// Gameplay Fixes AD (port of the current game's 55596283): true while

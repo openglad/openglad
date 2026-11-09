@@ -34,7 +34,11 @@ class obmap
 		// eaten, no door opened and no "Key N needed!" notice (the loud answer
 		// is kept: a door blocks this round), and no collide() or collide_ob
 		// change. Loud by default. (port of the current game's 15053f4a)
-		short query_list(walker  *ob, short x, short y, bool quiet = false);
+		// weapons_block (with quiet) takes the weapon-vs-weapon miss roll as
+		// lost: an enemy weapon-order body on the box blocks, still with no
+		// draw. A bot gate's strict pad question. (port of the current game's
+		// b5e29f3c, Gameplay Fixes AV, #451)
+		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false);
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy

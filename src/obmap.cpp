@@ -24,7 +24,12 @@ bool debug_draw_obmap = false;
 // quiet: the probe asks the loud call's question and changes nothing (no
 // draw, no treasure eaten, no door opened, no collide()); see query_list in
 // obmap.h. Every caller but obmap::query_list(..., true) is loud.
-short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile, bool quiet = false);
+// weapons_block (with quiet): the weapon-vs-weapon miss roll is taken as
+// lost, so an enemy weapon-order body on the box (a weapon in flight, a door,
+// a grown tree) is met as the loud probe meets it on 4 rolls in 10. A bot
+// gate's strict pad question (port of the current game's b5e29f3c, Gameplay
+// Fixes AV, #451). A loud probe ignores it.
+short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile, bool quiet = false, bool weapons_block = false);
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
 #define OBRES 32 //GRID_SIZE
@@ -107,7 +112,7 @@ size_t obmap::size() const
     return walker_to_pos.size();
 }
 
-short obmap::query_list(walker  *ob, short x, short y, bool quiet)
+short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_block)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
@@ -127,7 +132,7 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet)
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
 			// We should be finding the same item over and over
-			if (!ob_pass_check(x, y, ob, pos_to_walker[std::make_pair(numx, numy)], quiet )) //&& ob->collide_ob??
+			if (!ob_pass_check(x, y, ob, pos_to_walker[std::make_pair(numx, numy)], quiet, weapons_block )) //&& ob->collide_ob??
 				return 0;
 		}
 	}
@@ -244,7 +249,7 @@ const std::list<walker*>* obmap::find_list(short x, short y)
 **  All pass checking from here down.
 ***********************************************/
 
-short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile, bool quiet)
+short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile, bool quiet, bool weapons_block)
 {
 	short oxsize, oysize;
 	short x2,y2,xsize2,ysize2;
@@ -275,7 +280,8 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
             // (a quiet probe never rolls: an enemy weapon in flight passes it)
-            else if(targetorder == ORDER_WEAPON && myorder == ORDER_WEAPON && (quiet || random(10) > 3))
+            // port of the current game's b5e29f3c (Gameplay Fixes AV, #451): asked with weapons_block, a quiet probe takes the roll as lost
+            else if(targetorder == ORDER_WEAPON && myorder == ORDER_WEAPON && (quiet ? !weapons_block : random(10) > 3))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == ORDER_TREASURE && myorder == ORDER_WEAPON)

@@ -5496,7 +5496,7 @@ void walker::weapon_pad(walker *weapon, short *px, short *py)
 // nothing eaten or opened. The grid half is asked first, then the bodies, as
 // the loud query_passable asks them. A bot gate's question. (port of the
 // current game's 15053f4a and 6ae833d7)
-short walker::fire_pad_answer(short weapon)
+short walker::fire_pad_answer(short weapon, bool weapons_block)
 {
 	if (query_order() != ORDER_LIVING || !myscreen)
 		return 3;
@@ -5516,13 +5516,17 @@ short walker::fire_pad_answer(short weapon)
 		return 1;
 	if (!myscreen->query_object_passable(px, py, &probe, true))
 		return 2;
+	// port of the current game's b5e29f3c (Gameplay Fixes AV, #451): asked strictly, an enemy
+	// weapon-order body on the pad is in the way: fire() meets it on 4 rolls in 10
+	if (weapons_block && !myscreen->query_object_passable(px, py, &probe, true, true))
+		return 4;
 	return 0;
 }
 
 // fire_pad_answer's yes: the weapon would fly.
-bool walker::fire_pad_clear(short weapon)
+bool walker::fire_pad_clear(short weapon, bool weapons_block)
 {
-	return fire_pad_answer(weapon) == 0;
+	return fire_pad_answer(weapon, weapons_block) == 0;
 }
 
 // port of the current game's 55596283 (Gameplay Fixes AD): with the setting

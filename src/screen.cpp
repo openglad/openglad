@@ -610,11 +610,11 @@ bool screen::query_grid_passable(float x, float y, walker  *ob, bool quiet)
 	return 1;
 }
 
-bool screen::query_object_passable(float x, float y, walker  *ob, bool quiet)
+bool screen::query_object_passable(float x, float y, walker  *ob, bool quiet, bool weapons_block)
 {
 	if (ob->dead)
 		return 1;
-	return level_data.myobmap->query_list(ob, x, y, quiet);
+	return level_data.myobmap->query_list(ob, x, y, quiet, weapons_block);
 }
 
 bool screen::query_passable(float x, float y, walker  *ob, bool quiet)

@@ -53,7 +53,8 @@ class screen : public video
 		// ever made, a weapon's pad one pixel outside its shooter). Loud by
 		// default. (port of the current game's 15053f4a)
 		bool query_passable(float x, float y, walker  *ob, bool quiet = false);
-		bool query_object_passable(float x, float y, walker  *ob, bool quiet = false);
+		// weapons_block: see obmap::query_list (port of the current game's b5e29f3c, Gameplay Fixes AV, #451)
+		bool query_object_passable(float x, float y, walker  *ob, bool quiet = false, bool weapons_block = false);
 		bool query_grid_passable(float x, float y, walker  *ob, bool quiet = false);
 		short redraw();
 		void refresh();

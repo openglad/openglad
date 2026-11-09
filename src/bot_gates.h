@@ -427,6 +427,14 @@ static inline bool bg_pad_clear(walker *self, short weapon = -1)
 	return self->fire_pad_clear(weapon);
 }
 
+// port of the current game's b5e29f3c (Gameplay Fixes AV, #451): the pad is clear and no enemy
+// weapon-order body (a weapon in flight, a door, a grown tree) stands on it: fire() meets one
+// on 4 rolls in 10, a roll a gate may not draw
+static inline bool bg_pad_clear_of_weapons(walker *self, short weapon = -1)
+{
+	return self->fire_pad_clear(weapon, true);
+}
+
 // port of the current game's bf79ee0f (Gameplay Fixes AR, #435): the weapon's pad is clear and
 // the summoned body has room where the weapon stands
 static inline bool bg_summon_pad_clear(walker *self, char order, char family, short weapon = -1)
