@@ -5575,3 +5575,29 @@ short walker::raise_spot(Sint32 range, short body_family, walker **stain, short 
 	}
 	return 0;
 }
+
+// port of the current game's bf79ee0f (Gameplay Fixes AR, #435): room on fire()'s pad for a
+// summon of this walker's own (owned by it, on its team), the cast's own query_passable,
+// asked quietly with a detached body of that family (never this walker's own body, #423)
+bool walker::pad_room(char order, char family, short weapon)
+{
+	if (query_order() != ORDER_LIVING || !myscreen)
+		return false;
+	short fam = (weapon >= 0) ? weapon : (short) current_weapon;
+	loader *ld = myscreen->level_data.myloader;
+	if (!ld || !ld->graphics[PIX(ORDER_WEAPON, fam)].valid() || !ld->graphics[PIX(order, family)].valid())
+		return false;
+	walker probe(ld->graphics[PIX(ORDER_WEAPON, fam)], true);
+	ld->set_walker(&probe, ORDER_WEAPON, fam);
+	probe.owner = this;
+	probe.team_num = team_num;
+	short px = 0, py = 0;
+	weapon_pad(&probe, &px, &py);
+	walker body(ld->graphics[PIX(order, family)], true);
+	ld->set_walker(&body, order, family);
+	body.owner = this;
+	body.team_num = team_num;
+	body.xpos = px;   // the plain fields: never setxy, which would file the body in the obmap
+	body.ypos = py;
+	return myscreen->query_passable(px, py, &body, true);
+}

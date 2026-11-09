@@ -1141,7 +1141,8 @@ short living::check_special()
 				}
 				if (current_special == 2)
 					return (bg_owned(this, ORDER_LIVING, FAMILY_FAERIE, NULL) == 0
-					        && bg_foes_within(this, 1, 130) && bg_pad_clear(this));
+					        // port of the current game's bf79ee0f (Gameplay Fixes AR, #435): and room for the faerie where the bolt stands
+					        && bg_foes_within(this, 1, 130) && bg_summon_pad_clear(this, ORDER_LIVING, FAMILY_FAERIE));
 				if (current_special == 3)
 					return 0;
 				walker *ally = bg_ally_at_blows(this, 60, NULL);

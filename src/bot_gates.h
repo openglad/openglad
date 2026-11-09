@@ -427,6 +427,13 @@ static inline bool bg_pad_clear(walker *self, short weapon = -1)
 	return self->fire_pad_clear(weapon);
 }
 
+// port of the current game's bf79ee0f (Gameplay Fixes AR, #435): the weapon's pad is clear and
+// the summoned body has room where the weapon stands
+static inline bool bg_summon_pad_clear(walker *self, char order, char family, short weapon = -1)
+{
+	return self->fire_pad_clear(weapon) && self->pad_room(order, family, weapon);
+}
+
 // The old game has no priced alternates: a Shift costs the slot's price.
 static inline bool bg_can_pay(walker *self, int slot)
 {

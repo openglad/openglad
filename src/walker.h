@@ -74,6 +74,8 @@ class walker : public pixieN
 		short fire_pad_answer(short weapon = -1);
 		// fire_pad_answer(weapon) == 0
 		bool fire_pad_clear(short weapon = -1);
+		// port of the current game's bf79ee0f (Gameplay Fixes AR, #435): room on fire()'s pad for a summon of this walker's own
+		bool pad_room(char order, char family, short weapon = -1);
 		// Gameplay Fixes AD (port of the current game's 55596283): true while
 		// this walker's charm runs (charm_left > 0) with the setting on. Every
 		// owner-chain climb stops here: a charmed troop or summon heads its
