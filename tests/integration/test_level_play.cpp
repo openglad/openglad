@@ -117,6 +117,10 @@
 //   14 -> 11, all above their B2 floors; elf COULD NOT FIRE 11 -> 0, the
 //   druid's NO ROOM TO SUMMON 2 -> 0, the four families' COULD NOT FIRE 0
 //   (BARRAGE's new refusal never met); rolls the gates held 5416 -> 5427.
+//   On the merged tree with the whole batch in (2026-11-09: fix AT, the
+//   other fixes AO to AV and the rest), the same seeds read 493 / 466 /
+//   426 / 480 / 348 / 463 casts, ARCHER BARRAGE 65, ELF ROCKS 84, DRUID
+//   SUMMON FAERIE 23, every capped refusal 0 and 5371 rolls held.
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
 //   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
@@ -1050,6 +1054,10 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // (fix AS), and the druid's NO ROOM TO SUMMON after its gate's yes 2 -> 0
     // (seeds 42 and 2, one each: an ally where the faerie appears; fix AR asks
     // the faerie's room; cap 3). The gates held 5416 -> 5427 rolls.
+    // Measured again 2026-11-09 on the merged tree (every fix of the batch
+    // in, AT included): the elf's COULD NOT FIRE 0, the druid's NO ROOM TO
+    // SUMMON 0 and every other capped count 0, so each cap stays at 3 (the
+    // rule's floor for a measured 0); the gates held 5371 rolls.
     EXPECT_LE(busy, 3)
         << "SPECIAL BUSY refusals (measured 0 pooled; 4 on the three seeds before the "
            "mage's flee teleport asked the busy guard, #408; 157 before fix W)";

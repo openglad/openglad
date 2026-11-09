@@ -843,7 +843,10 @@ families' `COULD NOT FIRE` 0, BARRAGE's new refusal included. The test caps
 the elves' count and the druid's at 3 (a measured 0). The rules hold more
 rolls (5416 to 5427): BARRAGE falls from 127 casts to 87, ROCKS from 87 to
 82 and SUMMON FAERIE from 14 to 11, each still well above the floor the
-test keeps for it.
+test keeps for it. Measured again on the merged tree, with fix AT and the
+rest of this batch in: every capped count still reads 0 (the elves', the
+druid's and the rest), BARRAGE 65, ROCKS 84 and SUMMON FAERIE 23, and the
+rules hold 5371 rolls; the caps stay at 3.
 
 ## Charm and seats
 
@@ -2222,8 +2225,13 @@ its IMMOLATE burns double.
 | sum | | 38 | 37 | 37 |
 
 **Imaginations** (level 1, crew 1): `7 6 7` before, `7 5 8` after fixes X to AD
-as first built, `7 5 8` now. Levels 2 and 3 read `8 8 8` and `8 8 7` before
-and `8 8 8` on both after; the three levels sum 67, 68 and 68.
+as first built, `7 5 8` with fix Y amended. Levels 2 and 3 read `8 8 8` and
+`8 8 7` before and `8 8 8` on both after; the three levels sum 67, 68 and 68.
+Later work moved level 1 again: when fixes AO to AV began it read `7 7 6`
+(levels 2 and 3 `8 8 8` and `8 8 7`, sum 67), and on their merged tree, with
+the Raspberry Isle's bone-tent Dreamkin fighting for the crew (#431), it
+reads `5 8 8`, levels 2 and 3 `8 8 8` and `7 7 7` (sum 66). These are
+records, not pins: no Imaginations test asserts a survivor count.
 
 The asserting runs (seed 42 against each level's floor and ceiling; every
 seed on the Tower): Long Season, Imaginations and the Tower are in band in

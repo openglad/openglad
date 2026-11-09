@@ -11168,6 +11168,15 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // reads 11 again, and putting them back in order reads 11 (X), 10 (Y),
     // 10 (Z), 12 (AB) and 12 (AA, AC, AD). Both RNG seeds, the seat check,
     // the lead-team check and the re-teamed check are unchanged.
+    // Re-pinned 2026-11-09 for Gameplay Fixes AT (#446), with the setting on:
+    // a bot asked to face the way it already faces stays put, so a bot at a
+    // foe it already faces swings instead of turning off it and back, more
+    // blows land inside the 420 ticks and the census reads five: three
+    // isolated runs of this build agree on 5. Undoing only AT reads 14 (fix
+    // AV, the elf's strict pad question, moves it from 12 to 14 on its own);
+    // undoing AT and AV reads 12 again; undoing only AV reads 5. Both RNG
+    // seeds, the seat check, the lead-team check and the re-teamed check are
+    // unchanged.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -11192,7 +11201,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(reteamed, living[empty_team])
             << "every walker this case re-teamed must still be on the board";
-        EXPECT_EQ(12, total_living)
+        EXPECT_EQ(5, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }
