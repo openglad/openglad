@@ -1766,7 +1766,7 @@ its mistake:
   byte, so every id 0..255 a pack can claim is its own family on every
   machine. No shipped pack claims an id above 24 (the core pack's are
   0..21, the modes pack's 13, 14 and 21..24). A company character's own
-  record still keeps a signed byte (a separate issue). This game only.
+  record still keeps a signed byte (#500). This game only.
 - **A loud passability probe answers only for the prober's floor (#465).**
   `og.query_passable` and `og.query_object_passable` take an optional
   floor. Their ground half read that floor, but their bodies half can see
@@ -2607,6 +2607,60 @@ taken, and what the game does today.
     the ROCKS at the map edge, the charmed tent troop and four body pads
     (GROW TREE took a body pad in place of its terrain pad); dropped: the
     archer's terrain pad (no fact pair in any scen1 arena).
+
+## Rulings (2026-11-08)
+
+The first review round's issues (#426 to #451, with #440, #491 and #493 from
+the second) asked five questions in the chat and took the rest as defaults.
+Each line below is what the maintainer said, or the default taken, and what
+the game does today.
+
+1. **#450: a dead hero's seat and a charmed walker.** Refuse charmed
+   characters for the hand-off, but a seat already driving one keeps it.
+   This is fix M's seat half asked again, so it gets no letter of its own:
+   with the setting on the death hand-off skips a walker that is on the team
+   only because it is charmed, and a seat on a walker whose charm runs out
+   keeps it, on both settings.
+2. **#440: the kill experience.** Documented under gameplay fixes and left
+   as it is: the old game pays the action's experience and the kill bonus,
+   this game the kill bonus alone since #78. Not behind the setting.
+3. **#491: the free-exit level type.** The level type stays a set of flags,
+   so a level that carries the free-exit bit with other bits may be left at
+   any time. Recorded as a difference kept on purpose; the old game reads
+   the bit too with the setting on since fix AJ's port.
+4. **#493: allies and the difficulty.** Allies are not scaled: no walker on
+   the player's team takes the difficulty percent, a level-placed NPC, a
+   summon or their shots. Fix A12a and the #473 shot rule are reverted here
+   and the old game's copy of that rule is reverted too, so both games scale
+   the other teams only, as the original did. Open: whether a human team
+   other than team 0 in the multiplayer modes should be exempt as well.
+5. **#448 and #449: two parity facts.** Fixed on the test side: a team count
+   counts livings only, so a TELEPORT MARKER no longer counts, and the
+   treasure-taken fact is retired for the count form that can fail. The
+   rows that used them were derived again from their old-game recordings.
+6. **Defaults taken, no question asked.** AO (#426) a rush's strike leaves a
+   dead body as it lies; AP (#429) one owner-chain climb, through a dead
+   owner, stopping at a charmed head; AQ (#434) a seat's wall slide asks
+   each half quietly before it steps; AR (#435) the druid bot asks whether
+   the faerie has room; AS (#436) the archer bot's BARRAGE asks the pad and
+   gives the price back when the first arrow cannot leave; AT (#446) a
+   walker asked to face the way it already faces stays put; AV (#451) the
+   elf bot's volley rules say no to any enemy weapon on the pad; #431 drops
+   the bone tent as owner of the isle's defectors; #438 re-stages two
+   arenas and records them again from the old game.
+7. **Four setting-on recordings took a new seed** when fix AT moved the
+   stream and on the old seed the row no longer reached what it tests:
+   `archmage_mind_control_berserk_fixes_scen99` (0xB0),
+   `cleric_raise_blocked_corpse_fixes_scen99` (0x14),
+   `thief_bot_charm_or_taunt_fixes_scen99` (0x6B) and
+   `cleric_bot_resurrect_foe_stain_fixes_scen99` (0x3). Their setting-off
+   twins keep their seeds. The maintainer has been told; the alternative
+   (a pin inside the block the row is about) exists for the archmage row
+   only.
+8. **One test reworked rather than re-pinned.** The mid-game ADD PLAYER
+   case asserted how many livings a 420-tick brawl leaves; it now asserts
+   only what it needs (both heroes stand, the lead team is those two, every
+   re-teamed walker is on the board).
 
 ## Out of scope
 
