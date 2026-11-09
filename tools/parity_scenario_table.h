@@ -1189,7 +1189,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 2662,
+    "src/gameplay/game_world.cpp", 2659,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
@@ -3515,7 +3515,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 2880,
+    "src/gameplay/game_world.cpp", 2877,
     "level_done = 0; // an awake foe",
     "level_done = 2; // an awake foe",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin names the awake one by its trailing comment, which only that line carries.)"
