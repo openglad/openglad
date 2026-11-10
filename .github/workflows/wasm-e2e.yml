@@ -215,7 +215,11 @@ jobs:
     name: WebKit iPhone touch (advisory)
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # `playwright install --with-deps webkit` downloads a large Ubuntu host
+    # library closure before the browser itself. A slow Azure mirror can take
+    # more than 15 minutes while still making steady progress, and the true
+    # WebKit suite must retain its own execution budget after that setup.
+    timeout-minutes: 45
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7

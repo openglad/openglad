@@ -700,8 +700,7 @@ if(OPENGLAD_X11_DISPLAY_TESTS)
         # tests; software presentation still creates and maps the X11 window.
         set(x11_environment
             "SDL_VIDEODRIVER=x11" "SDL_RENDER_DRIVER=software"
-            "OG_X11_EXPECT_DISPLAYS=${x11_displays}"
-            "OG_X11_BOOT_DIAGNOSTICS=1")
+            "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
         if(OG_SANITIZER_TEST_ENVIRONMENT)
             list(APPEND x11_environment ${OG_SANITIZER_TEST_ENVIRONMENT})
         endif()

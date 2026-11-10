@@ -161,14 +161,33 @@ add_modes() {
     echo "verified: $got video modes"
 }
 
-# openbox maps no window of its own; it announces itself through the EWMH
-# _NET_SUPPORTING_WM_CHECK property on the root window.
+# Openbox announces itself through _NET_SUPPORTING_WM_CHECK on the root, but
+# that property can appear before the manager has finished publishing its
+# check-window identity and supported fullscreen protocol. Wait for the full
+# EWMH handshake: the check window must point to itself, have a name, and the
+# root must advertise the state transition these tests exercise. This is a
+# condition-based readiness barrier, not a timing settle.
 start_wm() {
     openbox > "$work_dir/wm.log" 2>&1 &
     wm_pid=$!
     tries=0
-    while ! xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null |
-            grep -q 'window id #'; do
+    while :; do
+        root_check=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null || true)
+        wm_window=$(printf '%s\n' "$root_check" |
+            awk '/window id #/ { print $NF; exit }')
+        if [ -n "$wm_window" ]; then
+            window_identity=$(xprop -id "$wm_window" \
+                _NET_SUPPORTING_WM_CHECK _NET_WM_NAME 2>/dev/null || true)
+            self_check=$(printf '%s\n' "$window_identity" |
+                awk '/_NET_SUPPORTING_WM_CHECK.*window id #/ { print $NF; exit }')
+            if [ "$self_check" = "$wm_window" ] &&
+                    printf '%s\n' "$window_identity" |
+                        grep -q '^_NET_WM_NAME.*=' &&
+                    xprop -root _NET_SUPPORTED 2>/dev/null |
+                        grep -q '_NET_WM_STATE_FULLSCREEN'; then
+                break
+            fi
+        fi
         if ! kill -0 "$wm_pid" 2>/dev/null; then
             wm_pid=""
             env_abort "openbox exited before announcing itself"
@@ -179,7 +198,7 @@ start_wm() {
         fi
         sleep 0.1
     done
-    echo "verified: openbox is the window manager (pid $wm_pid)"
+    echo "verified: openbox completed its EWMH fullscreen handshake (pid $wm_pid)"
 }
 
 run_ctest() {

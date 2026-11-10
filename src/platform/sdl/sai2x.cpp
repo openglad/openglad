@@ -17,8 +17,6 @@
 #include <array>
 #include <atomic>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <format>
 #include <limits>
@@ -66,23 +64,6 @@ static int xsai_depth = 0;
 
 static std::array<unsigned char*, 4> src_line{};
 static std::array<unsigned char*, 2> dst_line{};
-
-// The real-X11 CI lane is the only place that enables these unbuffered boot
-// checkpoints. A timeout there otherwise leaves only video_sdl.cpp's
-// "Creating screen" line, which cannot distinguish X window, window-manager,
-// renderer, and canvas initialization stalls.
-static void x11_boot_checkpoint(const char* phase)
-{
-#ifdef TESTING
-	if (std::getenv("OG_X11_BOOT_DIAGNOSTICS") != nullptr)
-	{
-		std::fprintf(stderr, "X11 boot checkpoint: %s\n", phase);
-		std::fflush(stderr);
-	}
-#else
-	(void)phase;
-#endif
-}
 
 // SDL window/event coordinates stay logical on HiDPI displays, while the
 // renderer backbuffer and exclusive mode are measured in physical pixels.
@@ -773,21 +754,16 @@ int g_renderer_create_failures_to_inject = 0;
 
 SDL_Window* Screen::create_boot_window(int w, int h, SDL_WindowFlags window_flags)
 {
-	x11_boot_checkpoint("before SDL_CreateWindow");
 	SDL_Window* created = SDL_CreateWindow("Gladiator", w, h, window_flags);
-	x11_boot_checkpoint("after SDL_CreateWindow");
 	if (created == nullptr)
 		return nullptr;
-	x11_boot_checkpoint("before SDL_SetWindowPosition");
 	SDL_SetWindowPosition(created, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-	x11_boot_checkpoint("after SDL_SetWindowPosition");
 
 	// SDL3 defaults SDL_GL_ALPHA_SIZE to 8 (SDL2: 0). On Emscripten that
 	// creates a translucent WebGL canvas (alpha:true, premultiplied), and the
 	// XRGB canvas pixels carry alpha=0, so the browser composites the whole
 	// game away to black. Request the SDL2-default opaque context everywhere.
 	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-	x11_boot_checkpoint("after SDL_GL_SetAttribute");
 	return created;
 }
 
@@ -938,9 +914,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
 
     std::string renderer_failure;
-    x11_boot_checkpoint("before SDL_CreateRenderer");
     renderer = create_presenting_renderer(renderer_failure);
-    x11_boot_checkpoint("after SDL_CreateRenderer");
     if (renderer == nullptr)
     {
         // Issue #248: SDL's Wayland backend has no window framebuffer, so a
@@ -1019,9 +993,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
         }
     }
 
-	x11_boot_checkpoint("before SDL_GetWindowSize");
 	SDL_GetWindowSize(window, &w, &h);
-	x11_boot_checkpoint("after SDL_GetWindowSize");
 	og::runtime::current_session->window_w_ = static_cast<float>(w);
 	og::runtime::current_session->window_h_ = static_cast<float>(h);
 
@@ -1033,9 +1005,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // starts shared with it (aliased) at the same 320x200 dims, keeping the
     // renderer byte-identical to the historical single-canvas setup.
     ui_surf_ = SDL_CreateSurface(kUiCanvasW, kUiCanvasH, SDL_PIXELFORMAT_XRGB8888);
-    x11_boot_checkpoint("after SDL_CreateSurface");
 	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kUiCanvasW, kUiCanvasH);
-    x11_boot_checkpoint("after SDL_CreateTexture");
     // SDL3 defaults alpha-format textures to SDL_BLENDMODE_BLEND (the canvas
     // pixels have alpha=0, so blending would draw nothing). The canvas
     // present is an opaque full-frame copy: force NONE on every canvas
@@ -1053,7 +1023,6 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // set_world_zoom() replaces this with the requested world-only filter.
     // The initial nearest engine keeps boot/UI presentation byte-identical.
     world_engine_ = engine;
-    x11_boot_checkpoint("screen constructor complete");
 }
 
 void Screen::set_vsync(bool on)
