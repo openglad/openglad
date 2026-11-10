@@ -311,6 +311,26 @@
             echo "  LuaLS:  python3 scripts/check_luals.py   (enforced: gates coverage_report)"
           '';
         };
+
+      mkWebShell =
+        pkgs: includeChromium:
+        pkgs.mkShellNoCC {
+          packages =
+            (with pkgs; [
+              bash
+              coreutils
+              gawk
+              git
+              gnused
+              nodejs
+              python3
+            ])
+            ++ pkgs.lib.optionals includeChromium [ pkgs.chromium ];
+
+          shellHook = pkgs.lib.optionalString includeChromium ''
+            export OG_CHROMIUM_PATH="''${OG_CHROMIUM_PATH:-${pkgs.chromium}/bin/chromium}"
+          '';
+        };
     in
     {
       packages = forAllSystems (
@@ -347,6 +367,8 @@
           ci-native = (mkNativeCI pkgs).nativeShell;
           ci-tsan = (mkNativeCI pkgs).tsanShell;
           ci-fuzz = (mkNativeCI pkgs).fuzzShell;
+          ci-web = mkWebShell pkgs false;
+          ci-browser = mkWebShell pkgs true;
         }
       );
     };

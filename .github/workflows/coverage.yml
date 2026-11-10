@@ -16,6 +16,7 @@ env:
   NIX_CONFIG: |
     http-connections = 5
     download-attempts = 10
+    max-substitution-jobs = 2
 
 defaults:
   run:

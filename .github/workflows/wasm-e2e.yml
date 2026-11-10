@@ -15,6 +15,7 @@ env:
   NIX_CONFIG: |
     http-connections = 5
     download-attempts = 10
+    max-substitution-jobs = 2
 
 concurrency:
   group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
@@ -150,6 +151,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: nix develop .#ci-browser --command bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -171,10 +175,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Require the flake's runnable Chromium
-        shell: nix develop --command bash -e {0}
         run: test -x "$OG_CHROMIUM_PATH"
       - name: Run listed shard once and retain first failure
-        shell: nix develop --command bash -e {0}
         run: python3 scripts/ci/browser_matrix.py run --shard ${{ matrix.shard }}/4 --out build/browser/shard-${{ matrix.shard }}
       - uses: actions/upload-artifact@v7
         if: always()
@@ -196,6 +198,9 @@ jobs:
     needs: [build, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -229,6 +234,9 @@ jobs:
     # WebKit suite must retain its own execution budget after that setup.
     timeout-minutes: 45
     continue-on-error: true
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -278,6 +286,9 @@ jobs:
     needs: [build, browser, browser-completeness, webkit-touch]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
