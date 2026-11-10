@@ -257,6 +257,7 @@ jobs:
         run: env PATH="/usr/bin:/bin:$PATH" npx playwright install --with-deps webkit
       - name: Run true WebKit touch projects once
         env:
+          DEBUG: pw:browser
           OG_WEBKIT: '1'
         # Playwright installs WebKit's Ubuntu libraries above. Resolve the
         # host ldd first so its launch-time validation sees those libraries;
