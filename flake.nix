@@ -325,7 +325,13 @@
               nodejs
               python3
             ])
-            ++ pkgs.lib.optionals includeChromium [ pkgs.chromium ];
+            ++ pkgs.lib.optionals includeChromium [
+              pkgs.chromium
+              # Headless Chromium still resolves DOM/input glyphs through
+              # fontconfig. Without an installed font it can render blank
+              # text and abort in SkFontMgr_FontConfigInterface.
+              pkgs.dejavu_fonts
+            ];
 
           shellHook = pkgs.lib.optionalString includeChromium ''
             export OG_CHROMIUM_PATH="''${OG_CHROMIUM_PATH:-${pkgs.chromium}/bin/chromium}"

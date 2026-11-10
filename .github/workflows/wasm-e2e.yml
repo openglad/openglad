@@ -255,15 +255,6 @@ jobs:
       - run: npm ci
       - name: Install WebKit and its host libraries
         run: env PATH="/usr/bin:/bin:$PATH" npx playwright install --with-deps webkit
-      - name: Select fixed host libsoup for the WebKit network process
-        run: |
-          soup_path="$(/sbin/ldconfig -p | awk \
-            '$1 == "libsoup-3.0.so.0" { print $NF; exit }')"
-          test -n "$soup_path"
-          test -r "$soup_path"
-          env PATH="/usr/bin:/bin" dpkg-query -W -f='${Version}\n' \
-            libsoup-3.0-0
-          echo "OG_WEBKIT_SOUP_PRELOAD=$soup_path" >> "$GITHUB_ENV"
       - name: Run true WebKit touch projects once
         env:
           OG_WEBKIT: '1'
