@@ -761,33 +761,12 @@ TEST(NetTransportWebSocketClient,
 
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
-        int port = 0;
         og::sim::WebSocketServerTransport::Options server_options;
         server_options.host = "127.0.0.1";
-        std::unique_ptr<og::sim::WebSocketServerTransport> server;
-        // getFreePort() is necessarily a check-then-bind API. Under the full
-        // parallel sanitizer matrix another process can claim that port in
-        // between, so retry only the test fixture's listen setup. Once a
-        // server is listening, every transport assertion below is strict.
-        constexpr int kListenAttempts = 16;
-        for (int attempt = 0; attempt < kListenAttempts; ++attempt)
-        {
-            port = ix::getFreePort();
-            server = std::make_unique<og::sim::WebSocketServerTransport>(
-                port, server_options);
-            try
-            {
-                server->accept_connections();
-                break;
-            }
-            catch (const std::runtime_error&)
-            {
-                server.reset();
-                if (attempt + 1 == kListenAttempts)
-                    throw;
-            }
-        }
-        ASSERT_NE(nullptr, server) << "cycle " << cycle;
+        og::test::ListeningWebSocketServer listening =
+            og::test::listen_websocket_server_on_available_port(server_options);
+        const int port = listening.port;
+        auto server = std::move(listening.transport);
 
         og::sim::WebSocketClientTransport::Options client_options;
         client_options.remote_peer_id = 9u;

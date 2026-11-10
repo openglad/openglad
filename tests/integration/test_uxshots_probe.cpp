@@ -3,8 +3,9 @@
 // canvas is nonblank. Set UXSHOTS_DIR to retain the frames as PPM artifacts;
 // normal test runs perform the visual smoke assertions without writing files.
 
-#include "test_campaign_picker_drive.h"
 #include "test_ability_select_scope.h"
+#include "test_campaign_picker_drive.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <SDL3/SDL.h>
@@ -363,6 +364,10 @@ struct ShotState {
   int saw_backup_row_3 = kUnread;
 };
 
+struct SeatSettingsShotState : ShotState {
+  std::atomic<bool> menu_returned{false};
+};
+
 // Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
 // traces exactly one "video" line per fade — so counting those lines counts
 // fades. The #237 rule is derived inside run_menu_screen from the menu-stack
@@ -548,39 +553,47 @@ TEST(UxShots, b1_game_settings) {
 
 int seat_settings_injector(void *data) {
   og::runtime::ensure_thread_session();
-  ShotState *state = static_cast<ShotState *>(data);
-  if (wait_for_interactable("continue_game", 5000)) {
-    SDL_Delay(1500);
-    interact("continue_game");
-    int fades_before_door = -1;
-    if (wait_for_team_menu() &&
-        wait_for_interactable("seat_card_0", 5000)) {
-      SDL_Delay(500);
-      // #237: the seat editor is a door on the OPEN Base Camp — a nested
-      // run_menu_screen entry, which never fades. (Base Camp's own entry
-      // from the main menu is the boundary crossing, and that one does.)
-      fades_before_door = count_fade_between_traces();
-      interact("seat_card_0");
-    }
-    if (wait_for_interactable("seat_settings_back", 5000)) {
-      SDL_Delay(1500);
-      if (fades_before_door >= 0) {
-        state->fades_added_by_nested_door =
-            count_fade_between_traces() - fades_before_door;
-      }
-      state->captures += capture_frame(state->seat_shot_name);
-      interact("seat_settings_back");
-    }
-    if (wait_for_team_menu()) {
-      SDL_Delay(300);
-      interact("back");
-    }
-  }
-  // This probe permits one main-menu call. Base Camp BACK therefore returns
-  // through picker_main's test gate instead of materializing another QUIT
-  // face; there is nothing left for the injector to dismiss.
+  auto *state = static_cast<SeatSettingsShotState *>(data);
+  static constexpr EscapeDoor kSeatSettingsDoors[] = {
+      {"seat_settings_back", "seat_settings_back"},
+      {"go", "back"},
+      {"continue_game", "continue_game"},
+  };
+  const auto escape = [state](int leg, const char *why) {
+    return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                     kSeatSettingsDoors);
+  };
+  if (!wait_for_interactable("continue_game", 5000))
+    return escape(1, "the company main menu never published CONTINUE");
+  if (!wait_for_menu_frames(2))
+    return escape(2, "the company main menu never completed two frames");
+  interact("continue_game");
+  if (!wait_for_team_menu())
+    return escape(3, "CONTINUE did not open Base Camp");
+  if (!wait_for_interactable("seat_card_0", 5000))
+    return escape(4, "Base Camp did not publish the owned seat card");
+  if (!wait_for_menu_frames(2))
+    return escape(5, "Base Camp never completed two frames");
+
+  // #237: the seat editor is a door on the OPEN Base Camp — a nested
+  // run_menu_screen entry, which never fades. (Base Camp's own entry from
+  // the main menu is the boundary crossing, and that one does.)
+  const int fades_before_door = count_fade_between_traces();
+  interact("seat_card_0");
+  if (!wait_for_interactable("seat_settings_back", 5000))
+    return escape(6, "the owned seat card did not open seat settings");
+  if (!wait_for_menu_frames(2))
+    return escape(7, "seat settings never completed two frames");
+  state->fades_added_by_nested_door =
+      count_fade_between_traces() - fades_before_door;
+  state->captures += capture_frame(state->seat_shot_name);
+
+  // This probe permits one main-menu call. The shared tail leaves seat
+  // settings, then Base Camp, and keeps retrying until picker_main confirms
+  // that the test gate returned; a swallowed final BACK can no longer strand
+  // the main thread at the 420-second CTest ceiling.
   state->finished = true;
-  return 0;
+  return escape(0, "");
 }
 
 TEST(UxShots, b2_seat_settings) {
@@ -588,16 +601,27 @@ TEST(UxShots, b2_seat_settings) {
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
-  ShotState state;
+  SeatSettingsShotState state;
+  // Binding proof: the first escape press is deliberately swallowed. The
+  // tail must resend it and still close both nested screens.
+  g_escape_tail_drops.store(1);
   SDL_Thread *thread =
       SDL_CreateThread(seat_settings_injector, "ux_seat", &state);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
   g_picker_max_mainmenu_calls = 1;
   picker_main(0, nullptr);
-  SDL_WaitThread(thread, nullptr);
+  state.menu_returned.store(true, std::memory_order_release);
+  int thread_result = -1;
+  SDL_WaitThread(thread, &thread_result);
+  escape_tail_join_hygiene();
+  const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
+  EXPECT_EQ(0, thread_result)
+      << "the injector gave up at leg " << thread_result;
+  EXPECT_EQ(0, remaining_escape_drops)
+      << "the bound escape tail must consume and retry the planted drop";
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
   EXPECT_EQ(0, state.fades_added_by_nested_door)
@@ -613,7 +637,7 @@ TEST(UxShots, b3_seat_settings_ability_select_off) {
   ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
                                        playtest_roster()));
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
-  ShotState state;
+  SeatSettingsShotState state;
   state.seat_shot_name = "seat_settings_off";
   SDL_Thread *thread =
       SDL_CreateThread(seat_settings_injector, "ux_seat_off", &state);
@@ -621,9 +645,14 @@ TEST(UxShots, b3_seat_settings_ability_select_off) {
   g_picker_mainmenu_calls = 0;
   g_picker_max_mainmenu_calls = 1;
   picker_main(0, nullptr);
-  SDL_WaitThread(thread, nullptr);
+  state.menu_returned.store(true, std::memory_order_release);
+  int thread_result = -1;
+  SDL_WaitThread(thread, &thread_result);
+  escape_tail_join_hygiene();
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
+  EXPECT_EQ(0, thread_result)
+      << "the injector gave up at leg " << thread_result;
   ASSERT_TRUE(state.finished);
   ASSERT_EQ(1, state.captures);
 }

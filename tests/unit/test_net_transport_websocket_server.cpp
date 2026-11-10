@@ -898,12 +898,12 @@ TEST(NetTransportWebSocketServer,
 
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
-        const int port = ix::getFreePort();
         og::sim::WebSocketServerTransport::Options options;
         options.host = "127.0.0.1";
-        auto transport =
-            std::make_unique<og::sim::WebSocketServerTransport>(port, options);
-        transport->accept_connections();
+        og::test::ListeningWebSocketServer listening =
+            og::test::listen_websocket_server_on_available_port(options);
+        const int port = listening.port;
+        auto transport = std::move(listening.transport);
 
         const std::string url = std::format("ws://127.0.0.1:{}", port);
         std::vector<std::unique_ptr<WebSocketClientProbe>> probes;

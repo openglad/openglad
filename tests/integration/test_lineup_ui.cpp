@@ -642,6 +642,7 @@ void seed_session_save_for_net(const std::string& campaign, short scen_num)
 
 struct LineupFillFlowState
 {
+    std::atomic<bool> menu_returned{false};
     bool finished = false;
     bool door_seen = false;
     bool score_cell_seen = false;
@@ -657,6 +658,12 @@ struct LineupFillFlowState
     bool troops_line_after = true;
     std::string red_line_after;
     int captures = 0;
+};
+
+constexpr EscapeDoor kLineupFillEscapeDoors[] = {
+    {"back", "back"},
+    {"go", "back"},
+    {"continue_game", "continue_game"},
 };
 
 // Walk a knob through consecutive labels, one click per step (each step
@@ -734,9 +741,13 @@ int lineup_fill_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupFillFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                         kLineupFillEscapeDoors);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "Base Camp -> SCENARIO did not publish LINEUP");
     }
     state->door_seen = true;
     // The knob row is EMPTY since SCORE retired into the SETUP wizard's
@@ -854,9 +865,8 @@ int lineup_fill_flow_injector(void* data)
             SDL_Delay(300);
         }
     }
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -875,17 +885,28 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
                               {{"Alpha", 3, true, 1}, {"Beta", 2, true, 1}});
 
     LineupFillFlowState state;
+    // Prove this flow's binding to the shared escape tail: the first final
+    // escape press evaporates exactly like the ASan failure's last BACK did.
+    g_escape_tail_drops.store(1);
     SDL_Thread* thread = SDL_CreateThread(lineup_fill_flow_injector,
                                           "lineup_fill", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_EQ(0, remaining_escape_drops)
+        << "the bound escape tail must consume and retry the planted drop";
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
     EXPECT_TRUE(state.score_cell_seen)
