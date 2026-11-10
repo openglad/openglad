@@ -482,6 +482,14 @@ EM_JS(void, publish_relay_room_snapshot_js,
         firstRoomCode: UTF8ToString(first_code),
     };
 });
+
+// Exact browser diagnostic for the ROOM CODE value represented by the current
+// networking-menu button snapshot. Canvas screenshots still prove the field is
+// painted; this seam lets browser tests distinguish its value from transient
+// focus/highlight pixels introduced by the compositor.
+EM_JS(void, publish_networking_room_value_js, (const char* value), {
+    window.__opengladNetworkingRoomValue = UTF8ToString(value);
+});
 #endif
 
 std::string picker_networking_campaign_tag()
@@ -1035,6 +1043,10 @@ public:
                         ? std::string(kRoomCodePlaceholder)
                         : networking_settings_.room_code;
             }
+#ifdef __EMSCRIPTEN__
+            publish_networking_room_value_js(
+                buttons[kNetworkingMenuRoomValueIndex].label.c_str());
+#endif
 
             const int room_count = visible_room_count();
             const int list_rows = session

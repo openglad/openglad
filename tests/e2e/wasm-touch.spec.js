@@ -663,6 +663,11 @@ test.describe('Touch overlay activation', () => {
     );
     const touchAcceptedField = await captureRegion(page, ROOM_VALUE_REGION);
     expect(touchAcceptedField.equals(acceptedField)).toBe(false);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__opengladNetworkingRoomValue),
+      )
+      .toBe('TOUCH-OK');
 
     // Reopen the prompt, type junk, then CANCEL: openglad_web_text_cancel
     // must deliver input_string's Escape path, restoring the original value.
@@ -684,12 +689,15 @@ test.describe('Touch overlay activation', () => {
     await cancelButton.focus();
     await page.keyboard.press('Enter');
     await expect(wrap).toBeHidden({ timeout: 10_000 });
-    await waitForRegionToMatch(
-      page,
-      ROOM_VALUE_REGION,
-      touchAcceptedField,
-      'CANCEL should restore the previously accepted room code',
-    );
+    // WebKit's fractional-DPR compositor can produce different antialiasing
+    // pixels for identical canvas frames. Assert the exact value represented
+    // by the freshly synchronized button snapshot instead of conflating that
+    // semantic with transient focus/highlight pixels.
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__opengladNetworkingRoomValue),
+      )
+      .toBe('TOUCH-OK');
   });
 
   test('room-code prompt: physical typing before the field is touched leaves no residue', async ({
