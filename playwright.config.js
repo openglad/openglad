@@ -26,7 +26,10 @@ module.exports = defineConfig({
   retries: 0,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
-    baseURL: 'http://localhost:8089',
+    // Pin the local server to IPv4. Playwright WebKit on Ubuntu 26 can abort
+    // a localhost navigation internally before it reaches http-server when
+    // the resolver prefers ::1, even though the browser process launched.
+    baseURL: 'http://127.0.0.1:8089',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
@@ -125,7 +128,7 @@ module.exports = defineConfig({
   ],
   webServer: {
     // Serve the prebuilt WASM artifacts in dist/ during Playwright runs.
-    command: 'npx http-server dist -p 8089 -s',
+    command: 'npx http-server dist -a 127.0.0.1 -p 8089 -s',
     port: 8089,
     reuseExistingServer: !process.env.CI,
     timeout: 10_000,
