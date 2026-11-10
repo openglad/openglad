@@ -8,6 +8,14 @@ permissions:
   deployments: write
   pull-requests: write
 
+# Large Nix closures otherwise fan out enough cache downloads for hosted-runner
+# TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
+# retried binary-cache policy.
+env:
+  NIX_CONFIG: |
+    http-connections = 5
+    download-attempts = 10
+
 concurrency:
   group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

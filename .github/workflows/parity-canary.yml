@@ -11,6 +11,14 @@ on:
 permissions:
   contents: read
 
+# Large Nix closures otherwise fan out enough cache downloads for hosted-runner
+# TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
+# retried binary-cache policy.
+env:
+  NIX_CONFIG: |
+    http-connections = 5
+    download-attempts = 10
+
 defaults:
   run:
     shell: nix develop .#ci-native --command bash -e {0}
