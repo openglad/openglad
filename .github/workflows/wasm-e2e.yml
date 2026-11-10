@@ -162,8 +162,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Require the flake's runnable Chromium
+        shell: nix develop --command bash -e {0}
+        run: test -x "$OG_CHROMIUM_PATH"
       - name: Run listed shard once and retain first failure
+        shell: nix develop --command bash -e {0}
         run: python3 scripts/ci/browser_matrix.py run --shard ${{ matrix.shard }}/4 --out build/browser/shard-${{ matrix.shard }}
       - uses: actions/upload-artifact@v7
         if: always()
@@ -230,11 +233,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps webkit
+      - name: Install WebKit and its host libraries
+        run: env PATH="/usr/bin:/bin:$PATH" npx playwright install --with-deps webkit
       - name: Run true WebKit touch projects once
         env:
           OG_WEBKIT: '1'
-        run: npx playwright test --workers=1 --retries=0 --project=webkit-iphone --project=webkit-iphone-portrait
+        # Playwright installs WebKit's Ubuntu libraries above. Resolve the
+        # host ldd first so its launch-time validation sees those libraries;
+        # Nix's ldd intentionally searches only the Nix store.
+        run: env PATH="/usr/bin:/bin:$PATH" npx playwright test --workers=1 --retries=0 --project=webkit-iphone --project=webkit-iphone-portrait
       - uses: actions/upload-artifact@v7
         if: always()
         with:

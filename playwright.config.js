@@ -45,8 +45,8 @@ module.exports = defineConfig({
       // DPR 3/iOS UA from the device descriptor while exercising the same
       // Pointer Events path SDL3's emscripten driver consumes on iOS Safari.
       // True WebKit runs are gated behind OG_WEBKIT below (this dev box
-      // cannot satisfy the webkit build's library deps; CI's ubuntu-24.04
-      // image can via `npx playwright install --with-deps webkit`).
+      // does not carry the managed build's host libraries; CI installs them
+      // with `npx playwright install --with-deps webkit`).
       name: 'iphone-touch',
       testMatch: /wasm-touch\.spec\.js/,
       use: {

@@ -1524,8 +1524,9 @@ test.describe('Touch overlay leaves the desktop HUD alone', () => {
   }
 
   // The fraction of pixels two captures disagree on. Weather and the
-  // palette's colour cycling touch a few scattered pixels; the hotbar covers
-  // most of the clip.
+  // palette's colour cycling can touch a few percent of the clip between
+  // captures; the hidden hotbar changes over 30%, which is the positive
+  // control below.
   async function differs(page, one, two) {
     return await page.evaluate(async ([x, y]) => {
       const load = async (b64) => {
@@ -1589,7 +1590,7 @@ test.describe('Touch overlay leaves the desktop HUD alone', () => {
         message: 'overlay gone: the corner is as it was before the overlay',
         timeout: 15_000,
       })
-      .toBeLessThan(0.02);
+      .toBeLessThan(0.1);
     assertNoRuntimeErrors(errors, 'touch overlay on and off on a desktop');
   });
 });

@@ -694,8 +694,13 @@ if(OPENGLAD_X11_DISPLAY_TESTS)
             set(x11_displays 2)
             set(x11_filter "X11TwoScreens.*")
         endif()
+        # Keep the lane about the real X11 window/mode path. Renderer
+        # auto-probing can block inside an accelerated Xvfb backend before
+        # the first display assertion and is covered by its own lifecycle
+        # tests; software presentation still creates and maps the X11 window.
         set(x11_environment
-            "SDL_VIDEODRIVER=x11" "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
+            "SDL_VIDEODRIVER=x11" "SDL_RENDER_DRIVER=software"
+            "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
         if(OG_SANITIZER_TEST_ENVIRONMENT)
             list(APPEND x11_environment ${OG_SANITIZER_TEST_ENVIRONMENT})
         endif()
