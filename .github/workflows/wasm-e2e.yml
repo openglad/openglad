@@ -255,10 +255,14 @@ jobs:
       - run: npm ci
       - name: Install WebKit and its host libraries
         run: env PATH="/usr/bin:/bin:$PATH" npx playwright install --with-deps webkit
+      - name: Require the host GSettings schema cache
+        run: test -r /usr/share/glib-2.0/schemas/gschemas.compiled
       - name: Run true WebKit touch projects once
         env:
-          DEBUG: pw:browser
           OG_WEBKIT: '1'
+          # Managed WebKit links the Ubuntu GLib installed above. Do not let
+          # the outer Nix shell hide its GSettings schemas from WPE children.
+          XDG_DATA_DIRS: /usr/local/share:/usr/share
         # Playwright installs WebKit's Ubuntu libraries above. Resolve the
         # host ldd first so its launch-time validation sees those libraries;
         # Nix's ldd intentionally searches only the Nix store.
