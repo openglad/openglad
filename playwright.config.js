@@ -7,10 +7,24 @@ const { defineConfig, devices } = require('@playwright/test');
 // given and otherwise fall back to Playwright's managed browser. Set
 // OG_CHROMIUM_PATH (the dev shell exports it automatically).
 const chromiumPath = process.env.OG_CHROMIUM_PATH || undefined;
+// WebKit 26.5 bundles libsoup 3.6.5, whose Linux network process can crash
+// on navigation. CI supplies Ubuntu's fixed 3.6.6 library; target the browser
+// child rather than preloading it into npm and the Playwright runner too.
+const webkitSoupPreload = process.env.OG_WEBKIT_SOUP_PRELOAD || undefined;
 const chromiumLaunch = (extraArgs = []) => ({
   ...(chromiumPath ? { executablePath: chromiumPath } : {}),
   args: extraArgs,
 });
+const webkitLaunch = webkitSoupPreload
+  ? {
+      launchOptions: {
+        env: {
+          ...process.env,
+          LD_PRELOAD: webkitSoupPreload,
+        },
+      },
+    }
+  : {};
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
@@ -114,6 +128,7 @@ module.exports = defineConfig({
             testMatch: /wasm-touch\.spec\.js/,
             use: {
               ...devices['iPhone 15 landscape'],
+              ...webkitLaunch,
             },
           },
           {
@@ -121,6 +136,7 @@ module.exports = defineConfig({
             testMatch: /wasm-touch\.spec\.js/,
             use: {
               ...devices['iPhone 15'],
+              ...webkitLaunch,
             },
           },
         ]
