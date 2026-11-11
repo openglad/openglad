@@ -329,6 +329,7 @@ void reap_all_companies() {
 
 struct ShotState {
   bool finished = false;
+  std::atomic<bool> menu_returned{false};
   int captures = 0;
   // Door transitions prove their bounded retry directly: each affected flow
   // drops its first press, then records the one retry that reached the edge.
@@ -1704,6 +1705,9 @@ bool wait_for_interactable_at(const std::string &id, int x, int y,
 int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
+  const auto escape = [state](int leg, const char *why) {
+    return escape_to_the_main_thread(state->menu_returned, leg, why);
+  };
   if (wait_for_team_menu()) {
     SDL_Delay(1500);
     state->captures += capture_frame("basecamp_net_seats");
@@ -1747,14 +1751,10 @@ int many_seats_view_level_injector(void *data) {
           interact("difficulty_back");
         }
       }
-      if (wait_for_team_menu(5000)) {
-        SDL_Delay(250);
-        interact("back");
-      }
     }
   }
   state->finished = true;
-  return 0;
+  return escape(0, "");
 }
 
 // --- VIEW LEVEL staged preview (#218, C10) ---------------------------------
@@ -2140,6 +2140,9 @@ void wake_real_prompt_for_capture() {
 int view_level_staged_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
+  const auto escape = [state](int leg, const char *why) {
+    return escape_to_the_main_thread(state->menu_returned, leg, why);
+  };
   wait_for_interactable("continue_game", 5000);
   SDL_Delay(1500);
   interact("continue_game");
@@ -2280,17 +2283,9 @@ int view_level_staged_injector(void *data) {
         }
       }
     }
-    if (wait_for_team_menu(5000)) {
-      SDL_Delay(250);
-      interact("back");
-    }
-  }
-  if (wait_for_interactable("begin_new_game", 10000)) {
-    SDL_Delay(750);
-    interact("quit");
   }
   state->finished = true;
-  return 0;
+  return escape(0, "");
 }
 
 // The staged-lobby headline still: VIEW LEVEL's preview band presents the
@@ -2325,15 +2320,24 @@ TEST(UxShots, n_view_level_staged) {
   ASSERT_TRUE(og::data::set_active_company_slot("save0"));
 
   ShotState state;
+  g_escape_tail_drops.store(1);
   SDL_Thread *thread =
       SDL_CreateThread(view_level_staged_injector, "ux_staged", &state);
   ASSERT_TRUE(thread != nullptr);
   g_picker_mainmenu_calls = 0;
   g_picker_max_mainmenu_calls = 2;
   picker_main(0, nullptr);
-  SDL_WaitThread(thread, nullptr);
+  state.menu_returned.store(true, std::memory_order_release);
+  int thread_result = -1;
+  SDL_WaitThread(thread, &thread_result);
+  escape_tail_join_hygiene();
+  const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
+  EXPECT_EQ(0, thread_result)
+      << "the injector gave up at leg " << thread_result;
+  EXPECT_EQ(0, remaining_escape_drops)
+      << "the staged flow's escape tail must retry its planted drop";
   ASSERT_TRUE(state.finished);
   EXPECT_TRUE(state.dropped_door_press_consumed)
       << "the injected HIRE press must be consumed by the retry";
@@ -2378,13 +2382,22 @@ TEST(UxShots, n_view_level_seats) {
   client.local_indices = {0, 1};
   ActiveLobbyGuard guard(&client);
   ShotState state;
+  g_escape_tail_drops.store(1);
   SDL_Thread *thread =
       SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
   ASSERT_TRUE(thread != nullptr);
   picker_load_menu_backdrops();  // see run_basecamp_net_shot
   create_team_menu(0);
-  SDL_WaitThread(thread, nullptr);
+  state.menu_returned.store(true, std::memory_order_release);
+  int thread_result = -1;
+  SDL_WaitThread(thread, &thread_result);
+  escape_tail_join_hygiene();
+  const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
   cleanup_picker_state();
+  EXPECT_EQ(0, thread_result)
+      << "the injector gave up at leg " << thread_result;
+  EXPECT_EQ(0, remaining_escape_drops)
+      << "the seats flow's escape tail must retry its planted drop";
   ASSERT_TRUE(state.finished);
   EXPECT_TRUE(state.dropped_door_press_consumed)
       << "the injected DIFFICULTY press must be consumed by the retry";
