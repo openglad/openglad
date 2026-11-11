@@ -14,11 +14,11 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261108.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.118.0"
+    "vitest": "^5.1.0",
+    "wrangler": "^4.158.0"
   },
   "overrides": {
     "esbuild": "^0.28.1",
