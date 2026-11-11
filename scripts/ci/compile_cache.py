@@ -2,15 +2,17 @@
 """Warm and merge exact-revision sccache entries for native CI builds.
 
 Each compile worker configures the complete lane, derives the same plan from
-``compile_commands.json``, and asks Ninja for one disjoint set of object edges.
-The workers transport cache entries, never object files.  The authoritative
-producer then configures and builds the ordinary complete graph against the
-merged cache, so Ninja still owns every dependency, archive, link, and gate.
+``compile_commands.json``, and executes one disjoint set of exact compiler
+commands. The workers transport cache entries, never object files. The
+authoritative producer then configures and builds the ordinary complete graph
+against the merged cache, so Ninja still owns every dependency, archive, link,
+and gate.
 """
 
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
@@ -25,11 +27,6 @@ FORMAT = 1
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-
-
-def file_digest(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def compile_plan(build: Path, shard_count: int) -> dict:
@@ -77,6 +74,9 @@ def compile_plan(build: Path, shard_count: int) -> dict:
             "source": str(source),
             "weight": weight,
             "command": normalized_arguments,
+            "arguments": arguments,
+            "directory": str(Path(entry["directory"]).resolve()),
+            "absolute_output": str(output),
             "coverage": "--coverage" in normalized_arguments,
         })
     if not records:
@@ -108,6 +108,7 @@ def compile_plan(build: Path, shard_count: int) -> dict:
         "assignments": assignments,
         "weights": weights,
         "coverage_outputs": sorted(item["output"] for item in records if item["coverage"]),
+        "compile_records": {item["output"]: item for item in records},
     }
 
 
@@ -118,8 +119,39 @@ def warm(args: argparse.Namespace) -> None:
     outputs = plan["assignments"][args.shard]
     if not outputs:
         raise ValueError(f"compile shard {args.shard} is empty")
-    command = ["ninja", "-C", str(args.build.resolve()), "-j", str(args.jobs), *outputs]
-    subprocess.run(command, check=True)
+    # CMake's per-object Ninja edges carry target-order dependencies. Asking
+    # Ninja for a test object can therefore compile hundreds of shared library
+    # objects, duplicating them in every worker. Generate the one build-time
+    # header first, then run exactly the selected compile-database commands.
+    subprocess.run(
+        ["ninja", "-C", str(args.build.resolve()), "og_git_hash_gen"], check=True)
+    cache_program = getattr(args, "cache_program", None)
+    if cache_program is not None:
+        cache_program = cache_program.resolve(strict=True)
+        if not cache_program.is_absolute() or cache_program.name != "sccache":
+            raise ValueError("compile cache program must be an absolute sccache executable")
+
+    def compile_output(output: str) -> None:
+        record = plan["compile_records"][output]
+        Path(record["absolute_output"]).parent.mkdir(parents=True, exist_ok=True)
+        command = record["arguments"]
+        if cache_program is not None and str(cache_program) not in command:
+            command = [str(cache_program), *command]
+        subprocess.run(command, cwd=record["directory"], check=True)
+
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        list(executor.map(compile_output, outputs))
+    cache_requests = 0
+    if cache_program is not None:
+        cache_stats = json.loads(subprocess.check_output(
+            [str(cache_program), "--show-stats", "--stats-format", "json"], text=True))
+        cache_requests = cache_stats["stats"]["compile_requests"]
+        executed = cache_stats["stats"]["requests_executed"]
+        if cache_requests != len(outputs) or executed != len(outputs):
+            raise ValueError(
+                f"sccache observed {cache_requests} requests ({executed} executed), "
+                f"expected exactly {len(outputs)}"
+            )
     coverage_notes = 0
     if args.lane == "coverage":
         missing = []
@@ -144,6 +176,7 @@ def warm(args: argparse.Namespace) -> None:
         "shard": args.shard,
         "assigned_count": len(outputs),
         "assigned_weight": plan["weights"][args.shard],
+        "cache_requests": cache_requests,
         "coverage_notes": coverage_notes,
     })
     print(f"Warmed compile shard {args.shard + 1}/{args.shards}: {len(outputs)} objects")
@@ -157,10 +190,6 @@ def cache_root(root: Path, *, required: bool) -> Path | None:
     if required:
         raise ValueError(f"sccache root has no cache directory: {root}")
     return None
-
-
-def same_file(left: Path, right: Path) -> bool:
-    return left.stat().st_size == right.stat().st_size and file_digest(left) == file_digest(right)
 
 
 def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None = None,
@@ -190,16 +219,19 @@ def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None
             old = baseline / relative
             if old.exists():
                 # Local-disk sccache paths are content keys. Entries at the
-                # same key are immutable, so a size check detects corruption
-                # without re-hashing the entire multi-gigabyte seed in every
-                # parallel worker.
-                if not old.is_file() or path.stat().st_size != old.stat().st_size:
-                    raise ValueError(f"sccache entry changed at the same content key: {relative}")
+                # same key are semantically interchangeable. Independently
+                # compressed payloads may not be byte-identical, so retain the
+                # seed without re-hashing or comparing multi-gigabyte caches.
+                if not old.is_file():
+                    raise ValueError(f"sccache content key is not a file: {relative}")
                 continue
         target = destination / relative
         if target.exists():
-            if not target.is_file() or not same_file(path, target):
-                raise ValueError(f"conflicting sccache entry: {relative}")
+            if not target.is_file():
+                raise ValueError(f"sccache content key is not a file: {relative}")
+            # Two workers can compile an identical command under the same
+            # content key. Keep the first valid payload deterministically;
+            # archive metadata can make equivalent entries byte-different.
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
@@ -304,6 +336,7 @@ def main() -> int:
     warming.add_argument("--shard", type=int, required=True)
     warming.add_argument("--jobs", type=int, required=True)
     warming.add_argument("--out", type=Path, required=True)
+    warming.add_argument("--cache-program", type=Path)
     warming.set_defaults(function=warm)
 
     publishing = commands.add_parser("publish", help="publish a full cache or shard delta")

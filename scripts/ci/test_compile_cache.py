@@ -64,17 +64,52 @@ class CompileCacheTests(unittest.TestCase):
         plan = compile_cache.compile_plan(self.build, 1)
         self.assertEqual(1, plan["record_count"])
 
-    def test_warm_invokes_only_its_planned_ninja_objects(self):
+    def test_warm_generates_the_header_then_invokes_only_planned_compile_commands(self):
         self.write_database((30, 20, 10))
         manifest = self.root / "shard.json"
         args = argparse.Namespace(build=self.build, lane="asan", revision="a" * 40,
                                   shards=2, shard=1, jobs=4, out=manifest)
         with patch("compile_cache.subprocess.run") as execute:
             compile_cache.warm(args)
-        command = execute.call_args.args[0]
         plan = compile_cache.compile_plan(self.build, 2)
-        self.assertEqual(plan["assignments"][1], command[5:])
+        calls = [call.args[0] for call in execute.call_args_list]
+        self.assertEqual(
+            ["ninja", "-C", str(self.build.resolve()), "og_git_hash_gen"], calls[0])
+        expected = [plan["compile_records"][output]["arguments"]
+                    for output in plan["assignments"][1]]
+        self.assertCountEqual(expected, calls[1:])
+        self.assertEqual(1 + len(expected), len(calls))
         self.assertEqual(1, json.loads(manifest.read_text())["shard"])
+
+    def test_warm_prefixes_an_explicit_cache_program_once(self):
+        self.write_database((10,))
+        cache = self.root / "sccache"
+        cache.write_text("cache")
+        manifest = self.root / "cached-shard.json"
+        args = argparse.Namespace(
+            build=self.build, lane="asan", revision="rev", shards=1, shard=0,
+            jobs=1, out=manifest, cache_program=cache)
+        stats = json.dumps({"stats": {"compile_requests": 1, "requests_executed": 1}})
+        with patch("compile_cache.subprocess.run") as execute, \
+                patch("compile_cache.subprocess.check_output", return_value=stats):
+            compile_cache.warm(args)
+        compile_command = execute.call_args_list[1].args[0]
+        self.assertEqual(str(cache), compile_command[0])
+        self.assertEqual(1, compile_command.count(str(cache)))
+        self.assertEqual(1, json.loads(manifest.read_text())["cache_requests"])
+
+    def test_warm_rejects_cache_request_amplification(self):
+        self.write_database((10,))
+        cache = self.root / "sccache"
+        cache.write_text("cache")
+        args = argparse.Namespace(
+            build=self.build, lane="asan", revision="rev", shards=1, shard=0,
+            jobs=1, out=self.root / "amplified.json", cache_program=cache)
+        stats = json.dumps({"stats": {"compile_requests": 2, "requests_executed": 2}})
+        with patch("compile_cache.subprocess.run"), \
+                patch("compile_cache.subprocess.check_output", return_value=stats), \
+                self.assertRaisesRegex(ValueError, "expected exactly 1"):
+            compile_cache.warm(args)
 
     def test_coverage_warm_requires_one_compiler_note_per_object(self):
         self.write_database((10,))
@@ -84,10 +119,11 @@ class CompileCacheTests(unittest.TestCase):
         database_path.write_text(json.dumps(database))
         output = self.build / "objects/source-0.cpp.o"
 
-        def materialize(_command, check):
+        def materialize(command, check, **_kwargs):
             self.assertTrue(check)
-            output.parent.mkdir(parents=True)
-            (self.build / "objects/source-0.cpp.gcno").write_bytes(b"notes")
+            if command[0] == "c++":
+                output.parent.mkdir(parents=True, exist_ok=True)
+                (self.build / "objects/source-0.cpp.gcno").write_bytes(b"notes")
 
         manifest = self.root / "coverage-shard.json"
         args = argparse.Namespace(build=self.build, lane="coverage", revision="rev",
@@ -174,6 +210,16 @@ class CompileCacheTests(unittest.TestCase):
             seed=seed, input=[first, second], output=merged, lane="asan",
             revision="rev", shards=2))
         self.assertEqual(b"old", (merged / "cache/a/seed").read_bytes())
+
+    def test_merge_keeps_one_equivalent_payload_for_a_shared_content_key(self):
+        seed = self.cache_root("seed", {})
+        first = self.publish_shard("first", 0, {"same/key": b"first"}, seed)
+        second = self.publish_shard("second", 1, {"same/key": b"second"}, seed)
+        merged = self.root / "merged"
+        compile_cache.merge(argparse.Namespace(
+            seed=seed, input=[first, second], output=merged, lane="asan",
+            revision="rev", shards=2))
+        self.assertEqual(b"first", (merged / "cache/same/key").read_bytes())
 
     def test_merge_rejects_missing_shard(self):
         seed = self.cache_root("seed", {})

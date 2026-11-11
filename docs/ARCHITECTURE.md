@@ -1137,7 +1137,10 @@ base Nix derivation hash. A hit is imported and linked as the already-verified
 product. Successful producers save that exact closure for reruns; there is no
 product restore prefix. A new commit normally changes the product derivation.
 For ASan and coverage, eight workers then partition the complete generated
-compile-command inventory and publish only `sccache` deltas. The producer
+compile-command inventory, execute exactly their assigned compiler commands,
+and publish only `sccache` deltas. They deliberately do not request Ninja
+object edges, whose CMake target-order dependencies would duplicate shared
+library compilation across workers. The producer
 requires all eight matching manifests, merges them with the latest compatible
 cross-commit seed, and performs the ordinary full Nix build. Thus compilation
 is distributed without transporting object trees or bypassing Ninja's final

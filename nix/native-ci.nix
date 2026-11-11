@@ -164,7 +164,8 @@ let
           python3 scripts/ci/compile_cache.py warm \
             --build build/${preset} --lane ${lane} --revision '${self.rev or "dirty"}' \
             --shards "$ciCompileShards" --shard "$ciCompileShard" \
-            --jobs "$NIX_BUILD_CORES" --out build/compile-cache-shard.json
+            --jobs "$NIX_BUILD_CORES" --out build/compile-cache-shard.json \
+            --cache-program ${pkgs.sccache}/bin/sccache
         else
           cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
             ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
