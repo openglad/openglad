@@ -54,7 +54,7 @@ jobs:
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          nix build .#ci-fuzz --out-link build/bundle-fuzz --cores 3
+          nix build .#ci-fuzz --out-link build/bundle-fuzz --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix fuzz realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-fuzz --cache build/nix-cache

@@ -13,7 +13,7 @@ CONCLUDED. Block on `gh pr checks <n> --watch` (or poll `gh run list
 completion report.
 
 - Required native gates consume one build per configuration at the exact
-  revision. ASan uses four runtime shards and coverage uses six; the generated
+  revision. ASan uses eight runtime shards and coverage uses six; the generated
   CTest inventory, not a hand-maintained test list, determines membership.
   Require the aggregate completeness result as well as each shard result.
 - Read the workflow's configured triggers and concurrency group before

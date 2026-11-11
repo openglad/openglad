@@ -56,7 +56,7 @@ jobs:
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          nix build .#ci-asan --out-link build/bundle-asan --cores 3
+          nix build .#ci-asan --out-link build/bundle-asan --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix asan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-asan --cache build/nix-cache
@@ -67,7 +67,7 @@ jobs:
           bash scripts/check_parity_companion_refs.sh
           python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
           python3 scripts/ci/nix_bundle_test.py
-          python3 scripts/ci/test_matrix.py plan --build build/ci-asan --lane asan --shards 4 --out build/plan
+          python3 scripts/ci/test_matrix.py plan --build build/ci-asan --lane asan --shards 8 --out build/plan
       - uses: actions/upload-artifact@v7
         with:
           name: asan-bundle
@@ -86,7 +86,7 @@ jobs:
           path: build/nix-cache
           key: ${{ steps.nar-key.outputs.key }}
   test-asan:
-    name: asan (${{ matrix.shard }}/4)
+    name: asan (${{ matrix.shard }}/8)
     needs: build-asan
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -96,7 +96,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -191,7 +191,7 @@ jobs:
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          nix build .#ci-tsan --out-link build/bundle-tsan --cores 3
+          nix build .#ci-tsan --out-link build/bundle-tsan --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix tsan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-tsan --cache build/nix-cache

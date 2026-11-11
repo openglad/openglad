@@ -1151,7 +1151,7 @@ retain their debug line tables.
 
 | Workflow | Gates |
 |---|---|
-| `test.yml` | Full ASan + UBSan suite in four shards, focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
+| `test.yml` | Full ASan + UBSan suite in eight shards, focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
 | `coverage.yml` | Full semantic and parity suite in six shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
 | `parity-canary.yml` | One normal configuration feeds three mutation workers, the real X11 display lane, and all campaign drift generators |
 | `fuzz.yml` | Instrumented libFuzzer targets; crashes retain reproducers |

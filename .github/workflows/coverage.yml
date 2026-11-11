@@ -61,7 +61,7 @@ jobs:
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          nix build .#ci-coverage --out-link build/bundle-coverage --cores 3
+          nix build .#ci-coverage --out-link build/bundle-coverage --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix coverage realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-coverage --cache build/nix-cache
