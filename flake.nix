@@ -30,7 +30,7 @@
             hash = "sha256-2QWIpLVIs2vGuMEhewDyihYdDQBz7SsOtfZ6pE67j2Q=";
           };
 
-          patches = [ ./cmake/patches/ixwebsocket-message-callback.patch ];
+          patches = [ ./cmake/patches/ixwebsocket-safety.patch ];
 
           nativeBuildInputs = with pkgs; [
             cmake

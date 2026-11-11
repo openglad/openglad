@@ -55,3 +55,22 @@ diff --git a/ixwebsocket/IXWebSocket.cpp b/ixwebsocket/IXWebSocket.cpp
 +        // Destroy the old target after unlocking; its captures may reenter us.
 @@ -462,0 +487 @@ namespace ix
 +        std::lock_guard<std::mutex> lock(_configMutex);
+diff --git a/ixwebsocket/IXGetFreePort.h b/ixwebsocket/IXGetFreePort.h
+--- a/ixwebsocket/IXGetFreePort.h
++++ b/ixwebsocket/IXGetFreePort.h
+@@ -7,0 +8,2 @@
++#define IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO 1
++
+diff --git a/ixwebsocket/IXGetFreePort.cpp b/ixwebsocket/IXGetFreePort.cpp
+--- a/ixwebsocket/IXGetFreePort.cpp
++++ b/ixwebsocket/IXGetFreePort.cpp
+@@ -76,9 +76 @@ namespace ix
+-#if defined(__has_feature)
+-#if __has_feature(address_sanitizer)
+-            int port = getAnyFreePortRandom();
+-#else
+-            int port = getAnyFreePort();
+-#endif
+-#else
+             int port = getAnyFreePort();
+-#endif

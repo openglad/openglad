@@ -28,9 +28,9 @@ struct ListeningWebSocketServer
     std::unique_ptr<sim::WebSocketServerTransport> transport;
 };
 
-// IXWebSocket's ASan build deliberately makes getFreePort() return an
-// unchecked random candidate; its other builds bind port 0 and close the
-// probe before the real server binds. Neither form reserves the candidate.
+// OpenGlad's IXWebSocket safety patch makes getFreePort() bind port 0 in every
+// build, including ASan, then close the probe before the real server binds.
+// The probe still cannot reserve the candidate across that handoff.
 // The two 200-cycle teardown stress tests therefore share this bounded
 // fixture-setup loop. A collision advances to a new candidate, but once the
 // listener exists every transport action and assertion remains single-shot.

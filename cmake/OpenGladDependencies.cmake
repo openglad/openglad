@@ -431,18 +431,22 @@ if(NOT EMSCRIPTEN)
                 include(CMakePushCheckState)
                 cmake_push_check_state(RESET)
                 set(CMAKE_REQUIRED_LIBRARIES ${candidate})
-                unset(OG_IXWEBSOCKET_CALLBACK_SAFE CACHE)
+                unset(OG_IXWEBSOCKET_SAFETY_PATCHED CACHE)
                 check_cxx_source_compiles([=[
                     #include <ixwebsocket/IXWebSocket.h>
+                    #include <ixwebsocket/IXGetFreePort.h>
                     #if !defined(IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK) || IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK != 1
                     #error "IXWebSocket callback synchronization patch is required"
                     #endif
+                    #if !defined(IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO) || IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO != 1
+                    #error "IXWebSocket free-port safety patch is required"
+                    #endif
                     int main() { return 0; }
-                ]=] OG_IXWEBSOCKET_CALLBACK_SAFE)
+                ]=] OG_IXWEBSOCKET_SAFETY_PATCHED)
                 cmake_pop_check_state()
-                if(NOT OG_IXWEBSOCKET_CALLBACK_SAFE)
+                if(NOT OG_IXWEBSOCKET_SAFETY_PATCHED)
                     message(FATAL_ERROR
-                        "IXWebSocket requires cmake/patches/ixwebsocket-message-callback.patch. "
+                        "IXWebSocket requires cmake/patches/ixwebsocket-safety.patch. "
                         "Use the Nix package or set OPENGLAD_USE_PACKAGED_IXWEBSOCKET=OFF "
                         "to fetch and patch the pinned source.")
                 endif()
