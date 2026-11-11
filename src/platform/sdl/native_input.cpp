@@ -619,6 +619,12 @@ void show_cursor(bool show)
 
 namespace
 {
+#ifdef __EMSCRIPTEN__
+EM_JS(void, publish_text_input_value_js, (const char* value), {
+    globalThis.__opengladTextInputValue = value ? UTF8ToString(value) : null;
+});
+#endif
+
 // SDL3's SDL_StartTextInput/SDL_StopTextInput take an SDL_Window*. Prefer the
 // keyboard-focus window (NULL under the dummy driver), falling back to the
 // first open window. A null result makes start/stop a silent no-op — pushed
@@ -724,8 +730,18 @@ void start_text_input(const char* initial_value, int max_bytes,
        multiline ? 1 : 0);
 #pragma clang diagnostic pop
 #endif
+    publish_text_input_value(initial_value != nullptr ? initial_value : "");
     if (SDL_Window* w = text_input_window())
         SDL_StartTextInput(w);
+}
+
+void publish_text_input_value(const char* value)
+{
+#ifdef __EMSCRIPTEN__
+    publish_text_input_value_js(value);
+#else
+    (void)value;
+#endif
 }
 
 void stop_text_input()
@@ -745,6 +761,7 @@ void stop_text_input()
                                              { detail: { active: false } }));
     });
 #endif
+    publish_text_input_value(nullptr);
     if (SDL_Window* w = text_input_window())
         SDL_StopTextInput(w);
 }

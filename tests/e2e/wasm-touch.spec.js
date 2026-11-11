@@ -440,6 +440,10 @@ test.describe('Touch overlay activation', () => {
     // runs with the iPhone device descriptor, and this Playwright version
     // injects the project's context options into manual newContext() calls —
     // so every touch-relevant option must be overridden explicitly here.
+    // The touch half is complete, so release its WASM renderer before opening
+    // a second game. Keeping both alive adds no coverage and can exhaust a
+    // browser renderer process on memory-constrained CI hosts.
+    await page.close();
     const desktop = await browser.newContext({
       baseURL: 'http://localhost:8089',
       hasTouch: false,
@@ -738,14 +742,10 @@ test.describe('Touch overlay activation', () => {
     // while the DOM field is still untouched. Those keystrokes edit the C++
     // buffer with no way to tell the field about them.
     await page.evaluate(() => document.getElementById('og-text-entry').blur());
-    const promptBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
     await page.keyboard.type('ABC', { delay: 60 });
-    await waitForRegionToLeave(
-      page,
-      PROMPT_INPUT_REGION,
-      promptBaseline,
-      'physically typed characters should reach the in-canvas prompt',
-    );
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('ABC');
     await expect(input).toHaveValue('');
 
     // The field is now authoritative: its first edit must replace the whole
@@ -790,16 +790,15 @@ test.describe('Touch overlay activation', () => {
     await page.keyboard.press('Backspace');
     await page.keyboard.type('X', { delay: 60 });
     await expect(input).toHaveValue('X');
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('X');
 
-    const blurBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
     await page.evaluate(() => document.getElementById('og-text-entry').blur());
     await page.keyboard.type('YZ', { delay: 60 });
-    await waitForRegionToLeave(
-      page,
-      PROMPT_INPUT_REGION,
-      blurBaseline,
-      'typing after the field blurs should still reach the in-canvas prompt',
-    );
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('XYZ');
     await expect(input).toHaveValue('X');
 
     await tapCanvasGameCoord(page, 160, 100); // gesture-refocus the input
