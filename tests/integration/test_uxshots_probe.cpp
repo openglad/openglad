@@ -5,6 +5,7 @@
 
 #include "test_ability_select_scope.h"
 #include "test_campaign_picker_drive.h"
+#include "test_click_ladder.h"
 #include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -329,6 +330,10 @@ void reap_all_companies() {
 struct ShotState {
   bool finished = false;
   int captures = 0;
+  // Door transitions prove their bounded retry directly: each affected flow
+  // drops its first press, then records the one retry that reached the edge.
+  int dropped_door_retries = -1;
+  bool dropped_door_press_consumed = false;
   // #237 derivation pin, for the flows that drive a real door: the fades a
   // door added, or -1 when the injector never reached the read.
   int fades_added_by_nested_door = -1;
@@ -1722,8 +1727,20 @@ int many_seats_view_level_injector(void *data) {
       // re-homed CTRL row on the appended y=173 band slot.
       if (wait_for_team_menu(5000)) {
         SDL_Delay(250);
-        interact("difficulty");
-        if (wait_for_interactable("cross_control", 5000)) {
+        g_click_ladder_click_retries = 0;
+        g_click_ladder_click_drops = 1;
+        const bool difficulty_open = click_until_edge(
+            "difficulty",
+            [](int wait_ms) {
+              return wait_for_interactable("cross_control", wait_ms);
+            },
+            nullptr, 3, 1500);
+        state->dropped_door_retries = g_click_ladder_click_retries;
+        state->dropped_door_press_consumed =
+            g_click_ladder_click_drops == 0;
+        g_click_ladder_click_retries = 0;
+        g_click_ladder_click_drops = 0;
+        if (difficulty_open) {
           SDL_Delay(750);
           state->captures += capture_frame("difficulty_networked");
           SDL_Delay(200);
@@ -2214,8 +2231,19 @@ int view_level_staged_injector(void *data) {
     // and only the canvas-direct bevel survives.
     if (wait_for_team_menu(5000)) {
       SDL_Delay(250);
-      interact("hire_troops");
-      if (wait_for_interactable("hire_me", 10000)) {
+      g_click_ladder_click_retries = 0;
+      g_click_ladder_click_drops = 1;
+      const bool hire_open = click_until_edge(
+          "hire_troops",
+          [](int wait_ms) {
+            return wait_for_interactable("hire_me", wait_ms);
+          },
+          nullptr, 4, 2000);
+      state->dropped_door_retries = g_click_ladder_click_retries;
+      state->dropped_door_press_consumed = g_click_ladder_click_drops == 0;
+      g_click_ladder_click_retries = 0;
+      g_click_ladder_click_drops = 0;
+      if (hire_open) {
         SDL_Delay(800);
         state->captures +=
             capture_frame("hire_after_view_level", &check_hire_portrait);
@@ -2307,6 +2335,10 @@ TEST(UxShots, n_view_level_staged) {
   cleanup_picker_state();
   g_picker_max_mainmenu_calls = 0;
   ASSERT_TRUE(state.finished);
+  EXPECT_TRUE(state.dropped_door_press_consumed)
+      << "the injected HIRE press must be consumed by the retry";
+  EXPECT_EQ(1, state.dropped_door_retries)
+      << "the dropped HIRE press must cost exactly one retry";
   // Only the healed branch borrows viewob[0], so a degraded pane would leave
   // the #251 comparison with nothing to catch.
   ASSERT_TRUE(trace_contains("picker", "view_scenario pane gen="))
@@ -2354,6 +2386,10 @@ TEST(UxShots, n_view_level_seats) {
   SDL_WaitThread(thread, nullptr);
   cleanup_picker_state();
   ASSERT_TRUE(state.finished);
+  EXPECT_TRUE(state.dropped_door_press_consumed)
+      << "the injected DIFFICULTY press must be consumed by the retry";
+  EXPECT_EQ(1, state.dropped_door_retries)
+      << "the dropped DIFFICULTY press must cost exactly one retry";
   // The two-card rail over a seven-seat lobby, the VIEW LEVEL seat block,
   // and the networked DIFFICULTY screen with the re-homed CTRL row (#218).
   ASSERT_EQ(3, state.captures);
