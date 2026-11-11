@@ -27,8 +27,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  probe-coverage-cache:
+    name: Probe exact coverage build cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      exact-hit: ${{ steps.nar-cache.outputs.cache-hit }}
+      nar-key: ${{ steps.keys.outputs.nar-key }}
+      sccache-key: ${{ steps.keys.outputs.sccache-key }}
+      sccache-prefix: ${{ steps.keys.outputs.sccache-prefix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Derive exact-output and cross-commit compiler-cache keys
+        id: keys
+        run: |
+          drv="$(nix eval --raw .#packages.x86_64-linux.ci-coverage.drvPath)"
+          drv_basename="${drv##*/}"
+          drv_hash="${drv_basename%%-*}"
+          sccache_prefix="native-sccache-v1-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-"
+          echo "nar-key=native-nar-v1-${{ runner.os }}-coverage-${drv_hash}" >> "$GITHUB_OUTPUT"
+          echo "sccache-prefix=${sccache_prefix}" >> "$GITHUB_OUTPUT"
+          echo "sccache-key=${sccache_prefix}${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+      - name: Look up the exact compiled NAR without downloading it
+        id: nar-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/nix-cache
+          key: ${{ steps.keys.outputs.nar-key }}
+          lookup-only: true
+
+  compile-coverage:
+    name: Warm coverage compile cache (${{ matrix.shard }}/8)
+    needs: probe-coverage-cache
+    if: needs['probe-coverage-cache'].outputs.exact-hit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - name: Restore the newest compatible cross-commit compiler cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
+          restore-keys: |
+            ${{ needs['probe-coverage-cache'].outputs.sccache-prefix }}
+      - name: Compile one complete-plan object shard
+        run: |
+          mkdir -p build/sccache-seed/cache
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            --sccache-seed build/sccache-seed --compile-shards 8 \
+            --compile-shard ${{ matrix.shard }} --cache-only --cores 4 \
+            --out-link build/sccache-shard
+          mkdir -p build/sccache-upload
+          cp -a --reflink=auto build/sccache-shard/. build/sccache-upload/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-compile-cache-${{ matrix.shard }}
+          path: build/sccache-upload/
+          compression-level: 0
+          if-no-files-found: error
+
   build-coverage:
     name: Build coverage once
+    needs: [probe-coverage-cache, compile-coverage]
+    if: ${{ always() && needs['probe-coverage-cache'].result == 'success' && (needs['probe-coverage-cache'].outputs.exact-hit == 'true' || needs['compile-coverage'].result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -41,27 +117,54 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
-      - name: Key immutable compiled output by exact derivation
-        id: nar-key
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-coverage.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          echo "key=native-nar-v1-${{ runner.os }}-coverage-${drv_hash}" >> "$GITHUB_OUTPUT"
       - name: Restore exact compiled NAR closure
         id: nar-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
-      - name: Import exact cached output before realizing current source
+          key: ${{ needs['probe-coverage-cache'].outputs.nar-key }}
+      - name: Import and link exact cached output
         if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
+        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache --out-link build/bundle-coverage
+      - name: Download every compile-cache shard
+        if: steps.nar-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-compile-cache-*
+          path: build/sccache-shards
+      - name: Restore the cross-commit compiler-cache seed
+        if: steps.nar-cache.outputs.cache-hit != 'true'
+        id: sccache-seed
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
+          restore-keys: |
+            ${{ needs['probe-coverage-cache'].outputs.sccache-prefix }}
+      - name: Verify and merge the complete compile cache
+        if: steps.nar-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build/sccache-seed/cache
+          shard_args=()
+          for shard in build/sccache-shards/coverage-compile-cache-*; do
+            shard_args+=(--input "$shard")
+          done
+          python3 scripts/ci/compile_cache.py merge \
+            --seed build/sccache-seed "${shard_args[@]}" \
+            --output build/sccache-merged --lane coverage \
+            --revision "$(git rev-parse HEAD)" --shards 8
       - name: Build and export immutable configuration
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          nix build .#ci-coverage --out-link build/bundle-coverage --cores 4
+          if [ "${{ steps.nar-cache.outputs.cache-hit }}" != true ]; then
+            python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+              --sccache-seed build/sccache-merged --cores 4 \
+              --out-link build/bundle-coverage
+            python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+              --sccache-seed build/sccache-merged --cores 4 --cache-only \
+              --out-link build/sccache-output
+          fi
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix coverage realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-coverage --cache build/nix-cache
@@ -92,7 +195,18 @@ jobs:
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
+          key: ${{ needs['probe-coverage-cache'].outputs.nar-key }}
+      - name: Prepare the updated cross-commit compiler cache
+        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build/sccache-save
+          cp -a --reflink=auto build/sccache-output/. build/sccache-save/
+      - name: Save the updated cross-commit compiler cache
+        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-save
+          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
   test-coverage:
     name: coverage (${{ matrix.shard }}/6)
     needs: build-coverage

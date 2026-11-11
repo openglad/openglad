@@ -15,6 +15,16 @@ if(NOT EMSCRIPTEN)
     )
 endif()
 
+set(OG_PLATFORM_EMSCRIPTEN_COMPONENT_SOURCES)
+if(EMSCRIPTEN)
+    list(APPEND OG_PLATFORM_EMSCRIPTEN_COMPONENT_SOURCES
+        ${SRC_DIR}/platform/emscripten/web_runtime_diagnostics.cpp
+        ${SRC_DIR}/platform/emscripten/web_touch_bridge.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
+    )
+endif()
+
 # Deterministic Lua scripting VM (class packs / level scripts). Shared by the
 # SDL game, the component libraries, and the headless clients.
 set(OG_SCRIPT_SOURCES
@@ -261,12 +271,5 @@ set(GAME_SOURCES_NO_MAIN
     ${OG_INTERFACE_COMPONENT_SOURCES}
     ${OG_PLATFORM_SDL_COMPONENT_SOURCES}
     ${OG_NETWORK_SOURCES}
+    ${OG_PLATFORM_EMSCRIPTEN_COMPONENT_SOURCES}
 )
-if(EMSCRIPTEN)
-    list(APPEND GAME_SOURCES_NO_MAIN
-        ${SRC_DIR}/platform/emscripten/web_runtime_diagnostics.cpp
-        ${SRC_DIR}/platform/emscripten/web_touch_bridge.cpp
-        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
-        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
-    )
-endif()

@@ -16,7 +16,7 @@
 # hand-written matcher's comment usually has to. scripts/ is not scanned, so
 # this script's own text cannot trip it.
 #
-# Wired into the build as a dependency of og_game_test (CMakeLists.txt,
+# Wired into the build as a dependency of the og_game_test aggregate (CMakeLists.txt,
 # beside check_injector_settles), so a reintroduced include fails the test
 # build rather than waiting for someone to run this by hand.
 #

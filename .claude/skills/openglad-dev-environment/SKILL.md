@@ -13,8 +13,14 @@ AGENTS.md doesn't: configuration differences, fixture isolation, and traps.
 
 ## Matching the native CI configuration
 
-The Linux native lanes build each configuration once as a Nix bundle for the
-exact checkout revision, then run consumers against that bundle. Use the lean
+The Linux native lanes produce one authoritative Nix bundle for the exact
+checkout revision, then run consumers against that bundle. ASan and coverage
+first divide the generated compile-command inventory across eight cache-warming
+workers. Those workers transport only `sccache` entries; the producer verifies
+their complete disjoint plan and performs the ordinary full configure/build,
+including every archive, link and build gate, against the merged cache. The
+cache seed is an explicit Nix input, never mutable state read through the
+sandbox. Use the lean
 `nix develop .#ci-native` shell to restore and run a downloaded bundle:
 `python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"`.
 Restore imports the dependency closure and verifies the product NAR before

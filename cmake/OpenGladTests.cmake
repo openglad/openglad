@@ -392,17 +392,69 @@ function(og_add_sharded_group_tests NAME BIN COUNT FILTER OUT_VAR)
     set(${OUT_VAR} ${entries} PARENT_SCOPE)
 endfunction()
 
-add_library(og_game_test STATIC
-    ${GAME_SOURCES_NO_MAIN}
+# The integration build needs every game TU under TESTING, but it does not need
+# them in one 100+ MiB archive.  Keep the same source union while exposing the
+# real component boundaries to compile-cache workers.  The component archives
+# deliberately have no dependencies on one another: a TU only needs headers to
+# compile, and the aggregate link group resolves the game's historical static
+# library cycles at the final executable link.
+function(og_add_testing_component TARGET)
+    add_library(${TARGET} STATIC ${ARGN})
+    configure_openglad_library(${TARGET})
+    configure_openglad_sdl_target(${TARGET})
+    target_compile_definitions(${TARGET} PRIVATE TESTING)
+    # Preserve the monolithic og_game_test compile environment.  In
+    # particular, gameplay sources include vendored Lua headers, resource
+    # sources include the IO package headers, and native transport sources
+    # include IXWebSocket headers.
+    target_link_libraries(${TARGET} PRIVATE ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(${TARGET} PRIVATE og_ext_ixwebsocket)
+    endif()
+endfunction()
+
+og_add_testing_component(og_core_test ${OG_CORE_SOURCES})
+og_add_testing_component(og_gameplay_test ${OG_GAMEPLAY_COMPONENT_SOURCES})
+og_add_testing_component(og_resources_test ${OG_RESOURCES_COMPONENT_SOURCES})
+og_add_testing_component(og_interface_test ${OG_INTERFACE_COMPONENT_SOURCES})
+if(OG_NETWORK_SOURCES)
+    og_add_testing_component(og_platform_ws_transport_test ${OG_NETWORK_SOURCES})
+endif()
+og_add_testing_component(og_platform_test
+    ${OG_PLATFORM_SDL_COMPONENT_SOURCES}
+    ${OG_PLATFORM_EMSCRIPTEN_COMPONENT_SOURCES}
     ${SRC_DIR}/platform/sdl/glad.cpp
     ${CMAKE_SOURCE_DIR}/tests/support/test_trace.cpp
 )
-configure_openglad_library(og_game_test)
-configure_openglad_sdl_target(og_game_test)
-target_compile_definitions(og_game_test PRIVATE TESTING)
-target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+
+add_library(og_game_test INTERFACE)
+set(OG_GAME_TEST_COMPONENTS og_platform_test)
+if(TARGET og_platform_ws_transport_test)
+    list(APPEND OG_GAME_TEST_COMPONENTS og_platform_ws_transport_test)
+endif()
+list(APPEND OG_GAME_TEST_COMPONENTS
+    og_interface_test og_resources_test og_gameplay_test og_core_test)
+if(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+    list(JOIN OG_GAME_TEST_COMPONENTS "," OG_GAME_TEST_LINK_GROUP)
+    target_link_libraries(og_game_test INTERFACE
+        "$<LINK_GROUP:RESCAN,${OG_GAME_TEST_LINK_GROUP}>"
+        ${OG_IO_EXTERNAL_LIBS}
+        og_runtime_deps
+    )
+else()
+    set(OG_GAME_TEST_COMPONENT_REPEATS og_platform_test)
+    if(TARGET og_platform_ws_transport_test)
+        list(APPEND OG_GAME_TEST_COMPONENT_REPEATS og_platform_ws_transport_test)
+    endif()
+    target_link_libraries(og_game_test INTERFACE
+        ${OG_GAME_TEST_COMPONENTS}
+        ${OG_GAME_TEST_COMPONENT_REPEATS}
+        ${OG_IO_EXTERNAL_LIBS}
+        og_runtime_deps
+    )
+endif()
 if(NOT EMSCRIPTEN)
-    target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
+    target_link_libraries(og_game_test INTERFACE og_ext_ixwebsocket)
 endif()
 add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex check_escape_tail_twins)
 
@@ -943,9 +995,9 @@ target_include_directories(scenario_facts_dump PRIVATE
 )
 target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
 target_link_libraries(scenario_facts_dump PRIVATE og_game_test project_warnings)
-# Coverage builds: libog_game_test.a is compiled with --coverage and
-# leaves undefined references to __gcov_init / __gcov_exit /
-# __gcov_merge_add in the static archive. Link against gcov via
+# Coverage builds: the og_*_test component archives are compiled with
+# --coverage and leave undefined references to __gcov_init / __gcov_exit /
+# __gcov_merge_add. Link against gcov via
 # --coverage so the standalone executable resolves them. The ASan
 # / TSan presets do NOT route through configure_openglad_library
 # here because pulling in project_sanitizers transitively slows

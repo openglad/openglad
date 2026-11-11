@@ -19,6 +19,7 @@ let
       asan = lane == "asan";
       fuzz = lane == "fuzz";
       canary = lane == "canary";
+      compileCache = asan || lane == "coverage";
       stdenv = if tsan || asan || fuzz then pkgs.clangStdenv else pkgs.stdenv;
       sanitizer = if tsan then "thread" else
         lib.optionalString fuzz "fuzzer-no-link," + "address,undefined,float-cast-overflow";
@@ -60,13 +61,20 @@ let
     in stdenv.mkDerivation {
       pname = "openglad-ci-${lane}";
       version = "2.${toString (self.revCount or 0)}";
+      outputs = [ "out" ] ++ lib.optionals compileCache [ "sccache" ];
       src = self;
       ciCommitCount = toString (self.revCount or 0);
       ciGitHash = if self ? rev then builtins.substring 0 8 self.rev
         else if self ? dirtyRev then builtins.substring 0 8 self.dirtyRev
         else "nogit";
       ciSourceHasHistory = self ? rev || self ? dirtyRev;
-      nativeBuildInputs = tools;
+      # Workflows override these with an explicit, content-addressed seed and
+      # one compile-command shard.  Keeping them as derivation attributes makes
+      # the sandbox hermetic: no compiler process reads a mutable host cache.
+      sccacheSeed = "";
+      ciCompileShards = "0";
+      ciCompileShard = "-1";
+      nativeBuildInputs = tools ++ lib.optionals compileCache [ pkgs.sccache ];
       buildInputs = dependencies ++ [ ix lodepng ];
       OG_KEYBOARD_FONT_DIR = "${pkgs.dejavu_fonts}/share/fonts/truetype";
       hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
@@ -106,16 +114,36 @@ let
         # flags. CMake then treats those paths as implicit and may omit them
         # after regeneration. Upstream launchers retain the exact producer
         # options for incremental builds in a lean consumer shell.
-        compilerLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
+        environmentLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
           --env ${pkgs.coreutils}/bin/env)"
+        compilerLauncher="$environmentLauncher"
+        ${lib.optionalString compileCache ''
+          export SCCACHE_DIR="$NIX_BUILD_TOP/openglad-sccache"
+          # Two lanes plus the exact-NAR caches must coexist within GitHub's
+          # repository cache budget. Entries are compressed; cap each lane at
+          # 2 GiB so recent objects survive without either lane monopolizing it.
+          export SCCACHE_CACHE_SIZE=2G
+          mkdir -p "$SCCACHE_DIR"
+          if [ -n "$sccacheSeed" ]; then
+            if [ ! -d "$sccacheSeed/cache" ]; then
+              echo "sccache seed has no cache directory: $sccacheSeed" >&2
+              exit 1
+            fi
+            cp -a --reflink=auto "$sccacheSeed/cache/." "$SCCACHE_DIR/"
+            chmod -R u+w "$SCCACHE_DIR"
+          fi
+          compilerLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
+            --env ${pkgs.coreutils}/bin/env \
+            --cache ${pkgs.sccache}/bin/sccache --cache-dir "$SCCACHE_DIR")"
+        ''}
         cmake --preset ${preset} \
           -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \
           -DCMAKE_BUILD_TYPE=Debug \
           -DCMAKE_EXE_LINKER_FLAGS='-Wl,-z,pack-relative-relocs -Wl,--compress-debug-sections=zlib' \
           -DCMAKE_C_COMPILER_LAUNCHER="$compilerLauncher" \
           -DCMAKE_CXX_COMPILER_LAUNCHER="$compilerLauncher" \
-          -DCMAKE_C_LINKER_LAUNCHER="$compilerLauncher" \
-          -DCMAKE_CXX_LINKER_LAUNCHER="$compilerLauncher" \
+          -DCMAKE_C_LINKER_LAUNCHER="$environmentLauncher" \
+          -DCMAKE_CXX_LINKER_LAUNCHER="$environmentLauncher" \
           -DCMAKE_C_FLAGS_DEBUG='${flags}' \
           -DCMAKE_CXX_FLAGS_DEBUG='${flags}' \
           ${lib.optionalString canary "-DOPENGLAD_X11_DISPLAY_TESTS=ON"} \
@@ -131,8 +159,20 @@ let
       '';
       buildPhase = ''
         runHook preBuild
-        cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
-          ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
+        ${lib.optionalString compileCache "sccache --zero-stats"}
+        if [ "$ciCompileShards" -gt 0 ]; then
+          python3 scripts/ci/compile_cache.py warm \
+            --build build/${preset} --lane ${lane} --revision '${self.rev or "dirty"}' \
+            --shards "$ciCompileShards" --shard "$ciCompileShard" \
+            --jobs "$NIX_BUILD_CORES" --out build/compile-cache-shard.json
+        else
+          cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
+            ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
+        fi
+        ${lib.optionalString compileCache ''
+          sccache --show-stats
+          sccache --stop-server
+        ''}
         # Observe the completed build graph before pack removes objects and
         # archives. This is a disk snapshot, not an exact peak measurement.
         du --bytes --summarize build/${preset}
@@ -140,9 +180,30 @@ let
       '';
       installPhase = ''
         runHook preInstall
-        python3 scripts/ci/nix_bundle.py pack \
-          --source ${canonicalSource} --build build/${preset} \
-          --output "$out" --lane ${lane} --revision '${self.rev or "dirty"}'
+        if [ "$ciCompileShards" -gt 0 ]; then
+          mkdir -p "$out"
+          cp build/compile-cache-shard.json "$out/"
+          publishSeed=()
+          if [ -n "$sccacheSeed" ]; then
+            publishSeed=(--seed "$sccacheSeed")
+          fi
+          ${lib.optionalString compileCache ''
+            python3 scripts/ci/compile_cache.py publish \
+              --cache "$SCCACHE_DIR" "''${publishSeed[@]}" --output "$sccache" \
+              --lane ${lane} --revision '${self.rev or "dirty"}' \
+              --shard-manifest build/compile-cache-shard.json
+          ''}
+        else
+          python3 scripts/ci/nix_bundle.py pack \
+            --source ${canonicalSource} --build build/${preset} \
+            --output "$out" --lane ${lane} --revision '${self.rev or "dirty"}'
+          ${lib.optionalString compileCache ''
+            python3 scripts/ci/compile_cache.py publish \
+              --cache "$SCCACHE_DIR" --output "$sccache" \
+              --lane ${lane} --revision '${self.rev or "dirty"}' \
+              --max-bytes 2147483648
+          ''}
+        fi
         runHook postInstall
       '';
       passthru = { inherit preset canonicalSource; };

@@ -928,7 +928,9 @@ and are `include()`d from it, so they run in the same scope:
 
 `GAME_SOURCES_NO_MAIN` is derived from the component lists rather than
 maintained beside them, so a file added to a component reaches every target
-that needs it.
+that needs it. Integration tests compile those same lists under `TESTING` into
+matching `og_*_test` component archives and consume them through the
+`og_game_test` interface aggregate; there is no second monolithic source list.
 
 **Configure and build:**
 ```bash
@@ -1131,12 +1133,19 @@ Each consumer depends on its own configuration's producer, so a slower build
 does not hold up unrelated lanes.
 
 Each native producer also restores an exported NAR cache keyed by its exact
-Nix derivation hash. A hit is imported before `nix build`, which still realizes
-the current source. Successful producers save that exact closure for reruns;
-there is no product restore prefix. A new commit normally changes the product
-derivation and rebuilds it. Nix may substitute unchanged dependencies from its
-configured binary caches. Worker artifacts remain local to the workflow run,
-and tests execute afresh even when the producer restores a cached bundle.
+base Nix derivation hash. A hit is imported and linked as the already-verified
+product. Successful producers save that exact closure for reruns; there is no
+product restore prefix. A new commit normally changes the product derivation.
+For ASan and coverage, eight workers then partition the complete generated
+compile-command inventory and publish only `sccache` deltas. The producer
+requires all eight matching manifests, merges them with the latest compatible
+cross-commit seed, and performs the ordinary full Nix build. Thus compilation
+is distributed without transporting object trees or bypassing Ninja's final
+dependency, archive, link, and gate graph. The merged cache is an explicit Nix
+input, so the build remains sandboxed and reproducible. Nix may also substitute
+unchanged dependencies from its configured binary caches. Worker artifacts
+remain local to the workflow run, and tests execute afresh even when the
+producer restores a cached bundle.
 Producer summaries record measured realization/export time and closure size;
 end-to-end CI timing must be read from completed runs.
 
@@ -1151,8 +1160,8 @@ retain their debug line tables.
 
 | Workflow | Gates |
 |---|---|
-| `test.yml` | Full ASan + UBSan suite in eight shards, focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
-| `coverage.yml` | Full semantic and parity suite in six shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
+| `test.yml` | Eight compile-cache warmers feed one authoritative ASan build, then the full ASan + UBSan suite runs in eight test shards; focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
+| `coverage.yml` | Eight compile-cache warmers feed one authoritative coverage build, then the full semantic and parity suite runs in six test shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
 | `parity-canary.yml` | One normal configuration feeds three mutation workers, the real X11 display lane, and all campaign drift generators |
 | `fuzz.yml` | Instrumented libFuzzer targets; crashes retain reproducers |
 | `release.yml` | Portable optimized native packages and the reusable WASM workflow; publish only after both pass for the commit |

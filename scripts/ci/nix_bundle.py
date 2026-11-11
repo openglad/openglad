@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""Build artifacts, not test results: transport and activate native Nix bundles.
 
-Producer (inside the Nix shell):
+Producer without a compile-cache seed (inside the Nix shell):
   nix build .#ci-coverage --out-link build/bundle-coverage
   python3 scripts/ci/nix_bundle.py export --bundle build/bundle-coverage \
       --cache build/nix-cache
@@ -9,7 +9,11 @@ For a local dirty checkout, preserve the real Git version metadata with:
   python3 scripts/ci/nix_bundle.py build --lane coverage \
       --repo "$PWD" --out-link build/bundle-coverage
 This still builds the exact flake source through Nix; it passes the checkout's
-history count and HEAD hash as explicit derivation attributes.
+history count and HEAD hash as explicit derivation attributes. ASan and coverage
+may additionally receive a content-addressed `--sccache-seed`. Compile workers
+select a disjoint object plan with `--compile-shards` / `--compile-shard` and
+request only the derivation's `--cache-only` output. The final producer uses the
+merged seed but still builds the complete ordinary target graph.
 
 Upload the ENTIRE nix-cache directory as an artifact. Consumers download it,
 then restore their fresh CTest tree:
@@ -19,7 +23,7 @@ Restore verifies the compressed archive and NAR hashes, imports and roots the
 runtime/compiler dependencies, and streams the product into an owned tree.
 It moves that tree into place without importing a second product copy into
 the Nix store. Producers use plan-tree for read-only CTest metadata queries;
-their cache-hit import command still realizes the complete output for nix build.
+their cache-hit import command can attach an output link to that exact product.
 Neither operation configures, compiles, or runs tests. Each lane reserves one
 /tmp/openglad-ci-<lane>/source alias on its runner. The alias resolves embedded
 source macros, gcov source/profile paths, and canary incremental dependencies to
@@ -31,10 +35,11 @@ GCOV_PREFIX and without modifying the read-only Nix store.
 Only the canary bundle retains incremental objects and Ninja's dependency DB.
 Its original nanosecond timestamps are restored after Nix's timestamp
 normalization, so a mutation rebuild compiles the mutated translation unit
-instead of rebuilding the entire game. CMake's compile/link launchers retain
-only the producer's NIX_CFLAGS_COMPILE, NIX_LDFLAGS and NIX_HARDENING_ENABLE;
-these preserve dependency paths that compiler detection classified as implicit.
-The launchers use the pinned coreutils env directly. pack is the derivation's
+instead of rebuilding the entire game. CMake's launchers retain the producer's
+NIX_CFLAGS_COMPILE, NIX_LDFLAGS and NIX_HARDENING_ENABLE; these preserve
+dependency paths that compiler detection classified as implicit. ASan and
+coverage compiler launchers then chain the pinned `sccache`; link launchers and
+all other lanes use only the pinned coreutils env. `pack` is the derivation's
 internal step.
 """
 
@@ -208,6 +213,13 @@ def import_bundle(args: argparse.Namespace) -> None:
     subprocess.run(["nix", "copy", "--no-check-sigs", "--from", cache.as_uri(), bundle],
                    check=True)
     read_manifest(Path(bundle))
+    out_link = getattr(args, "out_link", None)
+    if out_link is not None:
+        out_link = out_link.absolute()
+        if out_link.exists() or out_link.is_symlink():
+            raise ValueError(f"refusing to replace bundle output link: {out_link}")
+        out_link.parent.mkdir(parents=True, exist_ok=True)
+        out_link.symlink_to(bundle, target_is_directory=True)
     print(bundle)
 
 
@@ -528,8 +540,9 @@ def deactivate(args: argparse.Namespace) -> None:
 COMPILER_ENVIRONMENT_KEYS = ("NIX_CFLAGS_COMPILE", "NIX_LDFLAGS", "NIX_HARDENING_ENABLE")
 
 
-def compiler_launcher(env_program: Path) -> str:
-    """Preserve only the producer's compiler options in CMake's argv launcher."""
+def compiler_launcher(env_program: Path, cache_program: Path | None = None,
+                      cache_dir: Path | None = None) -> str:
+    """Preserve producer flags and optionally chain a pinned compiler cache."""
     executable = str(env_program)
     if not executable.startswith("/nix/store/") or env_program.name != "env":
         raise ValueError("compiler launcher requires the pinned store env executable")
@@ -539,14 +552,25 @@ def compiler_launcher(env_program: Path) -> str:
         if any(character in value for character in (";", "\n", "\r")):
             raise ValueError(f"compiler environment cannot be represented as a CMake list: {key}")
         arguments.append(f"{key}={value}")
+    if (cache_program is None) != (cache_dir is None):
+        raise ValueError("compiler cache program and directory must be supplied together")
+    if cache_program is not None:
+        cache_executable = str(cache_program)
+        if not cache_executable.startswith("/nix/store/") or cache_program.name != "sccache":
+            raise ValueError("compiler cache requires the pinned store sccache executable")
+        cache_directory = str(cache_dir)
+        if not cache_dir.is_absolute() or any(character in cache_directory for character in (";", "\n", "\r")):
+            raise ValueError("compiler cache directory must be an absolute CMake-list-safe path")
+        arguments.extend((f"SCCACHE_DIR={cache_directory}", cache_executable))
     return ";".join(arguments)
 
 
 def print_compiler_launcher(args: argparse.Namespace) -> None:
-    print(compiler_launcher(args.env))
+    print(compiler_launcher(args.env, args.cache, args.cache_dir))
 
 
-def local_build_expression(repo: Path, lane: str) -> str:
+def local_build_expression(repo: Path, lane: str, *, sccache_seed: Path | None = None,
+                           compile_shards: int = 0, compile_shard: int = -1) -> str:
     """Attach actual Git history to a dirty flake without changing its source."""
     if lane not in LANES:
         raise ValueError("unknown native CI lane")
@@ -558,20 +582,58 @@ def local_build_expression(repo: Path, lane: str) -> str:
         raise ValueError("Git returned invalid bundle history metadata")
     # URI quoting also removes Nix string interpolation characters from paths.
     uri = "git+" + repo.resolve().as_uri()
+    if compile_shards < 0 or (compile_shards == 0 and compile_shard != -1) or (
+            compile_shards > 0 and not 0 <= compile_shard < compile_shards):
+        raise ValueError("compile shard index/count are inconsistent")
+    seed_binding = ""
+    seed_attribute = ""
+    if sccache_seed is not None:
+        seed = sccache_seed.resolve(strict=True)
+        if not (seed / "cache").is_dir():
+            raise ValueError("sccache seed has no cache directory")
+        seed_binding = (
+            f'seed = builtins.path {{ path = builtins.toPath {json.dumps(str(seed))}; '
+            'name = "openglad-sccache-seed"; }; '
+        )
+        seed_attribute = "sccacheSeed = seed; "
     return (
-        f"let flake = builtins.getFlake {json.dumps(uri)}; "
+        f"let flake = builtins.getFlake {json.dumps(uri)}; {seed_binding}"
         f"in flake.packages.${{builtins.currentSystem}}.ci-{lane}.overrideAttrs (_: {{ "
         f'ciCommitCount = "{count}"; ciGitHash = "{revision[:8]}"; version = "2.{count}"; '
+        f'{seed_attribute}ciCompileShards = "{compile_shards}"; ciCompileShard = "{compile_shard}"; '
         '__intentionallyOverridingVersion = true; })'
     )
 
 
+def normalize_output_link(out_link: Path, cache_only: bool) -> None:
+    """Give a selected secondary Nix output the caller's requested link name."""
+    if not cache_only:
+        return
+    requested = out_link.absolute()
+    secondary = Path(str(requested) + "-sccache")
+    if requested.exists() or requested.is_symlink():
+        raise ValueError(f"refusing to replace output link: {requested}")
+    if not secondary.is_symlink():
+        raise ValueError(f"Nix did not create the selected sccache output link: {secondary}")
+    secondary.rename(requested)
+
+
 def build_bundle(args: argparse.Namespace) -> None:
     repo = args.repo.resolve()
-    expression = local_build_expression(repo, args.lane)
+    expression = local_build_expression(
+        repo, args.lane,
+        sccache_seed=getattr(args, "sccache_seed", None),
+        compile_shards=getattr(args, "compile_shards", 0),
+        compile_shard=getattr(args, "compile_shard", -1),
+    )
+    if getattr(args, "cache_only", False):
+        if args.lane not in ("asan", "coverage"):
+            raise ValueError("only ASan and coverage producers expose an sccache output")
+        expression = f"({expression}).sccache"
     subprocess.run(["nix", "build", "--impure", "--expr", expression,
-                    "--cores", "3", "--max-jobs", "1", "-L",
+                    "--cores", str(getattr(args, "cores", 3)), "--max-jobs", "1", "-L",
                     "--out-link", os.path.abspath(args.out_link)], cwd=repo, check=True)
+    normalize_output_link(args.out_link, getattr(args, "cache_only", False))
 
 
 def main() -> int:
@@ -580,11 +642,18 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     launcher = commands.add_parser("compiler-launcher", help="internal producer compiler environment capture")
     launcher.add_argument("--env", type=Path, required=True)
+    launcher.add_argument("--cache", type=Path)
+    launcher.add_argument("--cache-dir", type=Path)
     launcher.set_defaults(function=print_compiler_launcher)
     building = commands.add_parser("build", help="build with the checkout's real Git history metadata")
     building.add_argument("--lane", choices=LANES, required=True)
     building.add_argument("--repo", type=Path, default=Path.cwd())
     building.add_argument("--out-link", type=Path, required=True)
+    building.add_argument("--sccache-seed", type=Path)
+    building.add_argument("--compile-shards", type=int, default=0)
+    building.add_argument("--compile-shard", type=int, default=-1)
+    building.add_argument("--cache-only", action="store_true")
+    building.add_argument("--cores", type=int, default=3)
     building.set_defaults(function=build_bundle)
     packing = commands.add_parser("pack", help="internal derivation install step")
     packing.add_argument("--source", type=Path, required=True)
@@ -599,6 +668,7 @@ def main() -> int:
     exporting.set_defaults(function=export_bundle)
     importing = commands.add_parser("import", help="import a downloaded closure")
     importing.add_argument("--cache", type=Path, required=True)
+    importing.add_argument("--out-link", type=Path)
     importing.set_defaults(function=import_bundle)
     restoring = commands.add_parser("restore", help="verify and restore an owned consumer tree without importing the product")
     restoring.add_argument("--cache", type=Path, required=True)

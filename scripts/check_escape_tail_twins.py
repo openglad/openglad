@@ -67,7 +67,7 @@ implementation). Exit codes: 0 clean (prints "Escape-tail twin check: OK"),
 1 twins found (one line each, on stdout), 2 cannot run (ROOT/tests missing --
 a gate that certifies a tree it never read is worse than no gate).
 
-Wired into the build as a dependency of og_game_test (CMakeLists.txt, beside
+Wired into the build as a dependency of the og_game_test aggregate (CMakeLists.txt, beside
 check_injector_settles) and self-tested by the ctest entry
 check_escape_tail_twins_selftest.
 """

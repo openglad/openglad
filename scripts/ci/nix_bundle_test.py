@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from nix_bundle import (build_bundle, cache_dependencies, cache_record, compiler_launcher,
                         materialize_build, pack, plan_tree, restore_bundle, restore_nar, validate_coverage_flags,
-                        verified_archive)
+                        verified_archive, normalize_output_link)
 
 
 class OwnedNarTests(unittest.TestCase):
@@ -258,6 +258,24 @@ class MaterializeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "CMake list"):
                     compiler_launcher(Path("/nix/store/coreutils/bin/env"))
 
+    def test_compiler_launcher_chains_pinned_sccache_after_producer_flags(self):
+        with patch.dict("os.environ", {"NIX_CFLAGS_COMPILE": "-isystem /nix/store/include"}, clear=True):
+            arguments = compiler_launcher(
+                Path("/nix/store/coreutils/bin/env"),
+                Path("/nix/store/sccache/bin/sccache"),
+                Path("/build/openglad-sccache"),
+            ).split(";")
+        self.assertEqual("SCCACHE_DIR=/build/openglad-sccache", arguments[-2])
+        self.assertEqual("/nix/store/sccache/bin/sccache", arguments[-1])
+
+    def test_compiler_launcher_rejects_partial_or_unpinned_cache_configuration(self):
+        with self.assertRaisesRegex(ValueError, "supplied together"):
+            compiler_launcher(Path("/nix/store/coreutils/bin/env"),
+                              Path("/nix/store/sccache/bin/sccache"), None)
+        with self.assertRaisesRegex(ValueError, "pinned store sccache"):
+            compiler_launcher(Path("/nix/store/coreutils/bin/env"), Path("/usr/bin/sccache"),
+                              Path("/build/openglad-sccache"))
+
     def test_local_build_preserves_history_and_replaces_the_output_link_itself(self):
         repo = self.root / 'checkout ${literal}'
         repo.mkdir()
@@ -265,8 +283,11 @@ class MaterializeTests(unittest.TestCase):
         output.symlink_to(self.source, target_is_directory=True)
         revision = "a" * 40
         with patch("nix_bundle.run", side_effect=["false", "325", revision]), \
-                patch("nix_bundle.subprocess.run") as execute:
-            build_bundle(argparse.Namespace(repo=repo, lane="coverage", out_link=output))
+                patch("nix_bundle.subprocess.run") as execute, \
+                patch("nix_bundle.normalize_output_link"):
+            build_bundle(argparse.Namespace(repo=repo, lane="coverage", out_link=output,
+                                             sccache_seed=None, compile_shards=0,
+                                             compile_shard=-1, cache_only=False, cores=3))
         command = execute.call_args.args[0]
         self.assertEqual(str(output), command[command.index("--out-link") + 1])
         self.assertEqual(self.source, output.resolve())
@@ -278,6 +299,35 @@ class MaterializeTests(unittest.TestCase):
         self.assertNotIn("${literal}", expression)
         self.assertEqual("3", command[command.index("--cores") + 1])
         self.assertEqual("1", command[command.index("--max-jobs") + 1])
+
+    def test_local_compile_shard_is_an_explicit_seeded_sccache_output(self):
+        repo = self.root / "checkout"
+        repo.mkdir()
+        seed = self.root / "seed"
+        (seed / "cache").mkdir(parents=True)
+        revision = "b" * 40
+        with patch("nix_bundle.run", side_effect=["false", "326", revision]), \
+                patch("nix_bundle.subprocess.run") as execute, \
+                patch("nix_bundle.normalize_output_link"):
+            build_bundle(argparse.Namespace(
+                repo=repo, lane="asan", out_link=self.root / "cache-output",
+                sccache_seed=seed, compile_shards=8, compile_shard=3,
+                cache_only=True, cores=4))
+        command = execute.call_args.args[0]
+        expression = command[command.index("--expr") + 1]
+        self.assertIn("builtins.path", expression)
+        self.assertIn('ciCompileShards = "8"', expression)
+        self.assertIn('ciCompileShard = "3"', expression)
+        self.assertTrue(expression.endswith(").sccache"))
+        self.assertEqual("4", command[command.index("--cores") + 1])
+
+    def test_selected_sccache_output_uses_requested_link_name(self):
+        requested = self.root / "cache-output"
+        secondary = Path(str(requested) + "-sccache")
+        secondary.symlink_to(self.source, target_is_directory=True)
+        normalize_output_link(requested, True)
+        self.assertEqual(self.source, requested.resolve())
+        self.assertFalse(secondary.is_symlink())
 
     def test_local_build_rejects_incomplete_history_before_nix_runs(self):
         def git_metadata(*arguments, **kwargs):

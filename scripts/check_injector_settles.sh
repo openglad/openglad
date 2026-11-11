@@ -66,7 +66,7 @@
 # its own sub-750 settles, which tier 1 by construction does not look at. The
 # gate must never pass — or describe itself — by looking away.
 #
-# Wired into the build as a dependency of og_game_test (CMakeLists.txt,
+# Wired into the build as a dependency of the og_game_test aggregate (CMakeLists.txt,
 # beside check_vendor_leaks), so a reintroduced settle fails the test build
 # rather than waiting for someone to run this by hand.
 set -euo pipefail
