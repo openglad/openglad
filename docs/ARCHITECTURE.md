@@ -1176,16 +1176,17 @@ retain their debug line tables.
 | Workflow | Gates |
 |---|---|
 | `test.yml` | Eight compile-cache warmers feed one authoritative ASan build, then the full ASan + UBSan suite runs in eight test shards; focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
-| `coverage.yml` | Eight compile-cache warmers feed one authoritative coverage build, then the full semantic and parity suite runs in six test shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
+| `coverage.yml` | Eight compile-cache warmers feed one authoritative coverage build, then the full semantic and parity suite runs in eight test shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
 | `parity-canary.yml` | One normal configuration feeds three mutation workers, the real X11 display lane, and all campaign drift generators |
 | `fuzz.yml` | Instrumented libFuzzer targets; crashes retain reproducers |
 | `release.yml` | Portable optimized native packages and the reusable WASM workflow; publish only after both pass for the commit |
 | `wasm-e2e.yml` | One WASM artifact feeds four browser shards, the advisory WebKit touch lane, and deployment after required tests pass |
 
 `scripts/ci/test_matrix.py` reads CTest's complete inventory and groups fixture
-setup, consumers and cleanup on the same worker. Recorded test times affect
-placement only; new tests always enter the plan. The timing manifest records
-the configuration and outcome of local measurements. Each lane uses its own
+setup, consumers and cleanup on the same worker. Recorded test times and each
+entry's CTest `PROCESSORS` or `RUN_SERIAL` reservation affect placement only;
+new tests always enter the plan. The timing manifest records
+the configuration and outcome of its complete measurements. Each lane uses its own
 measurements when available. Each test runs once. The aggregate
 requires every planned shard and every JUnit result, rejects skipped or failed
 CTest entries, and checks that the disjoint shard union equals the inventory.

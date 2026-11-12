@@ -20,6 +20,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 DELEGATED = {"emscripten_build_test": "Release / WASM build and browser matrix"}
+DEFAULT_PARALLEL = 4
 
 # Existing opt-in tools and external/display capabilities are reported by name.
 # Semantic, sanitizer-budget, unarmed-version and missing-golden skips fail.
@@ -51,11 +52,31 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def partition(inventory, timings, count, lane):
+def scheduling_slots(test, parallel):
+    """Return how many of one runner's CTest slots this entry reserves."""
+    processors = 1
+    run_serial = False
+    for prop in test.get("properties", []):
+        if prop["name"] == "PROCESSORS":
+            try:
+                processors = int(prop["value"])
+            except (TypeError, ValueError) as error:
+                raise ValueError(f'invalid PROCESSORS for {test["name"]}') from error
+        elif prop["name"] == "RUN_SERIAL":
+            value = prop["value"]
+            run_serial = value is True or (isinstance(value, str)
+                                            and value.upper() in ("1", "ON", "TRUE", "YES"))
+    if processors < 1:
+        raise ValueError(f'invalid PROCESSORS for {test["name"]}')
+    return parallel if run_serial else min(processors, parallel)
+
+
+def partition(inventory, timings, count, lane, parallel=DEFAULT_PARALLEL):
     tests = inventory["tests"]
     names = [t["name"] for t in tests]
-    if len(names) != len(set(names)) or not names or count < 1:
+    if len(names) != len(set(names)) or not names or count < 1 or parallel < 1:
         raise ValueError("invalid or empty CTest inventory")
+    by_name = {test["name"]: test for test in tests}
     selected = set(names) - DELEGATED.keys()
     if lane == "tsan":
         selected = {"og_unit_network"}
@@ -86,19 +107,32 @@ def partition(inventory, timings, count, lane):
     weights = {**timings.get("seconds", {}),
                **timings.get("lane_seconds", {}).get(lane, {})}
     shards = [[] for _ in range(count)]
-    loads = [0.0] * count
-    groups = sorted(components.values(), key=lambda g: (-sum(weights.get(n, 30) for n in g), g))
+    elapsed_loads = [0.0] * count
+    runner_loads = [0.0] * count
+
+    def elapsed(group):
+        return sum(weights.get(name, 30) for name in group)
+
+    def runner_cost(group):
+        return sum(weights.get(name, 30) * scheduling_slots(by_name[name], parallel) / parallel
+                   for name in group)
+
+    groups = sorted(components.values(), key=lambda group: (-runner_cost(group), group))
     for group in groups:
-        shard = min(range(count), key=lambda i: (loads[i], i))
+        shard = min(range(count), key=lambda i: (runner_loads[i], i))
         shards[shard].extend(group)
-        loads[shard] += sum(weights.get(n, 30) for n in group)
+        elapsed_loads[shard] += elapsed(group)
+        runner_loads[shard] += runner_cost(group)
     if any(not shard for shard in shards):
         raise ValueError("shard count exceeds independent test components")
     delegated = {name: DELEGATED[name] for name in names if name in DELEGATED}
     focused = sorted(set(names) - selected - delegated.keys()) if lane == "tsan" else []
-    return {"format": 1, "lane": lane, "inventory": sorted(names), "delegated": delegated,
+    return {"format": 1, "lane": lane, "parallel": parallel,
+            "inventory": sorted(names), "delegated": delegated,
             "focused_lane_omissions": focused,
-            "shards": [{"id": i + 1, "tests": sorted(shard), "estimated_seconds": loads[i]}
+            "shards": [{"id": i + 1, "tests": sorted(shard),
+                        "estimated_seconds": elapsed_loads[i],
+                        "estimated_runner_seconds": runner_loads[i]}
                        for i, shard in enumerate(shards)]}
 
 
@@ -182,7 +216,7 @@ def plan(args):
     inventory = json.loads(subprocess.check_output(
         ["ctest", "--test-dir", str(args.build), "--show-only=json-v1"], text=True))
     validate_product_inventory(inventory, args.lane)
-    result = partition(inventory, read(args.timings), args.shards, args.lane)
+    result = partition(inventory, read(args.timings), args.shards, args.lane, args.parallel)
     result["gtest_partitions"] = gtest_partitions(inventory, args.lane)
     if args.lane == "coverage":
         result["compiler_notes"] = compiler_notes(args.build)
@@ -227,6 +261,8 @@ def junit_results(path):
 
 def run(args):
     manifest = read(args.plan)
+    if manifest.get("parallel", DEFAULT_PARALLEL) != args.parallel:
+        raise ValueError("run parallelism does not match plan")
     if args.shard < 1 or args.shard > len(manifest["shards"]):
         raise ValueError("shard id outside manifest")
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -432,6 +468,7 @@ def main():
     p.add_argument("--build", type=Path, required=True)
     p.add_argument("--lane", choices=["coverage", "asan", "tsan"], required=True)
     p.add_argument("--shards", type=int, required=True)
+    p.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     p.add_argument("--timings", type=Path, default=Path("scripts/ci/test_timings.json"))
     p.add_argument("--out", type=Path, required=True)
     p.set_defaults(func=plan)
@@ -440,7 +477,7 @@ def main():
     p.add_argument("--build", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--plan", type=Path, required=True)
-    p.add_argument("--parallel", type=int, default=4)
+    p.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     p.set_defaults(func=run)
     for name, function in (("verify", verify), ("merge-coverage", merge)):
         p = sub.add_parser(name)

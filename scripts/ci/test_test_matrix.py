@@ -41,6 +41,26 @@ class MatrixTests(unittest.TestCase):
         self.assertEqual(groups, [{'setup', 'parity', 'cleanup'}, {'slow'}, {'new_test'}])
         self.assertEqual([s['estimated_seconds'] for s in plan['shards']], [102, 90, 80])
 
+    def test_processor_reservations_balance_runner_time(self):
+        ordinary = [{'name': f'ordinary_{index}'} for index in range(4)]
+        timings = {'seconds': {'heavy': 100, **{
+            test['name']: 100 for test in ordinary}}}
+        for reservation in (
+                {'name': 'PROCESSORS', 'value': 4},
+                {'name': 'RUN_SERIAL', 'value': True}):
+            inventory = {'tests': [
+                {'name': 'heavy', 'properties': [reservation]}, *ordinary,
+                {'name': 'emscripten_build_test'}]}
+            with self.subTest(reservation=reservation):
+                plan = matrix.partition(inventory, timings, 2, 'coverage')
+                self.assertEqual([s['tests'] for s in plan['shards']], [
+                    ['heavy'],
+                    ['ordinary_0', 'ordinary_1', 'ordinary_2', 'ordinary_3']])
+                self.assertEqual(
+                    [s['estimated_runner_seconds'] for s in plan['shards']],
+                    [100, 100])
+                self.assertEqual(plan['parallel'], 4)
+
     def test_instrumentation_lane_timings_balance_that_lane_and_keep_fallback(self):
         inventory = {'tests': [{'name': name} for name in ('a', 'b', 'c', 'd')]}
         timings = {'seconds': {'a': 100, 'b': 90, 'c': 20, 'd': 10},
@@ -132,7 +152,7 @@ class MatrixTests(unittest.TestCase):
             plan_file = root / 'plan.json'
             matrix.write(plan_file, plan)
             args = SimpleNamespace(plan=plan_file, shard=1, out=root / 'result',
-                                   build=root / 'build', parallel=1)
+                                   build=root / 'build', parallel=plan['parallel'])
             def spawn(command, **kwargs):
                 output = ['<testsuite>']
                 for name in plan['shards'][0]['tests']:
