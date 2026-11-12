@@ -78,13 +78,27 @@ CurveBattle battle_at_600(int level_id, int crew_level, std::uint32_t seed)
 // Each original curve row still runs once with the same seed/ticks and
 // assertions. Separate cases bound instrumentation cost without a sanitizer
 // skip; the original semantic test ID owns partition zero.
+//
+// Twelve partitions, not four: under coverage instrumentation the four-way
+// split left one case at 321 s (GitHub run 43221548149, 2026-11-12), which
+// put its CTest entry at 525 s of a 600 s ceiling and made it the floor of
+// the whole coverage lane. The cost is two rows, not the row count: scen7
+// and scen16 are about half of the suite between them (30% and 20% of an
+// uninstrumented run), and a stride of twelve gives each of them a case it
+// shares with one light row. The rows, seed, ticks and assertions are
+// unchanged.
 namespace {
+constexpr std::size_t kCurvePartitions = 12;
+
 void check_curve_partition(std::size_t partition)
 {
+    ASSERT_LT(partition, kCurvePartitions)
+        << "a partition past the stride plays no row and passes vacuously";
     const bool measure =
         std::getenv("WESTLANDS_CALIBRATION_MEASURE") != nullptr;
 
-    for (std::size_t index = partition; index < std::size(kCurve); index += 4)
+    for (std::size_t index = partition; index < std::size(kCurve);
+         index += kCurvePartitions)
     {
         const CurveLevel& lvl = kCurve[index];
         SCOPED_TRACE("scen" + std::to_string(lvl.level_id) + " at crew level " +
@@ -134,4 +148,44 @@ TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_t
 TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_3)
 {
     ASSERT_NO_FATAL_FAILURE(check_curve_partition(3));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_4)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(4));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_5)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(5));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_6)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(6));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_7)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(7));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_8)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(8));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_9)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(9));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_10)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(10));
+}
+
+TEST_F(WestlandsCampaignTest, curve_levels_load_field_an_army_and_fight_at_600_ticks_part_11)
+{
+    ASSERT_NO_FATAL_FAILURE(check_curve_partition(11));
 }

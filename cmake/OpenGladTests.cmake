@@ -1133,7 +1133,20 @@ og_add_unit_group(og_unit_sim NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_living_act_flow_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
 )
-og_add_sharded_group_tests(og_unit_sim og_unit_sim 4 "*" OG_SIM_TESTS)
+# The campaign curve battles are the heaviest cases in the tree under
+# instrumentation (one Westlands case alone ran 321 s under coverage on
+# 2026-11-12). GoogleTest shards by runnable index, so in one mixed group
+# every added sim test re-dealt them: an entry recorded at 110 s ran 394 s
+# one commit later, and the planner packed two of them into one worker.
+# They own their entries instead. The two filters are exact complements,
+# so every case in the binary still belongs to exactly one entry.
+set(OG_SIM_CURVE_FILTER
+    "WestlandsCampaignTest.curve_levels_*:LongSeasonCalibration.curve_levels_*:ImaginationsCalibration.curve_levels_*")
+og_add_sharded_group_tests(og_unit_sim_curves og_unit_sim 12
+    "${OG_SIM_CURVE_FILTER}" OG_SIM_CURVE_TESTS)
+og_add_sharded_group_tests(og_unit_sim og_unit_sim 4
+    "*-${OG_SIM_CURVE_FILTER}" OG_SIM_REST_TESTS)
+set(OG_SIM_TESTS ${OG_SIM_REST_TESTS} ${OG_SIM_CURVE_TESTS})
 
 # Real transports, relay threads, lobby/server/client and pack handoffs.
 # TSan selects this transport group; deterministic simulation stays separate.
