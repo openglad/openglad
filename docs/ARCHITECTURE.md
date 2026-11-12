@@ -1143,15 +1143,10 @@ every push. Such a rerun compiles nothing either way, because the compiler
 cache below was saved under that commit's own key.
 For ASan and coverage, eight workers then partition the complete generated
 compile-command inventory, execute exactly their assigned compiler commands,
-through CMake's captured compiler launcher, and publish immutable `sccache`
-result deltas together with the source-to-result indexes they wrote while
-preprocessing. Those indexes go to the same revision's producer and nowhere
-else. With them the producer reads each result without running the
-preprocessor again (1312 runs, most of a build phase that compiled nothing);
-sccache still rejects an index whose source, arguments or any included file's
-digest no longer matches. The cross-commit seed never carries an index: one
-written against an older tree can name a header that a newer tree shadows. If
-independent workers serialize the same result key
+through CMake's captured compiler launcher, and publish only immutable
+`sccache` result deltas. Mutable preprocessor indexes stay local to each
+process; the producer recreates those indexes while resolving the transported
+result objects. If independent workers serialize the same result key
 differently, merge retains the first result just as a shared central cache
 would. The authoritative build requires at least 98% of compiler requests to
 hit those transported objects, permits at most 32 sccache extraction-repair

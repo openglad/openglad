@@ -18,10 +18,8 @@ checkout revision, then run consumers against that bundle. ASan and coverage
 first divide the generated compile-command inventory across eight cache-warming
 workers. They execute the exact assigned compiler commands through CMake's
 captured launcher (not Ninja object edges, which carry broad target-order
-dependencies) and transport immutable `sccache` result entries plus the
-preprocessor indexes they wrote, which go only to the same revision's producer
-(it then skips re-preprocessing) and never into the cross-commit seed. The
-producer verifies their complete
+dependencies) and transport only immutable `sccache` result entries. Mutable
+preprocessor indexes remain local. The producer verifies their complete
 disjoint plan, performs the ordinary full configure/build, and refuses any
 compiler-cache miss,
 including every archive, link and build gate, against the merged cache. The

@@ -7,10 +7,6 @@ commands. The workers transport cache entries, never object files. The
 authoritative producer then configures and builds the ordinary complete graph
 against the merged cache, so Ninja still owns every dependency, archive, link,
 and gate.
-
-A worker's delta also carries the source-to-result indexes it wrote while
-preprocessing, to its own revision's producer only; see
-``copy_index_entries``. The persistent cross-commit seed never carries them.
 """
 
 from __future__ import annotations
@@ -222,58 +218,14 @@ def cache_root(root: Path, *, required: bool) -> Path | None:
     return None
 
 
-INDEX_DIRECTORY = "preprocessor"
-
-
 def immutable_cache_files(source: Path) -> list[Path]:
     # sccache result entries are addressed by their content key and immutable.
     # cache/preprocessor is a mutable source-to-result index: two independent
     # workers legitimately update the same index with different result sets.
-    # It is never part of a result publication; copy_index_entries carries a
-    # worker's own indexes separately, and only to its revision's producer.
+    # Do not transport those indexes. The producer will preprocess, derive the
+    # immutable result key, and then retrieve the cached object.
     return [path for path in source.rglob("*")
-            if path.is_file() and path.relative_to(source).parts[0] != INDEX_DIRECTORY]
-
-
-def copy_index_entries(source: Path, destination: Path) -> tuple[int, int]:
-    """Carry one revision's source-to-result indexes to that revision's producer.
-
-    With results alone the producer runs the preprocessor on every translation
-    unit merely to rediscover a key a worker already computed for the same
-    tree: 1312 preprocessor runs, most of a 3m51s build phase that compiled
-    nothing (2026-11-12). An index entry names the source, the compiler
-    arguments, the cache-key salt and every included file with its digest;
-    sccache accepts it only while each of those still matches, then reads the
-    result without preprocessing. A changed header is a miss, exactly as
-    before.
-
-    That is sound here and nowhere else. Every worker and the producer build
-    the same flake source at the same canonical path with the same captured
-    compiler environment, and a worker writes its indexes by actually
-    preprocessing, because the seed it starts from has none. An index from an
-    older revision could name a header that a newer tree now shadows, so
-    indexes never enter the cross-commit seed: full publications and seed
-    merges go through immutable_cache_files, which excludes them.
-
-    Disjoint plans make index keys disjoint except where one compile command
-    serves two targets; the first writer wins, as for a shared result key.
-    """
-    root = source / INDEX_DIRECTORY
-    if not root.is_dir():
-        return 0, 0
-    copied_files = 0
-    copied_bytes = 0
-    for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
-        target = destination / path.relative_to(source)
-        if target.exists():
-            if not target.is_file():
-                raise ValueError(f"sccache index key is not a file: {path.relative_to(source)}")
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
-        copied_files += 1
-        copied_bytes += path.stat().st_size
-    return copied_files, copied_bytes
+            if path.is_file() and path.relative_to(source).parts[0] != "preprocessor"]
 
 
 def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None = None,
@@ -347,10 +299,6 @@ def publish(args: argparse.Namespace) -> None:
             if shard[field] != metadata[field]:
                 raise ValueError(f"shard manifest {field} does not match cache publication")
         metadata.update(shard)
-        # Only a worker's delta carries indexes, and only this revision's
-        # producer merges them. A full publication is the cross-commit seed.
-        index_files, index_bytes = copy_index_entries(live_cache, destination)
-        metadata.update({"index_files": index_files, "index_bytes": index_bytes})
         write_json(args.output / "shard.json", metadata)
     else:
         write_json(args.output / "cache.json", metadata)
@@ -376,7 +324,6 @@ def merge(args: argparse.Namespace) -> None:
         delta = cache_root(root, required=False)
         if delta is not None:
             copy_cache_entries(delta, destination)
-            copy_index_entries(delta, destination)
     if len(manifests) != args.shards:
         raise ValueError(f"expected {args.shards} compile-cache shards, found {len(manifests)}")
     expected_indexes = list(range(args.shards))
