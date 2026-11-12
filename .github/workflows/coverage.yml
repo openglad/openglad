@@ -18,53 +18,25 @@ env:
     download-attempts = 10
     max-substitution-jobs = 2
 
+# The coverage jobs run in a shell that carries only what they use: the
+# general native shell is three times the download (1.7 GiB against 0.5 GiB)
+# and every stage of this workflow pays for its shell in series.
 defaults:
   run:
-    shell: nix develop .#ci-native --command bash -e {0}
+    shell: nix develop .#ci-coverage --command bash -e {0}
 
+# A newer push to a pull request supersedes the run in progress: its verdict
+# is about a commit nobody will merge, and while it ran the new run waited
+# behind it (6m43s on 2026-11-12). A run on master is never cancelled: each
+# one reports a merged commit and seeds the compiler cache pull requests
+# start from.
 concurrency:
   group: coverage-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  probe-coverage-cache:
-    name: Probe exact coverage build cache
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      exact-hit: ${{ steps.nar-cache.outputs.cache-hit }}
-      nar-key: ${{ steps.keys.outputs.nar-key }}
-      sccache-key: ${{ steps.keys.outputs.sccache-key }}
-      sccache-prefix: ${{ steps.keys.outputs.sccache-prefix }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/install-nix # v31
-      - name: Derive exact-output and cross-commit compiler-cache keys
-        id: keys
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-coverage.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          sccache_prefix="native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-"
-          echo "nar-key=native-nar-v1-${{ runner.os }}-coverage-${drv_hash}" >> "$GITHUB_OUTPUT"
-          echo "sccache-prefix=${sccache_prefix}" >> "$GITHUB_OUTPUT"
-          echo "sccache-key=${sccache_prefix}${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
-      - name: Look up the exact compiled NAR without downloading it
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.keys.outputs.nar-key }}
-          lookup-only: true
-
   compile-coverage:
     name: Warm coverage compile cache (${{ matrix.shard }}/8)
-    needs: probe-coverage-cache
-    if: needs['probe-coverage-cache'].outputs.exact-hit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -78,13 +50,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      # actions/cache derives a cache's version from its path as well as its
+      # key, so the seed is restored into and saved from this one directory:
+      # saved from any other, it is never found again.
       - name: Restore the newest compatible cross-commit compiler cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/sccache-seed
-          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
           restore-keys: |
-            ${{ needs['probe-coverage-cache'].outputs.sccache-prefix }}
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
       - name: Compile one complete-plan object shard
         run: |
           mkdir -p build/sccache-seed/cache
@@ -103,13 +78,9 @@ jobs:
 
   build-coverage:
     name: Build coverage once
-    needs: [probe-coverage-cache, compile-coverage]
-    if: ${{ always() && needs['probe-coverage-cache'].result == 'success' && (needs['probe-coverage-cache'].outputs.exact-hit == 'true' || needs['compile-coverage'].result == 'success') }}
+    needs: compile-coverage
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        shell: nix develop .#ci-native --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -117,32 +88,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - name: Restore exact compiled NAR closure
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ needs['probe-coverage-cache'].outputs.nar-key }}
-      - name: Import and link exact cached output
-        if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache --out-link build/bundle-coverage
       - name: Download every compile-cache shard
-        if: steps.nar-cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-compile-cache-*
           path: build/sccache-shards
       - name: Restore the cross-commit compiler-cache seed
-        if: steps.nar-cache.outputs.cache-hit != 'true'
         id: sccache-seed
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/sccache-seed
-          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
           restore-keys: |
-            ${{ needs['probe-coverage-cache'].outputs.sccache-prefix }}
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
       - name: Verify and merge the complete compile cache
-        if: steps.nar-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/sccache-seed/cache
           shard_args=()
@@ -157,16 +116,14 @@ jobs:
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          if [ "${{ steps.nar-cache.outputs.cache-hit }}" != true ]; then
-            python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
-              --sccache-seed build/sccache-merged --cores 4 \
-              --out-link build/bundle-coverage
-            python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
-              --sccache-seed build/sccache-merged --cores 4 --cache-only \
-              --out-link build/sccache-output
-          fi
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            --sccache-seed build/sccache-merged --cores 4 \
+            --out-link build/bundle-coverage
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            --sccache-seed build/sccache-merged --cores 4 --cache-only \
+            --out-link build/sccache-output
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix coverage realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Nix coverage realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/ci/nix_bundle.py export --bundle build/bundle-coverage --cache build/nix-cache
           python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-coverage --repo "$PWD"
       - name: Validate real checkout and plan complete inventory
@@ -190,31 +147,28 @@ jobs:
           name: coverage-plan
           path: build/plan/
           if-no-files-found: error
-      - name: Cache successful producer output for exact-derivation reruns
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ needs['probe-coverage-cache'].outputs.nar-key }}
-      - name: Prepare the updated cross-commit compiler cache
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+      - name: Stage the updated compiler cache under the restored path
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
         run: |
-          mkdir -p build/sccache-save
-          cp -a --reflink=auto build/sccache-output/. build/sccache-save/
+          # The restored seed is spent: the merged cache was built from it.
+          # Replace it in place, because the path is part of the cache
+          # version (see the restore step in compile-coverage).
+          if [ -d build/sccache-seed ]; then chmod -R u+w build/sccache-seed; fi
+          rm -rf build/sccache-seed
+          mkdir -p build/sccache-seed
+          cp -a --reflink=auto build/sccache-output/. build/sccache-seed/
       - name: Save the updated cross-commit compiler cache
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: build/sccache-save
-          key: ${{ needs['probe-coverage-cache'].outputs.sccache-key }}
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+
   test-coverage:
     name: coverage (${{ matrix.shard }}/8)
     needs: build-coverage
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: nix develop .#ci-native --command bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -226,6 +180,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      # The shell closure and the compiled bundle are both network-bound and
+      # independent. Substituting the shell behind the artifact downloads
+      # instead of after them takes it off this job's serial path; the first
+      # shell step below waits on the store locks for whatever is left.
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - uses: actions/download-artifact@v8
         with:
           name: coverage-bundle
@@ -253,6 +214,7 @@ jobs:
           # 10:1; unlike the binary/cache bundles above, storing them raw
           # makes the aggregate job download hundreds of unnecessary MiB.
           compression-level: 6
+
   coverage:
     name: Coverage
     if: always()
@@ -260,12 +222,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # The gate reads the tracked file inventory, never history.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the worker results download
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      # The plan carries the one built tool the gate runs (the Lua
+      # executable-line oracle), pinned by digest. The compiled bundle is
+      # 2 GiB of test binaries this job never executes; downloading and
+      # restoring it took 4m24s of this job's 8m33s on 2026-11-12.
       - uses: actions/download-artifact@v8
         with:
           name: coverage-plan
@@ -275,15 +244,8 @@ jobs:
           pattern: coverage-result-*
           merge-multiple: true
           path: build/results
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage-bundle
-          path: build/nix-cache
-      - name: Restore coverage tools without compilation
-        run: |
-          python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
       - name: Require every shard and test result and enforce both language floors
-        run: python3 scripts/ci/test_matrix.py merge-coverage --build build/ci-coverage --out build/coverage --plan build/plan/plan.json --results build/results
+        run: python3 scripts/ci/test_matrix.py merge-coverage --lines-tool build/plan/og_lua_lines --out build/coverage --plan build/plan/plan.json --results build/results
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -27,7 +27,7 @@ class InstallNixActionTests(unittest.TestCase):
                 direct_uses.append(workflow.name)
             local_uses += text.count("uses: ./.github/actions/install-nix")
         self.assertEqual([], direct_uses)
-        self.assertEqual(27, local_uses)
+        self.assertEqual(26, local_uses)
         self.assertEqual(1, ACTION.read_text().count(PIN))
 
     def test_wrapper_retries_all_transient_curl_failures(self):

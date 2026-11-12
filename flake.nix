@@ -372,6 +372,7 @@
         {
           default = mkDevShell pkgs;
           ci-native = (mkNativeCI pkgs).nativeShell;
+          ci-coverage = (mkNativeCI pkgs).coverageShell;
           ci-tsan = (mkNativeCI pkgs).tsanShell;
           ci-fuzz = (mkNativeCI pkgs).fuzzShell;
           ci-web = mkWebShell pkgs false;

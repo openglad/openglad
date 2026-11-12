@@ -188,16 +188,22 @@ jobs:
         with:
           path: build/nix-cache
           key: ${{ needs['probe-asan-cache'].outputs.nar-key }}
-      - name: Prepare the updated cross-commit compiler cache
+      - name: Stage the updated compiler cache under the restored path
         if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
         run: |
-          mkdir -p build/sccache-save
-          cp -a --reflink=auto build/sccache-output/. build/sccache-save/
+          # actions/cache derives a cache's version from its path as well as
+          # its key. Saved from build/sccache-save, the seed was never found
+          # by the restores above (build/sccache-seed) and every run compiled
+          # cold. The restored seed is spent, so replace it in place.
+          if [ -d build/sccache-seed ]; then chmod -R u+w build/sccache-seed; fi
+          rm -rf build/sccache-seed
+          mkdir -p build/sccache-seed
+          cp -a --reflink=auto build/sccache-output/. build/sccache-seed/
       - name: Save the updated cross-commit compiler cache
         if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: build/sccache-save
+          path: build/sccache-seed
           key: ${{ needs['probe-asan-cache'].outputs.sccache-key }}
   test-asan:
     name: asan (${{ matrix.shard }}/8)

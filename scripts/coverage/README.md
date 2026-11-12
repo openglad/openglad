@@ -11,6 +11,9 @@ untested. Everything here exists to put both languages behind one bar.
 Run these local configure/build commands inside `nix develop`. CI's smaller
 `nix develop .#ci-native` shell runs restored bundles; their closures provide
 the lane-specific dependencies without compiling another copy in each worker.
+The coverage workflow itself runs in the still smaller `.#ci-coverage` shell
+(0.5 GiB to fetch against 1.7 GiB): the producer's tools and libraries plus
+gcovr and LuaLS, without emscripten, LLVM or the X11 display stack.
 
 ```bash
 cmake --preset ci-coverage
@@ -442,9 +445,12 @@ or beyond the signed 64-bit counter limit; it never ignores or clamps them.
 Gcovr's default suspicious-value cutoff is only 2³². The full atomic run
 recorded 53,249,716,800 SHA-256 rotations, exactly 576 per compression, with
 matching loop counts and no negative counters. Those valid hits remain intact.
-Native CI uses `-g1`, packed relative relocations and zlib-compressed debug
-sections. File/line diagnostics remain available to GNU `addr2line` and LLVM
-`llvm-symbolizer`; ordinary developer debug builds retain full debug information.
+The sanitizer, fuzz and canary lanes use `-g1`, packed relative relocations
+and zlib-compressed debug sections. File/line diagnostics remain available to
+GNU `addr2line` and LLVM `llvm-symbolizer`; ordinary developer debug builds
+retain full debug information. The coverage lane compiles without debug
+information: gcov reads counters and notes, never DWARF, and `-g1` was 11 to
+17 percent of every coverage object.
 Coverage uses GCC, while ASan, TSan and fuzzing use the pinned Clang toolchain.
 The Nix environments disable `strictoverflow` hardening because its `-fwrapv`
 flag suppresses signed integer overflow diagnostics. Instrumented IXWebSocket
@@ -457,19 +463,35 @@ the warnings, but increased the old unsplit groups' times: `og_unit_sim`
 historical costs explain the former omission; they are not permission to
 accept corrupt counters or increase the current timeout limits.
 
-**Current CI collection.** Six workers run disjoint parts of one CTest
+**Current CI collection.** Eight workers run disjoint parts of one CTest
 inventory, once each. Fixture setup, consumers and cleanup stay on the same
 worker. Each worker scans the complete compiler-note inventory, including
 zero-hit functions and lines, and writes canonical gcovr JSON plus its raw Lua
-dumps. Its separate production-object scan uses the same roots and path
-identities. The main scan is reused for all report formats.
+dumps.
+
+A worker scans each object directory exactly once. gcovr runs gcov under a
+lock on its working directory, and without an object directory that directory
+is `--root` for every object, so one gcovr process runs one gcov at a time
+whatever `-j` says. The worker therefore splits the CMake target directories
+into directory-disjoint jobs, one gcovr process each, with gcov running beside
+its object (`--gcov-object-directory .`). Objects compiled with `TESTING` and
+objects compiled without it never share a job: the production trace is the
+merge of the non-`TESTING` jobs, and the complete trace the merge of all of
+them, over the same roots and path identities. On identical profiles the two
+merged traces equal a single whole-tree scan and a second scan with
+`--gcov-exclude-directory`, record for record. A note outside a CMake target
+directory fails the collection rather than leaving the inventory.
 
 The merge checks every worker's `.gcno` path and SHA-256 against the producer
 manifest, and requires identical C++ file/line/function grids. It also proves
 that the test results cover the planned inventory exactly once. A missing
 worker, changed object graph or omitted zero-hit record fails before scoring.
-The accepted JSON files produce merged LCOV, HTML and text in one gcovr render
-pass; gcov does not reread the profiles for each output. Lua dump names gain a
+The accepted JSON files produce merged LCOV and text for the gate and the HTML
+detail in concurrent gcovr render passes over the same saved traces; gcov does
+not reread the profiles for any output. The gate job restores no compiled
+tree: the one built tool it runs, the Lua executable-line oracle
+`og_lua_lines`, travels with the plan and must match the digest the plan
+recorded. Lua dump names gain a
 worker prefix when flattened. Same-named source sidecars must have identical
 bytes before they share the aggregate `sources/` directory, so workers cannot
 overwrite conflicting source evidence.

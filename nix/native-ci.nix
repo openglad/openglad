@@ -25,7 +25,11 @@ let
         lib.optionalString fuzz "fuzzer-no-link," + "address,undefined,float-cast-overflow";
       # Minimal debug info keeps sanitizer file/line stacks without repeating
       # full C++ type/local-variable DWARF in every statically linked test.
-      flags = "-O0 -g1" + lib.optionalString (tsan || asan || fuzz)
+      # Coverage reads counters and notes, never DWARF, and -g1 measured 11
+      # to 17 percent of every coverage object (2026-11-12): that lane
+      # compiles, links, packs and ships its tests without it.
+      flags = (if lane == "coverage" then "-O0" else "-O0 -g1")
+        + lib.optionalString (tsan || asan || fuzz)
         " -fno-omit-frame-pointer -fsanitize=${sanitizer}"
         + lib.optionalString fuzz " -fno-sanitize-recover=all";
       # IXWebSocket owns worker threads: using an uninstrumented package in
@@ -145,8 +149,10 @@ let
         ${lib.optionalString compileCache ''
           export SCCACHE_DIR="$NIX_BUILD_TOP/openglad-sccache"
           # Two lanes plus the exact-NAR caches must coexist within GitHub's
-          # repository cache budget. Entries are compressed; cap each lane at
-          # 2 GiB so recent objects survive without either lane monopolizing it.
+          # repository cache budget. Entries are compressed; cap the live
+          # sandbox cache at 2 GiB so a seed plus one complete cold build
+          # never evicts an entry the same build still needs. The published
+          # seed is capped separately below.
           export SCCACHE_CACHE_SIZE=2G
           mkdir -p "$SCCACHE_DIR"
           if [ -n "$sccacheSeed" ]; then
@@ -239,30 +245,38 @@ let
             --source ${canonicalSource} --build build/${preset} \
             --output "$out" --lane ${lane} --revision '${self.rev or "dirty"}'
           ${lib.optionalString compileCache ''
+            # Every compile worker and the producer restore this seed, copy
+            # it into the store and again into the sandbox, so its size is
+            # paid nine times per run. A complete build publishes about
+            # 0.4 GiB; 1 GiB keeps the entries this build read (sccache
+            # refreshes their timestamps, and publication retains newest
+            # first) plus more than one older generation.
             python3 scripts/ci/compile_cache.py publish \
               --cache "$SCCACHE_DIR" --output "$sccache" \
               --lane ${lane} --revision '${self.rev or "dirty"}' \
-              --max-bytes 2147483648
+              --max-bytes 1073741824
           ''}
         fi
         runHook postInstall
       '';
       passthru = { inherit preset canonicalSource; };
     };
-  mkShell = stdenv: extraPackages: pkgs.mkShell.override { inherit stdenv; } {
-    # Bundle-consuming lanes pass no extras: their instrumented IXWebSocket/
-    # LodePNG closures and cached CMake paths are already retained.
-    packages = tools ++ dependencies ++ extraPackages ++ [
-      pkgs.emscripten pkgs.gcovr pkgs.lcov pkgs.lua-language-server
-      pkgs.llvmPackages.llvm
-      pkgs.xvfb-run pkgs.xvfb pkgs.xrandr pkgs.openbox pkgs.xprop pkgs.xdpyinfo
-    ];
+  mkShellWith = stdenv: packages: pkgs.mkShell.override { inherit stdenv; } {
+    inherit packages;
     hardeningDisable = [ "fortify" "fortify3" "strictoverflow" ];
     shellHook = ''
       export CMAKE_BUILD_PARALLEL_LEVEL="''${CMAKE_BUILD_PARALLEL_LEVEL:-3}"
       export OG_KEYBOARD_FONT_DIR="${pkgs.dejavu_fonts}/share/fonts/truetype"
     '';
   };
+  # Bundle-consuming lanes pass no extras: their instrumented IXWebSocket/
+  # LodePNG closures and cached CMake paths are already retained.
+  mkShell = stdenv: extraPackages: mkShellWith stdenv (
+    tools ++ dependencies ++ extraPackages ++ [
+      pkgs.emscripten pkgs.gcovr pkgs.lcov pkgs.lua-language-server
+      pkgs.llvmPackages.llvm
+      pkgs.xvfb-run pkgs.xvfb pkgs.xrandr pkgs.openbox pkgs.xprop pkgs.xdpyinfo
+    ]);
 in {
   ci-coverage = mkLane "coverage";
   ci-asan = mkLane "asan";
@@ -274,6 +288,14 @@ in {
   # Sanitizer shells consume a bundle whose instrumented closures are already
   # retained and must not pick up separate uninstrumented custom packages.
   nativeShell = mkShell pkgs.stdenv [ (mkIXWebSocket pkgs) (mkLodePNG pkgs) ];
+  # Every coverage job enters its shell before doing anything, and the
+  # stages run in series, so each needless store path is fetched once per
+  # stage on the critical path. The coverage jobs build the lane derivation, run
+  # CTest, gcovr and the checkout lints: they need the producer's own tools
+  # and libraries plus gcovr and LuaLS, and none of emscripten, LLVM or the
+  # X11 display stack that the general native shell carries for other lanes.
+  coverageShell = mkShellWith pkgs.stdenv (
+    tools ++ dependencies ++ [ pkgs.gcovr pkgs.lua-language-server ]);
   tsanShell = mkShell pkgs.clangStdenv [];
   fuzzShell = mkShell pkgs.clangStdenv [];
 }

@@ -1132,10 +1132,15 @@ restored tree into place avoids a second product copy in the Nix store. Test exe
 Each consumer depends on its own configuration's producer, so a slower build
 does not hold up unrelated lanes.
 
-Each native producer also restores an exported NAR cache keyed by its exact
-base Nix derivation hash. A hit is imported and linked as the already-verified
-product. Successful producers save that exact closure for reruns; there is no
-product restore prefix. A new commit normally changes the product derivation.
+Each native producer except coverage also restores an exported NAR cache keyed
+by its exact base Nix derivation hash. A hit is imported and linked as the
+already-verified product. Successful producers save that exact closure for
+reruns; there is no product restore prefix. A new commit normally changes the
+product derivation. Coverage keeps no such cache: it could only serve a
+complete rerun of an unchanged commit, and it cost a probe job at the head of
+the lane's serial path and about 2 GiB of the repository's cache budget on
+every push. Such a rerun compiles nothing either way, because the compiler
+cache below was saved under that commit's own key.
 For ASan and coverage, eight workers then partition the complete generated
 compile-command inventory, execute exactly their assigned compiler commands,
 through CMake's captured compiler launcher, and publish only immutable
@@ -1147,7 +1152,12 @@ would. The authoritative build requires at least 98% of compiler requests to
 hit those transported objects, permits at most 32 sccache extraction-repair
 compilations, and rejects ordinary cold misses, uncacheable work, compiler
 failures, timeouts and cache-write errors. The repaired cache becomes the
-persistent seed for later revisions. Workers deliberately do not request Ninja
+persistent seed for later revisions: the newest entries up to 1 GiB, which
+keeps everything the build just read, since sccache refreshes an entry's
+timestamp when it serves it. The seed is restored into and saved from one
+directory, `build/sccache-seed`, because `actions/cache` derives a cache's
+version from its path as well as its key: a seed saved from any other
+directory is never restored. Workers deliberately do not request Ninja
 object edges, whose CMake target-order dependencies would duplicate shared
 library compilation across workers. Nix's derivation-specific random seed and
 self-rpath are canonicalized so all workers and the producer generate the same
@@ -1164,9 +1174,18 @@ producer restores a cached bundle.
 Producer summaries record measured realization/export time and closure size;
 end-to-end CI timing must be read from completed runs.
 
+The coverage jobs run in their own `ci-coverage` shell, which carries the
+producer's tools and libraries plus gcovr and LuaLS and is a third of the
+general native shell's download. Its gate job restores no compiled bundle; see
+`scripts/coverage/README.md` ("Current CI collection") for how each worker
+collects and what the gate checks. A newer push to a pull request cancels that
+pull request's coverage run in progress; runs on master are never cancelled.
+
 Coverage uses GCC; ASan, TSan and fuzzing use the pinned Clang toolchain.
-Native CI bundles use minimal debug information, packed relative relocations
-and compressed debug sections. Their producer checks execute a bundled
+The sanitizer, fuzz and canary bundles use minimal debug information, packed
+relative relocations and compressed debug sections; the coverage bundle is
+compiled without debug information, which gcov never reads. The sanitizer and
+fuzz producer checks execute a bundled
 diagnostic fixture afresh and require exact source lines for memory errors,
 integer overflow, float conversion errors, or the TSan data race. The Nix
 environments disable the wrapping arithmetic flag that would otherwise hide
