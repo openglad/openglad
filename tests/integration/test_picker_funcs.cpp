@@ -4674,7 +4674,8 @@ int g_spritesheet_step_drops = 0;
 // top row had never moved ("" instead of the first pack).
 void inject_mouse_wheel(int integer_y);  // defined with the step kinds below
 
-bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
+bool send_acknowledged_sheet_input(
+    bool wheel, int x, int y, int ticks, int click_hold_ms = 60)
 {
     constexpr int kStepAttempts = 4;
     // Ten frames of a runner where a frame costs ten times what it does
@@ -4695,7 +4696,7 @@ bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
         }
         else
         {
-            inject_mouse_click(x, y, 60);
+            inject_mouse_click(x, y, click_hold_ms);
         }
         int elapsed = 0;
         while (elapsed < kStepWaitMs && trace_count("sheet") <= before)
@@ -4749,7 +4750,9 @@ static int picker_spritesheet_select_first_pack_injector(void*)
     SDL_Delay(200);
 
     // Row 0 is "Standard"; row 1 is the first sorted pack.
-    (void)send_acknowledged_sheet_input(false, 80, 56, 0);
+    // Queue DOWN+UP without a hold so the picker must honor SDL's collapsed-
+    // click token after the BACK button probe has sampled the same event.
+    (void)send_acknowledged_sheet_input(false, 80, 56, 0, 0);
     SDL_Delay(120);
     spritesheet_click_out();
     return 0;

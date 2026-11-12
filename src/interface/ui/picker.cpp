@@ -3394,7 +3394,8 @@ static std::string pick_spritesheet()
 
     while (true) {
         Sint32 ret = 0;
-        if (leftmouse(back_btn)) {
+        const Sint32 click = leftmouse(back_btn);
+        if (click == 1) {
             if (og::runtime::current_session->localbuttons_->leftclick() & MENU_EXIT)
                 break;
         }
@@ -3421,7 +3422,10 @@ static std::string pick_spritesheet()
                   static_cast<int>(scroll_delta), scroll_top);
 
         MouseState& ms = query_mouse();
-        if (ms.left) {
+        // leftmouse() owns the collapsed-click queue. Reuse the click it
+        // observed even when no ordinary button was under the pointer, or a
+        // fast list/trough tap is consumed by the BACK probe and disappears.
+        if (click == 1) {
             int mx = static_cast<int>(ms.x);
             int my = static_cast<int>(ms.y);
 
