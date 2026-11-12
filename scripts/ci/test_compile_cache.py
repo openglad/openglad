@@ -33,6 +33,15 @@ class CompileCacheTests(unittest.TestCase):
                 "command": f"c++ -c {source} -o {output}",
             })
         (self.build / "compile_commands.json").write_text(json.dumps(records))
+        (self.build / "CMakeCache.txt").write_text(
+            "CMAKE_CXX_COMPILER_LAUNCHER:UNINITIALIZED=/usr/bin/env;"
+            "NIX_CFLAGS_COMPILE=-frandom-seed=openglad-ci-test\n")
+
+    def write_cached_launcher(self, cache: Path):
+        (self.build / "CMakeCache.txt").write_text(
+            "CMAKE_CXX_COMPILER_LAUNCHER:UNINITIALIZED=/usr/bin/env;"
+            "NIX_CFLAGS_COMPILE=-frandom-seed=openglad-ci-test;"
+            f"SCCACHE_DIR=/build/cache;{cache}\n")
 
     def test_plan_is_complete_disjoint_and_balanced_by_source_weight(self):
         self.write_database()
@@ -52,6 +61,25 @@ class CompileCacheTests(unittest.TestCase):
         first = compile_cache.compile_plan(self.build, 1)["fingerprint"]
         database[0]["command"] = database[0]["command"].replace("/nix/build/one", "/nix/build/two")
         database_path.write_text(json.dumps(database))
+        self.assertEqual(first, compile_cache.compile_plan(self.build, 1)["fingerprint"])
+
+    def test_plan_identity_includes_the_captured_compiler_environment(self):
+        self.write_database((10,))
+        first = compile_cache.compile_plan(self.build, 1)["fingerprint"]
+        cache_path = self.build / "CMakeCache.txt"
+        cache_path.write_text(cache_path.read_text().replace(
+            "-frandom-seed=openglad-ci-test", "-frandom-seed=wrong"))
+        self.assertNotEqual(first, compile_cache.compile_plan(self.build, 1)["fingerprint"])
+
+    def test_plan_identity_ignores_launcher_cache_directory(self):
+        self.write_database((10,))
+        cache = self.root / "sccache"
+        cache.write_text("cache")
+        self.write_cached_launcher(cache)
+        first = compile_cache.compile_plan(self.build, 1)["fingerprint"]
+        cache_path = self.build / "CMakeCache.txt"
+        cache_path.write_text(cache_path.read_text().replace(
+            "SCCACHE_DIR=/build/cache", "SCCACHE_DIR=/other/sandbox"))
         self.assertEqual(first, compile_cache.compile_plan(self.build, 1)["fingerprint"])
 
     def test_plan_resolves_relative_sources_from_the_compile_directory(self):
@@ -77,6 +105,7 @@ class CompileCacheTests(unittest.TestCase):
             ["ninja", "-C", str(self.build.resolve()), "og_git_hash_gen"], calls[0])
         expected = [plan["compile_records"][output]["arguments"]
                     for output in plan["assignments"][1]]
+        expected = [[*plan["launcher"], *command] for command in expected]
         self.assertCountEqual(expected, calls[1:])
         self.assertEqual(1 + len(expected), len(calls))
         self.assertEqual(1, json.loads(manifest.read_text())["shard"])
@@ -85,6 +114,7 @@ class CompileCacheTests(unittest.TestCase):
         self.write_database((10,))
         cache = self.root / "sccache"
         cache.write_text("cache")
+        self.write_cached_launcher(cache)
         manifest = self.root / "cached-shard.json"
         args = argparse.Namespace(
             build=self.build, lane="asan", revision="rev", shards=1, shard=0,
@@ -94,7 +124,7 @@ class CompileCacheTests(unittest.TestCase):
                 patch("compile_cache.subprocess.check_output", return_value=stats):
             compile_cache.warm(args)
         compile_command = execute.call_args_list[1].args[0]
-        self.assertEqual(str(cache), compile_command[0])
+        self.assertEqual("/usr/bin/env", compile_command[0])
         self.assertEqual(1, compile_command.count(str(cache)))
         self.assertEqual(1, json.loads(manifest.read_text())["cache_requests"])
 
@@ -102,6 +132,7 @@ class CompileCacheTests(unittest.TestCase):
         self.write_database((10,))
         cache = self.root / "sccache"
         cache.write_text("cache")
+        self.write_cached_launcher(cache)
         args = argparse.Namespace(
             build=self.build, lane="asan", revision="rev", shards=1, shard=0,
             jobs=1, out=self.root / "amplified.json", cache_program=cache)
@@ -121,7 +152,7 @@ class CompileCacheTests(unittest.TestCase):
 
         def materialize(command, check, **_kwargs):
             self.assertTrue(check)
-            if command[0] == "c++":
+            if "c++" in command:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 (self.build / "objects/source-0.cpp.gcno").write_bytes(b"notes")
 
@@ -211,15 +242,44 @@ class CompileCacheTests(unittest.TestCase):
             revision="rev", shards=2))
         self.assertEqual(b"old", (merged / "cache/a/seed").read_bytes())
 
-    def test_merge_keeps_one_equivalent_payload_for_a_shared_content_key(self):
+    def test_merge_rejects_different_payloads_for_a_shared_content_key(self):
         seed = self.cache_root("seed", {})
         first = self.publish_shard("first", 0, {"same/key": b"first"}, seed)
         second = self.publish_shard("second", 1, {"same/key": b"second"}, seed)
-        merged = self.root / "merged"
-        compile_cache.merge(argparse.Namespace(
-            seed=seed, input=[first, second], output=merged, lane="asan",
-            revision="rev", shards=2))
-        self.assertEqual(b"first", (merged / "cache/same/key").read_bytes())
+        with self.assertRaisesRegex(ValueError, "conflicting sccache result entry"):
+            compile_cache.merge(argparse.Namespace(
+                seed=seed, input=[first, second], output=self.root / "merged",
+                lane="asan", revision="rev", shards=2))
+
+    def test_publication_drops_mutable_preprocessor_indexes(self):
+        live = self.cache_root(
+            "indexed", {"a/result": b"object", "preprocessor/a/index": b"mutable"})
+        output = self.root / "immutable-only"
+        compile_cache.publish(argparse.Namespace(
+            cache=live / "cache", seed=None, output=output, lane="asan",
+            revision="rev", shard_manifest=None, max_bytes=None))
+        self.assertEqual(b"object", (output / "cache/a/result").read_bytes())
+        self.assertFalse((output / "cache/preprocessor").exists())
+
+    def test_producer_verification_requires_every_request_to_hit(self):
+        cache = self.root / "sccache"
+        cache.write_text("cache")
+        good = {"stats": {
+            "compile_requests": 3, "requests_executed": 3,
+            "cache_hits": {"counts": {"C/C++": 3}},
+            "cache_misses": {"counts": {}}, "cache_errors": {"counts": {}},
+            "compilations": 0,
+        }}
+        with patch("compile_cache.subprocess.check_output", return_value=json.dumps(good)):
+            compile_cache.verify_producer(argparse.Namespace(cache_program=cache))
+        bad = json.loads(json.dumps(good))
+        bad["stats"]["cache_hits"]["counts"]["C/C++"] = 2
+        bad["stats"]["cache_misses"]["counts"]["C/C++"] = 1
+        bad["stats"]["cache_errors"]["counts"]["C/C++"] = 1
+        bad["stats"]["compilations"] = 1
+        with patch("compile_cache.subprocess.check_output", return_value=json.dumps(bad)), \
+                self.assertRaisesRegex(ValueError, "did not reuse every warmed compilation"):
+            compile_cache.verify_producer(argparse.Namespace(cache_program=cache))
 
     def test_merge_rejects_missing_shard(self):
         seed = self.cache_root("seed", {})

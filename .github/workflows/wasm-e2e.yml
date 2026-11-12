@@ -40,7 +40,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - name: Versions index unit test
         run: python3 -m unittest discover -s scripts/web -p 'test_*.py' -v
 
@@ -164,7 +164,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: wasm-dist
@@ -207,7 +207,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           pattern: browser-result-*
@@ -243,7 +243,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: wasm-dist
@@ -291,7 +291,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: wasm-dist

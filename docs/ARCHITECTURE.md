@@ -1138,11 +1138,17 @@ product. Successful producers save that exact closure for reruns; there is no
 product restore prefix. A new commit normally changes the product derivation.
 For ASan and coverage, eight workers then partition the complete generated
 compile-command inventory, execute exactly their assigned compiler commands,
-and publish only `sccache` deltas. They deliberately do not request Ninja
+through CMake's captured compiler launcher, and publish only immutable
+`sccache` result deltas. Mutable preprocessor indexes stay local to each
+process; the producer recreates those indexes while resolving the transported
+result objects. They deliberately do not request Ninja
 object edges, whose CMake target-order dependencies would duplicate shared
-library compilation across workers. The producer
+library compilation across workers. Nix's derivation-specific random seed and
+self-rpath are canonicalized so all workers and the producer generate the same
+objects. The producer
 requires all eight matching manifests, merges them with the latest compatible
-cross-commit seed, and performs the ordinary full Nix build. Thus compilation
+cross-commit seed, performs the ordinary full Nix build, and requires every
+compiler request to hit the merged cache. Thus compilation
 is distributed without transporting object trees or bypassing Ninja's final
 dependency, archive, link, and gate graph. The merged cache is an explicit Nix
 input, so the build remains sandboxed and reproducible. Nix may also substitute

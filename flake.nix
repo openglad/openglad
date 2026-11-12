@@ -217,6 +217,7 @@
           hardeningDisable = [ "strictoverflow" ];
           packages = with pkgs; [
             actionlint
+            shellcheck
             sdl3
             # Dev shell only: scripts/parity/build_parity_dump_master.sh in the
             # SDL2-era parity companion checks `pkg-config --exists sdl2

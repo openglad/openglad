@@ -16,10 +16,12 @@ AGENTS.md doesn't: configuration differences, fixture isolation, and traps.
 The Linux native lanes produce one authoritative Nix bundle for the exact
 checkout revision, then run consumers against that bundle. ASan and coverage
 first divide the generated compile-command inventory across eight cache-warming
-workers. They execute the exact assigned compiler commands (not Ninja object
-edges, which carry broad target-order dependencies) and transport only
-`sccache` entries. The producer verifies their complete disjoint plan and
-performs the ordinary full configure/build,
+workers. They execute the exact assigned compiler commands through CMake's
+captured launcher (not Ninja object edges, which carry broad target-order
+dependencies) and transport only immutable `sccache` result entries. Mutable
+preprocessor indexes remain local. The producer verifies their complete
+disjoint plan, performs the ordinary full configure/build, and refuses any
+compiler-cache miss,
 including every archive, link and build gate, against the merged cache. The
 cache seed is an explicit Nix input, never mutable state read through the
 sandbox. Use the lean
@@ -33,6 +35,14 @@ bundles strip objects; rebuild them through the Nix producer, or configure
 a separate fresh build tree in the full shell. These CI shells omit custom
 dependency packages that consumers obtain from the bundle
 closure, so entering a consumer shell does not build those packages again.
+
+Every GitHub-hosted Nix job must install through
+`.github/actions/install-nix`. The local composite action retains the pinned
+upstream installer but puts a retrying curl wrapper in front of both its small
+installer-script download and the official installer's large binary-tarball
+download. Do not bypass it with a direct `cachix/install-nix-action` use: the
+upstream action retries the first request, but the official installer does not
+retry the tarball request that failed in production CI.
 
 Coverage uses GCC; ASan, TSan and fuzzing use pinned Clang. Native CI bundles
 retain file/line diagnostics with `-g1`, packed relocations and compressed

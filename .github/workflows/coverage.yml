@@ -42,14 +42,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - name: Derive exact-output and cross-commit compiler-cache keys
         id: keys
         run: |
           drv="$(nix eval --raw .#packages.x86_64-linux.ci-coverage.drvPath)"
           drv_basename="${drv##*/}"
           drv_hash="${drv_basename%%-*}"
-          sccache_prefix="native-sccache-v1-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-"
+          sccache_prefix="native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-"
           echo "nar-key=native-nar-v1-${{ runner.os }}-coverage-${drv_hash}" >> "$GITHUB_OUTPUT"
           echo "sccache-prefix=${sccache_prefix}" >> "$GITHUB_OUTPUT"
           echo "sccache-key=${sccache_prefix}${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
@@ -77,7 +77,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - name: Restore the newest compatible cross-commit compiler cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
@@ -116,7 +116,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - name: Restore exact compiled NAR closure
         id: nar-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -225,7 +225,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: coverage-bundle
@@ -262,7 +262,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: coverage-plan

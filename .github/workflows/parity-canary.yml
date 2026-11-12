@@ -35,7 +35,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - name: Key immutable compiled output by exact derivation
         id: nar-key
         run: |
@@ -112,7 +112,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: canary-bundle
@@ -160,7 +160,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: canary-plan
@@ -192,7 +192,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: canary-bundle
@@ -214,7 +214,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+      - uses: ./.github/actions/install-nix # v31
       - uses: actions/download-artifact@v8
         with:
           name: canary-bundle

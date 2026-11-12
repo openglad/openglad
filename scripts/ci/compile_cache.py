@@ -29,12 +29,33 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
+def cmake_compiler_launcher(build: Path) -> list[str]:
+    cache = build / "CMakeCache.txt"
+    prefix = "CMAKE_CXX_COMPILER_LAUNCHER:"
+    matches = [line.split("=", 1)[1] for line in cache.read_text().splitlines()
+               if line.startswith(prefix) and "=" in line]
+    if len(matches) != 1:
+        raise ValueError("CMake cache must contain exactly one C++ compiler launcher")
+    launcher = matches[0].split(";")
+    if not launcher or any(not argument for argument in launcher):
+        raise ValueError("CMake C++ compiler launcher is empty or malformed")
+    return launcher
+
+
+def normalized_launcher(launcher: list[str]) -> list[str]:
+    return [
+        "SCCACHE_DIR=<sandbox-cache>" if argument.startswith("SCCACHE_DIR=") else argument
+        for argument in launcher
+    ]
+
+
 def compile_plan(build: Path, shard_count: int) -> dict:
     if shard_count < 1:
         raise ValueError("compile shard count must be positive")
     build = build.resolve(strict=True)
     database_path = build / "compile_commands.json"
     database = json.loads(database_path.read_text())
+    launcher = cmake_compiler_launcher(build)
     records = []
     seen = set()
     for entry in database:
@@ -98,7 +119,8 @@ def compile_plan(build: Path, shard_count: int) -> dict:
         for item in sorted(records, key=lambda item: item["output"])
     ]
     fingerprint = hashlib.sha256(json.dumps(
-        fingerprint_records, sort_keys=True, separators=(",", ":")
+        {"launcher": normalized_launcher(launcher), "records": fingerprint_records},
+        sort_keys=True, separators=(",", ":")
     ).encode()).hexdigest()
     return {
         "format": FORMAT,
@@ -109,6 +131,7 @@ def compile_plan(build: Path, shard_count: int) -> dict:
         "weights": weights,
         "coverage_outputs": sorted(item["output"] for item in records if item["coverage"]),
         "compile_records": {item["output"]: item for item in records},
+        "launcher": launcher,
     }
 
 
@@ -130,13 +153,16 @@ def warm(args: argparse.Namespace) -> None:
         cache_program = cache_program.resolve(strict=True)
         if not cache_program.is_absolute() or cache_program.name != "sccache":
             raise ValueError("compile cache program must be an absolute sccache executable")
+        if plan["launcher"].count(str(cache_program)) != 1:
+            raise ValueError("CMake compiler launcher must invoke the pinned sccache exactly once")
 
     def compile_output(output: str) -> None:
         record = plan["compile_records"][output]
         Path(record["absolute_output"]).parent.mkdir(parents=True, exist_ok=True)
-        command = record["arguments"]
-        if cache_program is not None and str(cache_program) not in command:
-            command = [str(cache_program), *command]
+        # compile_commands.json deliberately omits CMake's launcher. Prefix
+        # the exact cached launcher so direct workers preserve the producer's
+        # captured Nix compiler environment as well as its sccache invocation.
+        command = [*plan["launcher"], *record["arguments"]]
         subprocess.run(command, cwd=record["directory"], check=True)
 
     with ThreadPoolExecutor(max_workers=args.jobs) as executor:
@@ -192,11 +218,30 @@ def cache_root(root: Path, *, required: bool) -> Path | None:
     return None
 
 
+def file_digest(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def same_file(left: Path, right: Path) -> bool:
+    return left.stat().st_size == right.stat().st_size and file_digest(left) == file_digest(right)
+
+
+def immutable_cache_files(source: Path) -> list[Path]:
+    # sccache result entries are addressed by their content key and immutable.
+    # cache/preprocessor is a mutable source-to-result index: two independent
+    # workers legitimately update the same index with different result sets.
+    # Do not transport those indexes. The producer will preprocess, derive the
+    # immutable result key, and then retrieve the cached object.
+    return [path for path in source.rglob("*")
+            if path.is_file() and path.relative_to(source).parts[0] != "preprocessor"]
+
+
 def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None = None,
                        max_bytes: int | None = None) -> tuple[int, int]:
     copied_files = 0
     copied_bytes = 0
-    paths = [path for path in source.rglob("*") if path.is_file()]
+    paths = immutable_cache_files(source)
     if max_bytes is not None:
         if max_bytes < 1:
             raise ValueError("maximum cache publication size must be positive")
@@ -218,20 +263,13 @@ def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None
         if baseline is not None:
             old = baseline / relative
             if old.exists():
-                # Local-disk sccache paths are content keys. Entries at the
-                # same key are semantically interchangeable. Independently
-                # compressed payloads may not be byte-identical, so retain the
-                # seed without re-hashing or comparing multi-gigabyte caches.
-                if not old.is_file():
-                    raise ValueError(f"sccache content key is not a file: {relative}")
+                if not old.is_file() or not same_file(path, old):
+                    raise ValueError(f"sccache result changed at content key: {relative}")
                 continue
         target = destination / relative
         if target.exists():
-            if not target.is_file():
-                raise ValueError(f"sccache content key is not a file: {relative}")
-            # Two workers can compile an identical command under the same
-            # content key. Keep the first valid payload deterministically;
-            # archive metadata can make equivalent entries byte-different.
+            if not target.is_file() or not same_file(path, target):
+                raise ValueError(f"conflicting sccache result entry: {relative}")
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
@@ -324,6 +362,33 @@ def merge(args: argparse.Namespace) -> None:
     print(f"Merged all {args.shards} compile-cache shards into {args.output}")
 
 
+def statistic_total(stats: dict, name: str) -> int:
+    value = stats[name]
+    if isinstance(value, int):
+        return value
+    return sum(value["counts"].values())
+
+
+def verify_producer(args: argparse.Namespace) -> None:
+    cache_program = args.cache_program.resolve(strict=True)
+    stats = json.loads(subprocess.check_output(
+        [str(cache_program), "--show-stats", "--stats-format", "json"], text=True))["stats"]
+    requests = stats["compile_requests"]
+    executed = stats["requests_executed"]
+    hits = statistic_total(stats, "cache_hits")
+    misses = statistic_total(stats, "cache_misses")
+    errors = statistic_total(stats, "cache_errors")
+    compilations = stats["compilations"]
+    if requests < 1 or (requests, executed, hits, misses, errors, compilations) != (
+            requests, requests, requests, 0, 0, 0):
+        raise ValueError(
+            "authoritative producer did not reuse every warmed compilation: "
+            f"requests={requests}, executed={executed}, hits={hits}, misses={misses}, "
+            f"errors={errors}, compilations={compilations}"
+        )
+    print(f"Authoritative producer reused all {requests} warmed compilations")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -357,6 +422,11 @@ def main() -> int:
     merging.add_argument("--revision", required=True)
     merging.add_argument("--shards", type=int, required=True)
     merging.set_defaults(function=merge)
+
+    verifying = commands.add_parser(
+        "verify-producer", help="require the authoritative build to compile no objects")
+    verifying.add_argument("--cache-program", type=Path, required=True)
+    verifying.set_defaults(function=verify_producer)
 
     args = parser.parse_args()
     args.function(args)

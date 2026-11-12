@@ -108,6 +108,31 @@ let
         # history for heritage/companion gates, never this temporary index.
         git init --quiet
         git add --all --force
+        # mkDerivation gives every shard a distinct output hash and therefore
+        # distinct wrapper-only -frandom-seed and self-rpath flags. They do not
+        # describe source semantics, but letting them vary makes independently
+        # warmed objects differ from the authoritative producer. Canonicalize
+        # both before CMake captures the environment in its compiler launcher.
+        read -r -a nixCompileFlags <<< "$NIX_CFLAGS_COMPILE"
+        for index in "''${!nixCompileFlags[@]}"; do
+          if [[ "''${nixCompileFlags[$index]}" == -frandom-seed=* ]]; then
+            nixCompileFlags[$index]=-frandom-seed=openglad-ci-${lane}
+          fi
+        done
+        export NIX_CFLAGS_COMPILE="''${nixCompileFlags[*]}"
+        read -r -a nixLinkerFlags <<< "$NIX_LDFLAGS"
+        stableLinkerFlags=()
+        index=0
+        while [ "$index" -lt "''${#nixLinkerFlags[@]}" ]; do
+          if [[ "''${nixLinkerFlags[$index]}" == -rpath && \
+                "''${nixLinkerFlags[$((index + 1))]:-}" == "$out/lib" ]]; then
+            index=$((index + 2))
+            continue
+          fi
+          stableLinkerFlags+=("''${nixLinkerFlags[$index]}")
+          index=$((index + 1))
+        done
+        export NIX_LDFLAGS="''${stableLinkerFlags[*]}"
         # CMake invokes build scripts through the discovered bash/Python.
         # Rewriting shebangs would invalidate checked generator source hashes.
         # Nix wrappers learn dependency include/link paths through these
@@ -169,6 +194,10 @@ let
         else
           cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
             ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
+          ${lib.optionalString compileCache ''
+            python3 scripts/ci/compile_cache.py verify-producer \
+              --cache-program ${pkgs.sccache}/bin/sccache
+          ''}
         fi
         ${lib.optionalString compileCache ''
           sccache --show-stats
