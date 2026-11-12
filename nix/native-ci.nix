@@ -157,9 +157,20 @@ let
             cp -a --reflink=auto "$sccacheSeed/cache/." "$SCCACHE_DIR/"
             chmod -R u+w "$SCCACHE_DIR"
           fi
+          cacheKeyArguments=()
+          ${lib.optionalString (lane == "coverage") ''
+            # Coverage objects embed their -o-derived .gcda destination. Keep
+            # that target path in the cache identity; ASan objects can retain
+            # the more aggressive cross-target reuse.
+            cacheKeyArguments=(
+              --cache-key-shell ${pkgs.bash}/bin/bash
+              --cache-key-wrapper ${canonicalSource}/scripts/ci/sccache_output_key.sh
+            )
+          ''}
           compilerLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
             --env ${pkgs.coreutils}/bin/env \
-            --cache ${pkgs.sccache}/bin/sccache --cache-dir "$SCCACHE_DIR")"
+            --cache ${pkgs.sccache}/bin/sccache --cache-dir "$SCCACHE_DIR" \
+            "''${cacheKeyArguments[@]}")"
         ''}
         cmake --preset ${preset} \
           -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" \

@@ -268,6 +268,21 @@ class MaterializeTests(unittest.TestCase):
         self.assertEqual("SCCACHE_DIR=/build/openglad-sccache", arguments[-2])
         self.assertEqual("/nix/store/sccache/bin/sccache", arguments[-1])
 
+    def test_compiler_launcher_can_key_coverage_cache_by_output(self):
+        with patch.dict("os.environ", {}, clear=True):
+            arguments = compiler_launcher(
+                Path("/nix/store/coreutils/bin/env"),
+                Path("/nix/store/sccache/bin/sccache"),
+                Path("/build/openglad-sccache"),
+                cache_key_shell=Path("/nix/store/bash/bin/bash"),
+                cache_key_wrapper=Path("/tmp/openglad-ci-coverage/source/scripts/ci/sccache_output_key.sh"),
+            ).split(";")
+        self.assertEqual([
+            "/nix/store/bash/bin/bash",
+            "/tmp/openglad-ci-coverage/source/scripts/ci/sccache_output_key.sh",
+            "/nix/store/sccache/bin/sccache",
+        ], arguments[-3:])
+
     def test_compiler_launcher_rejects_partial_or_unpinned_cache_configuration(self):
         with self.assertRaisesRegex(ValueError, "supplied together"):
             compiler_launcher(Path("/nix/store/coreutils/bin/env"),
@@ -275,6 +290,42 @@ class MaterializeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pinned store sccache"):
             compiler_launcher(Path("/nix/store/coreutils/bin/env"), Path("/usr/bin/sccache"),
                               Path("/build/openglad-sccache"))
+        with self.assertRaisesRegex(ValueError, "supplied together"):
+            compiler_launcher(Path("/nix/store/coreutils/bin/env"),
+                              Path("/nix/store/sccache/bin/sccache"),
+                              Path("/build/openglad-sccache"),
+                              cache_key_shell=Path("/nix/store/bash/bin/bash"))
+        with self.assertRaisesRegex(ValueError, "requires a compiler cache"):
+            compiler_launcher(Path("/nix/store/coreutils/bin/env"),
+                              cache_key_shell=Path("/nix/store/bash/bin/bash"),
+                              cache_key_wrapper=Path("/tmp/wrapper"))
+
+    def test_coverage_cache_key_wrapper_preserves_arguments_and_keys_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            capture = root / "sccache"
+            capture.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf '%s\\n' \"$SCCACHE_C_CUSTOM_CACHE_BUSTER\"\n"
+                "printf '<%s>\\n' \"$@\"\n"
+            )
+            capture.chmod(0o755)
+            wrapper = Path(__file__).with_name("sccache_output_key.sh")
+            command = [str(wrapper), str(capture), "/nix/store/compiler/bin/g++",
+                       "-DVALUE=a b", "-c", "source.cpp", "-o", "CMakeFiles/game.dir/source.cpp.o"]
+            output = subprocess.check_output(command, text=True).splitlines()
+            self.assertEqual("openglad-coverage-output-v1:CMakeFiles/game.dir/source.cpp.o", output[0])
+            self.assertEqual([
+                "</nix/store/compiler/bin/g++>", "<-DVALUE=a b>", "<-c>", "<source.cpp>",
+                "<-o>", "<CMakeFiles/game.dir/source.cpp.o>",
+            ], output[1:])
+            glued = subprocess.check_output(
+                [str(wrapper), str(capture), "cc", "-c", "source.c", "-oobject.o"],
+                text=True).splitlines()
+            self.assertEqual("openglad-coverage-output-v1:object.o", glued[0])
+            with self.assertRaises(subprocess.CalledProcessError):
+                subprocess.run([str(wrapper), str(capture), "cc", "-c", "source.c"], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def test_local_build_preserves_history_and_replaces_the_output_link_itself(self):
         repo = self.root / 'checkout ${literal}'

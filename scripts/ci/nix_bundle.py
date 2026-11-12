@@ -541,7 +541,9 @@ COMPILER_ENVIRONMENT_KEYS = ("NIX_CFLAGS_COMPILE", "NIX_LDFLAGS", "NIX_HARDENING
 
 
 def compiler_launcher(env_program: Path, cache_program: Path | None = None,
-                      cache_dir: Path | None = None) -> str:
+                      cache_dir: Path | None = None, *,
+                      cache_key_shell: Path | None = None,
+                      cache_key_wrapper: Path | None = None) -> str:
     """Preserve producer flags and optionally chain a pinned compiler cache."""
     executable = str(env_program)
     if not executable.startswith("/nix/store/") or env_program.name != "env":
@@ -561,12 +563,28 @@ def compiler_launcher(env_program: Path, cache_program: Path | None = None,
         cache_directory = str(cache_dir)
         if not cache_dir.is_absolute() or any(character in cache_directory for character in (";", "\n", "\r")):
             raise ValueError("compiler cache directory must be an absolute CMake-list-safe path")
-        arguments.extend((f"SCCACHE_DIR={cache_directory}", cache_executable))
+        arguments.append(f"SCCACHE_DIR={cache_directory}")
+        if (cache_key_shell is None) != (cache_key_wrapper is None):
+            raise ValueError("cache-key shell and wrapper must be supplied together")
+        if cache_key_shell is not None:
+            shell = str(cache_key_shell)
+            wrapper = str(cache_key_wrapper)
+            if (not shell.startswith("/nix/store/") or cache_key_shell.name != "bash"
+                    or not cache_key_wrapper.is_absolute()):
+                raise ValueError("cache-key wrapper requires a pinned store bash and absolute script")
+            if any(character in wrapper for character in (";", "\n", "\r")):
+                raise ValueError("cache-key wrapper must be CMake-list-safe")
+            arguments.extend((shell, wrapper))
+        arguments.append(cache_executable)
+    elif cache_key_shell is not None or cache_key_wrapper is not None:
+        raise ValueError("cache-key wrapper requires a compiler cache")
     return ";".join(arguments)
 
 
 def print_compiler_launcher(args: argparse.Namespace) -> None:
-    print(compiler_launcher(args.env, args.cache, args.cache_dir))
+    print(compiler_launcher(args.env, args.cache, args.cache_dir,
+                            cache_key_shell=args.cache_key_shell,
+                            cache_key_wrapper=args.cache_key_wrapper))
 
 
 def local_build_expression(repo: Path, lane: str, *, sccache_seed: Path | None = None,
@@ -644,6 +662,8 @@ def main() -> int:
     launcher.add_argument("--env", type=Path, required=True)
     launcher.add_argument("--cache", type=Path)
     launcher.add_argument("--cache-dir", type=Path)
+    launcher.add_argument("--cache-key-shell", type=Path)
+    launcher.add_argument("--cache-key-wrapper", type=Path)
     launcher.set_defaults(function=print_compiler_launcher)
     building = commands.add_parser("build", help="build with the checkout's real Git history metadata")
     building.add_argument("--lane", choices=LANES, required=True)
