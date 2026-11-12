@@ -124,7 +124,10 @@ jobs:
             --out-link build/sccache-output
           realization_seconds="$(( $(date +%s) - realization_started ))"
           echo "Nix coverage realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-coverage --cache build/nix-cache
+          # The eight workers enter the same shell this job runs in, so the
+          # toolchain half of the closure (538 MiB of 1.9 GiB) is already in
+          # their stores; ship the product and the paths this build made.
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-coverage --cache build/nix-cache
           python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-coverage --repo "$PWD"
       - name: Validate real checkout and plan complete inventory
         run: |

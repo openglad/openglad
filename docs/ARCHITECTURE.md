@@ -1181,7 +1181,11 @@ end-to-end CI timing must be read from completed runs.
 
 The coverage jobs run in their own `ci-coverage` shell, which carries the
 producer's tools and libraries plus gcovr and LuaLS and is a third of the
-general native shell's download. Its gate job restores no compiled bundle; see
+general native shell's download. Its producer exports the bundle without the
+closure members the public Nix cache signed (the toolchain: 538 MiB beside a
+1.4 GiB product): every worker's store already holds them through that shell,
+and `restore` realises any it lacks before copying the few paths the build
+itself made. Its gate job restores no compiled bundle; see
 `scripts/coverage/README.md` ("Current CI collection") for how each worker
 collects and what the gate checks. A newer push to a pull request cancels that
 pull request's coverage run in progress; runs on master are never cancelled.

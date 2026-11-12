@@ -35,7 +35,11 @@ Consumers run `python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache
 --repo "$PWD"` on the exported cache. The command verifies both the compressed
 archive hash and the uncompressed NAR hash, imports and roots the dependencies,
 and restores an owned build tree. Moving that tree into place avoids a second
-unpacked product copy in the Nix store. Producer jobs use `plan-tree` to read
+unpacked product copy in the Nix store. Coverage CI exports with
+`--prune-substitutable`, which leaves out every dependency the public Nix
+cache signed; `restore` then realises those from the consumer's own store or
+its substituters and copies only the paths the cache still carries. Producer
+jobs use `plan-tree` to read
 CTest metadata through a read-only link to their store output. Neither step
 executes tests; every consumer runs its assigned tests with fresh profiles.
 

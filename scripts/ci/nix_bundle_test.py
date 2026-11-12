@@ -11,7 +11,8 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from nix_bundle import (build_bundle, cache_dependencies, cache_record, compiler_launcher,
+from nix_bundle import (build_bundle, cache_dependencies, cache_dependency_plan, cache_record,
+                        compiler_launcher, prune_substitutable,
                         materialize_build, pack, plan_tree, restore_bundle, restore_nar, validate_coverage_flags,
                         verified_archive, normalize_output_link)
 
@@ -163,6 +164,106 @@ class OwnedNarTests(unittest.TestCase):
         metrics = json.loads((self.destination / "bundle-activation-metrics.json").read_text())
         self.assertEqual(0, metrics["copied_bytes"])
         self.assertFalse(metrics["product_imported_by_restore"])
+
+    def test_pruned_cache_takes_the_rest_from_the_store_before_copying_what_it_carries(self):
+        self.prepare_consumer()
+        external = "/nix/store/" + "2" * 32 + "-shell-tool"
+        deeper = "/nix/store/" + "3" * 32 + "-libc"
+        self.product["References"] += " " + Path(external).name
+        (self.cache / ("0" * 32 + ".narinfo")).write_text(
+            "".join(key + ": " + value + "\n" for key, value in self.product.items()))
+        # The carried dependency itself needs a path the cache leaves out.
+        (self.cache / ("1" * 32 + ".narinfo")).write_text(
+            "StorePath: " + self.dependency + "\nReferences: " + Path(deeper).name + "\n")
+        self.assertEqual(([self.dependency, external], [self.dependency], [external, deeper]),
+                         cache_dependency_plan(self.cache, self.bundle, self.product))
+
+        def command(arguments, **kwargs):
+            if arguments[:2] == ["nix-store", "--realise"]:
+                self.commands.append(arguments)
+                return subprocess.CompletedProcess(arguments, 0)
+            return self.consumer_command(arguments, **kwargs)
+
+        with patch("nix_bundle.activation_paths", side_effect=self.consumer_paths), \
+                patch("nix_bundle.subprocess.run", side_effect=command), \
+                patch("nix_bundle.restore_nar", side_effect=self.capture_owned_inode):
+            restore_bundle(argparse.Namespace(cache=self.cache, repo=self.repo))
+        # Order matters: a carried path is registered only once its
+        # references are valid, and Nix cannot walk a pruned cache itself.
+        self.assertEqual(["nix-store", "--realise", external, deeper], self.commands[0])
+        self.assertEqual(["nix", "copy", "--no-recursive", "--no-check-sigs", "--from",
+                          self.cache.as_uri(), self.dependency], self.commands[1])
+        self.assertEqual(
+            [str(self.destination / ".nix-dependencies" / Path(path).name)
+             for path in (self.dependency, external)],
+            [arguments[2] for arguments in self.commands[2:]])
+        self.assertEqual(b"compiler notes", (self.destination / "notes.gcno").read_bytes())
+
+    def test_a_dependency_the_store_cannot_provide_fails_before_the_tree_is_installed(self):
+        self.prepare_consumer()
+        external = "/nix/store/" + "2" * 32 + "-shell-tool"
+        self.product["References"] += " " + Path(external).name
+        (self.cache / ("0" * 32 + ".narinfo")).write_text(
+            "".join(key + ": " + value + "\n" for key, value in self.product.items()))
+
+        def command(arguments, **kwargs):
+            if arguments[:2] == ["nix-store", "--realise"]:
+                raise subprocess.CalledProcessError(1, arguments)
+            return self.consumer_command(arguments, **kwargs)
+
+        with patch("nix_bundle.activation_paths", side_effect=self.consumer_paths), \
+                patch("nix_bundle.subprocess.run", side_effect=command):
+            with self.assertRaises(subprocess.CalledProcessError):
+                restore_bundle(argparse.Namespace(cache=self.cache, repo=self.repo))
+        self.assertFalse(self.destination.exists())
+        self.assertEqual([], self.commands)
+
+    def test_prune_drops_only_publicly_signed_paths_and_never_a_kept_archive(self):
+        cache = self.root / "export"
+        (cache / "nar").mkdir(parents=True)
+        bundle = "/nix/store/" + "0" * 32 + "-openglad-ci-coverage-1"
+        built = "/nix/store/" + "1" * 32 + "-ixwebsocket-ci-coverage"
+        toolchain = "/nix/store/" + "2" * 32 + "-gcc"
+        twin = "/nix/store/" + "3" * 32 + "-same-bytes-as-built"
+        unsigned = "/nix/store/" + "4" * 32 + "-fetched-source"
+        archives = {bundle: "a", built: "b", toolchain: "c", twin: "b", unsigned: "d"}
+        for path, letter in archives.items():
+            url = "nar/" + letter * 52 + ".nar.zst"
+            (cache / url).write_bytes(letter.encode())
+            (cache / (Path(path).name[:32] + ".narinfo")).write_text(
+                "StorePath: " + path + "\nURL: " + url + "\nReferences: \n")
+        signed = {"signatures": ["cache.nixos.org-1:signature"]}
+        closure = {bundle: {"ultimate": True}, built: {"ultimate": True, "signatures": []},
+                   Path(toolchain).name: signed,              # keyed by basename
+                   twin: signed, unsigned: {"signatures": ["other-cache-1:signature"]}}
+        with patch("nix_bundle.subprocess.check_output", return_value=json.dumps(closure)) as query:
+            self.assertEqual(2, prune_substitutable(cache, bundle))
+        self.assertEqual(["nix", "path-info", "--json", "--json-format", "1", "--recursive", bundle],
+                         query.call_args.args[0])
+        self.assertEqual(
+            sorted(Path(path).name[:32] + ".narinfo" for path in (bundle, built, unsigned)),
+            sorted(path.name for path in cache.glob("*.narinfo")))
+        # 'twin' shared its archive with a path this build made: it stays.
+        self.assertEqual(["a" * 52 + ".nar.zst", "b" * 52 + ".nar.zst", "d" * 52 + ".nar.zst"],
+                         sorted(path.name for path in (cache / "nar").iterdir()))
+        # The list form older Nix printed selects the same paths.
+        (cache / ("2" * 32 + ".narinfo")).write_text(
+            "StorePath: " + toolchain + "\nURL: nar/" + "c" * 52 + ".nar.zst\nReferences: \n")
+        (cache / "nar" / ("c" * 52 + ".nar.zst")).write_bytes(b"c")
+        listed = [dict(record, path=path if path.startswith("/") else "/nix/store/" + path)
+                  for path, record in closure.items()]
+        # ... and an older Nix that rejects the format option is asked again without it.
+        refusal = subprocess.CalledProcessError(1, ["nix"])
+        with patch("nix_bundle.subprocess.check_output", side_effect=refusal), \
+                patch("nix_bundle.run", return_value=json.dumps(listed)) as fallback:
+            self.assertEqual(1, prune_substitutable(cache, bundle))
+        fallback.assert_called_once_with("nix", "path-info", "--json", "--recursive", bundle)
+        self.assertFalse((cache / "nar" / ("c" * 52 + ".nar.zst")).exists())
+        # A signed bundle would be an export of something this run did not build.
+        (cache / ("0" * 32 + ".narinfo")).unlink()
+        with patch("nix_bundle.subprocess.check_output", return_value=json.dumps(closure)), \
+                self.assertRaisesRegex(ValueError, "does not describe its own bundle"):
+            prune_substitutable(cache, bundle)
 
     def test_occupied_consumer_is_rejected_before_archive_allocation_or_import(self):
         self.prepare_consumer()

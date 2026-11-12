@@ -19,6 +19,12 @@ Upload the ENTIRE nix-cache directory as an artifact. Consumers download it,
 then restore their fresh CTest tree:
   python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
 
+`export --prune-substitutable` leaves out every closure member the trusted
+public cache signed. The consumer's shell already holds nearly all of them and
+its store substitutes the rest, so the artifact carries the product and the
+few paths this build made instead of a second copy of the toolchain. Such a
+cache cannot serve `import`; `restore` accepts both kinds.
+
 Restore verifies the compressed archive and NAR hashes, imports and roots the
 runtime/compiler dependencies, and streams the product into an owned tree.
 It moves that tree into place without importing a second product copy into
@@ -164,6 +170,67 @@ def pack(args: argparse.Namespace) -> None:
     print(f"Packed {args.lane} compiled bundle at {args.output}")
 
 
+PUBLIC_CACHE_KEY = "cache.nixos.org-1:"
+
+
+def substitutable_paths(bundle: str) -> set[str]:
+    """Closure members the trusted public cache signed, so any store can fetch."""
+    # Newer Nix deprecates --json without a format and promises to reject it;
+    # older Nix does not know the format option.
+    try:
+        text = subprocess.check_output(
+            ["nix", "path-info", "--json", "--json-format", "1", "--recursive", bundle],
+            text=True, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        text = run("nix", "path-info", "--json", "--recursive", bundle)
+    records = json.loads(text)
+    # Nix has keyed this object by full path and by store basename, and
+    # earlier printed a list of records carrying their own path.
+    items = records.items() if isinstance(records, dict) else (
+        (record["path"], record) for record in records)
+    result = set()
+    for path, record in items:
+        if not path.startswith("/nix/store/"):
+            path = "/nix/store/" + path
+        checked_store_path(path)
+        if any(signature.startswith(PUBLIC_CACHE_KEY)
+               for signature in record.get("signatures", [])):
+            result.add(path)
+    return result
+
+
+def prune_substitutable(cache: Path, bundle: str) -> int:
+    """Drop what the consumer's own store provides; keep what only we built.
+
+    The complete closure of a compiled bundle is the toolchain that built it:
+    410 paths and 538 MiB beside a 1.4 GiB product on 2026-11-12, of which the
+    eight consumers copied four paths, having fetched the rest with their
+    shell. A binary cache refuses a path whose references it lacks, so the
+    closure is written whole and then pruned.
+    """
+    removable = substitutable_paths(bundle) - {bundle}
+    records = {}
+    for info in cache.glob("*.narinfo"):
+        store_path = next((line.partition(": ")[2] for line in info.read_text().splitlines()
+                           if line.startswith("StorePath: ")), "")
+        records[store_path] = cache_record(cache, store_path)
+    if bundle not in records:
+        raise ValueError("exported cache does not describe its own bundle")
+    # Archives are named by content: two paths with equal bytes share one.
+    kept_archives = {record.get("URL") for path, record in records.items()
+                     if path not in removable}
+    removed = 0
+    for path in sorted(removable & set(records)):
+        url = records[path].get("URL", "")
+        if not re.fullmatch(r"nar/[0-9abcdfghijklmnpqrsvwxyz]{52}\.nar(\.[a-z0-9]+)?", url):
+            raise ValueError(f"unexpected archive name in exported cache: {url}")
+        if url not in kept_archives:
+            (cache / url).unlink(missing_ok=True)
+        (cache / (Path(path).name[:32] + ".narinfo")).unlink()
+        removed += 1
+    return removed
+
+
 def export_bundle(args: argparse.Namespace) -> None:
     bundle = args.bundle.resolve(strict=True)
     read_manifest(bundle)
@@ -176,6 +243,8 @@ def export_bundle(args: argparse.Namespace) -> None:
     uri = cache.as_uri() + "?compression=zstd&compression-level=3"
     started = time.monotonic()
     subprocess.run(["nix", "copy", "--to", uri, str(bundle)], check=True)
+    pruned = prune_substitutable(cache, str(bundle)) if getattr(
+        args, "prune_substitutable", False) else 0
     elapsed = time.monotonic() - started
     (cache / "bundle-path.txt").write_text(str(bundle) + "\n")
     cache_files = [path for path in cache.rglob("*") if path.is_file()]
@@ -189,6 +258,7 @@ def export_bundle(args: argparse.Namespace) -> None:
         "cache_files": len(cache_files),
         "bundle_file_bytes": sum(path.stat().st_size for path in bundle_files),
         "closure_paths": len(closure),
+        "pruned_substitutable_paths": pruned,
     }
     metrics_path = cache.parent / "nar-export-metrics.json"
     write_json(metrics_path, metrics)
@@ -198,7 +268,8 @@ def export_bundle(args: argparse.Namespace) -> None:
                 f"Native bundle export: {elapsed:.2f}s; "
                 f"{metrics['cache_bytes']:,} cache bytes in {metrics['cache_files']} files; "
                 f"{metrics['bundle_file_bytes']:,} bundle bytes; "
-                f"{metrics['closure_paths']} closure paths.\n")
+                f"{metrics['closure_paths']} closure paths, "
+                f"{pruned} left to the consumer's substituters.\n")
     print(f"Exported bundle and dependency closure to {cache}")
     print(f"Export metrics: {metrics_path}")
 
@@ -363,22 +434,41 @@ def cache_record(cache: Path, store_path: str) -> dict[str, str]:
     return record
 
 
-def cache_dependencies(cache: Path, bundle: str, product: dict) -> list[str]:
+def cache_dependency_plan(cache: Path, bundle: str,
+                          product: dict) -> tuple[list[str], list[str], list[str]]:
+    """Classify the product's dependency closure as the cache describes it.
+
+    Returns the direct dependencies, every dependency the cache carries, and
+    every dependency it leaves to the consumer's store (a pruned export). The
+    walk cannot see past a dependency the cache does not describe; the caller
+    realises those and then checks the complete closure in its own store.
+    """
     direct = sorted({"/nix/store/" + name for name in product.get("References", "").split()}
                     - {bundle})
     pending = list(direct)
     visited = set()
+    carried = []
+    external = []
     while pending:
         dependency = pending.pop()
         if dependency in visited:
             continue
         visited.add(dependency)
+        checked_store_path(dependency)
+        if not (cache / (Path(dependency).name[:32] + ".narinfo")).exists():
+            external.append(dependency)
+            continue
+        carried.append(dependency)
         record = cache_record(cache, dependency)
         references = {"/nix/store/" + name for name in record.get("References", "").split()}
         if bundle in references:
             raise ValueError("dependency requires the product store output")
         pending.extend(references - visited)
-    return direct
+    return direct, sorted(carried), sorted(external)
+
+
+def cache_dependencies(cache: Path, bundle: str, product: dict) -> list[str]:
+    return cache_dependency_plan(cache, bundle, product)[0]
 
 
 def expected_hash(value: str) -> str:
@@ -447,7 +537,7 @@ def restore_bundle(args: argparse.Namespace) -> None:
                 "source": f"/tmp/openglad-ci-{lane}/source", "build_relative": f"build/{preset}"}
     activation_paths(expected, repo)
     product = cache_record(cache, bundle)
-    dependencies = cache_dependencies(cache, bundle, product)
+    dependencies, carried, external = cache_dependency_plan(cache, bundle, product)
     archive = verified_archive(cache, product)
     (repo / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".native-bundle-", dir=repo / "build") as temporary:
@@ -458,8 +548,20 @@ def restore_bundle(args: argparse.Namespace) -> None:
             raise ValueError("restored bundle manifest does not match cache identity")
         canonical, destination = activation_paths(manifest, repo)
         if dependencies:
-            subprocess.run(["nix", "copy", "--no-check-sigs", "--from", cache.as_uri(),
-                            *dependencies], check=True)
+            if external:
+                # A pruned export: these are already valid in a store that
+                # entered the lane shell, and anything else is substituted
+                # from the store's own trusted caches, signatures checked.
+                subprocess.run(["nix-store", "--realise", *external], check=True,
+                               stdout=subprocess.DEVNULL)
+                # The cache no longer describes a closure Nix can walk, so
+                # name each carried path; its references are valid by now.
+                if carried:
+                    subprocess.run(["nix", "copy", "--no-recursive", "--no-check-sigs",
+                                    "--from", cache.as_uri(), *carried], check=True)
+            else:
+                subprocess.run(["nix", "copy", "--no-check-sigs", "--from", cache.as_uri(),
+                                *dependencies], check=True)
             closure = set(run("nix", "path-info", "--recursive", *dependencies).splitlines())
             if bundle in closure:
                 raise ValueError("imported dependency closure requires the product output")
@@ -685,6 +787,8 @@ def main() -> int:
     exporting = commands.add_parser("export", help="export a complete closure to a local binary cache")
     exporting.add_argument("--bundle", type=Path, required=True)
     exporting.add_argument("--cache", type=Path, required=True)
+    exporting.add_argument("--prune-substitutable", action="store_true",
+                           help="leave out paths the trusted public cache signed (restore only)")
     exporting.set_defaults(function=export_bundle)
     importing = commands.add_parser("import", help="import a downloaded closure")
     importing.add_argument("--cache", type=Path, required=True)
