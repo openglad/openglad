@@ -238,33 +238,89 @@ class MatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'conflicting'):
                 matrix.merge_lua_evidence(source, target, 3)
 
-    def test_production_collection_excludes_only_testing_objects(self):
+    def test_object_partitions_cover_every_note_once_and_never_mix_variants(self):
+        notes = ([f'CMakeFiles/og_core.dir/src/core/a{i}.cpp.gcno' for i in range(5)]
+                 + [f'tests/CMakeFiles/og_unit_x.dir/tests/unit/t{i}.cpp.gcno' for i in range(3)]
+                 + [f'CMakeFiles/og_core_test.dir/src/core/a{i}.cpp.gcno' for i in range(6)]
+                 + ['CMakeFiles/og_game_test.dir/src/x.cpp.gcno'])
+        exclusions = [r'(?:.*/)?CMakeFiles/og_core_test\.dir(?:/|$)',
+                      r'(?:.*/)?CMakeFiles/og_game_test\.dir(?:/|$)']
+        for workers in (1, 2, 4, 8):
+            with self.subTest(workers=workers):
+                jobs = matrix.object_partitions(notes, exclusions, workers)
+                self.assertLessEqual(len(jobs), max(workers, 2))
+                directories = [d for job in jobs for d in job['directories']]
+                self.assertEqual(sorted(directories), [
+                    'CMakeFiles/og_core.dir', 'CMakeFiles/og_core_test.dir',
+                    'CMakeFiles/og_game_test.dir', 'tests/CMakeFiles/og_unit_x.dir'])
+                variants = {d: job['variant'] for job in jobs for d in job['directories']}
+                self.assertEqual(variants, {
+                    'CMakeFiles/og_core.dir': 'production',
+                    'tests/CMakeFiles/og_unit_x.dir': 'production',
+                    'CMakeFiles/og_core_test.dir': 'testing',
+                    'CMakeFiles/og_game_test.dir': 'testing'})
+        # A note the split cannot place would be a silently smaller inventory.
+        with self.assertRaisesRegex(ValueError, 'outside a CMake target directory'):
+            matrix.object_partitions(['stray.gcno'], exclusions, 4)
+        # One population missing means the variant split described nothing.
+        with self.assertRaisesRegex(ValueError, 'lacks a production or a TESTING'):
+            matrix.object_partitions(notes[:8], exclusions, 4)
+        with self.assertRaisesRegex(ValueError, 'lacks a production or a TESTING'):
+            matrix.object_partitions(notes[8:], exclusions, 4)
+        with self.assertRaisesRegex(ValueError, 'at least one worker'):
+            matrix.object_partitions(notes, exclusions, 0)
+
+    def test_collection_scans_each_object_directory_once_beside_its_objects(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            args = SimpleNamespace(build=root / 'build', out=root / 'results')
-            reporter = SimpleNamespace(production_variant_exclusions=lambda build: ['Testing.dir'],
-                                       canonicalize_cpp_json=mock.Mock(),
-                                       GCOVR_SUSPICIOUS_HITS_THRESHOLD=(1 << 63) - 1)
+            args = SimpleNamespace(build=root / 'build', out=root / 'results', parallel=4)
+            args.out.mkdir()
+            notes = {'CMakeFiles/product.dir/src/a.cpp.gcno': 'hash',
+                     'CMakeFiles/product2.dir/src/b.cpp.gcno': 'hash',
+                     'CMakeFiles/Testing.dir/src/a.cpp.gcno': 'hash'}
+            reporter = SimpleNamespace(
+                production_variant_exclusions=lambda build: [r'(?:.*/)?CMakeFiles/Testing\.dir(?:/|$)'],
+                canonicalize_cpp_json=mock.Mock(),
+                GCOVR_SUSPICIOUS_HITS_THRESHOLD=(1 << 63) - 1)
             with mock.patch.dict('sys.modules', {'coverage_report': reporter}), \
-                 mock.patch.object(matrix, 'compiler_notes', return_value={'note.gcno': 'hash'}), \
+                 mock.patch.object(matrix, 'compiler_notes', return_value=notes), \
                  mock.patch.object(matrix.subprocess, 'run') as execute:
                 matrix.collect(args)
-            self.assertEqual(execute.call_count, 2)
-            self.assertEqual(reporter.canonicalize_cpp_json.call_args_list, [
-                mock.call(args.out / 'cpp.json', Path.cwd()),
-                mock.call(args.out / 'production.json', Path.cwd())])
-            primary, production = [call.args[0] for call in execute.call_args_list]
-            self.assertNotIn('--gcov-exclude-directory', primary)
-            self.assertIn('--gcov-exclude-directory', production)
-            self.assertEqual(production[production.index('--gcov-exclude-directory')+1], 'Testing.dir')
-            for command in (primary, production):
+            commands = [call.args[0] for call in execute.call_args_list]
+            scanned = []
+            traces = {}
+            for command in commands:
+                self.assertTrue(all(call.kwargs == {'check': True} for call in execute.call_args_list))
                 roots = [command[i+1] for i, value in enumerate(command) if value == '--filter']
                 self.assertEqual(roots, ['src/', 'include/openglad/'])
                 self.assertFalse(any(flag.startswith('--gcov-ignore-parse-errors') for flag in command))
+                self.assertNotIn('--gcov-exclude-directory', command)
                 self.assertEqual(command[command.index('--gcov-suspicious-hits-threshold')+1],
                                  str((1 << 63) - 1))
-            self.assertIn(str(args.out / 'cpp.json'), primary)
-            self.assertIn(str(args.out / 'production.json'), production)
+                # gcov runs beside each object: a shared working directory
+                # would serialize every scan behind one lock.
+                self.assertEqual(command[command.index('--gcov-object-directory')+1], '.')
+                self.assertEqual(command[command.index('-j')+1], '1')
+                trace = command[command.index('--json')+1]
+                directories = command[command.index('--json')+2:]
+                self.assertNotIn(str(args.build), directories)  # never the whole tree twice
+                traces[trace] = directories
+                scanned.extend(directories)
+            self.assertEqual(sorted(scanned), sorted(
+                str(args.build / name) for name in
+                ('CMakeFiles/product.dir', 'CMakeFiles/product2.dir', 'CMakeFiles/Testing.dir')))
+            merges = {call.args[0]: call for call in reporter.canonicalize_cpp_json.call_args_list}
+            self.assertEqual(set(merges), {args.out / 'cpp.json', args.out / 'production.json'})
+            for call in merges.values():
+                self.assertEqual(call.args[1], Path.cwd())
+            everything = [str(path) for path in merges[args.out / 'cpp.json'].kwargs['sources']]
+            production = [str(path) for path in merges[args.out / 'production.json'].kwargs['sources']]
+            self.assertEqual(sorted(everything), sorted(traces))
+            self.assertTrue(set(production) < set(everything))
+            self.assertEqual(sorted(d for trace in production for d in traces[trace]), sorted(
+                str(args.build / name) for name in ('CMakeFiles/product.dir', 'CMakeFiles/product2.dir')))
+            self.assertEqual(matrix.read(args.out / 'compiler-notes.json'), notes)
+            self.assertEqual(list(args.out.glob('cpp-partitions-*')), [])
 
     def test_missing_or_changed_production_inventory_fails_before_reporting(self):
         for problem in ('missing', 'changed'):
@@ -322,14 +378,84 @@ class MatrixTests(unittest.TestCase):
                  mock.patch.object(matrix.subprocess, 'run') as execute:
                 matrix.merge(args)
             reporter.gcovr_lcov_1x_flag.assert_called_once_with(['gcovr'], Path.cwd())
-            self.assertEqual(execute.call_count, 3)
-            primary, production, gate = [call.args[0] for call in execute.call_args_list]
+            self.assertEqual(execute.call_count, 4)
+            commands = [call.args[0] for call in execute.call_args_list]
+            self.assertTrue(all(call.kwargs == {'check': True} for call in execute.call_args_list))
+
+            def only(marker):
+                matches = [command for command in commands
+                           if command[0] == 'gcovr' and marker in command]
+                self.assertEqual(len(matches), 1, marker)
+                return matches[0]
+
+            primary = only(str(args.out / 'cpp.info'))
+            production = only(str(args.out / 'production.info'))
+            detail = only('--html-details')
+            gate = commands[-1]  # The gate starts only after both tracefiles exist.
+            self.assertIn('--cpp-production-tracefile', gate)
             for command, filename in ((primary, 'cpp.info'), (production, 'production.info')):
                 self.assertIn('--lcov-format-version=1.x', command)
                 self.assertNotIn('--lcov-format-1.x', command)
                 self.assertIn(str(args.out / filename), command)
                 self.assertNotIn(str(args.build), command)  # JSON formatting never scans profiles.
-            self.assertIn('--cpp-production-tracefile', gate)
+                self.assertNotIn('--html-details', command)
+            # The HTML detail and the gate tracefile format the same saved traces.
+            self.assertEqual([value for value in detail if value.endswith('cpp.json')],
+                             [value for value in primary
+                              if value.endswith('cpp.json') and value != str(args.out / 'cpp.json')])
+            self.assertEqual(gate[gate.index('--lines-tool')+1], str(args.build / 'og_lua_lines'))
+
+    def test_shipped_line_oracle_must_be_the_planned_builds_binary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tool = root / 'plan/og_lua_lines'
+            tool.parent.mkdir()
+            tool.write_bytes(b'oracle')
+            tool.chmod(0o644)
+            plan = self.plan()
+            plan['compiler_notes'] = {'note.gcno': 'hash'}
+            plan['lines_tool_sha256'] = matrix.hashlib.sha256(b'oracle').hexdigest()
+            plan_file = root / 'plan.json'
+            matrix.write(plan_file, plan)
+            results = root / 'results'
+            trace = {'files': [{'file': 'src/example.cpp',
+                                'lines': [{'line_number': 1, 'count': 0}], 'functions': []}]}
+            for report in self.reports(plan):
+                directory = results / f'shard-{report["shard"]}'
+                matrix.write(directory / 'result.json', report)
+                matrix.write(directory / 'compiler-notes.json', plan['compiler_notes'])
+                for filename in ('cpp.json', 'production.json'):
+                    matrix.write(directory / filename, trace)
+                (directory / 'lua-raw').mkdir()
+                (directory / 'lua-raw/dump.luacov').write_text('process evidence')
+            reporter = SimpleNamespace(gcovr_lcov_1x_flag=mock.Mock(return_value='--lcov-format-1.x'))
+            args = SimpleNamespace(plan=plan_file, results=results, out=root / 'output',
+                                   build=None, lines_tool=tool)
+            with mock.patch.dict('sys.modules', {'coverage_report': reporter}), \
+                 mock.patch.object(matrix.subprocess, 'run') as execute:
+                matrix.merge(args)
+            gate = execute.call_args_list[-1].args[0]
+            self.assertEqual(gate[gate.index('--lines-tool')+1], str(tool))
+            self.assertTrue(tool.stat().st_mode & 0o100)  # artifacts drop the executable bit
+
+            for problem in ('changed', 'missing', 'unpinned'):
+                with self.subTest(problem=problem):
+                    args.out = root / f'output-{problem}'
+                    if problem == 'changed':
+                        tool.write_bytes(b'another build')
+                    elif problem == 'missing':
+                        tool.unlink()
+                    else:
+                        tool.write_bytes(b'oracle')
+                        del plan['lines_tool_sha256']
+                        matrix.write(plan_file, plan)
+                        for report in self.reports(plan):
+                            matrix.write(results / f'shard-{report["shard"]}/result.json', report)
+                    with mock.patch.dict('sys.modules', {'coverage_report': reporter}), \
+                         mock.patch.object(matrix.subprocess, 'run') as execute, \
+                         self.assertRaisesRegex(ValueError, 'executable-line oracle'):
+                        matrix.merge(args)
+                    execute.assert_not_called()
 
     def test_optional_dependency_cannot_silently_drop_curses_or_parity(self):
         required = ['og_unit_network', 'og_unit_core', 'og_test_curses',

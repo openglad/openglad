@@ -94,7 +94,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lua_inventory  # noqa: E402  (path set up immediately above)
@@ -1352,18 +1352,20 @@ def canonicalize_cpp_records(files: List[FileCoverage], repo_root: Path) -> List
 
 def canonicalize_cpp_json(
     path: Path, repo_root: Path, *, lcov_output: Optional[Path] = None,
-    html_output: Optional[Path] = None,
+    html_output: Optional[Path] = None, sources: Optional[Sequence[Path]] = None,
 ) -> None:
     """Merge component-header aliases using gcovr's mangled function IDs.
 
     This reads saved JSON, never profiles. The formatter can produce all final
     formats while merging, so HTML and the gate share exactly one inventory.
+
+    ``sources`` names several saved traces (one per object partition a worker
+    scanned) to merge into ``path`` in the same pass; without it ``path`` is
+    rewritten in place.
     """
-    payload = json.loads(path.read_text())
-    for item in payload["files"]:
-        item["file"] = canonical_cpp_source(item["file"], repo_root)
-        if not item["file"].startswith(CPP_SCOPE_ROOTS):
-            raise ValueError(f"coverage JSON is outside production scope: {item['file']}")
+    inputs = [path] if sources is None else list(sources)
+    if not inputs:
+        raise ValueError(f"no C++ coverage JSON to canonicalize into {path}")
     gcovr = shutil.which("gcovr")
     base = [gcovr] if gcovr else [sys.executable, "-m", "gcovr"]
     text_output = html_output.parent / "coverage-summary.txt" if html_output is not None else None
@@ -1371,11 +1373,18 @@ def canonicalize_cpp_json(
     for output in outputs:
         output.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="cpp-canonical-", dir=path.parent) as directory:
-        normalized = Path(directory) / "input.json"
         merged = Path(directory) / "merged.json"
-        normalized.write_text(json.dumps(payload))
-        command = base + ["--root", str(repo_root), "--add-tracefile", str(normalized),
-                          "--json", str(merged)]
+        command = base + ["--root", str(repo_root)]
+        for index, source in enumerate(inputs):
+            payload = json.loads(source.read_text())
+            for item in payload["files"]:
+                item["file"] = canonical_cpp_source(item["file"], repo_root)
+                if not item["file"].startswith(CPP_SCOPE_ROOTS):
+                    raise ValueError(f"coverage JSON is outside production scope: {item['file']}")
+            normalized = Path(directory) / f"input-{index}.json"
+            normalized.write_text(json.dumps(payload))
+            command += ["--add-tracefile", str(normalized)]
+        command += ["--json", str(merged)]
         if lcov_output is not None:
             command += [gcovr_lcov_1x_flag(base, repo_root), "--lcov", str(lcov_output)]
         if html_output is not None:

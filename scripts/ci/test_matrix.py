@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -17,10 +18,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 
 DELEGATED = {"emscripten_build_test": "Release / WASM build and browser matrix"}
 DEFAULT_PARALLEL = 4
+LINES_TOOL = "og_lua_lines"
 
 # Existing opt-in tools and external/display capabilities are reported by name.
 # Semantic, sanitizer-budget, unarmed-version and missing-golden skips fail.
@@ -220,9 +223,16 @@ def plan(args):
     result["gtest_partitions"] = gtest_partitions(inventory, args.lane)
     if args.lane == "coverage":
         result["compiler_notes"] = compiler_notes(args.build)
+        # The gate needs this one built tool and nothing else from the
+        # compiled tree. It travels with the plan, pinned by digest, so the
+        # gate job does not download the whole compiled bundle to reach it.
+        tool = args.build / LINES_TOOL
+        result["lines_tool_sha256"] = hashlib.sha256(tool.read_bytes()).hexdigest()
     result["revision"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     write(args.out / "inventory.json", inventory)
     write(args.out / "plan.json", result)
+    if args.lane == "coverage":
+        shutil.copyfile(args.build / LINES_TOOL, args.out / LINES_TOOL)
     for shard in result["shards"]:
         (args.out / f'tests-{shard["id"]}.txt').write_text("\n".join(shard["tests"]) + "\n")
     print(json.dumps(result, indent=2))
@@ -360,26 +370,92 @@ def verify(args):
                 out.write(f'Named GoogleTest skip: `{skip["test"]}` — {skip["reason"]}.\n')
 
 
+def object_partitions(notes, exclusions, workers):
+    """Split the CMake target directories into directory-disjoint gcov jobs.
+
+    gcovr runs gcov under a lock on its working directory, and without an
+    object directory that directory is --root for every object: -j then runs
+    one gcov at a time (136 s of one worker's 219 s collection on
+    2026-11-12). Separate gcovr processes over disjoint target directories,
+    each running gcov beside its object, are parallel and never share an
+    output directory.
+
+    Production and TESTING object variants stay in different jobs, so the
+    production trace is the merge of its own jobs instead of a second scan
+    of the same objects. Every note belongs to exactly one job.
+    """
+    if workers < 1:
+        raise ValueError("coverage collection needs at least one worker")
+    weights = {}
+    for note in notes:
+        match = re.match(r"((?:.*/)?CMakeFiles/[^/]+\.dir)/", note)
+        if match is None:
+            raise ValueError(f"coverage note outside a CMake target directory: {note}")
+        weights[match.group(1)] = weights.get(match.group(1), 0) + 1
+    testing = {directory for directory in weights
+               if any(re.search(pattern, directory + "/") for pattern in exclusions)}
+    production = set(weights) - testing
+    if not testing or not production:
+        raise ValueError("coverage build lacks a production or a TESTING object population")
+
+    def pack(directories, count):
+        jobs = [[] for _ in range(count)]
+        loads = [0] * count
+        for directory in sorted(directories, key=lambda name: (-weights[name], name)):
+            job = min(range(count), key=lambda index: (loads[index], index))
+            jobs[job].append(directory)
+            loads[job] += weights[directory]
+        return [sorted(job) for job in jobs if job]
+
+    production_weight = sum(weights[directory] for directory in production)
+    share = round(workers * production_weight / sum(weights.values()))
+    production_jobs = min(max(share, 1), max(workers - 1, 1))
+    testing_jobs = max(workers - production_jobs, 1)
+    return ([{"variant": "production", "directories": job}
+             for job in pack(production, production_jobs)]
+            + [{"variant": "testing", "directories": job}
+               for job in pack(testing, testing_jobs)])
+
+
 def collect(args):
     # Every shard scans the complete .gcno inventory: uncovered translation
     # units remain zero-hit data. Profiles are never copied between workers.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
     import coverage_report
 
+    # The production diagnostic separates compiler object variants, without
+    # narrowing source roots or applying another percentage floor to
+    # production alone.
     exclusions = coverage_report.production_variant_exclusions(args.build)
-    write(args.out / "compiler-notes.json", compiler_notes(args.build))
+    notes = compiler_notes(args.build)
+    write(args.out / "compiler-notes.json", notes)
+    workers = getattr(args, "parallel", DEFAULT_PARALLEL)
+    jobs = object_partitions(notes, exclusions, workers)
     base = ["gcovr", "--root", ".", "--filter", "src/", "--filter", "include/openglad/",
-            "-j", "3",
+            "-j", "1", "--gcov-object-directory", ".",
             "--gcov-suspicious-hits-threshold", str(coverage_report.GCOVR_SUSPICIOUS_HITS_THRESHOLD)]
-    subprocess.run([*base, "--json", str(args.out / "cpp.json"), str(args.build)], check=True)
-    coverage_report.canonicalize_cpp_json(args.out / "cpp.json", Path.cwd())
-    # This diagnostic separates compiler object variants, without narrowing
-    # source roots or applying another percentage floor to production alone.
-    production = [flag for pattern in exclusions
-                  for flag in ("--gcov-exclude-directory", pattern)]
-    subprocess.run([*base, *production, "--json", str(args.out / "production.json"),
-                    str(args.build)], check=True)
-    coverage_report.canonicalize_cpp_json(args.out / "production.json", Path.cwd())
+    with tempfile.TemporaryDirectory(prefix="cpp-partitions-", dir=args.out) as temporary:
+        def scan(item):
+            index, job = item
+            trace = Path(temporary) / f'{job["variant"]}-{index}.json'
+            subprocess.run([*base, "--json", str(trace),
+                            *[str(args.build / directory) for directory in job["directories"]]],
+                           check=True)
+            return job["variant"], trace
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            traces = list(pool.map(scan, enumerate(jobs)))
+        populations = [
+            (args.out / "cpp.json", [trace for _, trace in traces]),
+            (args.out / "production.json",
+             [trace for variant, trace in traces if variant == "production"]),
+        ]
+        with ThreadPoolExecutor(max_workers=len(populations)) as pool:
+            merging = [pool.submit(coverage_report.canonicalize_cpp_json, target, Path.cwd(),
+                                   sources=sources)
+                       for target, sources in populations]
+            for job in merging:
+                job.result()
 
 
 def merge_lua_evidence(dumps, raw, shard):
@@ -440,25 +516,52 @@ def merge(args):
         if not dumps.is_dir() or not list(dumps.glob("*.luacov")):
             raise ValueError(f"missing Lua dumps: {dumps}")
         merge_lua_evidence(dumps, raw, shard["id"])
+    tool = getattr(args, "lines_tool", None)
+    if tool is None:
+        tool = args.build / LINES_TOOL
+    else:
+        # The oracle arrived beside the plan instead of inside a restored
+        # build tree: it defines the Lua denominator, so it must be the
+        # planned build's own binary, byte for byte.
+        if not tool.is_file():
+            raise ValueError(f"executable-line oracle missing: {tool}")
+        if hashlib.sha256(tool.read_bytes()).hexdigest() != manifest.get("lines_tool_sha256"):
+            raise ValueError(f"executable-line oracle is not the planned build's: {tool}")
+        # Artifact transport does not carry the executable bit.
+        tool.chmod(tool.stat().st_mode | 0o111)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
     import coverage_report
 
     lcov_format = coverage_report.gcovr_lcov_1x_flag(["gcovr"], Path.cwd())
-    subprocess.run(["gcovr", "--root", ".", *traces, lcov_format,
-                    "--lcov", str(args.out / "cpp.info"),
-                    "--json", str(args.out / "cpp.json"),
-                    "--html-details", str(args.out / "coverage.html"),
-                    "--txt", str(args.out / "coverage-summary.txt")], check=True)
-    subprocess.run(["gcovr", "--root", ".", *production_traces, lcov_format,
-                    "--lcov", str(args.out / "production.info"),
-                    "--json", str(args.out / "production.json"),
-                    "--txt", str(args.out / "production-summary.txt")], check=True)
-    subprocess.run([sys.executable, "scripts/coverage/coverage_report.py", "--repo-root", ".",
-                    "--lua-raw-dir", str(raw), "--lines-tool", str(args.build / "og_lua_lines"),
-                    "--cpp-tracefile", str(args.out / "cpp.info"),
-                    "--cpp-production-tracefile", str(args.out / "production.info"),
-                    "--output-dir", str(args.out),
-                    "--line-threshold", "98", "--function-threshold", "100", "--strict-cpp"], check=True)
+    # Three formatters over the same saved traces: reading eight worker
+    # traces dominates each (79 s of 116 s on 2026-11-12) and is independent,
+    # so the gate inputs and the HTML detail are produced side by side.
+    formatting = [
+        ["gcovr", "--root", ".", *traces, lcov_format,
+         "--lcov", str(args.out / "cpp.info"),
+         "--json", str(args.out / "cpp.json"),
+         "--txt", str(args.out / "coverage-summary.txt")],
+        ["gcovr", "--root", ".", *production_traces, lcov_format,
+         "--lcov", str(args.out / "production.info"),
+         "--json", str(args.out / "production.json"),
+         "--txt", str(args.out / "production-summary.txt")],
+        ["gcovr", "--root", ".", *traces,
+         "--html-details", str(args.out / "coverage.html")],
+    ]
+    with ThreadPoolExecutor(max_workers=len(formatting)) as pool:
+        pending = [pool.submit(subprocess.run, command, check=True) for command in formatting]
+        for job in pending[:2]:
+            job.result()
+        # The gate reads only the two tracefiles; the HTML detail finishes
+        # beside it and is still required before the job reports success.
+        subprocess.run([sys.executable, "scripts/coverage/coverage_report.py", "--repo-root", ".",
+                        "--lua-raw-dir", str(raw), "--lines-tool", str(tool),
+                        "--cpp-tracefile", str(args.out / "cpp.info"),
+                        "--cpp-production-tracefile", str(args.out / "production.info"),
+                        "--output-dir", str(args.out),
+                        "--line-threshold", "98", "--function-threshold", "100", "--strict-cpp"],
+                       check=True)
+        pending[2].result()
 
 
 def main():
@@ -485,11 +588,14 @@ def main():
         p.add_argument("--results", type=Path, required=True)
         if function is merge:
             p.add_argument("--out", type=Path, required=True)
-            p.add_argument("--build", type=Path, required=True)
+            location = p.add_mutually_exclusive_group(required=True)
+            location.add_argument("--build", type=Path)
+            location.add_argument("--lines-tool", type=Path)
         p.set_defaults(func=function)
     p = sub.add_parser("collect-coverage")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--build", type=Path, required=True)
+    p.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     p.set_defaults(func=collect)
     args = parser.parse_args()
     try:

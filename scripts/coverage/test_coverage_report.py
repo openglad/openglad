@@ -173,6 +173,29 @@ class CppAliasTests(unittest.TestCase):
             self.assertEqual({"_Z6sampleIiEiv": 3, "_Z6sampleIlEiv": 0},
                              {fn["name"]: fn["execution_count"] for fn in files[0]["functions"]})
 
+            # A worker scans its object directories as separate partitions:
+            # merging those saved traces must add their counts and keep each
+            # one's zero-hit bodies, leaving the partition files untouched.
+            parts = []
+            for index, (path, count, names) in enumerate((
+                    (original, 3, [("_Z6sampleIiEiv", 3)]),
+                    (alias, 2, [("_Z6sampleIiEiv", 2), ("_Z6sampleIlEiv", 0)]))):
+                part = root / f"part-{index}.json"
+                part.write_text(report.json.dumps({"gcovr/format_version": "0.14",
+                                                   "files": [record(path, count, names)]}))
+                parts.append(part)
+            before = [part.read_text() for part in parts]
+            combined = root / "combined.json"
+            report.canonicalize_cpp_json(combined, root, sources=parts)
+            files = report.json.loads(combined.read_text())["files"]
+            self.assertEqual(["include/openglad/sample.h"], [item["file"] for item in files])
+            self.assertEqual([5], [line["count"] for line in files[0]["lines"]])
+            self.assertEqual({"_Z6sampleIiEiv": 5, "_Z6sampleIlEiv": 0},
+                             {fn["name"]: fn["execution_count"] for fn in files[0]["functions"]})
+            self.assertEqual(before, [part.read_text() for part in parts])
+            with self.assertRaisesRegex(ValueError, "no C\\+\\+ coverage JSON"):
+                report.canonicalize_cpp_json(root / "empty.json", root, sources=[])
+
     def test_copied_component_headers_must_match_source_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
