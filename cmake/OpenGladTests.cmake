@@ -1660,7 +1660,15 @@ og_add_filtered_test(og_unit_modes_water og_unit_modes_water
     "-${OG_MODES_WATER_BAND}:${OG_MODES_WATER_FIELDS}:${OG_MODES_WATER_DETECTOR}")
 # og_unit_data: Westlands' campaign suite (about 195 s under ASan) alone, the
 # other campaign suites together (about 150 s), everything else in a third.
-og_add_sharded_group_tests(og_unit_data_westlands og_unit_data 4 "WestlandsCampaignTest.*" OG_DATA_WESTLANDS_TESTS)
+# The five battle smokes are nearly all of that suite's cost (148 s of 165 s
+# under coverage), so they own their entries, one battle each, and the rest
+# of the suite shares two. The filters are exact complements.
+set(OG_DATA_WESTLANDS_SMOKE_FILTER "WestlandsCampaignTest.battle_smokes_*")
+og_add_sharded_group_tests(og_unit_data_westlands_smokes og_unit_data 5
+    "${OG_DATA_WESTLANDS_SMOKE_FILTER}" OG_DATA_WESTLANDS_SMOKE_TESTS)
+og_add_sharded_group_tests(og_unit_data_westlands og_unit_data 2
+    "WestlandsCampaignTest.*-${OG_DATA_WESTLANDS_SMOKE_FILTER}" OG_DATA_WESTLANDS_REST_TESTS)
+set(OG_DATA_WESTLANDS_TESTS ${OG_DATA_WESTLANDS_REST_TESTS} ${OG_DATA_WESTLANDS_SMOKE_TESTS})
 og_add_sharded_group_tests(og_unit_data_campaigns og_unit_data 4 "*CampaignTest.*-WestlandsCampaignTest.*" OG_DATA_CAMPAIGNS_TESTS)
 og_add_sharded_group_tests(og_unit_data og_unit_data 4 "-*CampaignTest.*:CompanySlot.*" OG_DATA_TESTS)
 # The active-company A/B pair must share one process to detect fixture leaks.
