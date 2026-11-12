@@ -50,6 +50,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the compiler cache restores
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       # actions/cache derives a cache's version from its path as well as its
       # key, so the seed is restored into and saved from this one directory:
       # saved from any other, it is never found again.
@@ -88,6 +91,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the compile cache downloads
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - name: Download every compile-cache shard
         uses: actions/download-artifact@v8
         with:
