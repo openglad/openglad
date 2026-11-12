@@ -262,6 +262,54 @@ class CompileCacheTests(unittest.TestCase):
         self.assertEqual(b"object", (output / "cache/a/result").read_bytes())
         self.assertFalse((output / "cache/preprocessor").exists())
 
+    def test_worker_indexes_reach_their_own_producer_and_never_the_seed(self):
+        # An index from an older revision may name a header the new tree
+        # shadows: the seed's must not be merged, however it got there.
+        seed = self.cache_root("seed", {"a/seed": b"old", "preprocessor/s/stale": b"older tree"})
+        first = self.publish_shard(
+            "first", 0, {"a/seed": b"old", "b/one": b"1", "preprocessor/x/one": b"index 1",
+                         "preprocessor/x/shared": b"first"}, seed)
+        second = self.publish_shard(
+            "second", 1, {"a/seed": b"old", "c/two": b"2", "preprocessor/y/two": b"index 2",
+                          "preprocessor/x/shared": b"second"}, seed)
+        self.assertEqual(b"index 1", (first / "cache/preprocessor/x/one").read_bytes())
+        self.assertEqual(2, json.loads((first / "shard.json").read_text())["index_files"])
+        merged = self.root / "merged"
+        compile_cache.merge(argparse.Namespace(
+            seed=seed, input=[first, second], output=merged, lane="asan",
+            revision="rev", shards=2))
+        self.assertEqual(
+            {"a/seed", "b/one", "c/two", "preprocessor/x/one", "preprocessor/x/shared",
+             "preprocessor/y/two"},
+            {path.relative_to(merged / "cache").as_posix()
+             for path in (merged / "cache").rglob("*") if path.is_file()},
+        )
+        self.assertEqual(b"first", (merged / "cache/preprocessor/x/shared").read_bytes())
+        # The producer's full publication, the next revision's seed, drops them.
+        published = self.root / "next-seed"
+        compile_cache.publish(argparse.Namespace(
+            cache=merged / "cache", seed=None, output=published, lane="asan",
+            revision="rev", shard_manifest=None, max_bytes=None))
+        self.assertEqual(
+            {"a/seed", "b/one", "c/two"},
+            {path.relative_to(published / "cache").as_posix()
+             for path in (published / "cache").rglob("*") if path.is_file()},
+        )
+
+    def test_a_fully_cached_shard_still_delivers_its_indexes(self):
+        seed = self.cache_root("seed", {"a/seed": b"old"})
+        first = self.publish_shard(
+            "first", 0, {"a/seed": b"old", "preprocessor/x/one": b"index 1"}, seed)
+        second = self.publish_shard("second", 1, {"a/seed": b"old"}, seed)
+        self.assertFalse((first / "cache/a").exists())
+        (second / "cache").rmdir()
+        merged = self.root / "merged"
+        compile_cache.merge(argparse.Namespace(
+            seed=seed, input=[first, second], output=merged, lane="asan",
+            revision="rev", shards=2))
+        self.assertEqual(b"index 1", (merged / "cache/preprocessor/x/one").read_bytes())
+        self.assertEqual(b"old", (merged / "cache/a/seed").read_bytes())
+
     def test_producer_verification_defaults_to_requiring_every_request_to_hit(self):
         cache = self.root / "sccache"
         cache.write_text("cache")
