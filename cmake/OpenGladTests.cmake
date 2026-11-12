@@ -1843,6 +1843,15 @@ if(ENABLE_COVERAGE)
     # 8.9 s), so the binary is expected at about 115 s here (derived): 64 %
     # of the 180 s default, 27 % of 420.
     set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES PROCESSORS 4)
+    # The snapshot benchmark is also pure simulation compute. Its recorded
+    # coverage time is 184 s, already beyond the inherited 180 s group
+    # timeout, and a contended 4-core runner hit that ceiling while three
+    # other tests were active. Reserve the runner as the sanitizer lane does
+    # for the same binary, and retain the established 420 s hang ceiling.
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES
+        PROCESSORS 4
+        TIMEOUT 420
+    )
     # These Lua-hooked deterministic simulations consume a full core budget
     # each. Coverage shard 3 overlapped court 826, the water stationarity
     # group and og_unit_sim on 2026-11-11; both 180-second entries timed out,
