@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # The test workers look up this run's bundle artifact to fetch it by ranges.
+  actions: read
 
 # Large Nix closures otherwise fan out enough cache downloads for hosted-runner
 # TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
@@ -196,7 +198,38 @@ jobs:
       - name: Fetch the lane shell while the compiled bundle downloads
         shell: bash
         run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      # One stream of this artifact ran from 10 to 67 MiB/s within one run
+      # (11 to 77 s for 0.74 GiB, GitHub run 43315619595), and the slowest
+      # worker sets the stage. The zip is stored uncompressed, so it serves
+      # byte ranges: fetch eight at once and require the artifact's recorded
+      # digest. Any failure falls back to the ordinary download below.
+      - name: Download the compiled bundle over parallel ranges
+        id: ranged-bundle
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r id digest < <(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=coverage-bundle" \
+            --jq '.artifacts | sort_by(.created_at) | last | "\(.id) \(.digest)"')
+          [[ "$id" =~ ^[0-9]+$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          url="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip")"
+          test -n "$url"
+          aria2c --quiet --max-connection-per-server=8 --split=8 --min-split-size=32M \
+            --file-allocation=none --dir "$RUNNER_TEMP" --out coverage-bundle.zip "$url"
+          echo "${digest#sha256:}  $RUNNER_TEMP/coverage-bundle.zip" | sha256sum --check --quiet -
+          mkdir -p build/nix-cache
+          unzip -q "$RUNNER_TEMP/coverage-bundle.zip" -d build/nix-cache
+          rm "$RUNNER_TEMP/coverage-bundle.zip"
+      - name: Discard a partial ranged download
+        if: steps.ranged-bundle.outcome != 'success'
+        shell: bash
+        run: rm -rf build/nix-cache
       - uses: actions/download-artifact@v8
+        if: steps.ranged-bundle.outcome != 'success'
         with:
           name: coverage-bundle
           path: build/nix-cache
