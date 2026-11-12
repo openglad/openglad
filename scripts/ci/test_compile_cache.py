@@ -242,14 +242,15 @@ class CompileCacheTests(unittest.TestCase):
             revision="rev", shards=2))
         self.assertEqual(b"old", (merged / "cache/a/seed").read_bytes())
 
-    def test_merge_rejects_different_payloads_for_a_shared_content_key(self):
+    def test_merge_keeps_the_first_payload_for_a_shared_content_key(self):
         seed = self.cache_root("seed", {})
         first = self.publish_shard("first", 0, {"same/key": b"first"}, seed)
         second = self.publish_shard("second", 1, {"same/key": b"second"}, seed)
-        with self.assertRaisesRegex(ValueError, "conflicting sccache result entry"):
-            compile_cache.merge(argparse.Namespace(
-                seed=seed, input=[first, second], output=self.root / "merged",
-                lane="asan", revision="rev", shards=2))
+        merged = self.root / "merged"
+        compile_cache.merge(argparse.Namespace(
+            seed=seed, input=[first, second], output=merged,
+            lane="asan", revision="rev", shards=2))
+        self.assertEqual(b"first", (merged / "cache/same/key").read_bytes())
 
     def test_publication_drops_mutable_preprocessor_indexes(self):
         live = self.cache_root(
@@ -261,7 +262,7 @@ class CompileCacheTests(unittest.TestCase):
         self.assertEqual(b"object", (output / "cache/a/result").read_bytes())
         self.assertFalse((output / "cache/preprocessor").exists())
 
-    def test_producer_verification_requires_every_request_to_hit(self):
+    def test_producer_verification_defaults_to_requiring_every_request_to_hit(self):
         cache = self.root / "sccache"
         cache.write_text("cache")
         good = {"stats": {
@@ -278,8 +279,50 @@ class CompileCacheTests(unittest.TestCase):
         bad["stats"]["cache_errors"]["counts"]["C/C++"] = 1
         bad["stats"]["compilations"] = 1
         with patch("compile_cache.subprocess.check_output", return_value=json.dumps(bad)), \
-                self.assertRaisesRegex(ValueError, "did not reuse every warmed compilation"):
+                self.assertRaisesRegex(ValueError, "bounded cache-repair contract"):
             compile_cache.verify_producer(argparse.Namespace(cache_program=cache))
+
+    def test_producer_verification_accepts_only_a_bounded_archive_repair(self):
+        cache = self.root / "sccache-bounded"
+        cache.write_text("cache")
+        stats = {"stats": {
+            "compile_requests": 1313, "requests_executed": 1313,
+            "cache_hits": {"counts": {"C/C++": 1287}},
+            "cache_misses": {"counts": {"C/C++": 26}},
+            "cache_errors": {"counts": {"C/C++": 26}},
+            "compilations": 26, "cache_writes": 26,
+            "cache_write_errors": 0, "not_cached": {},
+        }}
+        args = argparse.Namespace(cache_program=cache, max_fallbacks=32)
+        with patch("compile_cache.subprocess.check_output", return_value=json.dumps(stats)):
+            compile_cache.verify_producer(args)
+
+        stats["stats"]["compile_requests"] = 1314
+        stats["stats"]["requests_executed"] = 1314
+        stats["stats"]["cache_hits"]["counts"]["C/C++"] = 1287
+        stats["stats"]["cache_misses"]["counts"]["C/C++"] = 27
+        stats["stats"]["cache_errors"]["counts"]["C/C++"] = 27
+        stats["stats"]["compilations"] = 27
+        stats["stats"]["cache_writes"] = 27
+        with patch("compile_cache.subprocess.check_output", return_value=json.dumps(stats)), \
+                self.assertRaisesRegex(ValueError, "bounded cache-repair contract"):
+            compile_cache.verify_producer(args)
+
+    def test_producer_verification_rejects_cache_write_errors_within_the_budget(self):
+        cache = self.root / "sccache-write-error"
+        cache.write_text("cache")
+        stats = {"stats": {
+            "compile_requests": 100, "requests_executed": 100,
+            "cache_hits": {"counts": {"C/C++": 99}},
+            "cache_misses": {"counts": {"C/C++": 1}},
+            "cache_errors": {"counts": {"C/C++": 1}},
+            "compilations": 1, "cache_writes": 1,
+            "cache_write_errors": 1, "not_cached": {},
+        }}
+        with patch("compile_cache.subprocess.check_output", return_value=json.dumps(stats)), \
+                self.assertRaisesRegex(ValueError, "cache_write_errors"):
+            compile_cache.verify_producer(argparse.Namespace(
+                cache_program=cache, max_fallbacks=2))
 
     def test_merge_rejects_missing_shard(self):
         seed = self.cache_root("seed", {})

@@ -1627,12 +1627,24 @@ set_property(TEST og_test_parity_gates APPEND PROPERTY ENVIRONMENT
     "OPENGLAD_PARITY_CENSUS_PART=")
 og_add_sharded_group_tests(og_test_parity_a_m og_test_parity 4 "${OG_PARITY_A_TO_M}-${OG_PARITY_GATES}" OG_PARITY_A_M_TESTS)
 og_add_sharded_group_tests(og_test_parity og_test_parity 4 "-${OG_PARITY_GATES}:${OG_PARITY_A_TO_M}" OG_PARITY_OTHER_TESTS)
-# og_unit_modes_water: the full-water-band stationarity test (about 106 s
-# under ASan) alone, the other six tests together.
-og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
+# og_unit_modes_water: each long stationarity replay has its own bounded entry.
+# The full-water-band mutation takes about 106 s under ASan. On 2026-11-11 a
+# loaded coverage runner stretched the shipped-field replay to 40 s, then the
+# one-cell detector pushed their old shared entry into its 180 s ceiling.
+set(OG_MODES_WATER_BAND
     "ModesWaterRealCampaign.stationarity_detector_catches_a_full_water_band_on_each_real_field")
+set(OG_MODES_WATER_FIELDS
+    "ModesWaterRealCampaign.shipped_water_fields_have_no_near_stationary_unproductive_window")
+set(OG_MODES_WATER_DETECTOR
+    "ModesWaterRealCampaign.stationarity_detector_catches_one_water_cell_near_goal_outside_contact")
+og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
+    "${OG_MODES_WATER_BAND}")
+og_add_filtered_test(og_unit_modes_water_fields og_unit_modes_water
+    "${OG_MODES_WATER_FIELDS}")
+og_add_filtered_test(og_unit_modes_water_detector og_unit_modes_water
+    "${OG_MODES_WATER_DETECTOR}")
 og_add_filtered_test(og_unit_modes_water og_unit_modes_water
-    "-ModesWaterRealCampaign.stationarity_detector_catches_a_full_water_band_on_each_real_field")
+    "-${OG_MODES_WATER_BAND}:${OG_MODES_WATER_FIELDS}:${OG_MODES_WATER_DETECTOR}")
 # og_unit_data: Westlands' campaign suite (about 195 s under ASan) alone, the
 # other campaign suites together (about 150 s), everything else in a third.
 og_add_sharded_group_tests(og_unit_data_westlands og_unit_data 4 "WestlandsCampaignTest.*" OG_DATA_WESTLANDS_TESTS)
@@ -1662,9 +1674,12 @@ og_add_filtered_test(og_unit_basketball_a_f og_unit_basketball
     "${OG_BASKETBALL_A_TO_F}")
 og_add_filtered_test(og_unit_basketball og_unit_basketball
     "-${OG_BASKETBALL_A_TO_F}:ModesBasketballRealCampaign.*")
+set(OG_BASKETBALL_COURT_TESTS)
 foreach(court IN ITEMS 824 825 826 827 828 829)
-    og_add_filtered_test(og_unit_basketball_court_${court} og_unit_basketball
+    set(court_test og_unit_basketball_court_${court})
+    og_add_filtered_test(${court_test} og_unit_basketball
         "ModesBasketballRealCampaign.scen${court}_*")
+    list(APPEND OG_BASKETBALL_COURT_TESTS ${court_test})
 endforeach()
 # og_unit_westlands_fire: the var==0 byte-identity check (four Westlands
 # levels, 300 ticks each, run with the pack and without) took 150 s of the
@@ -1682,7 +1697,11 @@ endforeach()
 # of its slices get it, never the binary's own entry alone.
 set(OG_PARITY_TESTS ${OG_PARITY_OTHER_TESTS} ${OG_PARITY_A_M_TESTS} og_test_parity_gates
     ${OG_PARITY_CENSUS_TESTS})
-set(OG_MODES_WATER_TESTS og_unit_modes_water og_unit_modes_water_band)
+set(OG_MODES_WATER_TESTS
+    og_unit_modes_water
+    og_unit_modes_water_band
+    og_unit_modes_water_fields
+    og_unit_modes_water_detector)
 # The semantic test batches (docs/sim-semantics.md): one unit binary each,
 # registered in their own files so the batches never edit this one.
 foreach(og_sem_area walker ai world script families libs)
@@ -1824,6 +1843,15 @@ if(ENABLE_COVERAGE)
     # 8.9 s), so the binary is expected at about 115 s here (derived): 64 %
     # of the 180 s default, 27 % of 420.
     set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES PROCESSORS 4)
+    # These Lua-hooked deterministic simulations consume a full core budget
+    # each. Coverage shard 3 overlapped court 826, the water stationarity
+    # group and og_unit_sim on 2026-11-11; both 180-second entries timed out,
+    # although the exact pair takes 48 seconds on an otherwise idle 4-core
+    # coverage build. Reserve the runner without relaxing either hang ceiling.
+    set_tests_properties(
+        ${OG_MODES_WATER_TESTS} ${OG_BASKETBALL_COURT_TESTS}
+        PROPERTIES PROCESSORS 4
+    )
     # The coverage-instrumented network group includes live
     # WebSocket and relay transport tests. On GitHub's 4-core runners
     # it can exceed the coverage workflow timeout budget when CTest

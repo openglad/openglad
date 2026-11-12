@@ -218,15 +218,6 @@ def cache_root(root: Path, *, required: bool) -> Path | None:
     return None
 
 
-def file_digest(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def same_file(left: Path, right: Path) -> bool:
-    return left.stat().st_size == right.stat().st_size and file_digest(left) == file_digest(right)
-
-
 def immutable_cache_files(source: Path) -> list[Path]:
     # sccache result entries are addressed by their content key and immutable.
     # cache/preprocessor is a mutable source-to-result index: two independent
@@ -263,13 +254,18 @@ def copy_cache_entries(source: Path, destination: Path, *, baseline: Path | None
         if baseline is not None:
             old = baseline / relative
             if old.exists():
-                if not old.is_file() or not same_file(path, old):
-                    raise ValueError(f"sccache result changed at content key: {relative}")
+                if not old.is_file():
+                    raise ValueError(f"sccache content key is not a file: {relative}")
+                # Result paths are sccache's semantic content keys. The
+                # compressed entry also records serialization metadata, so
+                # independent writers can produce byte-different archives for
+                # the same valid result. Match a shared central cache: the
+                # first writer wins, and later workers retain that result.
                 continue
         target = destination / relative
         if target.exists():
-            if not target.is_file() or not same_file(path, target):
-                raise ValueError(f"conflicting sccache result entry: {relative}")
+            if not target.is_file():
+                raise ValueError(f"sccache content key is not a file: {relative}")
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
@@ -371,6 +367,9 @@ def statistic_total(stats: dict, name: str) -> int:
 
 def verify_producer(args: argparse.Namespace) -> None:
     cache_program = args.cache_program.resolve(strict=True)
+    max_fallbacks = getattr(args, "max_fallbacks", 0)
+    if max_fallbacks < 0:
+        raise ValueError("maximum cache repair fallbacks cannot be negative")
     stats = json.loads(subprocess.check_output(
         [str(cache_program), "--show-stats", "--stats-format", "json"], text=True))["stats"]
     requests = stats["compile_requests"]
@@ -379,14 +378,43 @@ def verify_producer(args: argparse.Namespace) -> None:
     misses = statistic_total(stats, "cache_misses")
     errors = statistic_total(stats, "cache_errors")
     compilations = stats["compilations"]
-    if requests < 1 or (requests, executed, hits, misses, errors, compilations) != (
-            requests, requests, requests, 0, 0, 0):
-        raise ValueError(
-            "authoritative producer did not reuse every warmed compilation: "
-            f"requests={requests}, executed={executed}, hits={hits}, misses={misses}, "
-            f"errors={errors}, compilations={compilations}"
+    writes = stats.get("cache_writes", compilations)
+    forbidden = {
+        name: stats.get(name, 0)
+        for name in (
+            "requests_unsupported_compiler", "requests_not_compile",
+            "requests_not_cacheable", "cache_timeouts", "cache_read_errors",
+            "non_cacheable_compilations", "forced_recaches", "cache_write_errors",
+            "compile_fails", "dist_errors",
         )
-    print(f"Authoritative producer reused all {requests} warmed compilations")
+        if stats.get(name, 0)
+    }
+    not_cached = sum(stats.get("not_cached", {}).values())
+    # sccache 0.15 can fail to extract a small number of otherwise valid
+    # transported local-cache archives when many identical test objects hit in
+    # parallel. The producer recompiles and replaces those entries. Bound that
+    # repair path both absolutely and proportionally; ordinary cold misses do
+    # not count as repair errors and are rejected by errors == misses.
+    within_repair_budget = (
+        misses <= max_fallbacks and misses * 100 <= requests * 2
+    )
+    if requests < 1 or not (
+            executed == requests and hits + misses == requests and
+            errors == misses == compilations == writes and
+            within_repair_budget and not forbidden and not_cached == 0):
+        raise ValueError(
+            "authoritative producer exceeded its bounded cache-repair contract: "
+            f"requests={requests}, executed={executed}, hits={hits}, misses={misses}, "
+            f"errors={errors}, compilations={compilations}, writes={writes}, "
+            f"max_fallbacks={max_fallbacks}, forbidden={forbidden}, "
+            f"not_cached={not_cached}, "
+            f"miss_breakdown={json.dumps(stats['cache_misses'], sort_keys=True)}, "
+            f"error_breakdown={json.dumps(stats['cache_errors'], sort_keys=True)}"
+        )
+    print(
+        f"Authoritative producer reused {hits}/{requests} warmed compilations "
+        f"and repaired {misses} transported entries"
+    )
 
 
 def main() -> int:
@@ -424,8 +452,9 @@ def main() -> int:
     merging.set_defaults(function=merge)
 
     verifying = commands.add_parser(
-        "verify-producer", help="require the authoritative build to compile no objects")
+        "verify-producer", help="bound authoritative cache repair compilations")
     verifying.add_argument("--cache-program", type=Path, required=True)
+    verifying.add_argument("--max-fallbacks", type=int, default=0)
     verifying.set_defaults(function=verify_producer)
 
     args = parser.parse_args()

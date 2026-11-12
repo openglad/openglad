@@ -196,7 +196,7 @@ let
             ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
           ${lib.optionalString compileCache ''
             python3 scripts/ci/compile_cache.py verify-producer \
-              --cache-program ${pkgs.sccache}/bin/sccache
+              --cache-program ${pkgs.sccache}/bin/sccache --max-fallbacks 32
           ''}
         fi
         ${lib.optionalString compileCache ''

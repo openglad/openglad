@@ -1141,7 +1141,13 @@ compile-command inventory, execute exactly their assigned compiler commands,
 through CMake's captured compiler launcher, and publish only immutable
 `sccache` result deltas. Mutable preprocessor indexes stay local to each
 process; the producer recreates those indexes while resolving the transported
-result objects. They deliberately do not request Ninja
+result objects. If independent workers serialize the same result key
+differently, merge retains the first result just as a shared central cache
+would. The authoritative build requires at least 98% of compiler requests to
+hit those transported objects, permits at most 32 sccache extraction-repair
+compilations, and rejects ordinary cold misses, uncacheable work, compiler
+failures, timeouts and cache-write errors. The repaired cache becomes the
+persistent seed for later revisions. Workers deliberately do not request Ninja
 object edges, whose CMake target-order dependencies would duplicate shared
 library compilation across workers. Nix's derivation-specific random seed and
 self-rpath are canonicalized so all workers and the producer generate the same
