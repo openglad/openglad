@@ -249,7 +249,10 @@ jobs:
           name: coverage-result-${{ matrix.shard }}
           path: build/results/
           if-no-files-found: error
-          compression-level: 0
+          # The gcovr JSON traces dominate this artifact and compress about
+          # 10:1; unlike the binary/cache bundles above, storing them raw
+          # makes the aggregate job download hundreds of unnecessary MiB.
+          compression-level: 6
   coverage:
     name: Coverage
     if: always()
