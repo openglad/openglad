@@ -335,6 +335,14 @@ struct ShotState {
   // drops its first press, then records the one retry that reached the edge.
   int dropped_door_retries = -1;
   bool dropped_door_press_consumed = false;
+  // The same proof for a BACK: the seats flow drops SCENARIO's, the press an
+  // ASan run lost for good (see kViewLevelFlowEscapeDoors).
+  int dropped_back_retries = -1;
+  bool dropped_back_press_consumed = false;
+  // TESTING-only sabotage, the shape of test_back_to_mainmenu.cpp's: the leg
+  // that gives up instead of pressing, leaving the flow on whatever screen
+  // that leg would have left. 0 runs the flow whole.
+  int sabotage_leg = 0;
   // #237 derivation pin, for the flows that drive a real door: the fades a
   // door added, or -1 when the injector never reached the read.
   int fades_added_by_nested_door = -1;
@@ -1702,57 +1710,124 @@ bool wait_for_interactable_at(const std::string &id, int x, int y,
 // SCENARIO (#218 — the surviving home of the seat->team overview). Internal
 // network names intentionally differ from public company names so the
 // screenshots catch any accidental transport-identity leak.
+// Every screen the SCENARIO / VIEW LEVEL flows below can be standing on when
+// a leg gives up, in precedence order (tests/test_escape_tail.h). The default
+// picker table knows Base Camp and the main menu only, so a flow that lost
+// its way one screen deeper found no door and its tail idled to the group's
+// ctest ceiling. UxShots.n_view_level_seats did exactly that under ASan on
+// 2026-11-12 (GitHub run 43325303245): SCENARIO's BACK evaporated, the flow
+// fell through to its tail on the SCENARIO submenu, and the log ended on
+// "[escape] tail still spinning ... live ids: back set_campaign set_level
+// view_scenario ..." for 420 s.
+//
+// A screen that can be told apart is named, so the tail sees it leave and
+// presses the next door at once. The VIEW LEVEL viewer cannot: on a one-page
+// level its only visible id is the "back" every screen here shares, so it is
+// the last, catch-all row, and the tail waits out its confirm window there.
+constexpr EscapeDoor kViewLevelFlowEscapeDoors[] = {
+    {"difficulty_back", "difficulty_back"},  // DIFFICULTY
+    {"hire_me", "back"},                     // HIRE, which publishes GO too
+    {"view_scenario", "back"},               // the SCENARIO submenu
+    {"go", "back"},                          // Base Camp
+    {"continue_game", "continue_game"},      // the main menu: forward is out
+    {"back", "back"},                        // the VIEW LEVEL viewer
+};
+
+// The two screens both flows walk through, as click_until_edge edges.
+bool scenario_submenu_up(int wait_ms) {
+  return wait_for_interactable("view_scenario", wait_ms);
+}
+
+bool base_camp_up(int wait_ms) { return wait_for_team_menu(wait_ms); }
+
+// The seats flow's legs, numbered for its give-ups and for the sabotage the
+// regression below plants (ShotState::sabotage_leg).
+enum SeatsFlowLeg {
+  kSeatsLegBaseCamp = 1,
+  kSeatsLegOpenScenario,
+  kSeatsLegOpenViewer,
+  kSeatsLegViewerBack,
+  kSeatsLegScenarioBack,
+  kSeatsLegOpenDifficulty,
+  kSeatsLegDifficultyBack,
+};
+
 int many_seats_view_level_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   const auto escape = [state](int leg, const char *why) {
-    return escape_to_the_main_thread(state->menu_returned, leg, why);
+    return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                     kViewLevelFlowEscapeDoors);
   };
-  if (wait_for_team_menu()) {
-    SDL_Delay(1500);
-    state->captures += capture_frame("basecamp_net_seats");
-    interact("scenario");
-    if (wait_for_interactable("view_scenario", 5000)) {
-      SDL_Delay(300);
-      interact("view_scenario");
-      if (wait_for_interactable_at("back", 10, 170, 10000)) {
-        SDL_Delay(1000);
-        state->captures += capture_frame("view_level_seats");
-        SDL_Delay(200);
-        // Viewer back lands on the SCENARIO submenu; its back returns to
-        // Base Camp, whose back leaves the screen.
-        interact("back");
-      }
-      if (wait_for_interactable("view_scenario", 5000)) {
-        SDL_Delay(300);
-        interact("back");
-      }
-      // The networked DIFFICULTY screen (#218): all six host rows plus the
-      // re-homed CTRL row on the appended y=173 band slot.
-      if (wait_for_team_menu(5000)) {
-        SDL_Delay(250);
-        g_click_ladder_click_retries = 0;
-        g_click_ladder_click_drops = 1;
-        const bool difficulty_open = click_until_edge(
-            "difficulty",
-            [](int wait_ms) {
-              return wait_for_interactable("cross_control", wait_ms);
-            },
-            nullptr, 3, 1500);
-        state->dropped_door_retries = g_click_ladder_click_retries;
-        state->dropped_door_press_consumed =
-            g_click_ladder_click_drops == 0;
-        g_click_ladder_click_retries = 0;
-        g_click_ladder_click_drops = 0;
-        if (difficulty_open) {
-          SDL_Delay(750);
-          state->captures += capture_frame("difficulty_networked");
-          SDL_Delay(200);
-          interact("difficulty_back");
-        }
-      }
-    }
-  }
+  const auto sabotaged = [state](int leg) { return state->sabotage_leg == leg; };
+  // A leg gives up because its press never reached its screen, or because
+  // the regression told it to before it pressed.
+  const auto give_up = [&](int leg, const char *never) {
+    return escape(leg, sabotaged(leg) ? "sabotaged before its press" : never);
+  };
+  const auto viewer_up = [](int wait_ms) {
+    return wait_for_interactable_at("back", 10, 170, wait_ms);
+  };
+  if (!wait_for_team_menu())
+    return give_up(kSeatsLegBaseCamp, "Base Camp never came up");
+  SDL_Delay(1500);
+  state->captures += capture_frame("basecamp_net_seats");
+
+  // Every door below is pressed through the acknowledged ladder and proven by
+  // the screen it opens. They used to be one interact() each behind a flat
+  // delay, and two of them are the SAME id a screen apart (the viewer's BACK,
+  // then SCENARIO's): a second press sent before the first one's release was
+  // consumed makes no up->down edge and simply evaporates.
+  if (!click_until_edge("scenario", scenario_submenu_up, nullptr, 3, 5000))
+    return give_up(kSeatsLegOpenScenario, "SCENARIO never opened");
+  if (!click_until_edge("view_scenario", viewer_up, nullptr, 3, 10000))
+    return give_up(kSeatsLegOpenViewer, "VIEW LEVEL never opened");
+  SDL_Delay(1000);
+  state->captures += capture_frame("view_level_seats");
+
+  // Viewer back lands on the SCENARIO submenu; its back returns to Base
+  // Camp, whose back leaves the screen.
+  if (sabotaged(kSeatsLegViewerBack) ||
+      !click_until_edge("back", scenario_submenu_up, nullptr, 3, 5000))
+    return give_up(kSeatsLegViewerBack,
+                   "the viewer's BACK never returned to SCENARIO");
+  if (sabotaged(kSeatsLegScenarioBack))
+    return give_up(kSeatsLegScenarioBack, "");
+  // The press that run lost. Drop it on purpose: the ladder must send it
+  // again, exactly once.
+  g_click_ladder_click_retries = 0;
+  g_click_ladder_click_drops = 1;
+  const bool camp_reached =
+      click_until_edge("back", base_camp_up, nullptr, 3, 1500);
+  state->dropped_back_retries = g_click_ladder_click_retries;
+  state->dropped_back_press_consumed = g_click_ladder_click_drops == 0;
+  g_click_ladder_click_retries = 0;
+  g_click_ladder_click_drops = 0;
+  if (!camp_reached)
+    return give_up(kSeatsLegScenarioBack,
+                   "SCENARIO's BACK never returned to Base Camp");
+
+  // The networked DIFFICULTY screen (#218): all six host rows plus the
+  // re-homed CTRL row on the appended y=173 band slot.
+  SDL_Delay(250);
+  g_click_ladder_click_retries = 0;
+  g_click_ladder_click_drops = 1;
+  const bool difficulty_open = click_until_edge(
+      "difficulty",
+      [](int wait_ms) { return wait_for_interactable("cross_control", wait_ms); },
+      nullptr, 3, 1500);
+  state->dropped_door_retries = g_click_ladder_click_retries;
+  state->dropped_door_press_consumed = g_click_ladder_click_drops == 0;
+  g_click_ladder_click_retries = 0;
+  g_click_ladder_click_drops = 0;
+  if (!difficulty_open)
+    return give_up(kSeatsLegOpenDifficulty, "DIFFICULTY never opened");
+  SDL_Delay(750);
+  state->captures += capture_frame("difficulty_networked");
+  if (sabotaged(kSeatsLegDifficultyBack) ||
+      !click_until_edge("difficulty_back", base_camp_up, nullptr, 3, 5000))
+    return give_up(kSeatsLegDifficultyBack,
+                   "DIFFICULTY's BACK never returned to Base Camp");
   state->finished = true;
   return escape(0, "");
 }
@@ -2141,7 +2216,8 @@ int view_level_staged_injector(void *data) {
   og::runtime::ensure_thread_session();
   ShotState *state = static_cast<ShotState *>(data);
   const auto escape = [state](int leg, const char *why) {
-    return escape_to_the_main_thread(state->menu_returned, leg, why);
+    return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                     kViewLevelFlowEscapeDoors);
   };
   wait_for_interactable("continue_game", 5000);
   SDL_Delay(1500);
@@ -2221,13 +2297,12 @@ int view_level_staged_injector(void *data) {
                   "phase; retrying (attempt %d)\n",
                   attempt + 1);
         }
-        SDL_Delay(200);
-        interact("back");
+        // The viewer's BACK, then SCENARIO's: the same id a screen apart,
+        // each proven by the screen it lands on (see the seats flow).
+        (void)click_until_edge("back", scenario_submenu_up, nullptr, 3, 5000);
       }
-      if (wait_for_interactable("progress", 5000)) {
-        SDL_Delay(300);
-        interact("back");
-      }
+      if (wait_for_interactable("progress", 5000))
+        (void)click_until_edge("back", base_camp_up, nullptr, 3, 5000);
     }
     // The reported symptom rides the SAME menu session: with the preview
     // camera left on viewob[0], the HIRE portrait walker draws off its box
@@ -2360,7 +2435,9 @@ TEST(UxShots, n_view_level_staged) {
   (void)mount_campaign_package_with_error("gladiator");
 }
 
-TEST(UxShots, n_view_level_seats) {
+// One run of the seats flow: seven seats, two of them local, the injector
+// above against create_team_menu. Returns what the injector thread returned.
+int run_seats_flow(ShotState &state, int escape_drops) {
   trace_clear();
   // The viewer's entry guard needs the save's campaign mounted; a shuffled
   // neighbor may have left another package up.
@@ -2381,17 +2458,23 @@ TEST(UxShots, n_view_level_seats) {
   };
   client.local_indices = {0, 1};
   ActiveLobbyGuard guard(&client);
-  ShotState state;
-  g_escape_tail_drops.store(1);
+  g_escape_tail_drops.store(escape_drops);
   SDL_Thread *thread =
       SDL_CreateThread(many_seats_view_level_injector, "ux_seats", &state);
-  ASSERT_TRUE(thread != nullptr);
+  if (thread == nullptr)
+    return -1;
   picker_load_menu_backdrops();  // see run_basecamp_net_shot
   create_team_menu(0);
   state.menu_returned.store(true, std::memory_order_release);
   int thread_result = -1;
   SDL_WaitThread(thread, &thread_result);
   escape_tail_join_hygiene();
+  return thread_result;
+}
+
+TEST(UxShots, n_view_level_seats) {
+  ShotState state;
+  const int thread_result = run_seats_flow(state, 1);
   const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
   cleanup_picker_state();
   EXPECT_EQ(0, thread_result)
@@ -2399,6 +2482,10 @@ TEST(UxShots, n_view_level_seats) {
   EXPECT_EQ(0, remaining_escape_drops)
       << "the seats flow's escape tail must retry its planted drop";
   ASSERT_TRUE(state.finished);
+  EXPECT_TRUE(state.dropped_back_press_consumed)
+      << "the injected SCENARIO BACK press must be consumed by the retry";
+  EXPECT_EQ(1, state.dropped_back_retries)
+      << "the dropped SCENARIO BACK press must cost exactly one retry";
   EXPECT_TRUE(state.dropped_door_press_consumed)
       << "the injected DIFFICULTY press must be consumed by the retry";
   EXPECT_EQ(1, state.dropped_door_retries)
@@ -2406,6 +2493,40 @@ TEST(UxShots, n_view_level_seats) {
   // The two-card rail over a seven-seat lobby, the VIEW LEVEL seat block,
   // and the networked DIFFICULTY screen with the re-homed CTRL row (#218).
   ASSERT_EQ(3, state.captures);
+}
+
+// The regression for the 420 s wedge described at kViewLevelFlowEscapeDoors:
+// wherever the seats flow gives up, its tail must still walk the MAIN thread
+// out of create_team_menu, and the give-up must come back as its leg number.
+// Each case sabotages one leg, which leaves the flow standing on the screen
+// that leg would have left.
+//
+// Bind the flow to the default kPickerEscapeDoors again (the shape this file
+// carried until then) and every case here hangs until the CTest ceiling.
+TEST(UxShots, n_view_level_seats_flow_that_gives_up_frees_the_main_thread) {
+  struct Case {
+    const char *stranded_on;
+    int leg;
+    int captures;  // the stills taken before the sabotaged leg
+  };
+  static constexpr Case kCases[] = {
+      {"the VIEW LEVEL viewer", kSeatsLegViewerBack, 2},
+      {"the SCENARIO submenu", kSeatsLegScenarioBack, 2},
+      {"the DIFFICULTY screen", kSeatsLegDifficultyBack, 3},
+  };
+  for (const Case &c : kCases) {
+    SCOPED_TRACE(std::string("sabotaged on ") + c.stranded_on);
+    ShotState state;
+    state.sabotage_leg = c.leg;
+    const int thread_result = run_seats_flow(state, 0);
+    cleanup_picker_state();
+    EXPECT_EQ(c.leg, thread_result)
+        << "the sabotaged leg must be reported by number, not swallowed";
+    EXPECT_FALSE(state.finished)
+        << "a flow that gave up never completed";
+    EXPECT_EQ(c.captures, state.captures)
+        << "the flow gave up somewhere other than the sabotaged leg";
+  }
 }
 
 // A dimmed row is still a whole card. GREY, the disabled face shade, lands on
