@@ -8952,8 +8952,9 @@ inline constexpr Mutation kMut_mage_bot_freeze_engaged_fixes_scen99 = {
 // reach (they have three; FREEZE TIME waits for allies at blows, and this
 // mage has none) and a 5 is HEARTBURST, whose
 // explosions open the run at tick 0. With the setting on all three towers
-// fall: the explosions leave each at 47 hp and the mage's fireballs finish
-// them by tick 33 (with fix AT alone
+// fall: each explosion strikes its tower for 78.44 + rng(9), the three rolls
+// are 5, so each is left at 47 hp, and the mage's fireballs finish them by
+// tick 33 (with fix AT alone
 // the third tower, at (80, 120), was left at 48 hp; before fix AT all three
 // fell and the mage left its marker where it stood (120, 120)).
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
@@ -8985,7 +8986,7 @@ inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500,
         "consequence: twelve of the towers' thirteen arrows strike the mage (3.88 + rng(2) on the tower's 5: 56 in all) before the last tower falls, and it regenerates 1 once its 50-tick wait after the last has run: 35 hp"),
     pred::EventKindExactly(/*play_sound*/1, 22,
-        "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST: its three explosions at tick 0 ((600 - 100) / 2 over three foes, 83 a tower), the mage's three fireballs (13, 28, 35), the towers' thirteen arrows (2, 5 and 6 before each falls, one at most every 5 ticks) and their three death cries (16, 31, 33)"),
+        "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST: its three explosions at tick 0 (each of damage 83, (600 - 100) / 2 shared over three foes, strikes for 78.44 + rng(9), and the three rolls are 5: 83 a tower), the mage's three fireballs (13, 28, 35), the towers' thirteen arrows (2, 5 and 6 before each falls, one at most every 5 ticks) and their three death cries (16, 31, 33)"),
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
     "src/gameplay/living.cpp", 576,
