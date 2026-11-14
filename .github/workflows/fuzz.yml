@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  # The workers look up this run's bundle artifact to fetch it by ranges.
+  actions: read
 
 # Large Nix closures otherwise fan out enough cache downloads for hosted-runner
 # TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
@@ -22,6 +24,12 @@ defaults:
   run:
     shell: nix develop .#ci-fuzz --command bash -e {0}
 
+# A newer push to a pull request supersedes the run in progress. Nightly and
+# manual runs are never cancelled.
+concurrency:
+  group: fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: Build production fuzz targets once
@@ -34,30 +42,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - name: Key immutable compiled output by exact derivation
-        id: nar-key
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-fuzz.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          echo "key=native-nar-v1-${{ runner.os }}-fuzz-${drv_hash}" >> "$GITHUB_OUTPUT"
-      - name: Restore exact compiled NAR closure
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
-      - name: Import exact cached output before realizing current source
-        if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
       - name: Build and export instrumented game and both harnesses
         run: |
           which cmake c++
           realization_started="$(date +%s)"
           nix build .#ci-fuzz --out-link build/bundle-fuzz --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix fuzz realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-fuzz --cache build/nix-cache
+          echo "Nix fuzz realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-fuzz --cache build/nix-cache
           python3 scripts/ci/sanitizer_diagnostics.py --lane fuzz --binary build/bundle-fuzz/build/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
           python3 -m unittest discover -s scripts/fuzz -p 'test_*.py' -v
           python3 scripts/ci/nix_bundle_test.py
@@ -67,12 +59,6 @@ jobs:
           path: build/nix-cache/
           compression-level: 0
           if-no-files-found: error
-      - name: Cache successful producer output for exact-derivation reruns
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
   fuzz:
     name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'short' }})
     needs: build
@@ -89,10 +75,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-fuzz --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: fuzz-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - name: Restore compiled artifacts without a store copy
         run: |
           python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"

@@ -30,6 +30,12 @@ jobs:
     name: Build WASM once
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    # Every step of this job runs in the shell the build itself needs. The
+    # workflow default is a second 1.7 GiB closure, fetched before the first
+    # step could run a 0.2 s unit test.
+    defaults:
+      run:
+        shell: nix develop --command bash -e {0}
     outputs:
       version: ${{ steps.stamp.outputs.version }}
       hash: ${{ steps.stamp.outputs.hash }}
@@ -45,7 +51,6 @@ jobs:
         run: python3 -m unittest discover -s scripts/web -p 'test_*.py' -v
 
       - name: Build locked-flake WASM configuration once
-        shell: nix develop --command bash -e {0}
         run: |
           which cmake c++ emcc
           scripts/build_web.sh
@@ -224,10 +229,17 @@ jobs:
           test "$PRODUCER_RESULT" = success
           test "$WORKER_RESULT" = success
 
+  # One job per device orientation: the two projects are independent and ran
+  # back to back in one worker, 186 s and 188 s of an 8m25s job (2026-11-13),
+  # the last check of the whole pull request to finish.
   webkit-touch:
-    name: WebKit iPhone touch (advisory)
+    name: WebKit iPhone touch, ${{ matrix.project }} (advisory)
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [webkit-iphone, webkit-iphone-portrait]
     # `playwright install --with-deps webkit` downloads a large Ubuntu host
     # library closure before the browser itself. A slow Azure mirror can take
     # more than 15 minutes while still making steady progress, and the true
@@ -266,20 +278,23 @@ jobs:
         # Playwright installs WebKit's Ubuntu libraries above. Resolve the
         # host ldd first so its launch-time validation sees those libraries;
         # Nix's ldd intentionally searches only the Nix store.
-        run: env PATH="/usr/bin:/bin:$PATH" npx playwright test --workers=1 --retries=0 --project=webkit-iphone --project=webkit-iphone-portrait
+        run: env PATH="/usr/bin:/bin:$PATH" npx playwright test --workers=1 --retries=0 --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: webkit-touch-results
+          name: webkit-touch-results-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/
           if-no-files-found: ignore
           retention-days: 14
 
+  # The WebKit touch job is advisory (continue-on-error): its result never
+  # decided a deploy, only delayed one by the 3m47s it runs past the browser
+  # matrix (2026-11-13). It is not a dependency.
   deploy:
     name: Deploy tested WASM artifact
-    needs: [build, browser, browser-completeness, webkit-touch]
+    needs: [build, browser, browser-completeness]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

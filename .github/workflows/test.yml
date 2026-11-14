@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  # The test workers look up this run's bundle artifact to fetch it by ranges.
+  actions: read
 
 # Large Nix closures otherwise fan out enough cache downloads for hosted-runner
 # TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
@@ -17,49 +19,59 @@ env:
     download-attempts = 10
     max-substitution-jobs = 2
 
+# The sanitizer jobs build their lane with Clang and run its tests in a shell
+# that carries the lane's tools and libraries plus LLVM and nothing else. The
+# general native shell is twice the download (1.7 GiB against 0.85 GiB) and
+# builds two packages no bundle consumer links, in every job.
 defaults:
   run:
-    shell: nix develop .#ci-native --command bash -e {0}
+    shell: nix develop .#ci-sanitizer --command bash -e {0}
+
+# A newer push to a pull request supersedes the run in progress; a run on
+# master is never cancelled (see coverage.yml).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  probe-asan-cache:
-    name: Probe exact ASan build cache
+  plan-asan:
+    name: Decide the ASan compile fan-out
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
-      exact-hit: ${{ steps.nar-cache.outputs.cache-hit }}
-      nar-key: ${{ steps.keys.outputs.nar-key }}
-      sccache-key: ${{ steps.keys.outputs.sccache-key }}
-      sccache-prefix: ${{ steps.keys.outputs.sccache-prefix }}
+      warm: ${{ steps.decide.outputs.warm }}
     steps:
+      # Commits and trees only: the decision compares two trees by name.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
-      - uses: ./.github/actions/install-nix # v31
-      - name: Derive exact-output and cross-commit compiler-cache keys
-        id: keys
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-asan.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          sccache_prefix="native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-"
-          echo "nar-key=native-nar-v1-${{ runner.os }}-asan-${drv_hash}" >> "$GITHUB_OUTPUT"
-          echo "sccache-prefix=${sccache_prefix}" >> "$GITHUB_OUTPUT"
-          echo "sccache-key=${sccache_prefix}${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
-      - name: Look up the exact compiled NAR without downloading it
-        id: nar-cache
+      - name: Find the newest compatible compiler cache without downloading it
+        id: seed
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: build/nix-cache
-          key: ${{ steps.keys.outputs.nar-key }}
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-
           lookup-only: true
+      # Eight warmers that find every object already cached cost 2m47s before
+      # the producer starts (2026-11-13). They run only when this push can
+      # have changed more objects than the producer compiles in that time.
+      - name: Compare this commit with the one the cache was saved for
+        id: decide
+        shell: bash
+        env:
+          PREFIX: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-
+          MATCHED_KEY: ${{ steps.seed.outputs.cache-matched-key }}
+        run: python3 scripts/ci/compile_fanout.py --prefix "$PREFIX" --matched-key "$MATCHED_KEY"
 
   compile-asan:
     name: Warm ASan compile cache (${{ matrix.shard }}/8)
-    needs: probe-asan-cache
-    if: needs['probe-asan-cache'].outputs.exact-hit != 'true'
+    needs: plan-asan
+    if: needs['plan-asan'].outputs.warm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -73,13 +85,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the compiler cache restores
+        shell: bash
+        run: nohup nix develop .#ci-sanitizer --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      # actions/cache derives a cache's version from its path as well as its
+      # key, so the seed is restored into and saved from this one directory.
       - name: Restore the newest compatible cross-commit compiler cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/sccache-seed
-          key: ${{ needs['probe-asan-cache'].outputs.sccache-key }}
+          key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
           restore-keys: |
-            ${{ needs['probe-asan-cache'].outputs.sccache-prefix }}
+            native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-
       - name: Compile one complete-plan object shard
         run: |
           mkdir -p build/sccache-seed/cache
@@ -98,13 +115,10 @@ jobs:
 
   build-asan:
     name: Build asan once
-    needs: [probe-asan-cache, compile-asan]
-    if: ${{ always() && needs['probe-asan-cache'].result == 'success' && (needs['probe-asan-cache'].outputs.exact-hit == 'true' || needs['compile-asan'].result == 'success') }}
+    needs: [plan-asan, compile-asan]
+    if: ${{ !cancelled() && needs['plan-asan'].result == 'success' && (needs['plan-asan'].outputs.warm != 'true' || needs['compile-asan'].result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        shell: nix develop .#ci-native --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -112,32 +126,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - name: Restore exact compiled NAR closure
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ needs['probe-asan-cache'].outputs.nar-key }}
-      - name: Import and link exact cached output
-        if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache --out-link build/bundle-asan
+      - name: Fetch the lane shell while the compile cache downloads
+        shell: bash
+        run: nohup nix develop .#ci-sanitizer --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - name: Download every compile-cache shard
-        if: steps.nar-cache.outputs.cache-hit != 'true'
+        if: needs['plan-asan'].outputs.warm == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: asan-compile-cache-*
           path: build/sccache-shards
       - name: Restore the cross-commit compiler-cache seed
-        if: steps.nar-cache.outputs.cache-hit != 'true'
         id: sccache-seed
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/sccache-seed
-          key: ${{ needs['probe-asan-cache'].outputs.sccache-key }}
+          key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
           restore-keys: |
-            ${{ needs['probe-asan-cache'].outputs.sccache-prefix }}
+            native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-
       - name: Verify and merge the complete compile cache
-        if: steps.nar-cache.outputs.cache-hit != 'true'
+        if: needs['plan-asan'].outputs.warm == 'true'
         run: |
           mkdir -p build/sccache-seed/cache
           shard_args=()
@@ -149,20 +156,28 @@ jobs:
             --output build/sccache-merged --lane asan \
             --revision "$(git rev-parse HEAD)" --shards 8
       - name: Build and export immutable configuration
+        env:
+          WARMED: ${{ needs['plan-asan'].outputs.warm }}
         run: |
           which cmake c++
           realization_started="$(date +%s)"
-          if [ "${{ steps.nar-cache.outputs.cache-hit }}" != true ]; then
-            python3 scripts/ci/nix_bundle.py build --lane asan --repo "$PWD" \
-              --sccache-seed build/sccache-merged --cores 4 \
-              --out-link build/bundle-asan
-            python3 scripts/ci/nix_bundle.py build --lane asan --repo "$PWD" \
-              --sccache-seed build/sccache-merged --cores 4 --cache-only \
-              --out-link build/sccache-output
+          if [ "$WARMED" = true ]; then
+            producer=(--sccache-seed build/sccache-merged)
+          else
+            # No fan-out ran: the producer compiles what the seed lacks.
+            mkdir -p build/sccache-seed/cache
+            producer=(--sccache-seed build/sccache-seed --unwarmed)
           fi
+          python3 scripts/ci/nix_bundle.py build --lane asan --repo "$PWD" \
+            "${producer[@]}" --cores 4 --out-link build/bundle-asan
+          python3 scripts/ci/nix_bundle.py build --lane asan --repo "$PWD" \
+            "${producer[@]}" --cores 4 --cache-only --out-link build/sccache-output
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix asan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-asan --cache build/nix-cache
+          echo "Nix asan realization: ${realization_seconds} seconds; compile fan-out: $WARMED" >> "$GITHUB_STEP_SUMMARY"
+          # The eight workers enter the same shell this job runs in, so the
+          # toolchain half of the closure is already in their stores; ship
+          # the product and the paths this build made.
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-asan --cache build/nix-cache
           python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-asan --repo "$PWD"
           python3 scripts/ci/sanitizer_diagnostics.py --lane asan --binary build/ci-asan/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
       - name: Validate real checkout and plan complete inventory
@@ -182,37 +197,30 @@ jobs:
           name: asan-plan
           path: build/plan/
           if-no-files-found: error
-      - name: Cache successful producer output for exact-derivation reruns
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ needs['probe-asan-cache'].outputs.nar-key }}
       - name: Stage the updated compiler cache under the restored path
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
         run: |
-          # actions/cache derives a cache's version from its path as well as
-          # its key. Saved from build/sccache-save, the seed was never found
-          # by the restores above (build/sccache-seed) and every run compiled
-          # cold. The restored seed is spent, so replace it in place.
+          # The restored seed is spent: this build's cache was made from it.
+          # Replace it in place, because the path is part of the cache
+          # version (see the restore step in compile-asan).
           if [ -d build/sccache-seed ]; then chmod -R u+w build/sccache-seed; fi
           rm -rf build/sccache-seed
           mkdir -p build/sccache-seed
           cp -a --reflink=auto build/sccache-output/. build/sccache-seed/
       - name: Save the updated cross-commit compiler cache
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true' && steps.sccache-seed.outputs.cache-hit != 'true'
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: build/sccache-seed
-          key: ${{ needs['probe-asan-cache'].outputs.sccache-key }}
+          key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
   test-asan:
     name: asan (${{ matrix.shard }}/8)
     needs: build-asan
+    # Spelled out because the default is success() over EVERY ancestor: with
+    # the fan-out skipped, the skipped warmers would skip these workers too.
+    if: ${{ !cancelled() && needs['build-asan'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: nix develop .#ci-native --command bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -224,10 +232,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      # The shell closure and the compiled bundle are both network-bound and
+      # independent: substitute the shell behind the artifact download.
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-sanitizer --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: asan-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           name: asan-plan
@@ -251,13 +265,20 @@ jobs:
     needs: [build-asan, test-asan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Plans and results in, a verdict out: nothing here compiles or runs a
+    # test, so the shell is an interpreter and the checkout is one commit.
+    defaults:
+      run:
+        shell: nix develop .#ci-verify --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the verification shell while the results download
+        shell: bash
+        run: nohup nix develop .#ci-verify --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - uses: actions/download-artifact@v8
         with:
           name: asan-plan
@@ -281,9 +302,6 @@ jobs:
     name: Build tsan once
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        shell: nix develop .#ci-tsan --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -291,30 +309,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - name: Key immutable compiled output by exact derivation
-        id: nar-key
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-tsan.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          echo "key=native-nar-v1-${{ runner.os }}-tsan-${drv_hash}" >> "$GITHUB_OUTPUT"
-      - name: Restore exact compiled NAR closure
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
-      - name: Import exact cached output before realizing current source
-        if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
       - name: Build and export immutable configuration
         run: |
           which cmake c++
           realization_started="$(date +%s)"
           nix build .#ci-tsan --out-link build/bundle-tsan --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix tsan realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-tsan --cache build/nix-cache
+          echo "Nix tsan realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-tsan --cache build/nix-cache
           python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-tsan --repo "$PWD"
           python3 scripts/ci/sanitizer_diagnostics.py --lane tsan --binary build/ci-tsan/og_sanitizer_diagnostics --out build/sanitizer-diagnostics
       - name: Validate real checkout and plan complete inventory
@@ -334,20 +336,11 @@ jobs:
           name: tsan-plan
           path: build/plan/
           if-no-files-found: error
-      - name: Cache successful producer output for exact-derivation reruns
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
   test-tsan:
     name: tsan (${{ matrix.shard }}/1)
     needs: build-tsan
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: nix develop .#ci-tsan --command bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -359,10 +352,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-sanitizer --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: tsan-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           name: tsan-plan
@@ -386,13 +383,20 @@ jobs:
     needs: [build-tsan, test-tsan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Plans and results in, a verdict out: nothing here compiles or runs a
+    # test, so the shell is an interpreter and the checkout is one commit.
+    defaults:
+      run:
+        shell: nix develop .#ci-verify --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the verification shell while the results download
+        shell: bash
+        run: nohup nix develop .#ci-verify --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - uses: actions/download-artifact@v8
         with:
           name: tsan-plan
@@ -416,24 +420,24 @@ jobs:
     name: Relay typecheck and tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Node and npm come from setup-node; nothing here uses the flake.
+    defaults:
+      run:
+        shell: bash
+        working-directory: relay
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/install-nix # v31
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: relay/package-lock.json
-      - working-directory: relay
-        run: npm ci
-      - working-directory: relay
-        run: npm run typecheck
-      - working-directory: relay
-        run: npm test
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
 
   headless-server:
     name: Headless Server SDL-Off Build

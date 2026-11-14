@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  # The workers look up this run's bundle artifact to fetch it by ranges.
+  actions: read
 
 # Large Nix closures otherwise fan out enough cache downloads for hosted-runner
 # TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
@@ -20,9 +22,18 @@ env:
     download-attempts = 10
     max-substitution-jobs = 2
 
+# The canary recompiles the restored tree with the lane's GCC and the display
+# lane drives real X screens; the shell carries those and nothing else (see
+# nix/native-ci.nix, canaryShell).
 defaults:
   run:
-    shell: nix develop .#ci-native --command bash -e {0}
+    shell: nix develop .#ci-canary --command bash -e {0}
+
+# A newer push to a pull request supersedes the run in progress. Master,
+# nightly and manual runs are never cancelled.
+concurrency:
+  group: canary-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-canary:
@@ -36,30 +47,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - name: Key immutable compiled output by exact derivation
-        id: nar-key
-        run: |
-          drv="$(nix eval --raw .#packages.x86_64-linux.ci-canary.drvPath)"
-          drv_basename="${drv##*/}"
-          drv_hash="${drv_basename%%-*}"
-          echo "key=native-nar-v1-${{ runner.os }}-canary-${drv_hash}" >> "$GITHUB_OUTPUT"
-      - name: Restore exact compiled NAR closure
-        id: nar-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
-      - name: Import exact cached output before realizing current source
-        if: steps.nar-cache.outputs.cache-hit == 'true'
-        run: python3 scripts/ci/nix_bundle.py import --cache build/nix-cache
       - name: Build and export incremental mutation configuration
         run: |
           which cmake c++
           realization_started="$(date +%s)"
           nix build .#ci-canary --out-link build/bundle-canary --cores 4
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix canary realization: ${realization_seconds} seconds; exact output cache hit: ${{ steps.nar-cache.outputs.cache-hit || 'false' }}" >> "$GITHUB_STEP_SUMMARY"
-          python3 scripts/ci/nix_bundle.py export --bundle build/bundle-canary --cache build/nix-cache
+          echo "Nix canary realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-canary --cache build/nix-cache
           python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-canary --repo "$PWD"
           bash scripts/check_parity_companion_refs.sh
           python3 scripts/ci/nix_bundle_test.py
@@ -91,12 +86,6 @@ jobs:
           name: canary-plan
           path: build/plan/
           if-no-files-found: error
-      - name: Cache successful producer output for exact-derivation reruns
-        if: success() && steps.nar-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: build/nix-cache
-          key: ${{ steps.nar-key.outputs.key }}
   canary:
     name: Mutation canary (${{ matrix.shard }}/3)
     needs: build-canary
@@ -113,10 +102,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-canary --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: canary-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           name: canary-plan
@@ -154,13 +147,19 @@ jobs:
     needs: [build-canary, canary]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Plans and reports in, a verdict out: an interpreter and one commit.
+    defaults:
+      run:
+        shell: nix develop .#ci-verify --command bash -e {0}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the verification shell while the results download
+        shell: bash
+        run: nohup nix develop .#ci-verify --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - uses: actions/download-artifact@v8
         with:
           name: canary-plan
@@ -193,10 +192,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-canary --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: canary-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - name: Restore compiled normal configuration without rebuilding
         run: |
           python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
@@ -215,10 +218,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/install-nix # v31
-      - uses: actions/download-artifact@v8
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-canary --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: canary-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - name: Restore compiled normal configuration without rebuilding
         run: |
           python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"

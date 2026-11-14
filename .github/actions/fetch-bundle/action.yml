@@ -1,0 +1,68 @@
+name: Fetch a compiled bundle
+description: >-
+  Download one artifact of this run over parallel byte ranges, require the
+  digest GitHub recorded for it, and fall back to the ordinary download.
+
+# One stream of a bundle artifact ran from 10 to 67 MiB/s within one run (11
+# to 77 s for 0.74 GiB, GitHub run 43315619595), and the slowest worker sets
+# its stage. The bundles are stored uncompressed, so their zip serves byte
+# ranges: fetch eight at once. The caller's job needs `actions: read`.
+
+inputs:
+  name:
+    description: Artifact name within the current workflow run.
+    required: true
+  path:
+    description: Directory the artifact's files are written to.
+    required: true
+  token:
+    description: A token that may read this run's artifacts.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download ${{ inputs.name }} over parallel ranges
+      id: ranged
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        ARTIFACT: ${{ inputs.name }}
+        DESTINATION: ${{ inputs.path }}
+      run: |
+        ranged() {
+          local id digest url archive="$RUNNER_TEMP/$ARTIFACT.zip"
+          read -r id digest < <(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=$ARTIFACT" \
+            --jq '.artifacts | sort_by(.created_at) | last | "\(.id) \(.digest)"') || return 1
+          [[ "$id" =~ ^[0-9]+$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+          url="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip")" || return 1
+          [[ -n "$url" ]] || return 1
+          rm -f "$archive"
+          aria2c --quiet --max-connection-per-server=8 --split=8 --min-split-size=32M \
+            --file-allocation=none --dir "$RUNNER_TEMP" --out "$ARTIFACT.zip" "$url" || return 1
+          echo "${digest#sha256:}  $archive" | sha256sum --check --quiet - || return 1
+          mkdir -p "$DESTINATION"
+          unzip -q "$archive" -d "$DESTINATION" || return 1
+          rm "$archive"
+        }
+        if [[ -e "$DESTINATION" ]]; then
+          echo "fetch-bundle: $DESTINATION already exists" >&2
+          exit 1
+        fi
+        if ranged; then
+          echo "complete=true" >> "$GITHUB_OUTPUT"
+        else
+          # Never leave a partial tree for the fallback to merge into.
+          rm -rf "$DESTINATION" "$RUNNER_TEMP/$ARTIFACT.zip"
+          echo "complete=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::ranged download of $ARTIFACT failed; using the ordinary download"
+        fi
+    - name: Download ${{ inputs.name }} in one stream
+      if: steps.ranged.outputs.complete != 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}

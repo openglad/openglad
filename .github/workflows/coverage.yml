@@ -37,8 +37,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  plan-coverage:
+    name: Decide the coverage compile fan-out
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      warm: ${{ steps.decide.outputs.warm }}
+    steps:
+      # Commits and trees only: the decision compares two trees by name.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Find the newest compatible compiler cache without downloading it
+        id: seed
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+          lookup-only: true
+      # Eight warmers that find every object already cached cost 1m34s before
+      # the producer starts (2026-11-13). They run only when this push can
+      # have changed more objects than the producer compiles in that time.
+      - name: Compare this commit with the one the cache was saved for
+        id: decide
+        shell: bash
+        env:
+          PREFIX: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+          MATCHED_KEY: ${{ steps.seed.outputs.cache-matched-key }}
+        run: python3 scripts/ci/compile_fanout.py --prefix "$PREFIX" --matched-key "$MATCHED_KEY"
+
   compile-coverage:
     name: Warm coverage compile cache (${{ matrix.shard }}/8)
+    needs: plan-coverage
+    if: needs['plan-coverage'].outputs.warm == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -83,7 +119,8 @@ jobs:
 
   build-coverage:
     name: Build coverage once
-    needs: compile-coverage
+    needs: [plan-coverage, compile-coverage]
+    if: ${{ !cancelled() && needs['plan-coverage'].result == 'success' && (needs['plan-coverage'].outputs.warm != 'true' || needs['compile-coverage'].result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -97,6 +134,7 @@ jobs:
         shell: bash
         run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       - name: Download every compile-cache shard
+        if: needs['plan-coverage'].outputs.warm == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-compile-cache-*
@@ -110,6 +148,7 @@ jobs:
           restore-keys: |
             native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
       - name: Verify and merge the complete compile cache
+        if: needs['plan-coverage'].outputs.warm == 'true'
         run: |
           mkdir -p build/sccache-seed/cache
           shard_args=()
@@ -121,17 +160,24 @@ jobs:
             --output build/sccache-merged --lane coverage \
             --revision "$(git rev-parse HEAD)" --shards 8
       - name: Build and export immutable configuration
+        env:
+          WARMED: ${{ needs['plan-coverage'].outputs.warm }}
         run: |
           which cmake c++
           realization_started="$(date +%s)"
+          if [ "$WARMED" = true ]; then
+            producer=(--sccache-seed build/sccache-merged)
+          else
+            # No fan-out ran: the producer compiles what the seed lacks.
+            mkdir -p build/sccache-seed/cache
+            producer=(--sccache-seed build/sccache-seed --unwarmed)
+          fi
           python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
-            --sccache-seed build/sccache-merged --cores 4 \
-            --out-link build/bundle-coverage
+            "${producer[@]}" --cores 4 --out-link build/bundle-coverage
           python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
-            --sccache-seed build/sccache-merged --cores 4 --cache-only \
-            --out-link build/sccache-output
+            "${producer[@]}" --cores 4 --cache-only --out-link build/sccache-output
           realization_seconds="$(( $(date +%s) - realization_started ))"
-          echo "Nix coverage realization: ${realization_seconds} seconds" >> "$GITHUB_STEP_SUMMARY"
+          echo "Nix coverage realization: ${realization_seconds} seconds; compile fan-out: $WARMED" >> "$GITHUB_STEP_SUMMARY"
           # The eight workers enter the same shell this job runs in, so the
           # toolchain half of the closure (538 MiB of 1.9 GiB) is already in
           # their stores; ship the product and the paths this build made.
@@ -146,7 +192,7 @@ jobs:
           python3 scripts/coverage/test_coverage_report.py
           python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
           python3 scripts/ci/nix_bundle_test.py
-          python3 scripts/ci/test_matrix.py plan --build build/ci-coverage --lane coverage --shards 8 --out build/plan
+          python3 scripts/ci/test_matrix.py plan --build build/ci-coverage --lane coverage --shards 8 --out build/plan --notes-out build/notes
       - uses: actions/upload-artifact@v7
         with:
           name: coverage-bundle
@@ -157,6 +203,14 @@ jobs:
         with:
           name: coverage-plan
           path: build/plan/
+          if-no-files-found: error
+      # The complete compiler-note inventory, for the gate's one gcov scan:
+      # 1.4 GiB of notes in a 71 MiB archive (2026-11-13), already compressed.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-notes
+          path: build/notes/
+          compression-level: 0
           if-no-files-found: error
       - name: Stage the updated compiler cache under the restored path
         if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
@@ -178,6 +232,9 @@ jobs:
   test-coverage:
     name: coverage (${{ matrix.shard }}/8)
     needs: build-coverage
+    # Spelled out because the default is success() over EVERY ancestor: with
+    # the fan-out skipped, the skipped warmers would skip these workers too.
+    if: ${{ !cancelled() && needs['build-coverage'].result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -198,41 +255,11 @@ jobs:
       - name: Fetch the lane shell while the compiled bundle downloads
         shell: bash
         run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
-      # One stream of this artifact ran from 10 to 67 MiB/s within one run
-      # (11 to 77 s for 0.74 GiB, GitHub run 43315619595), and the slowest
-      # worker sets the stage. The zip is stored uncompressed, so it serves
-      # byte ranges: fetch eight at once and require the artifact's recorded
-      # digest. Any failure falls back to the ordinary download below.
-      - name: Download the compiled bundle over parallel ranges
-        id: ranged-bundle
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          read -r id digest < <(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=coverage-bundle" \
-            --jq '.artifacts | sort_by(.created_at) | last | "\(.id) \(.digest)"')
-          [[ "$id" =~ ^[0-9]+$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          url="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
-            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip")"
-          test -n "$url"
-          aria2c --quiet --max-connection-per-server=8 --split=8 --min-split-size=32M \
-            --file-allocation=none --dir "$RUNNER_TEMP" --out coverage-bundle.zip "$url"
-          echo "${digest#sha256:}  $RUNNER_TEMP/coverage-bundle.zip" | sha256sum --check --quiet -
-          mkdir -p build/nix-cache
-          unzip -q "$RUNNER_TEMP/coverage-bundle.zip" -d build/nix-cache
-          rm "$RUNNER_TEMP/coverage-bundle.zip"
-      - name: Discard a partial ranged download
-        if: steps.ranged-bundle.outcome != 'success'
-        shell: bash
-        run: rm -rf build/nix-cache
-      - uses: actions/download-artifact@v8
-        if: steps.ranged-bundle.outcome != 'success'
+      - uses: ./.github/actions/fetch-bundle
         with:
           name: coverage-bundle
           path: build/nix-cache
+          token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           name: coverage-plan
@@ -242,7 +269,9 @@ jobs:
           python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
       - name: Run every assigned test once
         run: python3 scripts/ci/test_matrix.py run --build build/ci-coverage --plan build/plan/plan.json --shard ${{ matrix.shard }} --out build/results/shard-${{ matrix.shard }}
-      - name: Collect complete zero-hit C++ inventory and shard Lua evidence
+      # Raw counter files only: the gate sums every worker's and runs gcov
+      # over the complete note inventory once.
+      - name: Collect this worker's C++ counter files and Lua evidence
         if: always()
         run: python3 scripts/ci/test_matrix.py collect-coverage --build build/ci-coverage --out build/results/shard-${{ matrix.shard }}
       - name: Upload all results, including the first failure
@@ -252,9 +281,9 @@ jobs:
           name: coverage-result-${{ matrix.shard }}
           path: build/results/
           if-no-files-found: error
-          # The gcovr JSON traces dominate this artifact and compress about
-          # 10:1; unlike the binary/cache bundles above, storing them raw
-          # makes the aggregate job download hundreds of unnecessary MiB.
+          # Counter files and JUnit output compress about 7:1; unlike the
+          # binary/cache bundles above, storing them raw makes the gate
+          # download hundreds of unnecessary MiB.
           compression-level: 6
 
   coverage:
@@ -274,7 +303,8 @@ jobs:
         shell: bash
         run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
       # The plan carries the one built tool the gate runs (the Lua
-      # executable-line oracle), pinned by digest. The compiled bundle is
+      # executable-line oracle), and the notes archive carries what gcov
+      # reads; both are pinned by digest in the plan. The compiled bundle is
       # 2 GiB of test binaries this job never executes; downloading and
       # restoring it took 4m24s of this job's 8m33s on 2026-11-12.
       - uses: actions/download-artifact@v8
@@ -283,11 +313,15 @@ jobs:
           path: build/plan
       - uses: actions/download-artifact@v8
         with:
+          name: coverage-notes
+          path: build/notes
+      - uses: actions/download-artifact@v8
+        with:
           pattern: coverage-result-*
           merge-multiple: true
           path: build/results
       - name: Require every shard and test result and enforce both language floors
-        run: python3 scripts/ci/test_matrix.py merge-coverage --lines-tool build/plan/og_lua_lines --out build/coverage --plan build/plan/plan.json --results build/results
+        run: python3 scripts/ci/test_matrix.py merge-coverage --lines-tool build/plan/og_lua_lines --notes build/notes/compiler-notes.tar.zst --out build/coverage --plan build/plan/plan.json --results build/results
       - uses: actions/upload-artifact@v7
         if: always()
         with:
