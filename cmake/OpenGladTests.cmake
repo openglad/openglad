@@ -1979,20 +1979,21 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # ran ~6s in ci-test but overran the generic 180s CTest budget in
     # the sanitizer/validation lane. Give it headroom there (the
     # standard lane stays at the 180s default, where it is comfortable).
-    set_tests_properties(${OG_UNIT_DATA_TESTS} PROPERTIES
-        PROCESSORS 2
-        TIMEOUT 420
-    )
+    # It reserved two cores as well while it was one entry of minutes; it
+    # is sixteen entries now, the longest 10 s on the ASan lane at -O1
+    # (GitHub run 43548613162, 2026-11-14), and each takes one core.
+    set_tests_properties(${OG_UNIT_DATA_TESTS} PROPERTIES TIMEOUT 420)
 endif()
 if(ENABLE_SANITIZERS)
-    # Reserve the full 4-core GitHub runner for og_test_game_core.
-    # Under ASan/UBSan it can time out only when CTest schedules it
-    # beside other heavyweight integration binaries.
-    set_tests_properties(${OG_GAME_CORE_TESTS} PROPERTIES PROCESSORS 4)
-    # og_test_special_scenes is pure compute (no sleeps, no threads): give
-    # it the runner the way og_test_game_core gets it, or the two slow each
-    # other down (its budget is in the block above).
-    set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES PROCESSORS 4)
+    # og_test_game_core, og_test_special_scenes and og_test_snapshot_benchmark
+    # are pure compute on one thread. Each used to reserve the whole 4-core
+    # runner (three cores for the benchmark), because at -O0 they ran for
+    # minutes and timed out when CTest put them beside other heavy binaries.
+    # The CI lane compiles at -O1 now (nix/native-ci.nix): their twelve
+    # entries took 14 to 33 s each (GitHub run 43548613162, 2026-11-14),
+    # a twelfth of their ceilings, and a reservation only left three cores
+    # idle while one worked. They take the one core they use. The ceilings
+    # stay where they were, so a build at -O0 is no worse off than it was.
     # The menu UI binary now spends enough time in redraw-heavy flows
     # that ASan/UBSan can push it past the generic 180s CTest budget
     # when GitHub's 4-core runners overlap it with the rest of the
@@ -2024,10 +2025,7 @@ if(ENABLE_SANITIZERS)
     # down enough on GitHub's 4-core runners to trip the generic
     # 180-second test budget when scheduled alongside other heavy
     # integration binaries.
-    set_tests_properties(og_test_snapshot_benchmark PROPERTIES
-        PROCESSORS 3
-        TIMEOUT 420
-    )
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES TIMEOUT 420)
     # ASan/UBSan makes the view integration suite slow enough on
     # GitHub's shared runners to exceed CTest's generic 180s limit
     # when scheduled beside the other heavy integration binaries.
