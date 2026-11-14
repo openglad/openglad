@@ -2145,7 +2145,12 @@ short walker::attack(walker  *target)
 			{
 				myscreen->save_data.m_score[myscreen->gameplay_fixes ? score_team : team_num] += tempdamage_i + target->stats->level; // / 2;
 			}
-			if (order != ORDER_WEAPON && headguy->myguy)
+			// port of the current game's c887e03a (Gameplay Fixes AW, #494): with
+			// the setting on only a summoned living's blow pays its hero here;
+			// the owner arm above already paid every owned hitter that is not
+			// a living (a shot, a bomb's blast, a cloud, a magic shield), so an
+			// owned effect's blow no longer pays its hero twice. Off, as always.
+			if ((myscreen->gameplay_fixes ? order == ORDER_LIVING : order != ORDER_WEAPON) && headguy->myguy)
 				headguy->myguy->exp += newexp;
 		}
 	}
