@@ -1221,43 +1221,71 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
 //  * control, beyond the quick search: `beside` at (320,620) on floor 0, 300
 //    px off. The spiral never reaches it and the full scan answers `above`:
 //    the ghost keeps `above`;
+//  * control, another foe on the other floor at the same distance: `twin`, a
+//    third team-0 soldier at (320,300) on floor 1, made before `above`
+//    (320,340); both 20 px off, `beside` at (320,400) on floor 1. The search
+//    finds nobody on floor 0 and the full scan, which keeps the earlier
+//    walker on a tie, answers `twin`: not nearer than `above` and not on the
+//    ghost's floor, so the ghost keeps `above`. Only this scene tells "take
+//    the foe on its own floor" from "take whatever the search answers": in
+//    the two controls above the search answers the held foe itself;
 //  * control, a ground walker: an orc (it does not fly) in the ghost's place,
 //    the first scene's soldiers. A ground walker whose foe is on another
 //    floor heads for a stair and never enters the near branch: it keeps
-//    `above`.
-// The three controls assert the foe (the ground walker may step; that is not
+//    `above`. The near branch therefore never asks the rule for it, so the
+//    scene asks near_adopts itself, with the flyer flag walk_to_foe gives a
+//    walker that does not fly: no, though `beside` stands on its floor.
+// The four controls assert the foe (the ground walker may step; that is not
 // this rule).
 TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor)
 {
-    enum class Scene { OwnFloorFoe, NoFoeOnItsFloor, BeyondTheSearch, GroundWalker };
+    enum class Scene { OwnFloorFoe, NoFoeOnItsFloor, BeyondTheSearch, TieOnTheOtherFloor, GroundWalker };
     const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, kAny}});
     for (short fixes : {short{0}, short{1}}) {
-        for (Scene sc : {Scene::OwnFloorFoe, Scene::NoFoeOnItsFloor, Scene::BeyondTheSearch, Scene::GroundWalker}) {
-            const char* scene = sc == Scene::OwnFloorFoe       ? "a foe on the ghost's floor"
-                                : sc == Scene::NoFoeOnItsFloor ? "control: no foe on the ghost's floor"
-                                : sc == Scene::BeyondTheSearch ? "control: the foe on its floor beyond the quick search"
-                                                               : "control: a ground walker";
+        for (Scene sc : {Scene::OwnFloorFoe, Scene::NoFoeOnItsFloor, Scene::BeyondTheSearch,
+                         Scene::TieOnTheOtherFloor, Scene::GroundWalker}) {
+            const char* scene = sc == Scene::OwnFloorFoe          ? "a foe on the ghost's floor"
+                                : sc == Scene::NoFoeOnItsFloor    ? "control: no foe on the ghost's floor"
+                                : sc == Scene::BeyondTheSearch    ? "control: the foe on its floor beyond the quick search"
+                                : sc == Scene::TieOnTheOtherFloor ? "control: another foe on the other floor at the same distance"
+                                                                  : "control: a ground walker";
             SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
             fresh_world(fixes);
             two_floors();
+            const bool both_above = sc == Scene::NoFoeOnItsFloor || sc == Scene::TieOnTheOtherFloor;
             walker* bot = living_at(sc == Scene::GroundWalker ? FAMILY_ORC : FAMILY_GHOST, 1, 320, 320, 0);
+            // Made before `above`, so the full scan meets it first.
+            walker* twin = sc == Scene::TieOnTheOtherFloor ? living_at(FAMILY_SOLDIER, 0, 320, 300, 1) : nullptr;
             const short above_y = sc == Scene::NoFoeOnItsFloor ? 337 : 340;
             walker* above = living_at(FAMILY_SOLDIER, 0, 320, above_y, 1);
             walker* beside = living_at(FAMILY_SOLDIER, 0, 320, sc == Scene::BeyondTheSearch ? 620 : 400,
-                                       sc == Scene::NoFoeOnItsFloor ? 1 : 0);
+                                       both_above ? 1 : 0);
             ASSERT_TRUE(bot && above && beside);
+            ASSERT_EQ(sc == Scene::TieOnTheOtherFloor, twin != nullptr);
             ASSERT_EQ(sc != Scene::GroundWalker, bot->stats()->query_bit_flags(BIT_FLYING) != 0)
                 << "the staging: the ghost flies, the orc does not";
             face(bot, FACE_DOWN);
             bot->set_foe(above);
             if (sc != Scene::GroundWalker) {
                 walker* const answered = world().find_near_foe(bot);
-                ASSERT_EQ(sc == Scene::OwnFloorFoe ? beside : above, answered)
-                    << "the staging: the quick foe search's answer";
+                walker* const expected = sc == Scene::OwnFloorFoe          ? beside
+                                         : sc == Scene::TieOnTheOtherFloor ? twin
+                                                                           : above;
+                ASSERT_EQ(expected, answered) << "the staging: the quick foe search's answer";
+            }
+            if (sc == Scene::TieOnTheOtherFloor) {
+                ASSERT_EQ(bot->distance_to_ob(above), bot->distance_to_ob(twin))
+                    << "the staging: `twin` is exactly as far as `above`, so it is not nearer";
+                ASSERT_EQ(twin->floor(), above->floor()) << "the staging: `twin` stands on the other floor too";
             }
             if (sc == Scene::NoFoeOnItsFloor) {
                 ASSERT_TRUE(walker::PadAnswer::Clear == bot->fire_pad_answer())
                     << "the staging: `above` stands on floor 1, the ghost's pad on floor 0 is clear";
+            }
+            if (sc == Scene::GroundWalker) {
+                EXPECT_FALSE(bot->stats()->near_adopts(beside, static_cast<std::uint32_t>(bot->distance_to_ob(above)),
+                                                       /*flyer=*/false))
+                    << "asked by itself, the rule takes no foe for a walker that does not fly";
             }
             bot->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
             bot->set_path_check_counter(0);
