@@ -969,20 +969,20 @@ short statistics::do_command()
 					             // tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 					             // tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 					             // tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						// Note for NoRanged (melee-only) families: this only
-						// FACES the bump-range foe. Their swings are bumps: a
-						// step of their own that runs into a body (living::walk's
-						// probe); with Gameplay Fixes on, the right-hand walk's
-						// probe that finds their own foe (statistics::path_probe;
-						// off, every loud probe bumps) and walk_to_foe's near
-						// branch when a foe's body stands on their weapon's pad
-						// (fix BB, near_swing; off, that branch's init_fire()
-						// only turns the bot back). Wiring init_fire() here as
-						// well was tried and rejected: it doubles melee blows
-						// over classic (measured again for #447: 0.97 to 2.06
-						// per 100 ticks near a foe, Westlands survivors 322 to
-						// 255) and swung campaign balance hard (Westlands L2's
-						// fight-through crew started losing members).
+						// Note for NoRanged (melee-only) families: this only FACES the
+						// bump-range foe. Their swings are bumps: a step of their own
+						// that runs into a body (living::walk's probe); with Gameplay
+						// Fixes on, the right-hand walk's probe that finds their own foe
+						// (statistics::path_probe; off, every loud probe bumps) and
+						// walk_to_foe's near branch when a foe's body stands on their
+						// weapon's pad (Gameplay Fixes BB, near_swing; off, that branch's
+						// init_fire() only turns the bot back). Wiring init_fire() here
+						// as well was tried and rejected: it roughly doubles melee swing
+						// rate over classic and swung campaign balance hard (Westlands
+						// L2's fight-through crew started losing members). For #447 a
+						// swing here at a body on the pad, else a step, was measured
+						// against the setting-on game before Gameplay Fixes BB: blows per
+						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255.
 						controller_->face_delta(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
@@ -2525,7 +2525,6 @@ bool statistics::near_turn(short aim)
 	//   as the facing it is turning to (enddir), so the notch it turns now is not undone and its
 	//   next acts finish the turn. Classic: enddir is left as it was and the bot is turned back.
 	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
-	// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 	if (og::sim::session_gameplay_fixes() != 0 && !faced)
 		controller_->set_enddir(static_cast<char>(aim));
 	controller_->turn(aim);
@@ -2557,6 +2556,7 @@ void statistics::near_swing(bool faced, short xdelta, short ydelta)
 	//   facing: its heading is set to it first (face_delta), never a stale one.
 	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
 	// tests: SemAi4.a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_heading
+	// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 	if (!faced)
 		return;
 	short ux = 0, uy = 0;

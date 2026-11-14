@@ -43,6 +43,28 @@ private:
     GameplayContext* previous_ = nullptr;
 };
 
+// Puts a world's Gameplay Fixes setting back to the value it had when the
+// scope ends, on every way out: an ASSERT_ that fails returns from the test
+// at once, and the session world is shared by every later test.
+class ScopedGameplayFixesValue
+{
+public:
+    explicit ScopedGameplayFixesValue(GameWorld& world)
+        : world_(world), saved_(world.gameplay_fixes) {}
+
+    ~ScopedGameplayFixesValue()
+    {
+        world_.gameplay_fixes = saved_;
+    }
+
+    ScopedGameplayFixesValue(const ScopedGameplayFixesValue&) = delete;
+    ScopedGameplayFixesValue& operator=(const ScopedGameplayFixesValue&) = delete;
+
+private:
+    GameWorld& world_;
+    short saved_ = 0;
+};
+
 // statistics draws every AI coin off current_game->world->rng_ (stats.cpp
 // rng()), NOT GameContext::rng -- a context RNG would leave rng(300),
 // the path-check cadence and the ATTACK duration to whatever the LCG
@@ -969,7 +991,7 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
     // world; make_walker's owned walkers are invisible to it. Each pass builds
     // its own pair on its own row; the first pass's pair is retired (dead)
     // before the second, so the second sees only its own.
-    const short saved_fixes = world.gameplay_fixes;
+    const ScopedGameplayFixesValue restore_fixes(world);
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
         world.gameplay_fixes = fixes;
@@ -1014,7 +1036,6 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
         melee->set_dead(1);
         prey->set_dead(1);
     }
-    world.gameplay_fixes = saved_fixes;
 }
 
 // A GOTO order that has already arrived must issue no step. The engine calls
