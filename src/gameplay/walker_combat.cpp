@@ -587,10 +587,11 @@ bool walker::attack(walker  *target)
     // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of another
     //   team than its chain head scores for the blow's score team (its chain head's with Gameplay
     //   Fixes AZ, its own colour classic; damage + victim level, generators included); a summoned
-    //   living's blow also gives its chain head's hero the attack XP (a projectile's XP was paid in
-    //   the owner arm).
+    //   living's blow also gives its chain head's hero the attack XP (every non-living owned
+    //   hitter's XP was paid in the owner arm with Gameplay Fixes AW; classic: a projectile's only).
     // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
     // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
+    // tests: SemWalker3.a_bombs_blast_pays_its_thief_the_experience_of_one_blow_with_the_setting_on
     // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
     // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
     if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())
@@ -606,12 +607,16 @@ bool walker::attack(walker  *target)
         if (getscore)
             award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
-        // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of
-        //   another team than its chain head scores for the hitter's team (damage + victim level,
-        //   generators included).
-        // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
+        // rule: Gameplay Fixes AW (#494): here only a summoned living's blow pays its chain head's hero the
+        //   attack experience; the owner arm above already paid every non-living owned hitter (a projectile,
+        //   a bomb's blast, a cloud, a magic shield, an ember). Classic: everything but a projectile pays
+        //   here too, so an owned effect's blow pays its hero twice.
+        // tests: SemWalker3.a_bombs_blast_pays_its_thief_the_experience_of_one_blow_with_the_setting_on
+        // tests: SemWalker3.an_owned_effects_blow_pays_its_hero_the_experience_of_one_blow_with_the_setting_on
         // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
-        if (order() != Order::Weapon && headguy->myguy)
+        if ((current_game->world->gameplay_fixes != 0 ? order() == Order::Living
+                                                      : order() != Order::Weapon)
+            && headguy->myguy)
             headguy->myguy->exp += static_cast<std::uint32_t>(attack_exp);
     }
 

@@ -107,6 +107,7 @@ usual pause.
 | AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
 | AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
+| AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
 | AZ | Whose team a blow's score pays | A blow pays its team score to the colour the hitter wears, while the gate that decides a score is due, the "another team" test and the kill credit read the head of its owner chain. A bomb's, a mine's or an exploding shot's blast wears no colour (red), so a hero, or a thrower on the player's team, who is not red pays red for every blast blow; a shot or a summon whose caster changed sides (a charm, MIND CONTROL) pays the caster's old colour. | The score goes to the team the chain's head wears: the head that opened the gate and is credited with the kill. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -498,6 +499,20 @@ Fixes X to AV, in play:
   have flown. With the setting off a bot has no such rule, so no
   setting-off golden moves; the new pair `elf_bot_rocks_tree_pad_scen99`
   and its setting-on twin records it.
+- **AW.** A blow by something a hero owns pays the hero the blow's
+  experience. `walker::attack` pays it for anything that is not a living
+  (the arm for thrown things) and again for any owned hitter that is not a
+  projectile (the arm meant for summons), so an effect, which is neither,
+  paid twice (#494). The thief's bomb is such an effect: its blast takes the
+  thief's level, so each blow it lands paid twice what the same blow struck
+  by hand pays. With the setting on the second arm pays only a summon. The
+  other owned effects that strike are POISON CLOUD and a mine's puff, a
+  magic shield and a boomerang, chain lightning's blast and an archer's or
+  barbarian's exploding shot, and with New Specials a fire elemental's
+  embers, IMMOLATE's contact burn and its meteors and novas, and the orc
+  captain's hook blade; each now pays once. Experience is not in the
+  recordings (the dump holds each walker's place, hit points, team and
+  life), so no golden can move.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
   for a kill its damage plus ten times the level) only when the head of the
   hitter's owner chain is a hero or stands on the player's team, and the
@@ -1172,6 +1187,10 @@ current game's dump. One of the 44, `archer_bot_bolt_at_blows`, was also
 re-staged for #438 (the archer one pixel lower), so its pair is captured
 anew rather than recaptured. No setting-off golden moves: every
 setting-off capture is byte-identical before and after `915a99ee`.
+
+Fix AW has no row: experience is not in the recording. `SemWalker3`
+(`tests/unit/test_sem_walker_3.cpp`) pins it with a bomb and with a bare
+owned effect, each against the hero's own melee blow of the same damage.
 
 Fix AZ's arena, `thief_bomb_colour_score_scen99` and
 `thief_bomb_colour_score_fixes_scen99`: the bomb arena of

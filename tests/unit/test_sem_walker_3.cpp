@@ -1507,3 +1507,83 @@ TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_o
                            : "setting off: red, the blast's colour, is paid");
     }
 }
+
+// Gameplay Fixes AW (#494): a bomb's blast is an effect, neither a living nor
+// a weapon, and takes its thief's level. The experience its blow pays the hero
+// thief is the experience of one melee blow of the same damage (both land 8 on
+// a level-4 soldier at the same level): with the setting on it is paid once,
+// in the arm that pays a thrown thing; classic, the arm meant for a summon's
+// blow pays it again.
+// Break: the owned hitter's experience arm with the setting on
+// `order() == Order::Living` -> `order() != Order::Weapon`.
+TEST_F(SemWalker3, a_bombs_blast_pays_its_thief_the_experience_of_one_blow_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        walker* thief = hero_at(FAMILY_THIEF, 0, 100, 100);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 500, 500);
+        ASSERT_TRUE(thief && soldier);
+
+        // The measure: the thief's own melee blow of the same damage.
+        thief->set_damage(10.0f);
+        thief->myguy->exp = 0;
+        ASSERT_TRUE(thief->attack(soldier));
+        ASSERT_FLOAT_EQ(392.0f, soldier->stats()->hitpoints());
+        const std::uint32_t one_blow = thief->myguy->exp;
+        ASSERT_EQ(static_cast<std::uint32_t>(compute_xp_from_attack(0, 8.0f)), one_blow);
+        ASSERT_GT(one_blow, 0u) << "a blow pays experience, so a second payment shows";
+
+        soldier->stats()->set_hitpoints(400.0f);
+        thief->myguy->exp = 0;
+        const auto blasts_before = of_family(world().oblist, Order::FX, FAMILY_EXPLOSION);
+        walker* blast = blow_up_a_bomb(world(), thief, 10.0f, soldier, blasts_before);
+        ASSERT_NE(nullptr, blast);
+        blast->set_dead(1);
+        blast->death();
+        EXPECT_FLOAT_EQ(392.0f, soldier->stats()->hitpoints()) << "the blast lands 8";
+        EXPECT_EQ(fixes != 0 ? one_blow : 2 * one_blow, thief->myguy->exp)
+            << (fixes != 0 ? "setting on: paid once" : "setting off: paid twice");
+    }
+}
+
+// Gameplay Fixes AW (#494): any effect a hero owns pays the hero one blow's
+// experience per blow with the setting on, twice classic. A live magic
+// shield (team 0, the hero's level, damage 10) strikes a level-4 soldier of
+// team 1 and lands 8, as the hero's own melee blow of 10 does.
+// Break: the owned hitter's experience arm with the setting on
+// `order() == Order::Living` -> `order() != Order::Weapon`.
+TEST_F(SemWalker3, an_owned_effects_blow_pays_its_hero_the_experience_of_one_blow_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        walker* hero = hero_at(FAMILY_SOLDIER, 0, 100, 100);
+        walker* foe = living_at(FAMILY_SOLDIER, 1, 500, 500);
+        ASSERT_TRUE(hero && foe);
+
+        hero->set_damage(10.0f);
+        hero->myguy->exp = 0;
+        ASSERT_TRUE(hero->attack(foe));
+        ASSERT_FLOAT_EQ(392.0f, foe->stats()->hitpoints());
+        const std::uint32_t one_blow = hero->myguy->exp;
+        ASSERT_EQ(static_cast<std::uint32_t>(compute_xp_from_attack(0, 8.0f)), one_blow);
+
+        foe->stats()->set_hitpoints(400.0f);
+        hero->myguy->exp = 0;
+        walker* shield = world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+        ASSERT_NE(nullptr, shield);
+        shield->set_team_num(0);
+        shield->set_owner(hero);
+        shield->stats()->set_level(4);
+        shield->set_damage(10.0f);
+        place(shield, 480, 500);
+        ASSERT_EQ(0, shield->dead());
+        ASSERT_TRUE(shield->attack(foe));
+        EXPECT_FLOAT_EQ(392.0f, foe->stats()->hitpoints()) << "the shield lands 8";
+        EXPECT_EQ(fixes != 0 ? one_blow : 2 * one_blow, hero->myguy->exp)
+            << (fixes != 0 ? "setting on: paid once" : "setting off: paid twice");
+    }
+}
