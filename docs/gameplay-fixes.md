@@ -1436,8 +1436,8 @@ again from the rules after the recapture, never read off the new run (the
 table mirror `ae5c6c7c` carries them, and `35e5f6eb` the review's
 corrections). The seventeenth, `archmage_mind_control_berserk`, and one of
 the 11, `cleric_bot_resurrect_foe_stain`, no longer reached the rule they
-test, so their pins changed nothing: each setting-on twin took a seed of
-its own while its setting-off twin stayed as it is (Rulings (2026-11-14),
+test, so their pins changed nothing: each setting-on twin took another
+seed while its setting-off twin stayed as it is (Rulings (2026-11-14),
 entry 14), and was recaptured from the old game on it.
 `orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
 does not move: the orc stands 1 px above the soldier, the pad holds the
@@ -3172,7 +3172,7 @@ flying bot's own floor for #447) come first.
     terminal clients still do not save Game Settings to disk (filed as its
     own issue). Alternative: save them as the SDL client does, in this
     batch.
-14. **Two setting-on recordings took a seed of their own after fix BB**
+14. **Two setting-on recordings took another seed after fix BB**
     (a bot near its foe turns to it for good and swings only when the
     blow can land): on the old seed the row no longer reached the rule it
     tests, and its pin changed nothing.

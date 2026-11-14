@@ -714,19 +714,20 @@ one `cmp`s equal to the current game's dump. The 28 recaptures are committed fro
 `ae5c6c7c` and at `e31bb4ca`, the four new goldens from the one at `30ada1c5`, and 378 of 378 goldens `cmp` equal to
 it.
 
-`d4fa405f` (2026-11-09) was the pin until the testing refresh's mirrors `b518f501` and `fbea813d` (described under this ledger's header; `fbea813d` was the pin until the third bugs batch). The second bugs batch's fixes AO to AV landed in the current game together
-(merged at `ecbb42a1`): AO (`77d0afaa`, a rush's strike leaves a dead body as it lies), AP (`d7e20962`, one owner-chain
-climb), AQ (`3410b694`, a seat's wall slide asks each half), AR (`bf79ee0f`, SUMMON FAERIE's bot rule asks for the
-faerie's room), AS (`1146c4fb`, BARRAGE asks its pad), AT (`341a23e2`, a walker asked to face the way it faces stays
-put) and AV (`b5e29f3c`, the elf bot's rule says no to an enemy weapon on the pad), all behind the setting, with #450
-(`07ef4299`, fix M's seat half asked for again) and, not behind it, the revert of A12a and #473 (`2303582f`, #493).
-`195a3a29` mirrored the table (seven new arena pairs, #438's three re-staged rows, the facts of #448 and #449);
-`8bf6f8e5`, `e7fce82e`, `442572be`, `9ac9e49f`, `2efc30c6`, `1f5e0181` and `915a99ee` port AO, AP, AQ, AR, AV, AS and AT,
-one per commit, behind the setting (AV before AS, whose rule asks AV's strict pad question); `787eb516` ports M's seat
-half; `43f30937` reverts `d3d594e3`; `d4fa405f` mirrors the table again with the facts worked out from the new
-goldens and four setting-on seeds. Eleven all-ids captures, each from an emptied `obj/` and none with a `using
-embedded fixture` line, prove what each commit moves (the rows above list them): the one at `195a3a29` against the
-committed goldens (all 357 `cmp` equal), then each against the one before it. No setting-off capture moved after the
+`d4fa405f` (2026-11-09) was the pin until the testing refresh's mirrors `b518f501` and `fbea813d` (described under this
+ledger's header; `fbea813d` was the pin until the third bugs batch). The second bugs batch's fixes AO to AV landed in
+the current game together (merged at `ecbb42a1`): AO (`77d0afaa`, a rush's strike leaves a dead body as it lies), AP
+(`d7e20962`, one owner-chain climb), AQ (`3410b694`, a seat's wall slide asks each half), AR (`bf79ee0f`, SUMMON
+FAERIE's bot rule asks for the faerie's room), AS (`1146c4fb`, BARRAGE asks its pad), AT (`341a23e2`, a walker asked to
+face the way it faces stays put) and AV (`b5e29f3c`, the elf bot's rule says no to an enemy weapon on the pad), all
+behind the setting, with #450 (`07ef4299`, fix M's seat half asked for again) and, not behind it, the revert of A12a and
+#473 (`2303582f`, #493). `195a3a29` mirrored the table (seven new arena pairs, #438's three re-staged rows, the facts of
+#448 and #449); `8bf6f8e5`, `e7fce82e`, `442572be`, `9ac9e49f`, `2efc30c6`, `1f5e0181` and `915a99ee` port AO, AP, AQ,
+AR, AV, AS and AT, one per commit, behind the setting (AV before AS, whose rule asks AV's strict pad question);
+`787eb516` ports M's seat half; `43f30937` reverts `d3d594e3`; `d4fa405f` mirrors the table again with the facts worked
+out from the new goldens and four setting-on seeds. Eleven all-ids captures, each from an emptied `obj/` and none with a
+`using embedded fixture` line, prove what each commit moves (the rows above list them): the one at `195a3a29` against
+the committed goldens (all 357 `cmp` equal), then each against the one before it. No setting-off capture moved after the
 mirror, and every moved capture `cmp`s equal to the current game's dump after the last port it needs. The 17 new goldens
 and the 43 recaptures are committed from the capture at `d4fa405f`, and 374 of 374 goldens `cmp` equal to it.
 
