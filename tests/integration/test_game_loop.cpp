@@ -1668,9 +1668,12 @@ TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
     EXPECT_EQ(game.shown(hero), shown->owner());
 }
 
-// Cheat+F12 kills every living foe of the hero in the game. Level 1 keeps
-// its exit pad (g_test_remove_exits stays false), so a level with no foe
-// left waits for the walk to the exit and the frame after the kill goes on.
+// Cheat+F12 kills every living foe of the hero in the game, each by the
+// hero's own blow, so every one is a kill on the hero's record (the cheat
+// also calls the foe's death() itself, so only the record tells the blow
+// happened). Level 1 keeps its exit pad (g_test_remove_exits stays false),
+// so a level with no foe left waits for the walk to the exit and the frame
+// after the kill goes on.
 TEST(GameLoop, the_kill_cheat_kills_every_living_foe)
 {
     CheatGame game;
@@ -1689,6 +1692,27 @@ TEST(GameLoop, the_kill_cheat_kills_every_living_foe)
 
     walker* const hero = game.hero();
     const std::uint32_t hero_id = hero->entity_id();
+    ASSERT_NE(nullptr, hero->myguy) << "the seat's hero has a company record";
+    // Every walker the cheat strikes (its own test: living and no friend of
+    // the hero, dormant ones included) is one the blow can kill: alive, open
+    // to attack, not warded, on another team than the hero. So each one is
+    // a kill credited to the hero, the rule
+    // WalkerCombat.attack_rewards_single_credit_melee_kill pins.
+    int struck = 0;
+    for (auto& uptr : game.server->world().oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Living || hero->is_friendly(w))
+            continue;
+        ASSERT_FALSE(w->dead());
+        ASSERT_FALSE(w->hidden());
+        ASSERT_FALSE(w->stats()->query_bit_flags(BIT_INVINCIBLE));
+        ASSERT_EQ(0, static_cast<int>(w->invulnerable_left()));
+        ASSERT_EQ(0, static_cast<int>(w->kit_state() & KIT_WARD));
+        ASSERT_NE(static_cast<int>(hero->team_num()), static_cast<int>(w->team_num()));
+        ++struck;
+    }
+    const int kills_before = hero->myguy->kills;
     // A dormant walker is left out of the snapshot, so only the awake foes
     // can be read on the display.
     std::vector<std::uint32_t> foes;
@@ -1716,6 +1740,8 @@ TEST(GameLoop, the_kill_cheat_kills_every_living_foe)
             << "foe " << id << " dies in the game";
         EXPECT_LE(w->stats()->hitpoints(), 0.0f) << "foe " << id;
     }
+    EXPECT_EQ(kills_before + struck, static_cast<int>(hero->myguy->kills))
+        << "each foe the cheat kills is a kill on the hero's record";
     EXPECT_FALSE(hero->dead());
 
     ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),

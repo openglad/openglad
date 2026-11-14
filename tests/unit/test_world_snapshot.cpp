@@ -2132,7 +2132,8 @@ TEST(WorldSnapshot, guy_snapshot_round_trips_the_belt)
     TestGameWorld mirror_fx;
     GameWorld& mirror = mirror_fx.world();
     configure_snapshot_test_services(mirror);
-    og::sim::apply_snapshot(mirror, decoded);
+    mirror.resize_grid(32, 32);  // the source's map, so the apply is whole
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, decoded));
     ASSERT_EQ(1u, mirror.oblist.size());
     ASSERT_NE(nullptr, mirror.oblist.front().get());
     ASSERT_NE(nullptr, mirror.oblist.front()->myguy);
@@ -2176,7 +2177,8 @@ TEST(WorldSnapshot, guy_snapshot_round_trips_a_class_200_hero)
     TestGameWorld mirror_fx;
     GameWorld& mirror = mirror_fx.world();
     configure_snapshot_test_services(mirror);
-    og::sim::apply_snapshot(mirror, decoded);
+    mirror.resize_grid(32, 32);  // the source's map, so the apply is whole
+    ASSERT_TRUE(og::sim::apply_snapshot(mirror, decoded));
     ASSERT_EQ(1u, mirror.oblist.size());
     ASSERT_NE(nullptr, mirror.oblist.front().get());
     ASSERT_NE(nullptr, mirror.oblist.front()->myguy);
