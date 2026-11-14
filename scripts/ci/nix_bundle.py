@@ -13,7 +13,9 @@ history count and HEAD hash as explicit derivation attributes. ASan and coverage
 may additionally receive a content-addressed `--sccache-seed`. Compile workers
 select a disjoint object plan with `--compile-shards` / `--compile-shard` and
 request only the derivation's `--cache-only` output. The final producer uses the
-merged seed but still builds the complete ordinary target graph.
+merged seed but still builds the complete ordinary target graph. When no
+compile workers ran (scripts/ci/compile_fanout.py), `--unwarmed` tells the
+producer so: it then compiles whatever its seed lacks instead of refusing a miss.
 
 Upload the ENTIRE nix-cache directory as an artifact. Consumers download it,
 then restore their fresh CTest tree:
@@ -22,14 +24,13 @@ then restore their fresh CTest tree:
 `export --prune-substitutable` leaves out every closure member the trusted
 public cache signed. The consumer's shell already holds nearly all of them and
 its store substitutes the rest, so the artifact carries the product and the
-few paths this build made instead of a second copy of the toolchain. Such a
-cache cannot serve `import`; `restore` accepts both kinds.
+few paths this build made instead of a second copy of the toolchain. Every
+workflow exports that way; `restore` accepts both kinds.
 
 Restore verifies the compressed archive and NAR hashes, imports and roots the
 runtime/compiler dependencies, and streams the product into an owned tree.
 It moves that tree into place without importing a second product copy into
-the Nix store. Producers use plan-tree for read-only CTest metadata queries;
-their cache-hit import command can attach an output link to that exact product.
+the Nix store. Producers use plan-tree for read-only CTest metadata queries.
 Neither operation configures, compiles, or runs tests. Each lane reserves one
 /tmp/openglad-ci-<lane>/source alias on its runner. The alias resolves embedded
 source macros, gcov source/profile paths, and canary incremental dependencies to
@@ -316,26 +317,6 @@ def export_bundle(args: argparse.Namespace) -> None:
                 f"{pruned} left to the consumer's substituters.\n")
     print(f"Exported bundle and dependency closure to {cache}")
     print(f"Export metrics: {metrics_path}")
-
-
-def import_bundle(args: argparse.Namespace) -> None:
-    cache = args.cache.resolve(strict=True)
-    bundle = (cache / "bundle-path.txt").read_text().strip()
-    if not bundle.startswith("/nix/store/") or "\n" in bundle:
-        raise ValueError("invalid bundle store path")
-    # GitHub artifacts are authenticated by their run/job identity. This local
-    # binary cache has no signing key; never use an untrusted run's artifact.
-    subprocess.run(["nix", "copy", "--no-check-sigs", "--from", cache.as_uri(), bundle],
-                   check=True)
-    read_manifest(Path(bundle))
-    out_link = getattr(args, "out_link", None)
-    if out_link is not None:
-        out_link = out_link.absolute()
-        if out_link.exists() or out_link.is_symlink():
-            raise ValueError(f"refusing to replace bundle output link: {out_link}")
-        out_link.parent.mkdir(parents=True, exist_ok=True)
-        out_link.symlink_to(bundle, target_is_directory=True)
-    print(bundle)
 
 
 def materialize_build(source: Path, destination: Path, *, immutable: bool) -> dict:
@@ -841,10 +822,6 @@ def main() -> int:
     exporting.add_argument("--prune-substitutable", action="store_true",
                            help="leave out paths the trusted public cache signed (restore only)")
     exporting.set_defaults(function=export_bundle)
-    importing = commands.add_parser("import", help="import a downloaded closure")
-    importing.add_argument("--cache", type=Path, required=True)
-    importing.add_argument("--out-link", type=Path)
-    importing.set_defaults(function=import_bundle)
     restoring = commands.add_parser("restore", help="verify and restore an owned consumer tree without importing the product")
     restoring.add_argument("--cache", type=Path, required=True)
     restoring.add_argument("--repo", type=Path, default=Path.cwd())

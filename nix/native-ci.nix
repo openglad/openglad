@@ -165,8 +165,8 @@ let
         compilerLauncher="$environmentLauncher"
         ${lib.optionalString compileCache ''
           export SCCACHE_DIR="$NIX_BUILD_TOP/openglad-sccache"
-          # Two lanes plus the exact-NAR caches must coexist within GitHub's
-          # repository cache budget. Entries are compressed; cap the live
+          # Two lanes' seeds must coexist within GitHub's repository cache
+          # budget. Entries are compressed; cap the live
           # sandbox cache at 2 GiB so a seed plus one complete cold build
           # never evicts an entry the same build still needs. The published
           # seed is capped separately below.
