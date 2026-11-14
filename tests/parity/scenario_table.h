@@ -11670,7 +11670,7 @@ inline constexpr FactPredicate kFacts_mage_wave_edge_pad_fixes_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000,
         "consequence: the wave's second ring strikes the tower four times as it passes, worn a point a strike, so the strikes are rolled on 12, 11, 10 and 9 (each d - sqrt(d)/2 + rng(3)): 12, 9, 9, 10, and the tower ends at 90 hp"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 6400, 6400,
-        "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), the first from its shot at tick 16 (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
+        "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), at ticks 25, 30, 36, 46, 52 and 57 from its shots at 21, 26, 32, 42, 48 and 53, and its shots at 16 and 37 miss (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
 };
 inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
     "packs/core/families/living-03-mage.lua", 455,
