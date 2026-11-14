@@ -1743,8 +1743,8 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 // FAMILY_EXPAND.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window
-    { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. leaves_bloodspot=true with no on_death override, so when the soldier kills it walker::death() (walker.cpp:1521) calls generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), spawning the bloodstain
+    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); wounds the adjacent faerie within the attack window (the recording ends with it alive at 17.00 hp)
+    { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. It lives through the row, so no bloodstain is made here (a kill would make one through walker::death()'s generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), in the effect list, which no fact of this row counts)
     { FAMILY_STAIN,   0, kOrderTreasure, 200, 120, 0, 0 },      // literal FAMILY_STAIN treasure parked off-path; guarantees a live FAMILY_STAIN entity in oblist on both arms, so the WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1) coverage anchor holds regardless of the faerie outcome
 };
 

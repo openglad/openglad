@@ -557,7 +557,7 @@ Fixes X to BB, in play:
   same rule refuses our own caster's summon while an enemy has that caster
   charmed (the head of its owner chain wears the enemy's colour), which
   Switch Character already refused; in the current game the level waits
-  and the seat takes the caster back when the charm ends. No recording
+  there too, while that summon wears the team's colour. No recording
   reaches the hand-off, and the switch, which one recording drives, asks
   exactly what it asked before, so no golden moves.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
@@ -3078,8 +3078,9 @@ flying bot's own floor for #447) come first.
    setting, with the campaigns' levels eased in their builders.
 3. **#505: a walker that dies charmed.** Default taken: no change to the
    game, so there is no fix BA. A walker that dies charmed keeps heading its
-   owner chain until the tick ends, as fix AP rules. Alternative: a dead
-   walker never counts as charmed.
+   owner chain until the tick ends, as fix AP rules (one climb of the owner
+   chain, through a dead owner, stopping at a charmed head). Alternative: a
+   dead walker never counts as charmed.
 4. **#502 (AZ): whose team a blast pays.** Default taken: with the setting
    on a bomb's, a mine's or an exploding shot's blast pays its thrower's
    team, not red. Alternative: fix AZ only for shots and summons whose
