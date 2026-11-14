@@ -28,7 +28,20 @@ let
       # Coverage reads counters and notes, never DWARF, and -g1 measured 11
       # to 17 percent of every coverage object (2026-11-12): that lane
       # compiles, links, packs and ships its tests without it.
-      flags = (if lane == "coverage" then "-O0" else "-O0 -g1")
+      #
+      # Optimisation. Coverage must stay at -O0: the measured function and
+      # line set is whatever the compiler emits (CMakeLists.txt, "Coverage
+      # instrumentation measures"). ASan+UBSan measures nothing of the kind,
+      # and at -O0 its compute-bound tests spent 3.4 to 8 times what they do
+      # at -O1 (2026-11-13, four groups, same machine: 69/31/39/13 s against
+      # 14/9/5/2 s) for about 1.7 times the compile time. -O1 is the level the
+      # sanitizer documentation recommends; sibling-call optimisation stays
+      # off so every frame of a report is still on the stack. TSan and the
+      # canary keep -O0: TSan runs one wall-clock-bound network group and the
+      # canary recompiles after every mutation. The fuzz lane was not
+      # measured and is unchanged.
+      optimization = if asan then "-O1 -fno-optimize-sibling-calls" else "-O0";
+      flags = optimization + lib.optionalString (lane != "coverage") " -g1"
         + lib.optionalString (tsan || asan || fuzz)
         " -fno-omit-frame-pointer -fsanitize=${sanitizer}"
         + lib.optionalString fuzz " -fno-sanitize-recover=all";
@@ -78,6 +91,10 @@ let
       sccacheSeed = "";
       ciCompileShards = "0";
       ciCompileShard = "-1";
+      # "1": eight compile workers warmed the seed and the producer must find
+      # every object in it. "0": no fan-out ran (scripts/ci/compile_fanout.py
+      # judged the change small) and the producer compiles what is missing.
+      ciCompileWarmed = "1";
       nativeBuildInputs = tools ++ lib.optionals compileCache [ pkgs.sccache ];
       buildInputs = dependencies ++ [ ix lodepng ];
       OG_KEYBOARD_FONT_DIR = "${pkgs.dejavu_fonts}/share/fonts/truetype";
@@ -212,8 +229,13 @@ let
           cmake --build --preset ${preset} --parallel "$NIX_BUILD_CORES" \
             ${lib.optionalString (targets != []) "--target ${lib.concatStringsSep " " targets}"} -- -k 0
           ${lib.optionalString compileCache ''
-            python3 scripts/ci/compile_cache.py verify-producer \
-              --cache-program ${pkgs.sccache}/bin/sccache --max-fallbacks 32
+            if [ "$ciCompileWarmed" = 1 ]; then
+              python3 scripts/ci/compile_cache.py verify-producer \
+                --cache-program ${pkgs.sccache}/bin/sccache --max-fallbacks 32
+            else
+              python3 scripts/ci/compile_cache.py verify-producer \
+                --cache-program ${pkgs.sccache}/bin/sccache --unwarmed
+            fi
           ''}
         fi
         ${lib.optionalString compileCache ''
@@ -296,6 +318,21 @@ in {
   # X11 display stack that the general native shell carries for other lanes.
   coverageShell = mkShellWith pkgs.stdenv (
     tools ++ dependencies ++ [ pkgs.gcovr pkgs.lua-language-server ]);
-  tsanShell = mkShell pkgs.clangStdenv [];
-  fuzzShell = mkShell pkgs.clangStdenv [];
+  # The same reasoning for the other lanes (2026-11-13: the general shell
+  # was a 1.7 GiB download that also BUILT the plain IXWebSocket and LodePNG
+  # packages in every job, none of which a bundle consumer links).
+  #
+  # ASan, TSan and the fuzzers build their lane with Clang and run its
+  # tests: the lane's own tools and libraries plus LLVM, whose symbolizer
+  # turns a sanitizer report into file and line.
+  sanitizerShell = mkShellWith pkgs.clangStdenv (
+    tools ++ dependencies ++ [ pkgs.llvmPackages.llvm ]);
+  # The canary recompiles the restored tree after every C++ mutation with
+  # the lane's GCC, and the X11 display lane drives real X screens.
+  canaryShell = mkShellWith pkgs.stdenv (
+    tools ++ dependencies ++ [
+      pkgs.xvfb-run pkgs.xvfb pkgs.xrandr pkgs.openbox pkgs.xprop pkgs.xdpyinfo
+    ]);
+  # The completeness jobs read plans and results and compile nothing.
+  verifyShell = pkgs.mkShellNoCC { packages = [ pkgs.python3 ]; };
 }
