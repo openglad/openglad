@@ -969,20 +969,20 @@ short statistics::do_command()
 					             // tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 					             // tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 					             // tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						// Note for NoRanged (melee-only) families: this only
-						// FACES the bump-range foe. Their swings are bumps: a
-						// step of their own that runs into a body (living::walk's
-						// probe) and, with Gameplay Fixes on, the right-hand
-						// walk's probe that finds their own foe
-						// (statistics::path_probe; off, every loud probe bumps).
-						// walk_to_foe's near-branch init_fire() lands no melee
-						// swing with the setting off (walker::turn moves a notch
-						// even when the bot already faces the foe, so init_fire
-						// only turns back; on, fix AT keeps it facing). Wiring init_fire()
-						// here as well was tried and rejected: it roughly
-						// doubles melee swing rate over classic and swung
-						// campaign balance hard (Westlands L2's fight-through
-						// crew started losing members).
+						// Note for NoRanged (melee-only) families: this only FACES the
+						// bump-range foe. Their swings are bumps: a step of their own
+						// that runs into a body (living::walk's probe); with Gameplay
+						// Fixes on, the right-hand walk's probe that finds their own foe
+						// (statistics::path_probe; off, every loud probe bumps) and
+						// walk_to_foe's near branch when a foe's body stands on their
+						// weapon's pad (Gameplay Fixes BB, near_swing; off, that branch's
+						// init_fire() only turns the bot back). Wiring init_fire() here
+						// as well was tried and rejected: it roughly doubles melee swing
+						// rate over classic and swung campaign balance hard (Westlands
+						// L2's fight-through crew started losing members). For #447 a
+						// swing here at a body on the pad, else a step, was measured
+						// against the setting-on game before Gameplay Fixes BB: blows per
+						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255.
 						controller_->face_delta(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
@@ -2023,9 +2023,9 @@ bool statistics::walk_to_foe()
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
 		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or
 		//   any chaser on a crowded map (more than 200 objects, dead included), skips A*: if any
-		//   foe is within 100 px it wipes its orders, turns to the foe and starts an ATTACK of
-		//   30+rng(25) rounds and fires; if no foe is that close it abandons its current order
-		//   (front count zeroed) and falls through to the direct/right-hand walk.
+		//   foe is within 100 px it wipes its orders, turns toward the foe (near_turn), starts an
+		//   ATTACK of 30+rng(25) rounds and may swing (near_swing); if no foe is that close it
+		//   abandons its current order (front count zeroed) and falls through to the walk.
 		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
 		// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 		// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
@@ -2060,15 +2060,15 @@ bool statistics::walk_to_foe()
 				// tests: parity:walk_to_foe_adopts_near_foe_scen99
 				// tests: SemAi4.a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it
 				if (near_foe &&
-				    static_cast<Uint32>(controller_->distance_to_ob(near_foe)) < tempdistance)
+				    near_adopts(near_foe, tempdistance, flyer))
 				{
 					controller_->set_foe(near_foe);
 					xdelta = near_foe->xpos() - controller_->xpos();
 					ydelta = near_foe->ypos() - controller_->ypos();
 				}
-				controller_->turn(controller_->facing(xdelta, ydelta));
+				const bool faced = near_turn(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
-				controller_->init_fire();
+				near_swing(faced, static_cast<short>(xdelta), static_cast<short>(ydelta));
 				return 1;
 			}
 			else // our foe has moved; we need a new one
@@ -2508,4 +2508,95 @@ bool statistics::slide_half_clear(short dx, short dy)
 	        && !current_game->world->query_passable(x, y, controller_, controller_->floor(), /*quiet=*/true))
 		return false;
 	return current_game->world->query_passable(x, y, controller_);
+}
+
+// Gameplay Fixes BB (#497): the turn of walk_to_foe's near branch. Appended at
+// the end of the file so the parity pins above never shift.
+// walker::turn never writes enddir, and init_fire() and living::act_round both
+// turn a walker toward enddir before anything else. Classic: the notch this
+// turn gives a bot that does not face its foe is undone at once by the
+// init_fire() that follows (measured on Tryxian level 1, six seeds of 2400
+// ticks: every one of 14,547 calls with the setting off), so the bot never
+// completes its aim here.
+bool statistics::near_turn(short aim)
+{
+	const bool faced = controller_->curdir() == aim;
+	// rule: Gameplay Fixes BB (#497): a bot not yet facing its near foe keeps the foe's direction
+	//   as the facing it is turning to (enddir), so the notch it turns now is not undone and its
+	//   next acts finish the turn. Classic: enddir is left as it was and the bot is turned back.
+	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
+	if (og::sim::session_gameplay_fixes() != 0 && !faced)
+		controller_->set_enddir(static_cast<char>(aim));
+	controller_->turn(aim);
+	return faced;
+}
+
+// Gameplay Fixes BB (#497): the swing of walk_to_foe's near branch. Classic:
+// init_fire() along the heading with no question. It never starts a swing
+// there (with the setting off a walker asked to face the way it faces still
+// turns a notch, the classic turn that Gameplay Fixes AT (#446) removes, and
+// init_fire only turns it back). With Gameplay Fixes AT alone the facing bot
+// did swing, whatever stood between: measured the same way, melee-only bots
+// started 181 swings, 172 from more than 20 px, 17 landed; the others started
+// 2,054 shots, 895 into a wall and 877 at a foe out of reach, 234 hit; each
+// paid its busy time and its weapon's magic.
+void statistics::near_swing(bool faced, short xdelta, short ydelta)
+{
+	// rule: Classic (the setting off): the near branch ends with init_fire() along the heading,
+	//   unasked.
+	// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
+	// tests: SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
+	if (og::sim::session_gameplay_fixes() == 0)
+	{
+		controller_->init_fire();
+		return;
+	}
+	// rule: Gameplay Fixes BB (#497): a bot that had to turn toward its foe has spent its act on
+	//   the turn and starts nothing in the same call; a bot that faced it swings along that
+	//   facing: its heading is set to it first (face_delta), never a stale one.
+	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
+	// tests: SemAi4.a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_heading
+	// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
+	if (!faced)
+		return;
+	short ux = 0, uy = 0;
+	facing_step_delta(static_cast<char>(controller_->curdir()), ux, uy);
+	controller_->face_delta(ux, uy);
+	// rule: Gameplay Fixes BB (#497): the swing or shot starts only when the blow can land. A
+	//   shooter asks its line check (fire_check: the foe in the weapon's reach, the magic, the
+	//   facing, the ray to a body). A melee-only bot (BIT_NO_RANGED), which that check always
+	//   refuses, asks whether a foe's body stands on its weapon's pad (fire_pad_answer: quiet,
+	//   no draw, nothing built): the one place its swing can land.
+	// tests: SemAi4.a_shooter_fires_from_the_near_branch_only_when_its_line_check_passes
+	// tests: SemAi4.a_melee_only_chaser_swings_from_the_near_branch_only_at_a_body_on_its_pad
+	// tests: SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
+	const bool lands = query_bit_flags(BIT_NO_RANGED)
+	        ? controller_->fire_pad_answer() == walker::PadAnswer::Body
+	        : controller_->fire_check(xdelta, ydelta);
+	if (lands)
+		controller_->init_fire();
+}
+
+// walk_to_foe's near branch: which foe the chaser keeps. Appended at the end
+// of the file so the parity pins above never shift.
+bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance, bool flyer) const
+{
+	// rule: #320: at the near branch a chaser switches to a foe strictly nearer than the one it
+	//   holds (Manhattan); an equal or farther one keeps the held foe.
+	// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+	// tests: SemAi4.a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it
+	// tests: parity:walk_to_foe_adopts_near_foe_scen99
+	if (static_cast<std::uint32_t>(controller_->distance_to_ob(near_foe)) < held_distance)
+		return true;
+	// rule: #447 (this game only, both settings; only a level with more than one floor has a
+	//   flyer here): a flyer never changes floors, so a foe on another floor is one it can only
+	//   shadow. When the quick foe search answers a foe on the flyer's own floor it takes that
+	//   one, even when it is farther than the foe it holds; the quick search looks about five
+	//   map cells (160 px) round the bot, and with no foe on its floor inside that reach the
+	//   flyer keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's rule
+	//   alone.
+	// tests: SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor
+	const walker* held = controller_->foe();
+	return flyer && held != nullptr && held->floor() != controller_->floor()
+	        && near_foe->floor() == controller_->floor();
 }
