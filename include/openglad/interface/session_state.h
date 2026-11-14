@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,6 +26,7 @@ class options;
 class cfg_store;
 class vbutton;
 class guy;
+class walker;
 
 namespace og::runtime {
 
@@ -208,14 +210,24 @@ bool local_transport_active(const SessionState& session) noexcept;
 bool display_follow_cycle_target(SessionState& session, int view_index,
                                  bool reverse);
 
-// The world a debug cheat may change (#413): the authoritative server world of
-// a plain local session (the display is a mirror the next snapshot
-// overwrites), or nullptr when the session is networked, a replay playback, a
-// spectator view or finished, or when no shadow is installed. Declared here so
-// the interface's cheat handler can reach it; implemented by the platform
-// local transport shadow (local_transport_shadow.cpp), on the same gate as
-// the local seat tools (local_seat_mutation_allowed).
-GameWorld* cheat_target_world(SessionState& session);
+// A debug cheat (#413, #432) gets the screen whose world it changes and the
+// live hero the seat plays there (nullptr when it plays none), and returns the
+// hero the seat plays afterwards (the same one unless the cheat moved the seat).
+using CheatBody = std::function<walker*(screen& game, walker* hero)>;
+
+// Runs a debug cheat on the game itself (#413, #432): in a plain local session
+// the display is a copy the next snapshot overwrites, so `cheat` runs once on
+// the server's screen, with the server's game context active as its step runs
+// under it (its world, object map, scripts, event log and random numbers), on
+// the live hero the server says seat `seat` plays. When `cheat` returns another
+// hero the server re-binds the seat to it and every view hears the change.
+// Returns true when it ran; runs nothing and returns false when the session is
+// networked, a replay playback, a spectator view or finished, or when no
+// shadow is installed. Declared here so the interface's cheat handler can
+// reach it; implemented by the platform local transport shadow
+// (local_transport_shadow.cpp), on the same gate as the local seat tools
+// (local_seat_mutation_allowed).
+bool run_cheat_on_game(SessionState& session, int seat, const CheatBody& cheat);
 
 // Non-thread-local atomic pointer to the most recently installed session.
 // Used by child threads (e.g. test injector threads) to inherit the session

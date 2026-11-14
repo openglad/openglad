@@ -28,6 +28,10 @@ Thus, to give yourself, as player 1, more
 hitpoints, you would hold down F5 and press
 the H key.
 
+Cheats work only in a game played on one
+computer; in a networked game the cheat
+keys do nothing.
+
 To cheat while in the character picker, go to
 the "Hire Team".  Then hold down the Control key
 and press the "+" key on the numeric keypad; this

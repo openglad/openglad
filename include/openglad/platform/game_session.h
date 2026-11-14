@@ -111,7 +111,8 @@ private:
     friend void clear_local_transport_shadow(GameSession& session) noexcept;
     friend bool display_follow_cycle_target(SessionState& session,
                                             int view_index, bool reverse);
-    friend GameWorld* cheat_target_world(SessionState& session);
+    friend bool run_cheat_on_game(SessionState& session, int seat,
+                                  const CheatBody& cheat);
     friend void local_transport_shadow_set_player_companies(
         GameSession& session,
         std::span<const std::pair<std::uint8_t, std::string>> companies);

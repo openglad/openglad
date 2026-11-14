@@ -541,6 +541,29 @@ private:
     bool previous_ = false;
 };
 
+// The server's own context, as its step runs under it: the server session's
+// globals, its gameplay context (its world, object map, scripts and event
+// log) and the gameplay-active mark that makes a new walker draw from the
+// world's random numbers. The step and a debug cheat (#432) both run under it.
+class ServerGameScope
+{
+public:
+    explicit ServerGameScope(og::runtime::LocalTransportRuntime& runtime)
+        : session_(runtime.server_session->activate(/*swap_render=*/false))
+        , gameplay_(&runtime.server_session->game_)
+        , active_(*runtime.server_session)
+    {
+    }
+
+    ServerGameScope(const ServerGameScope&) = delete;
+    ServerGameScope& operator=(const ServerGameScope&) = delete;
+
+private:
+    og::runtime::GameSession::SessionScope session_;
+    GameplayContextGuard gameplay_;
+    ScopedSessionGameplayActivation active_;
+};
+
 std::size_t compute_local_player_count(const screen& gameplay_screen)
 {
     return std::min<std::size_t>(
@@ -1750,20 +1773,36 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
     return true;
 }
 
-// #413 cheat seam (declared in session_state.h so the interface's cheat
+// #413/#432 cheat seam (declared in session_state.h so the interface's cheat
 // handler can reach it). Local, non-networked play only: in a networked
-// session the cheat does nothing, because a host's cheat would change every
-// player's game and a joiner has no server world to write.
-GameWorld* cheat_target_world(SessionState& session)
+// session no cheat runs, because a host's cheat would change every player's
+// game and a joiner has no server world to write.
+bool run_cheat_on_game(SessionState& session, int seat, const CheatBody& cheat)
 {
-    if (!session.has_local_transport_runtime())
-        return nullptr;
+    if (!session.has_local_transport_runtime() || !cheat)
+        return false;
     GameSession& game_session = static_cast<GameSession&>(session);
     const auto runtime = game_session.local_transport_runtime_;
     if (!local_seat_mutation_allowed(runtime.get(), session))
-        return nullptr;
+        return false;
     screen* const server = runtime->server_screen();
-    return server != nullptr ? &server->world() : nullptr;
+    if (server == nullptr)
+        return false;
+
+    ServerGameScope server_scope(*runtime);
+    walker* const seated = seat >= 0
+        ? runtime->server->player_control(static_cast<std::size_t>(seat))
+        : nullptr;
+    // A cheat changes the live hero the seat plays: a seat with no body (a
+    // follow camera) or a dead one gets none.
+    walker* const hero =
+        (seated != nullptr && !seated->dead()) ? seated : nullptr;
+    walker* const after = cheat(*server, hero);
+    // A cheat that moved the seat (the team hop) re-binds it on the server,
+    // which tells every view (bind_player alone would not).
+    if (hero != nullptr && after != hero)
+        runtime->server->set_player_control(static_cast<std::size_t>(seat), after);
+    return true;
 }
 
 void local_transport_shadow_set_player_companies(
@@ -3189,10 +3228,7 @@ bool local_transport_shadow_step_and_drain(
                 "local_transport_shadow", "finish_tick_authoritative_step"));
         // Single-thread authoritative order:
         //  3-9. Install the server session/context and run one authoritative step.
-        auto server_scope = runtime->server_session->activate(/*swap_render=*/false);
-        GameplayContextGuard server_gameplay_scope(
-            &runtime->server_session->game_);
-        ScopedSessionGameplayActivation gameplay_active(*runtime->server_session);
+        ServerGameScope server_scope(*runtime);
         runtime->server->step();
     }
 
