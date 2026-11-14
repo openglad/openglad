@@ -10091,10 +10091,14 @@ inline constexpr Mutation kMut_cleric_bot_mace_alone_fixes_scen99 = {
 // a ghost with the setting on; 939 was the first of them where the classic
 // game raises the foe's stain as a ghost as well. Fix AT parted the
 // setting-on stream again: on 939 the cleric walks off after the soldier and
-// never casts near the stain, and the mutation changed nothing. The twin now
-// takes seed 3 (0x3), the first from 0 where the mutation raises a ghost with
-// the setting on (the classic game raises none on 3): the faerie dies at tick
-// 97 and its stain is left at (88,176).
+// never casts near the stain, and the mutation changed nothing. The twin took
+// seed 3 (0x3). Gameplay Fixes BB parted the stream once more: on 3 the faerie
+// now dies at tick 75 and the cleric walks off without asking for RESURRECT
+// near its stain, so the mutation changed nothing there either. The twin now
+// takes seed 84 (0x54), the first from 0 where the mutation raises a ghost
+// with the setting on (the classic game raises none on 84): the faerie dies at
+// tick 57, its stain is left at (80,184), and at tick 59 the cleric, at
+// (82,173), asks for RESURRECT with the stain in reach and is refused.
 inline constexpr SpawnSpec kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99[] = {
     { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },          // the cleric's ally, kills the faerie
     { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },          // a foe that dies beside the cleric: a hostile stain
@@ -14276,7 +14280,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_cleric_bot_resurrect_foe_stain_scen99, std::size(kFacts_cleric_bot_resurrect_foe_stain_scen99),
       kMut_cleric_bot_resurrect_foe_stain_scen99 },
 
-    { "cleric_bot_resurrect_foe_stain_fixes_scen99", "scen/scen1.fss", 0x00000003u,
+    { "cleric_bot_resurrect_foe_stain_fixes_scen99", "scen/scen1.fss", 0x00000054u,
       kInputsEmpty, std::size(kInputsEmpty), 250,
       CompareMode::SemanticParity, false,
       kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99, std::size(kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99),
