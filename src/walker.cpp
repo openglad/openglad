@@ -3018,6 +3018,12 @@ short walker::special()
 								if (!alive)
 									return 0;
 								alive->stats->level = random(stats->level) + 1;
+								// port of the current game's eb78f11f (Gameplay Fixes AX, #495): with the
+								// setting on the ghost takes our team before the difficulty scales it, so a
+								// foe's ghost takes the percent as its cleric does; off, it is scaled while
+								// still on team 0, which the difficulty never scales
+								if (fixed)
+									alive->team_num = team_num;
 								alive->set_difficulty((Uint32) alive->stats->level);
 								alive->team_num = team_num;
 								if (fixed)
@@ -3501,6 +3507,10 @@ short walker::special()
 									newob->setxy(xpos+((newob->sizex+1)*i),
 									             ypos+((newob->sizey+1)*j));
 									newob->stats->level = (stats->level+1)/2;
+									// port of the current game's eb78f11f (Gameplay Fixes AX, #495): with the
+									// setting on the elemental takes our team before the difficulty scales it
+									if (myscreen->gameplay_fixes)
+										newob->team_num = team_num;
 									newob->set_difficulty(newob->stats->level);
 									newob->team_num = team_num; // set to our team
 									newob->owner = this; // we're owned!
@@ -3650,6 +3660,10 @@ short walker::special()
 									newob->setxy(xpos+((newob->sizex+1)*i),
 									             ypos+((newob->sizey+1)*j));
 									newob->stats->level = (stats->level+2)/3;
+									// port of the current game's eb78f11f (Gameplay Fixes AX, #495): with the
+									// setting on the image takes our team before the difficulty scales it
+									if (myscreen->gameplay_fixes)
+										newob->team_num = team_num;
 									newob->set_difficulty(newob->stats->level);
 									newob->team_num = team_num; // set to our team
 									newob->owner = this; // we're owned!
