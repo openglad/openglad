@@ -1118,6 +1118,10 @@ public:
         Sint32 retvalue = 0;
         while (!(retvalue & MENU_EXIT))
         {
+            // Null outside tests: an injector's menu-thread tasks land here
+            // (picker_lobby_client.h), since this loop is not engine-hosted.
+            if (og::ui::g_picker_main_thread_pump != nullptr)
+                og::ui::g_picker_main_thread_pump();
             ensure_relay_room_list_view_is_current();
             // Only a snapshot that was already staged before this frame may
             // be committed after its input dispatch. A completion observed in

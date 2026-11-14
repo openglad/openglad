@@ -96,6 +96,9 @@ bool handle_menu_nav(button* buttons, int& highlighted_button,
 // (tests/coverage_internal/picker_sdl_client_factory.inc).
 void picker_testing_set_lobby_client_owner(
     std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
+// The NETWORKING screen with `joiner` as the client it owns (same file).
+bool picker_testing_run_networking_screen(
+    std::unique_ptr<og::ui::IPickerLobbyClient> joiner);
 short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -3074,6 +3077,7 @@ constexpr EscapeDoor kKickDoors[] = {
     {"promote", "back"},
     {"inc_str", "back"},
     {"go", "back"},
+    {"network_back", "network_back"},
     {"ok", "ok"},
 };
 
@@ -3087,10 +3091,18 @@ struct KickState {
     std::atomic<bool> test_finished{false};
     std::atomic<bool>* kicked = nullptr;
     const char* screen_id = nullptr;     // the screen is up
+    // run_menu_screen hosts it, so wait_for_menu_frames settles it. NETWORKING
+    // is not hosted: its frame top turns the main-thread queue instead, so a
+    // task that runs there is its frame witness.
+    bool engine_hosted = true;
     bool open_details = false;           // kick inside DETAILS
     std::vector<const char*> expected;   // its controls after the popup
+    std::vector<const char*> gone;       // controls the popup must not leave
     const char* door = nullptr;          // one real click after it
     const char* door_edge = nullptr;     // what that click opens
+    // The door's edge when it is not a published id (a label the click
+    // writes); tried before door_edge.
+    std::function<bool(int)> door_edge_wait;
     // The screen's own button table, for a tree where the popup leaves the
     // screen dead (see kick_injector); nullptr when its tail can get out.
     button* (*rescue_buttons)() = nullptr;
@@ -3099,6 +3111,7 @@ struct KickState {
     bool popup_up = false;
     bool popup_closed = false;
     std::vector<std::string> missing;    // expected ids not published
+    std::vector<std::string> lingering;  // `gone` ids still published
     bool ok_left = true;                 // the popup's OK still published
     bool door_worked = false;
 };
@@ -3113,7 +3126,10 @@ int kick_injector(void* data)
     };
     if (!wait_for_interactable(state->screen_id, 10000))
         return escape(1, "the screen never came up");
-    (void)wait_for_menu_frames(2);
+    if (state->engine_hosted)
+        (void)wait_for_menu_frames(2);
+    else
+        (void)run_on_main_thread([] {});
     if (state->open_details && !click_until_edge("details", details_page_up))
         return escape(2, "DETAILS.. never opened the page");
     state->screen_up = true;
@@ -3125,7 +3141,8 @@ int kick_injector(void* data)
     if (!state->popup_up)
         return escape(3, "the kick never opened its popup");
     // OK, until the popup has closed. The popup pumps no main-thread task
-    // and the screen under it does (an engine frame top, DETAILS' loop), so
+    // and the screen under it does (an engine frame top, DETAILS' loop,
+    // NETWORKING's loop), so
     // a task that runs is the witness that the press landed; a task that
     // did not run says the popup is still up, and only then is OK pressed
     // again. (Not click_until_edge: its pre-press reset is a main-thread
@@ -3141,6 +3158,9 @@ int kick_injector(void* data)
     for (const char* id : state->expected)
         if (!has_interactable(id))
             state->missing.emplace_back(id);
+    for (const char* id : state->gone)
+        if (has_interactable(id))
+            state->lingering.emplace_back(id);
     state->ok_left = listed("ok");
     // Where the popup kept the screen's buttons, Base Camp is left with the
     // ghost OK alone, wired to a row that never rebuilds the set: nothing
@@ -3153,8 +3173,10 @@ int kick_injector(void* data)
         });
 
     // The screen takes input again: one real click on its own control.
-    const char* const edge = state->door_edge;
-    state->door_worked = click_until_edge(state->door, [edge](int ms) {
+    state->door_worked = click_until_edge(state->door, [state](int ms) {
+        if (state->door_edge_wait)
+            return state->door_edge_wait(ms);
+        const char* const edge = state->door_edge;
         if (std::string_view(edge) == "promote")
             return details_page_up(ms);
         return wait_for_interactable(edge, ms);
@@ -3162,14 +3184,14 @@ int kick_injector(void* data)
     return escape(0, "");
 }
 
-void run_kick(KickState& state, Sint32 (*screen_fn)(Sint32),
+void run_kick(KickState& state, const std::function<void()>& run_screen,
               int& thread_result)
 {
     SDL_Thread* thread = SDL_CreateThread(kick_injector, "kick", &state);
     EXPECT_NE(nullptr, thread);
     if (thread == nullptr)
         return;
-    (void)screen_fn(0);
+    run_screen();
     state.test_finished.store(true);
     SDL_WaitThread(thread, &thread_result);
     escape_tail_join_hygiene();
@@ -3187,6 +3209,11 @@ void expect_buttons_handed_back(const KickState& state, int thread_result)
     for (const std::string& id : state.missing)
         missing += id + " ";
     EXPECT_EQ("", missing) << "controls not published after the popup";
+    std::string lingering;
+    for (const std::string& id : state.lingering)
+        lingering += id + " ";
+    EXPECT_EQ("", lingering)
+        << "the screen's session controls outlived the popup";
     EXPECT_FALSE(state.ok_left) << "the popup's OK outlived the popup";
     EXPECT_TRUE(state.door_worked)
         << "a click on the screen's own control did nothing";
@@ -3208,7 +3235,7 @@ TEST(AbilitiesFlow, a_kick_popup_hands_train_its_buttons_back)
     state.door = "details";
     state.door_edge = "promote";
     int thread_result = 0;
-    run_kick(state, create_train_menu, thread_result);
+    run_kick(state, [] { (void)create_train_menu(0); }, thread_result);
     expect_buttons_handed_back(state, thread_result);
 }
 
@@ -3227,7 +3254,7 @@ TEST(AbilitiesFlow, a_kick_popup_hands_details_its_buttons_back)
     state.door = "back";
     state.door_edge = "inc_str";
     int thread_result = 0;
-    run_kick(state, create_train_menu, thread_result);
+    run_kick(state, [] { (void)create_train_menu(0); }, thread_result);
     expect_buttons_handed_back(state, thread_result);
 }
 
@@ -3247,7 +3274,40 @@ TEST(AbilitiesFlow, a_kick_popup_hands_base_camp_its_buttons_back)
     state.rescue_buttons = &picker_createmenu_buttons;
     state.rescue_count = &picker_createmenu_button_count;
     int thread_result = 0;
-    run_kick(state, create_team_menu, thread_result);
+    run_kick(state, [] { (void)create_team_menu(0); }, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// #441: kicked while NETWORKING is up. The joiner is in a live session, so the
+// screen shows its session view (DISCONNECT); after the popup's OK the screen
+// has its own controls again, in the idle view of the local client the kick
+// swapped in, and ROOM CODE answers a click.
+TEST(AbilitiesFlow, a_kick_popup_hands_networking_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+    std::atomic<bool> established{true};
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "network_disconnect";
+    state.engine_hosted = false;
+    state.expected = {"network_host", "network_join", "network_room_toggle",
+                      "network_back"};
+    state.gone = {"network_disconnect"};
+    state.door = "network_room_toggle";
+    state.door_edge_wait = [](int ms) {
+        return wait_for_interactable_label("network_room_toggle",
+                                           "ROOM CODE: ON", ms);
+    };
+    state.rescue_buttons = &picker_networking_buttons;
+    state.rescue_count = &picker_networking_button_count;
+    int thread_result = 0;
+    run_kick(state, [&scope, &established] {
+        (void)picker_testing_run_networking_screen(
+            std::make_unique<FakeKickedJoinClient>(&scope.kicked, nullptr,
+                                                   &established));
+    }, thread_result);
     expect_buttons_handed_back(state, thread_result);
 }
 

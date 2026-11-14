@@ -277,7 +277,10 @@ GO / SET LEVEL / SET CAMPAIGN.
   editor through `og::input_native::text_input_is_active()`, the help viewer
   through `og::input_native::yield_count()`, the campaign picker through the
   campaign picker's counters (`entered` and `action` today, plus the per-frame
-  counter the picker-drive header adds).
+  counter the picker-drive header adds). NETWORKING
+  (`configure_networking_body`) is not engine-hosted either; its frame top
+  turns the main-thread queue as DETAILS' loop does, so `run_on_main_thread`
+  is its frame oracle and `wait_for_menu_frames` never completes there.
 - Prove every click was CONSUMED by the value, label or trace it writes, read
   on the menu thread via `run_on_main_thread` — never by counting the clicks
   you sent, and never with a flat delay: the press is still held when a label
