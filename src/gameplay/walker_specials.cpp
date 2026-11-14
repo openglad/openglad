@@ -864,7 +864,7 @@ const walker* walker::climb(ChainStep step, walker** top_living) const
 		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
 		// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
 		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
-		if (head->query_order() == Order::Living)
+		if (top_living != nullptr && head->query_order() == Order::Living)
 			top = const_cast<walker*>(head);
 		walker* const up = (head->*step)();
 		// plumbing: the top of the chain

@@ -1028,16 +1028,17 @@ given; the archer is dead with the setting off and alive at (160, 161) with it o
 
 `scripts/parity/lint_scenario_facts.py` policy P6 asked for spawn-side evidence only for
 `TreasureFamilyRemovedFromOblist` and `WeaponFamilyEmitted`, and read the family only when the fact wrote it as a
-number, so it checked no fact in the table. It now asks every `WalkerOfOrderFamilyAlive` and `WalkerOfOrderFamilyCount` in the treasure or generator order
-for that family, in that order, in the row's spawns. Nothing else puts one where these facts count: the game makes no
-generator during play, the stain a dying living leaves goes to the effect list, which these facts do not read, and a
-life gem drops only from a walker with a character record, which no row has. A row that keeps the level's population
-(`fresh_arena` false) is not asked, since the level file may hold either. Weapon, effect and living counts are not
-asked: the game makes those itself. The rows only the current game runs are asked too, since the coverage gate reads
-their facts. The spawns are the array the row's spawns field names, read with the table's comments removed, so a
-commented-out spawn is no spawn; a spawn's family may be a number or a `FAMILY_*` name. Rule (g) now refuses an
-order-aware count whose `FAMILY_*` name belongs to another order than the one it counts in, or whose order or family
-is written in a form the lint cannot read. Every fact in the table passed; none changed.
+number, so it checked no fact in the table. It now asks every `WalkerOfOrderFamilyAlive` and
+`WalkerOfOrderFamilyCount` in the treasure or generator order for that family, in that order, in the row's spawns.
+Nothing else puts one where these facts count: the game makes no generator during play, the stain a dying living
+leaves goes to the effect list, which these facts do not read, and a life gem drops only from a walker with a
+character record, which no row has. A row that keeps the level's population (`fresh_arena` false) is not asked, since
+the level file may hold either. Weapon, effect and living counts are not asked: the game makes those itself. The rows
+only the current game runs are asked too, since the coverage gate reads their facts. The spawns are the array the
+row's spawns field names, read with the table's comments removed, so a commented-out spawn is no spawn; a spawn's
+family may be a number or a `FAMILY_*` name. Rule (g) now refuses an order-aware count whose `FAMILY_*` name belongs
+to another order than the one it counts in, or whose order or family is written in a form the lint cannot read. Every
+fact in the table passed; none changed.
 
 `TreasureFamilyRemovedFromOblist`, which read its family through the living table and which no row used, is retired;
 the treasure coverage gate binds a family through the order-aware counts only.

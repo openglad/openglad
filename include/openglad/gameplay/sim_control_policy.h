@@ -173,14 +173,16 @@ void install_control_policy(GameWorld& world,
 // asked this since 2013, when Jonathan Dearborn added the friendliness test so
 // a seat never switches to "an enemy on the same team"; with the Gameplay
 // Fixes setting on the death hand-off asks it too (fix AY, #496). The two
-// forms below differ only in the side they ask about.
-[[nodiscard]] inline bool fights_for_side(const walker& w, unsigned char side) noexcept
+// forms below differ only in the side they ask about. Neither they nor
+// seat_may_claim_for_team is noexcept: the climb may cut an owner loop and
+// write a log line on the way (#503).
+[[nodiscard]] inline bool fights_for_side(const walker& w, unsigned char side)
 {
     return w.is_friendly_to_team(side) != 0;
 }
 // Switch Character's form: the side the live hero fights for, exactly
 // walker::is_friendly(hero). A dead or missing hero has no side.
-[[nodiscard]] inline bool fights_alongside(const walker& w, const walker* hero) noexcept
+[[nodiscard]] inline bool fights_alongside(const walker& w, const walker* hero)
 {
     return hero != nullptr && !hero->dead() &&
            fights_for_side(w, hero->alliance_head()->team_num());
@@ -196,7 +198,7 @@ void install_control_policy(GameWorld& world,
 // cast is exact.
 [[nodiscard]] inline bool seat_may_claim_for_team(const GameWorld& level,
                                                   const walker& w,
-                                                  short my_team) noexcept
+                                                  short my_team)
 {
     return seat_may_claim(level, w) &&
            (level.gameplay_fixes == 0 ||

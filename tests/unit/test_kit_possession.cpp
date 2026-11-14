@@ -451,7 +451,7 @@ TEST(KitPossession, rider_gone_from_the_world_unlinks_the_host)
 //     that ride down.
 // Both values of New Specials (a level script rides with it off).
 // RED before #499: in (1) the orc kept the ghost's team, and the late
-// death() released the second ride. Planted: end_ride without the rider's
+// death() released the second ride. Break: end_ride without the rider's
 // unlink ((1): the late death cuts the second ride and reveals the ghost
 // with a burst); end_ride without the host's unlink ((2): ALREADY
 // POSSESSED).
@@ -1642,7 +1642,7 @@ TEST(KitPossession, a_possessed_summon_of_an_enemy_caster_is_its_own_credit)
 //   a riding ghost outright.)
 // Both values of Gameplay Fixes and of New Specials: a level script's
 // og.possess rides with New Specials off too.
-// RED before #499: the troop dropped the link and stayed red. Planted: the
+// RED before #499: the troop dropped the link and stayed red. Break: the
 // arm back to unlinking the host only (both ways); linked_rider without its
 // dead_list walk (cleared away only).
 TEST(KitPossession, a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back)

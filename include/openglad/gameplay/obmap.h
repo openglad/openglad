@@ -51,8 +51,9 @@ class obmap
 		// walker_to_pos: 1. A walker walker_to_pos does not know is a miss: 0,
 		// and nothing changes (#504). `ob` is only a key and is never read, so a
 		// freed pointer is safe. In play the piles and walker_to_pos agree; a
-		// pile entry filed by hand (tests) stays until a foe search forgets it
-		// (forget_untracked) or the level is torn down.
+		// pile entry filed by hand (tests) stays until the level is torn down,
+		// unless the world no longer holds its walker: then a foe search forgets
+		// it (forget_untracked forgets only such entries).
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy

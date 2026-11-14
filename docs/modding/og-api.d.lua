@@ -245,7 +245,7 @@
 ---@field set_leader fun(self: og.Walker, value: og.Walker?)
 ---@field set_lifetime fun(self: og.Walker, value: integer)
 ---@field set_lineofsight fun(self: og.Walker, value: integer)
----@field set_owner fun(self: og.Walker, owner: og.Walker?) # walker:set_owner(w): make w this walker's owner; nil clears it, and a walker on w's owner chain is refused.
+---@field set_owner fun(self: og.Walker, owner: og.Walker?) # walker:set_owner(w): make w this walker's owner; nil clears it, and the call is refused when this walker is already on w's owner chain.
 ---@field set_real_team_num fun(self: og.Walker, value: integer)
 ---@field set_save_all_protected fun(self: og.Walker, value: any)
 ---@field set_shifter_down fun(self: og.Walker, value: integer)

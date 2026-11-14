@@ -1203,7 +1203,7 @@ TEST(SemWorld, a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps)
 // The miss leaves both maps as they were; removing `filed` afterwards takes
 // only `filed` out, and the hand-filed `stray` stays.
 // RED before #504: the removal read the stray's position, took it out of
-// (3, 3) and answered 1. Planted: a pointer scan of every pile in the miss
+// (3, 3) and answered 1. Break: a pointer scan of every pile in the miss
 // arm (the maps change).
 TEST(SemWorld, removing_a_walker_the_index_does_not_know_changes_nothing)
 {
@@ -1247,7 +1247,7 @@ TEST(SemWorld, removing_a_walker_the_index_does_not_know_changes_nothing)
 // world's obmap); om never filed it and holds `filed` at (3, 3).
 // Before #504 the removal read the freed walker's position, a use after
 // free that only CI's ASan lane reports; this test can pass by luck without
-// ASan. Planted locally: the miss arm answering 1.
+// ASan. Break: the miss arm answering 1.
 TEST(SemWorld, removing_a_freed_walker_only_compares_its_pointer)
 {
     TestGameWorld tw;

@@ -1730,17 +1730,17 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 // straight through it without triggering the eat-me path. The literal
 // STAIN kOrderTreasure entry stays in oblist; read through the living
 // table its id 0 is FAMILY_SOLDIER, so only a treasure-order count
-// (WalkerOfOrderFamilyAlive) names it. Per
-// policy P1 we fall back to the closest schema-v1 observables that
-// flip on the discriminating mutation — the row exercises the OTHER
-// stain source, walker::death()'s generate_bloodspot(): a level-5
-// soldier melees a FAMILY_FAERIE to death, and kMut_treasure_stain_pickup
+// (WalkerOfOrderFamilyAlive) names it. Per policy P1 we fall back to the
+// closest schema-v1 observable that flips on the discriminating mutation:
+// a level-5 soldier wounds a FAMILY_FAERIE in melee (the recording ends
+// with the faerie alive at 17.00 hp), and kMut_treasure_stain_pickup
 // cranks the faerie's derived HP bonus in
-// packs/core/families/living-07-faerie.lua so it never dies and never
-// drops its bloodstain, flipping the faerie-death observables. No fact
-// can count that bloodstain: it goes to the effect list (add_fx_ob),
-// which the order-aware counts do not read, and EffectFamilyCount reads
-// its family in the FX order, where id 0 is FAMILY_EXPAND.
+// packs/core/families/living-07-faerie.lua, so the row's teeth are the
+// faerie's hit points at the final tick. The faerie does not die, so no
+// bloodstain is dropped, and no fact could count one: it would go to the
+// effect list (add_fx_ob), which the order-aware counts do not read, and
+// EffectFamilyCount reads its family in the FX order, where id 0 is
+// FAMILY_EXPAND.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window

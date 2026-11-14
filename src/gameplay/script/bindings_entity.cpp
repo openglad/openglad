@@ -4006,7 +4006,7 @@ int m_pad_room(lua_State* L)
 // Gameplay Fixes AP (#429): the head of the one owner-chain climb (walker::chain_head).
 W_GET_REF(chain_head)
 
-// walker:set_owner(w): make w this walker's owner; nil clears it, and a walker on w's owner chain is refused.
+// walker:set_owner(w): make w this walker's owner; nil clears it, and the call is refused when this walker is already on w's owner chain.
 // The refusal (#503) is a script error naming both walkers: the link would
 // close an owner loop. A self-link stays legal: every climb ends at a
 // self-loop (a shot whose thrower died owns itself).

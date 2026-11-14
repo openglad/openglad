@@ -928,7 +928,7 @@ TEST_F(SemLiving, banked_rounds_past_fifty_all_run_in_one_tick)
 // it proves the capture sees the log and that a soldier here reaches the
 // switch. Over five acts neither walker changes. Log() writes to stderr, so
 // gtest's stderr capture is the seam (no trace needed). Both settings.
-// RED before #501: the sitter wrote the line every act. Planted: the
+// RED before #501: the sitter wrote the line every act. Break: the
 // ACT_SIT arm removed (the line comes back); the arm answering 1.
 TEST_F(SemLiving, a_sitting_walker_does_nothing_and_writes_no_log_line)
 {

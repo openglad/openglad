@@ -982,10 +982,9 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
     //    FACE_UP_RIGHT and the init_fire() that closes the arm turns the rest
     //    of the way onto the standing FACE_RIGHT enddir: two notches, nothing
     //    fired;
-    //  * on (Gameplay Fixes BB, #497): the arm keeps its aim as the facing it
-    //    turns to (enddir RIGHT) and turns one notch, FACE_UP_RIGHT; the turn
-    //    is its act, so nothing starts (busy 0) and its next act finishes the
-    //    turn.
+    //  * on (Gameplay Fixes BB, #497): the arm turns one notch, FACE_UP_RIGHT,
+    //    and leaves the standing enddir (RIGHT) as it was; the turn is its
+    //    act, so nothing starts (busy 0) and its next act finishes the turn.
     //
     // find_foes_in_range scans world.oblist, so the pair has to LIVE in the
     // world; make_walker's owned walkers are invisible to it. Each pass builds
@@ -1027,7 +1026,7 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
             EXPECT_EQ(static_cast<int>(FACE_UP_RIGHT), static_cast<int>(melee->curdir()))
                 << "one notch toward the eastward foe, kept";
             EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->enddir()))
-                << "the aim is kept as the facing it turns to";
+                << "the standing enddir is left as it was";
             EXPECT_FLOAT_EQ(0.0f, melee->busy()) << "the turn is the act: nothing started";
         } else {
             EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->curdir()))
