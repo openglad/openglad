@@ -294,7 +294,6 @@ const char* fact_kind_name(FactKind k)
         case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
         case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
         case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
-        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
         case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
         case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
         case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
@@ -422,20 +421,6 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                                   " of " +
                                   family_symbol_by_order(kLivingOrder, p.arg0) +
                                   " < required " + std::to_string(p.arg1)), r);
-            return r;
-        }
-        case FactKind::TreasureFamilyRemovedFromOblist:
-        {
-            // Legacy schema-v1 predicate. arg0 is the literal family id
-            // and is compared against dump.walkers[].family rendered
-            // under the Living table (the only oblist family table
-            // schema-v1 emitted). WalkerOfOrderFamilyAlive and
-            // WalkerOfOrderFamilyCount in the treasure order are the
-            // order-aware forms; no row uses this legacy kind.
-            if (count_walkers_family(dump, p.arg0) != 0)
-                return (make_fail(r, p, "family " +
-                                  family_symbol_by_order(kLivingOrder, p.arg0) +
-                                  " still present in oblist"), r);
             return r;
         }
         case FactKind::StatDeltaOnPickup:

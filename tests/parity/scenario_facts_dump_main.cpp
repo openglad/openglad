@@ -178,7 +178,6 @@ int arg0_order_for_symbol(const og::parity::FactPredicate& p)
         case FactKind::WalkerOfOrderFamilyCount:
         case FactKind::WalkerOfOrderFamilyAlive:
             return p.arg1;
-        case FactKind::TreasureFamilyRemovedFromOblist:
         case FactKind::StatDeltaOnPickup:
             return og::parity::kOrderTreasure;
         case FactKind::EffectFamilyCount:
@@ -320,10 +319,6 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::WalkerAliveAtFinal:
             std::snprintf(buf, sizeof(buf), "WalkerAliveAtFinal(%s, %d)",
                           living(p.arg0).c_str(), p.arg1);
-            return buf;
-        case FactKind::TreasureFamilyRemovedFromOblist:
-            std::snprintf(buf, sizeof(buf), "TreasureFamilyRemovedFromOblist(%s)",
-                          by_order(p.arg0, og::parity::kOrderTreasure).c_str());
             return buf;
         case FactKind::StatDeltaOnPickup:
             std::snprintf(buf, sizeof(buf), "StatDeltaOnPickup(%d, %d, %d)",

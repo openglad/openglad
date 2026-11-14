@@ -42,7 +42,6 @@ enum class FactKind : std::uint8_t
     WalkerPositionMoved,             // arg0 = family, arg1 = min_xpos, arg2 = min_ypos
     WalkerDiedByFinal,               // arg0 = family
     WalkerAliveAtFinal,              // arg0 = family, arg1 = min_alive
-    TreasureFamilyRemovedFromOblist, // arg0 = family
     StatDeltaOnPickup,               // arg0 = stat_kind, arg1 = min, arg2 = max (Indeterminate w/o baseline)
     EffectFamilyCount,               // arg0 = family, arg1 = min, arg2 = max,
                                      //   arg3 = source-walker-family qualifier (>=0)
@@ -262,11 +261,6 @@ inline constexpr FactPredicate WalkerAliveAtFinal(std::int32_t family, std::int3
                                                   std::string_view label = {}) noexcept
 {
     return {FactKind::WalkerAliveAtFinal, family, min_alive, 0, 0, 0, label};
-}
-inline constexpr FactPredicate TreasureFamilyRemovedFromOblist(std::int32_t family,
-                                                               std::string_view label = {}) noexcept
-{
-    return {FactKind::TreasureFamilyRemovedFromOblist, family, 0, 0, 0, 0, label};
 }
 inline constexpr FactPredicate StatDeltaOnPickup(std::int32_t stat_kind, std::int32_t mn, std::int32_t mx,
                                                  std::string_view label = {}) noexcept

@@ -669,9 +669,9 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 // `WalkerDiedByFinal`, `WalkerHpRangeAtFinalTick`, `WalkerPositionMoved`,
 // `EventKindAtLeast`, `EventKindExactly`, `ScoreDelta`, and
 // `EffectFamilyCount` all appear in at least one row. The remaining
-// kinds (`WalkerKeysApplied`, `StatDeltaOnPickup`, `WeaponFamilyEmitted`,
-// `TreasureFamilyRemovedFromOblist`) are exercised by gtest fixtures or
-// land with Phase 03+ rows; they remain available in the framework.
+// kinds (`WalkerKeysApplied`, `StatDeltaOnPickup`, `WeaponFamilyEmitted`)
+// are exercised by gtest fixtures or land with Phase 03+ rows; they remain
+// available in the framework.
 //
 // Each predicate uses the SPEC-MANDATED named family (FAMILY_<NAME>) so
 // the row's facts are about the family the row exists to exercise, not a
@@ -1728,19 +1728,19 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 // packs/core/families/treasure-00-stain.lua; the pack-installed
 // in-world walker ignores the collision grid), so the soldier walks
 // straight through it without triggering the eat-me path. The literal
-// STAIN kOrderTreasure entry stays in oblist; its family_symbol is
-// FAMILY_SOLDIER (id 0 collides with FAMILY_SOLDIER walker), so the
-// row CANNOT honestly use TreasureFamilyRemovedFromOblist(0). Per
+// STAIN kOrderTreasure entry stays in oblist; read through the living
+// table its id 0 is FAMILY_SOLDIER, so only a treasure-order count
+// (WalkerOfOrderFamilyAlive) names it. Per
 // policy P1 we fall back to the closest schema-v1 observables that
 // flip on the discriminating mutation — the row exercises the OTHER
 // stain source, walker::death()'s generate_bloodspot(): a level-5
 // soldier melees a FAMILY_FAERIE to death, and kMut_treasure_stain_pickup
 // cranks the faerie's derived HP bonus in
 // packs/core/families/living-07-faerie.lua so it never dies and never
-// drops its bloodstain, flipping the faerie-death observables. Once a
-// future dump schema carries an oblist/Order disambiguator, this row
-// should switch to the canonical EffectFamilyCount(FAMILY_STAIN)
-// predicate instead.
+// drops its bloodstain, flipping the faerie-death observables. No fact
+// can count that bloodstain: it goes to the effect list (add_fx_ob),
+// which the order-aware counts do not read, and EffectFamilyCount reads
+// its family in the FX order, where id 0 is FAMILY_EXPAND.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window
@@ -1753,8 +1753,9 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_FAERIE, 1),
     // Structural coverage anchor: binds FAMILY_STAIN for
     // behavioural_coverage_gate. The off-path literal stain is still alive
-    // in oblist at the final tick (the faerie lives, so no bloodstain joins
-    // it): exactly one live FAMILY_STAIN, on both arms. Until #449 this was a
+    // in oblist at the final tick (the faerie lives, and the bloodstain a
+    // death leaves goes to the effect list, which this count never reads):
+    // exactly one live FAMILY_STAIN, on both arms. Until #449 this was a
     // removal fact that read `indeterminate` here; the stain was never taken.
     pred::WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),

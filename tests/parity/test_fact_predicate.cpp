@@ -586,10 +586,10 @@ TEST(FactPredicate, fact_kind_name_renders_every_enumerator)
     EXPECT_STREQ("TickReached",
                  og::parity::fact_kind_name(og::parity::FactKind::TickReached))
         << "the first enumerator keeps its name";
-    EXPECT_STREQ("TreasureFamilyRemovedFromOblist",
+    EXPECT_STREQ("WalkerHpRangeAtFinalTick",
                  og::parity::fact_kind_name(
-                     og::parity::FactKind::TreasureFamilyRemovedFromOblist))
-        << "the longest name is spelt in full, not truncated";
+                     og::parity::FactKind::WalkerHpRangeAtFinalTick))
+        << "a longest name is spelt in full, not truncated";
     EXPECT_STREQ("WalkerOnFloor",
                  og::parity::fact_kind_name(og::parity::FactKind::WalkerOnFloor))
         << "the multi-floor kind keeps its name";

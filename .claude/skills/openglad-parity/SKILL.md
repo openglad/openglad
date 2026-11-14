@@ -220,7 +220,9 @@ only (#448): count an effect, a treasure or a generator in oblist with
 `WalkerOfOrderFamilyAlive` (live entries) or `WalkerOfOrderFamilyCount`
 (alive or dead); a taken treasure is `WalkerOfOrderFamilyAlive(F,
 kOrderTreasure, 0, 0)`, because its dead entry stays listed once the level
-has ended.
+has ended. In a row that starts from an emptied level, a treasure or
+generator count must name a family the row spawns in that order (lint
+policy P6): nothing else puts one in the list these facts count.
 
 ## The mutation canary (teeth oracle)
 
