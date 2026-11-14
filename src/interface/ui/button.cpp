@@ -922,8 +922,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         toggle_effect("effects", "heal_numbers");
         return REDRAW;
     case ButtonAction::ToggleNewAbilitySelect:
-        toggle_effect("effects", "new_ability_select");
-        og::input::refresh_ability_select_cache();
+        // The switch every client calls: it writes the cfg key and
+        // refreshes the copy the keys read.
+        og::ui::set_ability_select_pref(cfg, !og::ui::ability_select_pref(cfg));
         return REDRAW;
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");

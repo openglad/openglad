@@ -2988,7 +2988,7 @@ TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
             .character = og::sim::LobbyCharacterData{
                 .guy_id = save.team_list[0]->id,
                 .name = save.team_list[0]->name,
-                .family = static_cast<std::int8_t>(save.team_list[0]->family),
+                .family = save.team_list[0]->family,
                 .strength = save.team_list[0]->strength,
                 .dexterity = save.team_list[0]->dexterity,
                 .constitution = save.team_list[0]->constitution,

@@ -443,8 +443,8 @@ TEST(GuyExtended, guy_batch5_max_helper_and_more_unknown_family_paths)
     guy unknown_neg(-999);
     ASSERT_STREQ("BEAST", unknown_neg.name.c_str()) << "negative unknown family should use fallback name";
     ASSERT_EQ(1, (int)unknown_neg.level) << "negative unknown family should use fallback level";
-    unknown_neg.family = static_cast<char>(-127);
-    ASSERT_EQ(0, (int)unknown_neg.query_heart_value()) << "unknown negative family should report zero heart value";
+    unknown_neg.family = 129;  // a class from 128 up that no family claims
+    ASSERT_EQ(0, (int)unknown_neg.query_heart_value()) << "an unregistered class from 128 up reports zero heart value";
 }
 
 

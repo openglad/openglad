@@ -93,17 +93,24 @@ bool picker_prepare_new_game_setup()
 	og::runtime::current_session->current_guy_ = nullptr;
     picker_lobby_initialize_from_save();
 
-	// Starting new game .. The campaign intro is NOT shown here anymore:
-	// the campaign select comes next, and the intro belongs to the campaign
-	// the player actually picks (SdlPickerClient::show_campaign_select).
+	// Starting new game .. #490: no campaign list. The company is founded on
+	// the default campaign (the reset above) and its intro plays here, between
+	// name entry and Base Camp, where the old game's beginmenu played it;
+	// another campaign is SCENARIO > SET CAMPAIGN's job, from Base Camp.
 	// #237 ownership: name entry's exit already faded its own frame out
 	// (run_menu_screen's exit scope), so the window is black here and the
-	// clears above and below touch nothing a fade will read. Campaign select
-	// fades its first frame in over that black.
+	// clears above and below touch nothing a fade will read. The intro fades
+	// its first frame in over that black and fades itself out on dismissal
+	// (read_campaign_intro's LegacyMenuFade), so Base Camp's entry finds a
+	// black window and fades in.
 	game->clear();
 
 	// Clear the playable-family labeling counters.
 	og::runtime::current_session->numbought_.fill(0);
+
+	release_mouse();
+	read_campaign_intro(game);
+	grab_mouse();
 
     return true;
 }

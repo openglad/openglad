@@ -225,24 +225,31 @@ not change shape.
 - **cfg**: `effects/new_ability_select`, default `on`
   (`src/resources/gparser.cpp`, and the shipped `cfg/openglad.yaml`).
 - **Per machine, never on the wire.** It is a UI FX row, not a Gameplay FX
-  rule: every UI FX row is `toggle_effect("effects", key)` and stays on the
-  machine. The server needs no setting (C.6), so a host never flips a
+  rule: every UI FX row flips its own `effects` key and stays on the
+  machine (this one through `og::ui::set_ability_select_pref`, below). The
+  server needs no setting (C.6), so a host never flips a
   joiner's keyboard. A host with it on and a joiner with it off play the
   same match without trouble: each sends its own kind of input and draws its
   own HUD.
 - **One accessor**: `og::input::ability_select_on()`
   (`include/openglad/interface/input.h`), backed by a cached flag on
-  `InputHardwareState` that the controls loader, the UI FX toggle
-  (`ButtonAction::ToggleNewAbilitySelect`, `src/interface/ui/button.cpp`)
-  and RESTORE SETTINGS refresh. The per-frame resolver reads the cache,
-  never cfg.
+  `InputHardwareState` that the controls loader, the switch and RESTORE
+  SETTINGS refresh. The switch is one function,
+  `og::ui::set_ability_select_pref` (`src/interface/ui/picker_common.cpp`).
+  The UI FX row (`ButtonAction::ToggleNewAbilitySelect`,
+  `src/interface/ui/button.cpp`) and both terminals' Game Settings prompts
+  call it, and it writes the cfg key and refreshes the cache together
+  (#398). The per-frame resolver reads the cache, never cfg.
 - **Off is the old game.** The client sends `belt_cast = 0` with today's
   bits, the SPEC 2 key sends the old change-special action, and the server
   takes its unchanged path. The HUD draws the old `SPC:` row, the binding
   panels show the seven old rows, REMAP asks the old prompts, HELP shows the
   old table, all on the new keys.
 - **Terminals**: the text client's and the curses client's settings pages
-  ask `New ability select: on/off`, stored in the same cfg key.
+  ask `New ability select: on/off`, stored in the same cfg key by the same
+  switch. In the curses client the next mission's keys, status line and
+  PAUSED menu follow the answer at once. The text client keeps no copy: it
+  has no input hardware state and reads the cfg key where it needs it.
 - **Tests** run with the setting on (the shipped default):
   `tests/integration/integration_main.cpp` sets it and re-sets it before
   every test. A test that pins the old output takes `ScopedAbilitySelect`

@@ -183,7 +183,7 @@ static bool click_hire_and_wait_for_roster_growth(int timeout_ms = 5000)
 
 static bool click_next_and_wait_for_family_change(int timeout_ms = 5000)
 {
-    char family_before = 0;
+    std::uint8_t family_before = 0;
     bool had_current_guy = false;
     if (!run_on_main_thread([&family_before, &had_current_guy] {
             const guy* const current =
@@ -299,9 +299,10 @@ static int op_injector(void* data)
         return escape(1, "begin_new_game vanished before the click");
 
     // -- Leg 2: §2.2 accept the generated company name --
-    // No campaign intro here anymore (issue #186: it moved behind the
-    // campaign select, skipped under TESTING) — an Escape here would BACK
-    // out of the team-build screen instead.
+    // The founded campaign's intro plays inside the founding and dismisses
+    // itself after its first frame under TESTING (#490: no campaign list on
+    // a new game); an Escape here would BACK out of the team-build screen
+    // instead.
     if (!accept_generated_company_name())
         return escape(2, "the generated company name was never accepted");
 

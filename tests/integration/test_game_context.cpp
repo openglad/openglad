@@ -964,24 +964,20 @@ TEST(BeltSampler, on_with_a_walker_sends_the_guys_entry_and_a_fresh_state_sees_t
 namespace
 {
 
-// One soldier hero (level 13, every slot open) whose SPEC 2 belt slot holds
-// WHIRLWIND (slot 3) instead of the class default BOOMERANG (slot 2), started
-// the way Base Camp's GO starts a mission: the local lobby builds the start
-// config from the save (make_lobby_character_data), glad_init rebuilds the
-// mission roster from it (make_guy_from_lobby_character) and installs the
-// local transport, so the display world is the in-process server's mirror.
-walker* start_belt_mission(screen& game_screen)
+// One hero started the way Base Camp's GO starts a mission: the local lobby
+// builds the start config from the save (make_lobby_character_data), glad_init
+// rebuilds the mission roster from it (make_guy_from_lobby_character) and
+// installs the local transport, so the display world is the in-process
+// server's mirror. A caller that wants the start config gets a copy of it.
+walker* start_mission_with_hero(
+    screen& game_screen, std::unique_ptr<guy> hero,
+    std::optional<og::ui::PickerLobbyGameStartConfig>* config_out = nullptr)
 {
     game_screen.save_data.reset();
     game_screen.save_data.current_campaign = "gladiator";
     game_screen.save_data.current_levels["gladiator"] = 1;
     game_screen.save_data.scen_num = 1;
     game_screen.save_data.numplayers = 1;
-    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
-    hero->name = "Belt";
-    hero->teamnum = 0;
-    hero->upgrade_to_level(13);
-    hero->belt[1] = og::sim::belt::encode({3, false});
     game_screen.save_data.team_list[0] = std::move(hero);
     game_screen.save_data.team_size = 1;
     if (!game_screen.save_data.save("save0"))
@@ -993,6 +989,8 @@ walker* start_belt_mission(screen& game_screen)
         config = client->build_game_start_config();
         client->shutdown();
     }
+    if (config_out != nullptr)
+        *config_out = config;
     if (!config.has_value())
         return nullptr;
     glad_init(false, &*config);
@@ -1010,6 +1008,18 @@ walker* start_belt_mission(screen& game_screen)
         game_frame_with_result(game_screen,
                                og::runtime::current_session->frame_state_, deps);
     return game_screen.viewob[0]->control;
+}
+
+// One soldier hero (level 13, every slot open) whose SPEC 2 belt slot holds
+// WHIRLWIND (slot 3) instead of the class default BOOMERANG (slot 2).
+walker* start_belt_mission(screen& game_screen)
+{
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "Belt";
+    hero->teamnum = 0;
+    hero->upgrade_to_level(13);
+    hero->belt[1] = og::sim::belt::encode({3, false});
+    return start_mission_with_hero(game_screen, std::move(hero));
 }
 
 void end_belt_mission(screen& game_screen)
@@ -1138,4 +1148,45 @@ TEST(BeltPlay, latch_keeps_the_pressed_frames_byte_across_a_render_frame)
     game_frame_with_result(game_screen, st, one_tick_per_frame());
     EXPECT_EQ(0, st.pending_input.players[0].belt_cast);
     end_belt_mission(game_screen);
+}
+
+// #500: a mission started from Base Camp keeps a hero of a pack class from 128
+// up in the start config, in the mission roster glad_init rebuilds from it,
+// and on the display world's hero. Until #500 the hero's record kept a signed
+// byte, so the local lobby saw -56 and dropped the hero from the start config.
+// No pack claims class 200 in this binary: only the class is asserted here
+// (ClasspackInstall.a_company_hero_of_class_200_is_built_and_drawn_as_itself
+// covers the body of a class a pack claims).
+TEST(CompanyClassByte, a_mission_from_base_camp_keeps_a_class_200_hero)
+{
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "Highborn";
+    hero->family = 200;
+    hero->teamnum = 0;
+    std::optional<og::ui::PickerLobbyGameStartConfig> config;
+    walker* const shown = start_mission_with_hero(game_screen, std::move(hero), &config);
+    // Ends the mission on every exit, a failed assertion included, so a red
+    // run leaves no transport behind for the next test.
+    struct EndMission
+    {
+        screen& target;
+        ~EndMission()
+        {
+            if (og::runtime::current_game_session != nullptr)
+                end_belt_mission(target);
+        }
+    } end_mission{game_screen};
+
+    ASSERT_TRUE(config.has_value()) << "the local lobby built no start config";
+    ASSERT_EQ(1u, config->save_data.team_list.size())
+        << "the class-200 hero must reach the start config";
+    EXPECT_EQ(200, static_cast<int>(config->save_data.team_list[0].character.family));
+    ASSERT_TRUE(game_screen.save_data.team_list[0] != nullptr);
+    EXPECT_EQ(200, static_cast<int>(game_screen.save_data.team_list[0]->family))
+        << "the mission roster glad_init rebuilt keeps the class";
+    ASSERT_NE(nullptr, shown) << "the mission never put a hero under seat 1";
+    ASSERT_NE(nullptr, shown->myguy);
+    EXPECT_EQ(200, static_cast<int>(shown->myguy->family))
+        << "the display world's hero keeps the class";
 }

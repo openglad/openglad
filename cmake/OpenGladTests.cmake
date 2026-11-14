@@ -233,6 +233,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_uxshots_probe.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_new_game_campaign.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_belt_persistence.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_abilities_flow.cpp
@@ -840,6 +841,7 @@ og_add_test_group(og_test_basecamp NO_DEFAULT_TEST FILES
     test_networking_uxshots.cpp
     test_seat_chip.cpp
     test_fade_ownership.cpp
+    test_new_game_campaign.cpp
 )
 og_add_sharded_group_tests(og_test_basecamp og_test_basecamp 4 "-CompanyLitter.*" OG_BASECAMP_TESTS)
 og_add_filtered_test(og_test_basecamp_company_litter og_test_basecamp "CompanyLitter.*")
@@ -1606,10 +1608,13 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         LABELS "curses"
     )
 
+    # The build stamp (og_git_hash.h) is the independent oracle for the
+    # exact --version line this build must print (#508).
     add_test(NAME openglad_curses_cli
         COMMAND ${CMAKE_COMMAND} -E env bash
             ${CMAKE_SOURCE_DIR}/scripts/test_curses_cli.sh
             $<TARGET_FILE:openglad_curses>
+            ${CMAKE_BINARY_DIR}/og_git_hash.h
     )
     set_tests_properties(openglad_curses_cli PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -2247,6 +2252,25 @@ add_test(NAME check_script_roots_selftest
         ${CMAKE_SOURCE_DIR}/scripts/test_check_script_roots.sh
 )
 set_tests_properties(check_script_roots_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The build stamp's master rule (#508): only a build of a commit on master's
+# history shows the 2.<count> version. The script drives the real stamp
+# generator (cmake -P cmake/GitHash.cmake) against throwaway repositories in
+# every shape it must answer (on master, a commit on top, a branch, the
+# workflows' ON/OFF, no origin/master, a shallow clone, no git, no commit)
+# and checks that no call site outside src/core/version.cpp reads the bare
+# number.
+add_test(NAME og_version_stamp_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_version_stamp.sh
+        ${CMAKE_COMMAND}
+        ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(og_version_stamp_selftest PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )

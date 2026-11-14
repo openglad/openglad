@@ -763,7 +763,9 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
     a.team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
     og::ui::run_picker(a);
     ASSERT_TRUE(a.prep_calls == 1);
-    ASSERT_TRUE(a.show_campaign_calls == 1);
+    // #490: a new game goes straight to team build, never to the campaign
+    // list.
+    ASSERT_TRUE(a.show_campaign_calls == 0);
     ASSERT_TRUE(a.networking_calls == 1);
     ASSERT_TRUE(a.load_calls == 1);
     ASSERT_TRUE(a.save_calls == 1);

@@ -15,7 +15,8 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 # Drive sequence (1-based menu indices):
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
-#     name entry); blank keeps the campaign. Back, then 2=Continue returns to
+#     name entry) and the company lands on Team Build on the default
+#     campaign (#490: no campaign list). Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
 #   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
 #     inserted before Back; the flat CTF trio left for the SETUP wizard's
@@ -43,15 +44,15 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Scenario submenu (7 items — the missions door retired into the camp;
 #     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
 #     the one row this branch REMOVED, so replay and back each moved up
-#     one): 4=Matchup (set preferred-team metadata, blank exits),
-#     3=View Scenario (blank dismisses), 7=Back.
+#     one): 1=Set Campaign (blank keeps current), 4=Matchup (set
+#     preferred-team metadata, blank exits), 3=View Scenario (blank
+#     dismisses), 7=Back.
 #   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
 #   Main: 6=Quit (the difficulty door left this menu, so every row below it
 #     moved up one).
 cat > "$TMPIN" << 'INP'
 1
-
 
 8
 2
@@ -66,6 +67,8 @@ deploy 2
 2
 7
 10
+1
+
 4
 play 1
 
@@ -84,27 +87,61 @@ quit
 6
 INP
 
-HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
-rc=$?
-if [ $rc -ne 0 ]; then
-    echo "FAIL: openglad_text interactive run exited with code $rc" >&2
-    exit 1
-fi
+# The exit code is kept, not left to `set -e`: a run that ends early still
+# goes through the checks below that its output can answer (the #490 check
+# names a campaign list that put the scripted input one screen off), and the
+# failure then says which code the run ended with.
+rc=0
+HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null || rc=$?
 
 export TMPOUT TMPHOME
-python3 - << 'PY'
+TEXT_RC=$rc python3 - << 'PY'
 import json, os, sys
 
 out_path = os.environ['TMPOUT']
 home = os.environ['TMPHOME']
+rc = int(os.environ['TEXT_RC'])
 lines = [l.rstrip('\n') for l in open(out_path, encoding='utf-8', errors='replace')]
-if not any('OpenGlad Main Menu' in l for l in lines):
-    print('FAIL: interactive picker banner not found', file=sys.stderr)
+
+
+def fail_early(message):
+    print('FAIL: ' + message, file=sys.stderr)
+    if rc != 0:
+        print(f'FAIL: openglad_text interactive run exited with code {rc}',
+              file=sys.stderr)
     sys.exit(1)
+
+
+if not any('OpenGlad Main Menu' in l for l in lines):
+    fail_early('interactive picker banner not found')
 
 # §2.2: Begin New Game opens the name-entry screen (generated company name).
 if not any('Found Your Company' in l for l in lines):
-    print('FAIL: expected the name-entry banner', file=sys.stderr)
+    fail_early('expected the name-entry banner')
+
+# #490: Begin New Game founds the company on the default campaign and goes
+# straight to Team Build; the campaign list is Scenario > Set Campaign's.
+# With no Team Build at all, the rest of the output must hold no list
+# either, and a run that shows none never reached Team Build.
+found = next(i for i, l in enumerate(lines) if 'Found Your Company' in l)
+team = next((i for i in range(found, len(lines))
+             if '=== Team Build ===' in lines[i]), None)
+if any('--- Campaign Select ---' in l
+       for l in lines[found:len(lines) if team is None else team]):
+    fail_early('a new game opened the campaign list')
+if team is None:
+    fail_early('Team Build was never reached after the name entry')
+
+if rc != 0:
+    print(f'FAIL: openglad_text interactive run exited with code {rc}',
+          file=sys.stderr)
+    sys.exit(1)
+
+scen = next((i for i, l in enumerate(lines) if '=== Scenario ===' in l), None)
+shown = [i for i, l in enumerate(lines) if '--- Campaign Select ---' in l]
+if scen is None or len(shown) != 1 or shown[0] < scen:
+    print('FAIL: Set Campaign must open the campaign list once, from Scenario',
+          file=sys.stderr)
     sys.exit(1)
 
 json_lines = []

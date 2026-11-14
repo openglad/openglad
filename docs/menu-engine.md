@@ -301,14 +301,16 @@ Obligations:
 
 Fades are instant under TESTING (`FadeBetween` blits once and traces instead
 of animating), so injector `SDL_Delay(750)` waits are generic settles, not
-fade timing. Two TESTING hooks keep the campaign-intro leg inside every BEGIN
-NEW GAME flow: the un-driven campaign browser accepts the current campaign one
-presented frame in (`campaign_picker_testing_set_auto_accept`, re-armed at
-every test start; a test that drives the browser disarms it — every
-`campaign_picker_testing_input_reset()` does — and with nothing listed it
-returns empty at once rather than blocking), and the un-driven text scroller
-dismisses itself after its first frame unless a test forces the real view
-(`help_testing_set_force_scroll_text`).
+fade timing. The campaign intro plays inside every BEGIN NEW GAME flow (a new
+game founds the company on the default campaign without the campaign list),
+and two TESTING hooks keep un-driven screens from blocking: the un-driven text
+scroller dismisses itself after its first frame unless a test forces the real
+view (`help_testing_set_force_scroll_text`), and the un-driven campaign
+browser (SET CAMPAIGN, the editor's campaign door) accepts the current
+campaign one presented frame in (`campaign_picker_testing_set_auto_accept`,
+re-armed at every test start; a test that drives the browser disarms it, as
+every `campaign_picker_testing_input_reset()` does, and with nothing listed it
+returns empty at once).
 
 The runtime also supports:
 

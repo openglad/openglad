@@ -138,7 +138,7 @@ bool SaveData::load(const std::string& filename)
 	std::array<char, 12> tempname = {'F', 'R', 'E', 'D'};
 	std::array<char, 12> guyname = {'J', 'O', 'E'};
 	std::uint8_t temp_order = 0;
-	char temp_family;
+	std::uint8_t temp_family = 0;
 	std::int16_t temp_str = 0;
 	std::int16_t temp_dex = 0;
 	std::int16_t temp_con = 0;
@@ -1105,7 +1105,7 @@ bool SaveData::save(const std::string& filename)
 
 	std::array<char, 12> guyname = {'J', 'O', 'E'};
 	std::uint8_t temp_order = 0;
-	char temp_family;
+	std::uint8_t temp_family = 0;
 	std::int16_t temp_str = 0;
 	std::int16_t temp_dex = 0;
 	std::int16_t temp_con = 0;

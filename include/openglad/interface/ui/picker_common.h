@@ -380,7 +380,7 @@ DerivedStats compute_derived_stats(const guy& g,
 
 // The same derivation with the family's own combat bases resolved from the
 // family registry (a family the registry does not carry prices as a
-// soldier, the picker's rule). Headless: no loader, no session.
+// soldier). Headless: no loader, no session.
 DerivedStats compute_derived_stats(const guy& g);
 
 // The fire delay the derivation used: base fire_delay minus the guy's
@@ -2160,7 +2160,10 @@ inline constexpr std::size_t kHireBoxRoomyLines = 8;
 // (og::sim::belt).
 
 // The per-machine preference: cfg effects/new_ability_select, the UI FX
-// row's key. The terminals' Game Settings prompts read and write it here.
+// row's key. Every client's switch writes it here (the SDL UI FX row, the
+// terminals' Game Settings prompts); the setter also refreshes
+// og::input::ability_select_on()'s cached copy, so the keys, the HUD and the
+// PAUSED menu follow at once.
 [[nodiscard]] bool ability_select_pref(cfg_store& config);
 void set_ability_select_pref(cfg_store& config, bool on);
 

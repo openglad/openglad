@@ -52,14 +52,45 @@ walker* cheat_cycle_next_team(GameWorld& world, short& team_in_out)
 	return nullptr;
 }
 
+namespace {
+// The one rule every cheat key follows (#413, #432). In local play the screen
+// the keys arrive on holds a copy of the game that the next snapshot
+// overwrites, so a cheat written there was gone a tick later; the cheat runs
+// on the server's own world instead, with the server's game context active,
+// and the snapshot shows it on every view. With no shadow installed (a direct
+// test) the display world is the game. In a networked session, a replay
+// playback, a spectator view or a finished level nothing runs: a host's cheat
+// would change every player's game, and a joiner has no server world.
+// Returns whether the cheat ran. The server's walkers never reach `control`.
+bool run_cheat(walker*& control, short mynum, screen* game_screen,
+               const og::runtime::CheatBody& cheat)
+{
+	og::runtime::SessionState& session = *og::runtime::current_session;
+	if (og::runtime::local_transport_active(session))
+		return og::runtime::run_cheat_on_game(session, mynum, cheat);
+	control = cheat(*game_screen, control);
+	return true;
+}
+
+// A cheat on the seat's hero alone: a seat that plays none changes nothing.
+template <typename Fn>
+void run_hero_cheat(walker*& control, short mynum, screen* game_screen, Fn&& fn)
+{
+	run_cheat(control, mynum, game_screen,
+		[&fn](screen& game, walker* hero) -> walker* {
+			if (hero != nullptr)
+				fn(game, *hero);
+			return hero;
+		});
+}
+} // namespace
+
 void handle_cheat_keys(walker*& control, short mynum,
                        const void* native_event, const PlayerInput& pi,
                        screen* game_screen)
 {
 	if (!pi.is_held(InputAction::Cheat) || !CHEAT_MODE)
 		return;
-
-	walker* newob;
 
 	// Change team (Cheat+Switch)
 	if (og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] && !pi.was_pressed(InputAction::SwitchChar))
@@ -69,136 +100,159 @@ void handle_cheat_keys(walker*& control, short mynum,
 		// to debounce keys
 		og::runtime::current_session->changedteam_[static_cast<std::size_t>(mynum)] = 1;
 
-		control->set_user(-1);
-		// hope this works
-		control->set_act_type(ACT_RANDOM);
+		bool no_other_team = false;
+		const bool ran = run_cheat(control, mynum, game_screen,
+			[mynum, &no_other_team](screen& game, walker* hero) -> walker* {
+				if (hero == nullptr)
+					return hero;
+				walker* const borrowed = hero;
+				hero->set_user(-1);
+				// hope this works
+				hero->set_act_type(ACT_RANDOM);
 
-		short newteam = game_screen->save_data.my_team;
-		walker* result = cheat_cycle_next_team(game_screen->world(), newteam);
+				short newteam = game.save_data.my_team;
+				walker* result = cheat_cycle_next_team(game.world(), newteam);
 
-		if (result != nullptr)
-		{
-			// Only a hop that landed commits the team: a failed lap used to
-			// leave save_data (and the world) parked on whatever team the
-			// walk stopped at, silently changing whose side the seat is on.
-			game_screen->save_data.my_team = newteam;
-			game_screen->world_.my_team = newteam;
-			control = result;
-		}
-		else
-		{
+				if (result != nullptr)
+				{
+					// Only a hop that landed commits the team: a failed lap used to
+					// leave save_data (and the world) parked on whatever team the
+					// walk stopped at, silently changing whose side the seat is on.
+					game.save_data.my_team = newteam;
+					game.world().my_team = newteam;
+					hero = result;
+				}
+				else
+				{
+					no_other_team = true;
+				}
+
+				hero->set_user(static_cast<signed char>(mynum));
+				hero->set_act_type(ACT_CONTROL);
+				// A seat that takes a body over drops the orders its AI queued,
+				// as the old game does after a hop (and a switch does).
+				if (hero != borrowed)
+					hero->stats()->clear_command_for_control_switch();
+				return hero;
+			});
+		if (ran && no_other_team)
 			game_screen->do_notify("NO OTHER TEAM", control);
-		}
-
-		control->set_user(static_cast<signed char>(mynum));
-		control->set_act_type(ACT_CONTROL);
 	}
 
 	// Testing effect object ..
 	// kill living bad guys
 	if (query_key_event(KEYCODE_F12, native_event))
 	{
-		for (auto& uptr : game_screen->world().oblist)
-		{
-			walker* w = uptr.get();
-			if (w && w->query_order() == Order::Living && !control->is_friendly(w))
+		run_hero_cheat(control, mynum, game_screen, [](screen& game, walker& hero) {
+			for (auto& uptr : game.world().oblist)
 			{
-				w->stats()->set_hitpoints(-1);
-				control->attack(w);
-				w->death();
+				walker* w = uptr.get();
+				if (w && w->query_order() == Order::Living && !hero.is_friendly(w))
+				{
+					w->stats()->set_hitpoints(-1);
+					hero.attack(w);
+					w->death();
+				}
 			}
-		}
+		});
 	}
 
 	if (query_key_event(KEYCODE_RIGHTBRACKET, native_event))
-		control->stats()->set_level(control->stats()->level() + 1);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			hero.stats()->set_level(hero.stats()->level() + 1);
+		});
 
 	if (query_key_event(KEYCODE_LEFTBRACKET, native_event))
 	{
-		if (control->stats()->level() > 1)
-			control->stats()->set_level(control->stats()->level() - 1);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			if (hero.stats()->level() > 1)
+				hero.stats()->set_level(hero.stats()->level() - 1);
+		});
 	}
 
 	if (query_key_event(KEYCODE_F1, native_event)) // freeze time
 	{
-		// The cheat is sim state (#413): in local play the screen here is a
-		// mirror the next snapshot overwrites, so a freeze and a palette written
-		// on it lasted one tick and froze nobody. Write the server world when
-		// there is one (the snapshot then carries the freeze and the palette id
-		// to every view, and GameWorld thaws it with FREEZE TIME's own rule);
-		// with no shadow (a direct test) the display world is the sim; in a
-		// networked session nothing (a host's cheat would change every player's
-		// game, and a joiner has no server world).
-		GameWorld* world =
-			og::runtime::cheat_target_world(*og::runtime::current_session);
-		if (world == nullptr &&
-			!og::runtime::local_transport_active(*og::runtime::current_session))
-			world = &game_screen->world();
-		if (world != nullptr)
-		{
-			world->enemy_freeze += 50;
-			world->current_palette_id = 1;
+		if (run_cheat(control, mynum, game_screen, [](screen& game, walker* hero) -> walker* {
+				game.world().enemy_freeze += 50;
+				game.world().current_palette_id = 1;
+				return hero;
+			}))
 			game_screen->show_palette_id(1); // blue now; the next snapshot says the same
-		}
 		//clear_key_code(SDLK_F1);
 	}//end freeze time
 
 	// generate magic shield
 	if (query_key_event(KEYCODE_F2, native_event))
 	{
-		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-		if (!newob) return;
-		newob->set_owner(control);
-		newob->set_team_num(control->team_num());
-		newob->set_ani_type(1);
-		newob->set_lifetime(200);
+		run_hero_cheat(control, mynum, game_screen, [](screen& game, walker& hero) {
+			walker* const newob = game.world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+			if (!newob) return;
+			newob->set_owner(&hero);
+			newob->set_team_num(hero.team_num());
+			newob->set_ani_type(1);
+			newob->set_lifetime(200);
+		});
 	}
 
 	// ability to fly
 	if (query_key_event(KEYCODE_f, native_event))
 	{
-		if (control->stats()->query_bit_flags(BIT_FLYING))
-			control->stats()->set_bit_flags(BIT_FLYING, 0);
-		else
-			control->stats()->set_bit_flags(BIT_FLYING, 1);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			if (hero.stats()->query_bit_flags(BIT_FLYING))
+				hero.stats()->set_bit_flags(BIT_FLYING, 0);
+			else
+				hero.stats()->set_bit_flags(BIT_FLYING, 1);
+		});
 	}
 
 	// give controller lots of hitpoints
 	if (query_key_event(KEYCODE_h, native_event))
 	{
-		control->stats()->set_hitpoints(control->stats()->hitpoints() + 100);
-		game_screen->world().control_hp += 100;
+		run_hero_cheat(control, mynum, game_screen, [](screen& game, walker& hero) {
+			hero.stats()->set_hitpoints(hero.stats()->hitpoints() + 100);
+			game.world().control_hp += 100;
+		});
 	}
 
 	if (query_key_event(KEYCODE_i, native_event))
 	{
-		if (control->stats()->query_bit_flags(BIT_INVINCIBLE))
-			control->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
-		else
-			control->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			if (hero.stats()->query_bit_flags(BIT_INVINCIBLE))
+				hero.stats()->set_bit_flags(BIT_INVINCIBLE, 0);
+			else
+				hero.stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+		});
 	}
 
 	// give controller lots of magicpoints
 	if (query_key_event(KEYCODE_m, native_event))
-		control->stats()->set_magicpoints(control->stats()->magicpoints() + 150);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			hero.stats()->set_magicpoints(hero.stats()->magicpoints() + 150);
+		});
 
 	// give us faster speed ..
 	if (query_key_event(KEYCODE_s, native_event))
 	{
-		control->set_speed_bonus_left(control->speed_bonus_left() + 20);
-		control->set_speed_bonus(control->normal_stepsize());
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			hero.set_speed_bonus_left(hero.speed_bonus_left() + 20);
+			hero.set_speed_bonus(hero.normal_stepsize());
+		});
 	}
 
 	// transform to new shape
 	if (query_key_event(KEYCODE_t, native_event))
 	{
-		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family())) + 1) % NUM_FAMILIES;
-		control->transform_to(control->query_order(), family);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(hero.family())) + 1) % NUM_FAMILIES;
+			hero.transform_to(hero.query_order(), family);
+		});
 	}
 
 	if (query_key_event(KEYCODE_v, native_event))
 	{
-		if (control->invisibility_left() < 3000)
-			control->set_invisibility_left(control->invisibility_left() + 100);
+		run_hero_cheat(control, mynum, game_screen, [](screen&, walker& hero) {
+			if (hero.invisibility_left() < 3000)
+				hero.set_invisibility_left(hero.invisibility_left() + 100);
+		});
 	}
 }

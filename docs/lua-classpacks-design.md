@@ -744,9 +744,9 @@ block.
 ## 5. Identity: string ids, wire bytes, palette
 
 - Runtime keeps one-byte family ids: unsigned (0..255) on the walker, its
-  corpse and in snapshots since #443, the same byte in level files and
-  saves (a company character's record still holds a signed byte) — zero
-  hot-path cost, wire format shape unchanged.
+  corpse and in snapshots since #443 and on a company character's record
+  since #500, the same byte in level files and saves. That costs nothing on
+  the hot path and leaves the wire format's shape unchanged.
 - Registries resolve string ids to bytes per order. **Core pack ids are
   pinned** to the legacy bytes (soldier=0 … tower1=20; likewise for the legacy
   weapon/effect/treasure/generator numeric ids), so existing levels, saves,

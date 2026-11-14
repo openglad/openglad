@@ -314,9 +314,12 @@ namespace og::input
 // default on, per machine, never on the wire). The per-sample key fold reads
 // this cached copy, never cfg. The cache is set by
 // load_player_control_settings_from_cfg, and by refresh_ability_select_cache
-// whenever cfg changes underneath it (the UI FX toggle, RESTORE SETTINGS).
+// whenever cfg changes underneath it (og::ui::set_ability_select_pref, the
+// switch every client's settings page calls; RESTORE SETTINGS).
 bool ability_select_on();
 // Re-reads effects/new_ability_select from the global cfg into the cache.
+// Does nothing in a client with no input hardware state (the text client),
+// which keeps no copy.
 void refresh_ability_select_cache();
 // The setting as a cfg holds it: only an explicit "off" turns it off, so a
 // cfg that never heard of the key reads the shipped default.

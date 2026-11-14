@@ -23,7 +23,6 @@ enum class PickerScreen : std::int32_t
 {
     MainMenu,           // Top-level menu (Continue, New Game, Load, etc.)
     TeamBuild,          // Hire / train / view team
-    CampaignSelect,     // Choose campaign
     LevelSelect,        // Choose starting level
     Options,            // Options/settings
     Help,               // Help screen
@@ -120,7 +119,10 @@ public:
     // headless fakes trivially constructible: no list UI, nothing opened.
     virtual bool show_company_list() { return false; }
 
-    // Display campaign selection. Returns selected campaign ID or empty on cancel.
+    // The campaign list behind the Scenario submenu's Set Campaign door
+    // (SCENARIO > SET CAMPAIGN on SDL). A new game never opens it (#490): it
+    // founds the company on the default campaign. Returns the selected
+    // campaign id, or empty on cancel.
     virtual std::string show_campaign_select() = 0;
 
     // Display options menu. Returns when user exits back to main menu.

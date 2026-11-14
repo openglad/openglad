@@ -48,12 +48,15 @@
 #include <openglad/gameplay/families/treasure_family_descriptor.h>
 #include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/pack_transfer_io.h>
 #include <openglad/resources/packs.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/server/headless_server_runtime.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -1785,6 +1788,35 @@ TEST(ClasspackInstall, reinstalling_a_slot_without_tuning_clears_it)
         << "the replacing entry declared no tuning, so the slot is bare";
 }
 
+namespace {
+
+// Wires a world's entity services to one loader, the way the platform layer
+// wires the real ones, and lays a 32x32 grass grid to stand on.
+void wire_world_to(loader& ldr, GameWorld& world)
+{
+    loader* const l = &ldr;
+    world.entity_factory = [l](Order order, std::int32_t family) {
+        return l->create_walker_owned(order, family);
+    };
+    world.entity_configurator =
+        [l](walker& entity, Order order,
+            std::int32_t family) -> const PixieData* {
+        l->set_walker(&entity, order, family);
+        return l->graphics_for(entity.query_order(), entity.family());
+    };
+    world.entity_derived_stats = [l](walker* entity, Order order,
+                                     std::int32_t family) {
+        if (entity != nullptr)
+            l->set_derived_stats(entity, order, family);
+    };
+    world.resize_grid(32, 32);
+    std::fill_n(world.grid.data.get(),
+                static_cast<std::size_t>(world.grid.w) * world.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+}
+
+} // namespace
+
 // #443: a pack may pin a living family at any wire_id in 0..255, and an id
 // from 128 up is its own family everywhere the simulation keeps it. The
 // walker kept its family in a signed char, so on x86 an id of 200 read back
@@ -1827,34 +1859,12 @@ TEST(ClasspackInstall, a_living_family_at_wire_id_200_spawns_as_itself)
     EXPECT_NE(ldr.graphics_for(Order::Living, FAMILY_SOLDIER), own_art)
         << "not family 0's";
 
-    const auto wire = [&ldr](GameWorld& world) {
-        loader* const l = &ldr;
-        world.entity_factory = [l](Order order, std::int32_t family) {
-            return l->create_walker_owned(order, family);
-        };
-        world.entity_configurator =
-            [l](walker& entity, Order order,
-                std::int32_t family) -> const PixieData* {
-            l->set_walker(&entity, order, family);
-            return l->graphics_for(entity.query_order(), entity.family());
-        };
-        world.entity_derived_stats = [l](walker* entity, Order order,
-                                         std::int32_t family) {
-            if (entity != nullptr)
-                l->set_derived_stats(entity, order, family);
-        };
-        world.resize_grid(32, 32);
-        std::fill_n(world.grid.data.get(),
-                    static_cast<std::size_t>(world.grid.w) * world.grid.h,
-                    static_cast<std::uint8_t>(PIX_GRASS1));
-    };
-
     og::sim::WorldSnapshot keyframe;
     std::uint32_t body_id = 0;
     {
         TestGameWorld tw;
         GameWorld& world = tw.world();
-        wire(world);
+        wire_world_to(ldr, world);
 
         walker* body = world.add_ob(Order::Living, kHigh);
         ASSERT_NE(nullptr, body);
@@ -1901,7 +1911,7 @@ TEST(ClasspackInstall, a_living_family_at_wire_id_200_spawns_as_itself)
 
     TestGameWorld mirror_tw;
     GameWorld& mirror = mirror_tw.world();
-    wire(mirror);
+    wire_world_to(ldr, mirror);
     ASSERT_TRUE(og::sim::apply_snapshot(mirror, keyframe));
     walker* const mirrored = mirror.find_by_id(body_id);
     ASSERT_NE(nullptr, mirrored);
@@ -1911,6 +1921,71 @@ TEST(ClasspackInstall, a_living_family_at_wire_id_200_spawns_as_itself)
               og::sim::compute_snapshot_hash(
                   og::sim::peek_keyframe_snapshot(mirror)))
         << "the mirror's own capture agrees with the authority's";
+}
+
+// #500: a company character (the hero's own record, guy::family) of a pack
+// class from 128 up keeps its class, so the one spawn path every client uses
+// (spawn_team_from_save) builds and draws it as that class. The record kept a
+// signed byte until #500, so a hero of class 200 read back as -56 from the
+// moment it was made: it stood as the loader's soldier stand-in with the
+// soldier's art and step, and was worth nothing to the company.
+TEST(ClasspackInstall, a_company_hero_of_class_200_is_built_and_drawn_as_itself)
+{
+    ModSlotGuard guard;
+    constexpr int kHigh = 200;
+    og::data::ClasspackData data;
+    declare_or_die(
+        "og.pack{ id = 'mod' }\n"
+        "og.family('living', { id = 'mod:high', wire_id = 200, name = 'HIGH',\n"
+        "                      sprite = 'orc.png',\n"
+        "                      costs = { hire = 250 },\n"
+        "                      combat = { hp = 140, melee_damage = 23,\n"
+        "                                 stepsize = 3, fire_delay = 7,\n"
+        "                                 fire_mp_cost = 2 } })\n",
+        data);
+    ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+    ASSERT_NE(nullptr, get_family_descriptor(kHigh));
+
+    guy hero(kHigh);
+    hero.name = "Highborn";
+    hero.teamnum = 0;
+    EXPECT_EQ(kHigh, static_cast<int>(hero.family)) << "the record keeps its class";
+    EXPECT_EQ(250, hero.query_heart_value())
+        << "a hero at its class's base stats is worth its hire price";
+
+    // Built after the install, so reload_graphics fills slot 200.
+    loader ldr{EntityFactory{}};
+    TestGameWorld tw;
+    GameWorld& world = tw.world();
+    wire_world_to(ldr, world);
+    // A team-0 start marker, so the spawn stands on it instead of teleporting.
+    walker* const marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    ASSERT_NE(nullptr, marker);
+    marker->set_team_num(0);
+    marker->setxy(64, 64);
+
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(hero);
+    save.team_size = 1;
+    og::server::spawn_team_from_save(world, save);
+
+    walker* built = nullptr;
+    for (const auto& entry : world.oblist)
+        if (entry != nullptr && entry->myguy != nullptr)
+            built = entry.get();
+    ASSERT_NE(nullptr, built);
+    EXPECT_EQ(kHigh, static_cast<int>(built->family()))
+        << "built as its class, not the soldier stand-in";
+    EXPECT_EQ(kHigh, static_cast<int>(built->myguy->family));
+    const PixieData* const own_art = ldr.graphics_for(Order::Living, kHigh);
+    ASSERT_NE(nullptr, own_art);
+    EXPECT_EQ(own_art, ldr.graphics_for(built->query_order(), built->family()))
+        << "drawn with its class's art";
+    EXPECT_NE(ldr.graphics_for(Order::Living, FAMILY_SOLDIER),
+              ldr.graphics_for(built->query_order(), built->family()))
+        << "not the soldier's";
+    EXPECT_FLOAT_EQ(3.0f + hero.get_speed_bonus(), built->stepsize())
+        << "its own row's step (3) plus dexterity/54; the soldier's row is 4";
 }
 
 // ---------------------------------------------------------------------------

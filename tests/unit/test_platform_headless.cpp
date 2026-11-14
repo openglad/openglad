@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -755,6 +756,31 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
     }
 }
 
+// #500: a text-client crew member of a pack class from 128 up keeps its class
+// in its hero's record (--team 200). The record kept a signed byte until #500,
+// so class 200 read back as -56. No protocol output prints the record's class
+// (census prints the body's), so the session's trace reports it. No pack
+// claims class 200 here: only the class is asserted.
+TEST(PlatformHeadless, a_protocol_crew_member_of_class_200_keeps_its_class)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    trace_clear();
+    StdinRedirect input("quit\n");
+    CoutRedirect output;
+    og::ui::TextProtocolArgs args;
+    args.level = 1;
+    args.team_families = {FAMILY_SOLDIER, 200};
+    args.team_level = 0;
+    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 0 class=0 body=0"))
+        << "control: a soldier crew member is class 0";
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 1 class=200 "))
+        << "the class-200 crew member's record keeps its class";
+}
+
 TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
 {
     // Westlands level 2 (The Forest Road) carries a PLACED named hero
@@ -1272,6 +1298,8 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 // page, the terminal twin of its UI FX row. The setting is per machine and
 // never on the wire, so the prompt states and writes the cfg preference
 // alone: on/off writes it, blank keeps it, anything else is refused.
+// The text client keeps no copy of the setting, so the shared switch must
+// leave the missing copy alone.
 TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
 {
     const std::string saved_pref =
@@ -1761,10 +1789,12 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
 }
 
 // Begin New Game must drop a previously selected campaign back to the
-// default — in the session config AND in the mounted package. The blank
-// answer at the forced campaign-select keeps "current", which after the
-// reset has to be the default campaign, not the stale one.
-TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
+// default, in the session config AND in the mounted package. #490: it founds
+// the company on the default campaign and goes straight to Team Build, with
+// no campaign list on the way. The list is the Scenario submenu's Set
+// Campaign item, which still opens it; its blank answer keeps "current",
+// which after the reset has to be the default campaign, not the stale one.
+TEST(PlatformHeadless, text_picker_new_game_skips_the_campaign_list_and_set_campaign_opens_it)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -1774,25 +1804,54 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
     const std::string input =
         "1\n"       // main: begin new game -> §2.2 name entry
         "\n"        //   name entry: blank accepts the generated company name
-        "\n"        //   campaign select: blank keeps current (= default reset)
+        "10\n"      // team build: Scenario
+        "1\n"       //   scenario: Set Campaign
+        "\n"        //     campaign select: blank keeps current
+        "7\n"       //   scenario: back -> team build
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
-    StdoutSilencer stdout_silencer;
+    StdoutCapture stdout_capture;
 
     og::ui::TextPickerConfig config;
     config.campaign = "modes"; // stale campaign from a prior session
     config.team_families = {FAMILY_SOLDIER};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("gladiator", config.campaign)
         << "a new game must reset the session campaign to the default";
     EXPECT_EQ("gladiator", get_mounted_campaign())
         << "a new game must remount the default campaign package";
+
+    const std::size_t found = out.find("=== Found Your Company ===");
+    ASSERT_NE(std::string::npos, found) << out;
+    const std::size_t team = out.find("=== Team Build ===", found);
+    const std::string list = "--- Campaign Select ---";
+    // Checked before anything that needs the scripted input to line up: a
+    // campaign list on a new game puts every later answer one screen off, and
+    // this is the message that says why. With no Team Build at all, the whole
+    // rest of the output must hold no list either.
+    EXPECT_EQ(std::string::npos,
+              out.substr(found, team == std::string::npos
+                                    ? std::string::npos
+                                    : team - found).find(list))
+        << "#490: a new game must not open the campaign list:\n" << out;
+    ASSERT_NE(std::string::npos, team) << out;
+    const std::size_t scenario = out.find("=== Scenario ===", team);
+    ASSERT_NE(std::string::npos, scenario) << out;
+    const std::size_t first = out.find(list);
+    EXPECT_NE(std::string::npos, first)
+        << "Set Campaign must still open the campaign list:\n" << out;
+    EXPECT_GT(first, scenario)
+        << "the one campaign list comes from Scenario > Set Campaign:\n"
+        << out;
+    EXPECT_EQ(std::string::npos, out.find(list, first + list.size()))
+        << "the campaign list opens exactly once:\n" << out;
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
@@ -2232,9 +2291,9 @@ TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaig
 
 // With no campaign package visible at all, Campaign Select keeps the current
 // campaign, SAYS so, and records CampaignIoError — and it answers the kept id
-// (never empty), which is what sends picker_state on to Team Build instead of
-// back to the main menu. The filesystem is a fresh PhysFS whose only mount is
-// an empty directory (FreshFilesystemForIoInit puts the harness back).
+// (never empty: empty is a cancel), the campaign the save still stands on.
+// The filesystem is a fresh PhysFS whose only mount is an empty directory
+// (FreshFilesystemForIoInit restores the test filesystem afterwards).
 TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
 {
     FreshFilesystemForIoInit filesystem_guard;
@@ -2264,7 +2323,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_c
               output)
         << "the kept campaign is named, and nothing else is printed";
     EXPECT_EQ("gladiator", returned)
-        << "the kept id, never empty: picker_state routes on emptiness";
+        << "the kept id, never empty: empty means the player cancelled";
     EXPECT_EQ("gladiator", config_after);
     EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::CampaignIoError),
               error_code);

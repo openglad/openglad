@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-curses_bin=${1:?usage: test_curses_cli.sh <openglad_curses-bin>}
+curses_bin=${1:?usage: test_curses_cli.sh <openglad_curses-bin> <og_git_hash.h>}
+stamp_header=${2:?usage: test_curses_cli.sh <openglad_curses-bin> <og_git_hash.h>}
 
 if [ ! -x "$curses_bin" ]; then
     echo "FAIL: Cannot find executable: $curses_bin" >&2
+    exit 1
+fi
+if [ ! -f "$stamp_header" ]; then
+    echo "FAIL: Cannot find the build stamp: $stamp_header" >&2
     exit 1
 fi
 
@@ -68,7 +73,43 @@ check_failure() {
 }
 
 check_success "long help" "Usage: openglad_curses [options]" --help
-check_success "version" "openglad version 2." --version
+check_success "version" "openglad " --version
+# #508: the version number is shown only by a build of a commit on master's
+# history; any other build prints its commit alone. The line this binary must
+# print is written here from the build's own og_git_hash.h, not asked of
+# og::version, so a binary that ignores the stamped master flag fails: the CI
+# test builds are off master and hold it to "openglad commit <hash>", a master
+# build to "openglad version 2.<count> (<hash>)". Only stdout is compared:
+# the line is printed there, and a notice an instrumented build writes on
+# stderr (a sanitizer or coverage message) is not part of it. Bash 3.2 and
+# BSD sed safe.
+stamp_value() {
+    sed -n "s/^#define $1 $2\$/\\1/p" "$stamp_header"
+}
+stamp_on_master=$(stamp_value OPENGLAD_VERSION_ON_MASTER '\([01]\)')
+stamp_version=$(stamp_value OPENGLAD_VERSION_STRING '"\([0-9][0-9]*\.[0-9][0-9]*\)"')
+stamp_hash=$(stamp_value OPENGLAD_GIT_HASH '"\([0-9a-z+]*\)"')
+if [[ -z $stamp_on_master || -z $stamp_version || -z $stamp_hash ]]; then
+    printf 'FAIL: %s lacks the master flag, the version or the hash:\n' \
+        "$stamp_header" >&2
+    cat "$stamp_header" >&2
+    exit 1
+fi
+if [[ $stamp_on_master == 1 ]]; then
+    want_version_line="openglad version $stamp_version ($stamp_hash)"
+else
+    want_version_line="openglad commit $stamp_hash"
+fi
+version_status=0
+version_line=$("$curses_bin" --version 2>/dev/null) || version_status=$?
+if [[ $version_status -ne 0 || $version_line != "$want_version_line" ]]; then
+    printf 'FAIL: --version (exit %d) printed:\n%s\n' "$version_status" \
+        "$version_line" >&2
+    printf 'but %s (OPENGLAD_VERSION_ON_MASTER %s) says the line is:\n%s\n' \
+        "$stamp_header" "$stamp_on_master" "$want_version_line" >&2
+    printf '(a binary older than the stamp also lands here: rebuild openglad_curses)\n' >&2
+    exit 1
+fi
 check_success "short help" "Usage: openglad_curses [options]" -h
 check_success "option parsing before help" "Usage: openglad_curses [options]" \
     --campaign gladiator \

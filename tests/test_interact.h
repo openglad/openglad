@@ -449,8 +449,8 @@ inline bool interact_framed(const std::string& id)
 // §2.2: after clicking BEGIN NEW GAME, the flow opens the name-entry screen
 // (generated company name, REROLL, editable, ACCEPT). Every injector flow that
 // founds a new game must clear this screen; accepting the generated name is
-// the canonical path into team build (the campaign intro moved behind the
-// campaign select, which the TESTING short-circuit skips). Returns whether
+// the canonical path into team build (#490: no campaign list follows; the
+// founded campaign's intro dismisses itself under TESTING). Returns whether
 // the screen appeared and was accepted.
 inline bool accept_generated_company_name(int timeout_ms = 5000)
 {

@@ -283,7 +283,9 @@ public:
 
         // A new game always starts on the default campaign: pull the session
         // config and the mounted package back from whatever campaign a
-        // previously loaded save selected.
+        // previously loaded save selected. #490: run_picker then goes
+        // straight to Team Build; the campaign list is the Scenario
+        // submenu's Set Campaign item.
         config_.campaign = save_data_.current_campaign;
         (void)sync_campaign_mount_to_save(save_data_);
         // #162: between prompts in a printf/read_line client — no pixies.
@@ -420,7 +422,8 @@ public:
 
         // The terminal twin of the UI FX "New Ability Select" row: a
         // per-machine preference only (nothing to synchronize, no session
-        // field), so the prompt states and writes cfg alone.
+        // field), so the prompt states and writes cfg alone, through the
+        // switch every client calls (this client keeps no copy to refresh).
         std::printf("New ability select: %s. Change (on/off, blank keeps current): ",
             og::ui::ability_select_pref(cfg) ? "on" : "off");
         std::fflush(stdout);

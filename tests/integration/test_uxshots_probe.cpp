@@ -1483,7 +1483,7 @@ og::sim::LobbyPlayer make_probe_seat(std::uint8_t index, const char *name,
     slot.slot_index = i++;
     slot.deployed = seed.deployed;
     slot.character.name = seed.name;
-    slot.character.family = static_cast<std::int8_t>(seed.family);
+    slot.character.family = static_cast<std::int16_t>(seed.family);
     slot.character.level = seed.level;
     slot.character.teamnum = team;
     player.character_slots.push_back(std::move(slot));
