@@ -4060,31 +4060,18 @@ bool walker::pad_probe(walker& probe, std::int32_t weapon_family, short& px, sho
 // The walker a hit or a kill is credited to (#411): the topmost LIVING on
 // this walker's owner chain (a weapon's thrower, a summon's caster, a tent
 // or bones troop itself: its owner is a post, not a body), or nullptr when
-// no living is on the chain (a scripted ball fx). It climbs by chain_next,
-// attack()'s own climb (fix AP): through a dead owner, stopping at a
-// self-loop and at a walker charmed_head names (a charmed walker with
-// Gameplay Fixes AD, a possessed body, #430). The kill stamp
+// no living is on the chain (a scripted ball fx). It climbs by walker::climb
+// with chain_next, attack()'s own climb (fix AP): through a dead owner,
+// stopping at a self-loop and at a walker charmed_head names (a charmed
+// walker with Gameplay Fixes AD, a possessed body, #430), and cutting an
+// owner loop where it closes (#503). The kill stamp
 // and on_kill read it; classic score and experience keep the chain's root.
 // Appended at the end of the file so the parity canary pins above never
 // shift.
 walker* walker::credit_head()
 {
 	walker* top = nullptr;
-	// plumbing: credit_head's climb; chain_next holds the stop rule (fix AP)
-	for (walker* w = this; w != nullptr; w = w->chain_next())
-	{
-		// rule: Who gets the hit/kill (#411, kill stamp and on_kill): the topmost LIVING on the
-		//   owner chain — a weapon's thrower, a summon's caster, but a tent or bones troop itself
-		//   (its owner is a post, not a body); nullptr when no living is on the chain (a scripted
-		//   ball FX). Classic score and experience still use the chain root.
-		// tests: ModesOnslaught.a_tent_troops_kill_pays_its_colour
-		// tests: ModesTdm.a_tent_troops_kill_counts_a_frag
-		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
-		// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
-		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
-		if (w->query_order() == Order::Living)
-			top = w;
-	}
+	climb(&walker::chain_next, &top);
 	return top;
 }
 

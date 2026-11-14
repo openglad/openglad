@@ -298,6 +298,18 @@ class walker : public og::sim::SimEntity
 		walker* chain_head();
 		const walker* chain_head() const;
 		const walker* alliance_head() const;
+		// #503: the one owner-chain walk. climb goes up from this walker
+		// while `step` names a next link (chain_next, or the classic
+		// friendliness step alliance_next_classic) and returns the walker it
+		// stops at; with `top_living` it also stores the topmost living it
+		// passed (credit_head). Past kOwnerLoopCheck links it asks
+		// cut_owner_loop, which clears the link that closes an owner loop
+		// (A owns B owns A) and logs it once. Defined in walker_specials.cpp.
+		using ChainStep = walker* (walker::*)() const;
+		static constexpr int kOwnerLoopCheck = 16;
+		const walker* climb(ChainStep step, walker** top_living = nullptr) const;
+		walker* alliance_next_classic() const;
+		bool cut_owner_loop() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -543,8 +555,9 @@ class walker : public og::sim::SimEntity
 		}
 		// The walker a hit or a kill is credited to (#411): the topmost
 		// LIVING on this walker's owner chain (a tent's troop is its own
-		// credit: a generator is not a body), climbed by chain_next (fix AP:
-		// through a dead owner, stopping at a charmed head); nullptr when no
+		// credit: a generator is not a body), climbed by walker::climb with
+		// chain_next (fix AP: through a dead owner, stopping at a charmed
+		// head; #503: an owner loop is cut where it closes); nullptr when no
 		// living is on the chain. The kill stamp and on_kill read it; score
 		// and experience keep the chain's root.
 		walker* credit_head();

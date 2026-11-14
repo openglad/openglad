@@ -43,7 +43,7 @@ bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
 
 void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
-    constexpr int kMaxOwnerDepth = 16;
+    constexpr int kMaxOwnerDepth = walker::kOwnerLoopCheck;
     walker* current = entity;
     // plumbing: owner-chain walk bounded at 16 hops; see below
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
@@ -51,8 +51,8 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         walker* owner = current->owner();
         // rule: Before any foe scan, a walker's owner chain is trusted only while every owner is
         //   still in the world: an owner that has left every entity list is cut (the summon/weapon
-        //   becomes ownerless), and a chain longer than 16 hops (a save/snapshot loop) is cut at
-        //   the hop the walk gave up on; a self-owner or a legal chain is left alone. Called from
+        //   becomes ownerless), and a chain the walk cannot finish in 16 hops is cut (below);
+        //   a self-owner or a legal chain is left alone. Called from
         //   find_near_foe (below) and find_nearest_foe (below).
         // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
         // tests: SemWorld.a_self_owner_or_no_owner_survives_the_owner_chain_guard
@@ -67,8 +67,13 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         current = owner;
     }
 
-    // Defensive cycle/depth break. Any deeper chain is suspicious in practice.
-    current->set_owner(nullptr);
+    // rule: A chain the walk could not finish in 16 hops is cut before the foe scan: a loop at the
+    //   link that closes it (walker::cut_owner_loop, the cut every climb makes, #503), a longer
+    //   chain with no loop at the hop the walk gave up on.
+    // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
+    // tests: GameWorldEntityIdsFixture.a_chain_longer_than_sixteen_hops_is_cut_where_the_foe_scan_gave_up
+    if (!entity->cut_owner_loop())
+        current->set_owner(nullptr);
 }
 
 void refresh_self_reference_ids(walker& entity)

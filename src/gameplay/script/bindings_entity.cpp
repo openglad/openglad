@@ -379,7 +379,7 @@ W_SET_REF(foe)
 W_GET_REF(leader)
 W_SET_REF(leader)
 W_GET_REF(owner)
-W_SET_REF(owner)
+int m_set_owner(lua_State* L);  // #503: defined with chain_head below
 W_GET_REF(collide_ob)
 
 // ---------------------------------------------------------------------------
@@ -4005,6 +4005,32 @@ int m_pad_room(lua_State* L)
 
 // Gameplay Fixes AP (#429): the head of the one owner-chain climb (walker::chain_head).
 W_GET_REF(chain_head)
+
+// walker:set_owner(w) (#503): a walker cannot be owned by a walker on its own
+// owner chain (the link would close an owner loop). nil and a self-link stay
+// legal: every climb ends at a self-loop (a shot whose thrower died owns itself).
+int m_set_owner(lua_State* L)
+{
+    walker* const w = self_arg(L);
+    walker* const owner = resolve_walker_or_nil(L, 2);
+    // plumbing: nil and a self-link close no loop of two or more links
+    if (owner != nullptr && owner != w)
+    {
+        owner->cut_owner_loop();  // a loop already above the new owner (a snapshot's) goes first, so the walk ends
+        // plumbing: the walk up the new owner's chain, which no longer loops
+        for (const walker* up = owner; up != nullptr; up = (up->owner() == up) ? nullptr : up->owner())
+        {
+            // rule: #503: Lua's set_owner refuses a link that would close an owner loop (the walker is
+            //   on its new owner's chain): a script error names both walkers and no link is made.
+            // tests: ScriptBindingTest.set_owner_refuses_a_link_that_would_close_an_owner_loop
+            if (up == w)
+                script_raise(L, "set_owner: walker %I is on walker %I's owner chain, so the link would close an owner loop",
+                             static_cast<lua_Integer>(w->entity_id()), static_cast<lua_Integer>(owner->entity_id()));
+        }
+    }
+    w->set_owner(owner);
+    return 0;
+}
 
 const luaL_Reg kWalkerMethods[] = {
     {"xpos", m_xpos}, {"ypos", m_ypos},

@@ -1111,6 +1111,57 @@ TEST_F(ScriptBindingTest, award_score_credits_the_team_and_emits_score_change)
     EXPECT_EQ(50u, scores[1].b);
 }
 
+// #503: set_owner refuses a link that would close an owner loop. spawn is
+// owned by gen and a third walker by spawn; gen:set_owner(spawn) would close
+// a two-link loop and gen:set_owner(third) a three-link one: each raises a
+// script error naming both walkers and makes no link. A self-link, nil and an
+// ordinary link stay legal.
+// Break: the refusal's `if (up == w)` -> `if (false)`.
+TEST_F(ScriptBindingTest, set_owner_refuses_a_link_that_would_close_an_owner_loop)
+{
+    run("local third = og.add_ob('living', 0)\n"
+        "spawn:set_owner(gen)\n"
+        "third:set_owner(spawn)\n"
+        "local ok2, e2 = pcall(function()\n"
+        "  gen:set_owner(spawn)\n"
+        "end)\n"
+        "local ok3, e3 = pcall(function()\n"
+        "  gen:set_owner(third)\n"
+        "end)\n"
+        "og.log('two', ok2, e2)\n"
+        "og.log('three', ok3, e3)\n"
+        "og.log('third', og.entity_id(third))\n"
+        "third:set_owner(third)\n"
+        "og.log('self', og.entity_id(third:owner()))\n"
+        "third:set_owner(nil)\n"
+        "og.log('nil', third:owner() == nil)\n"
+        "third:set_owner(spawn)\n"
+        "og.log('legal', og.entity_id(third:owner()))\n");
+    ASSERT_EQ(6u, vm_log().size());
+    const std::string gen_id = std::to_string(generator->entity_id());
+    const std::string spawn_id = std::to_string(spawn->entity_id());
+    const std::string third_line = vm_log()[2];
+    ASSERT_EQ(0u, third_line.rfind("third\t", 0)) << third_line;
+    const std::string third_id = third_line.substr(6);
+
+    EXPECT_EQ(0u, vm_log()[0].rfind("two\tfalse\t", 0)) << vm_log()[0];
+    EXPECT_NE(std::string::npos,
+              vm_log()[0].find("set_owner: walker " + gen_id + " is on walker " + spawn_id +
+                               "'s owner chain, so the link would close an owner loop"))
+        << vm_log()[0];
+    EXPECT_EQ(0u, vm_log()[1].rfind("three\tfalse\t", 0)) << vm_log()[1];
+    EXPECT_NE(std::string::npos,
+              vm_log()[1].find("set_owner: walker " + gen_id + " is on walker " + third_id +
+                               "'s owner chain, so the link would close an owner loop"))
+        << vm_log()[1];
+    EXPECT_EQ("self\t" + third_id, vm_log()[3]) << "a self-link stays legal";
+    EXPECT_EQ("nil\ttrue", vm_log()[4]);
+    EXPECT_EQ("legal\t" + spawn_id, vm_log()[5]);
+
+    EXPECT_EQ(nullptr, generator->owner()) << "no refused link was made";
+    EXPECT_EQ(generator, spawn->owner());
+}
+
 TEST_F(ScriptBindingTest, exit_flow_bindings_read_and_write_progression)
 {
     world.type = GameWorld::TYPE_CAN_EXIT_WHENEVER;

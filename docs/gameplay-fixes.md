@@ -1366,6 +1366,8 @@ Rows deliberately not added:
   scenario field sets the type. A row with the setting off on a level that
   carries the free-exit bit with another one would differ from the old game
   on purpose, since the old game asks for the whole type there.
+- #503: no recording builds an owner loop, and below 16 links the walk
+  changes nothing, so every row records the same bytes.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -1381,10 +1383,10 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-seven changes apply whatever the setting, three from the work that
-added it (N, O and P), six from the second bugs batch and eighteen from the
-issues it filed; the last three entries record differences kept on purpose
-(#484, #440, #491):
+Twenty-eight changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch, eighteen from the
+issues it filed and one from the third bugs batch; the last three entries
+record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1647,6 +1649,18 @@ issues it filed; the last three entries record differences kept on purpose
   no walker the world let go is still filed (a death and every removal
   file it out), so no recording moves. This game only: the old game's
   search trusts its pile.
+- **An owner loop no longer hangs the game (#503).** Only a script's
+  `set_owner`, or a forged snapshot, could make a walker owned by a walker
+  it owns, over two links or more, and the first blow or side question
+  about it looped forever. Every climb of an owner chain now ends: past 16
+  links it looks for a loop and cuts it at the link that closes it, with
+  one line in the log; the guard before a foe scan cuts a loop at the same
+  link. `set_owner` now refuses, with a script error naming both walkers, a
+  link that would close a loop; a walker that owns itself stays legal (a
+  shot whose thrower died owns itself). No recording has a loop, and the
+  old game has no scripts, so nothing is ported. `OwnerChainLoop`
+  (`tests/unit/test_owner_chain_loop.cpp`) pins it on both values, with a
+  two-link loop, a three-link loop and a 40-link chain with no loop.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it

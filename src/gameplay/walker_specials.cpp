@@ -789,8 +789,10 @@ walker* walker::chain_next() const
 	//   Gameplay Fixes on, the topmost living credit_head credits, the mutant mode's root) goes up
 	//   through every owner, a dead one included, and stops at a walker with no owner, at a
 	//   self-loop and at a walker charmed_head names (a charmed walker with Gameplay Fixes on,
-	//   fix AD; a possessed body on both values, #430).
+	//   fix AD; a possessed body on both values, #430); every climb ends on an owner loop (#503,
+	//   walker::climb).
 	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: OwnerChainLoop.every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_closes_it
 	// tests: SemWalker3.classic_credit_for_a_blow_climbs_past_a_dead_thrower
 	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
 	// tests: ModesMutant.the_damage_gate_reads_the_games_owner_climb
@@ -802,11 +804,7 @@ walker* walker::chain_next() const
 
 const walker* walker::chain_head() const
 {
-	const walker* head = this;
-	// plumbing: the climb; chain_next holds the stop rule
-	while (const walker* const up = head->chain_next())
-		head = up;
-	return head;
+	return climb(&walker::chain_next);
 }
 
 walker* walker::chain_head()
@@ -826,8 +824,97 @@ const walker* walker::alliance_head() const
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	if (og::sim::session_gameplay_fixes() != 0)
 		return chain_head();
+	return climb(&walker::alliance_next_classic);
+}
+
+// The classic friendliness step (Gameplay Fixes off): chain_next, stopping
+// also at a dead owner, so a walker whose owner died stands for itself.
+walker* walker::alliance_next_classic() const
+{
+	walker* const next = chain_next();
+	// rule: Classic friendliness (Gameplay Fixes off) climbs only up to a live owner: a walker whose
+	//   owner is dead stands for itself; every other stop is chain_next's.
+	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
+	if (next != nullptr && next->dead() != 0)
+		return nullptr;
+	return next;
+}
+
+// #503: the one owner-chain walk every climb takes (chain_head, alliance_head,
+// credit_head; walker::attack and the mutant mode read chain_head). No chain in
+// play is longer than three links (a shot, its summon, the summon's caster), so
+// a walk past kOwnerLoopCheck links asks cut_owner_loop whether the chain loops:
+// a loop is cut where it closes and the walk starts again, so every climb ends.
+const walker* walker::climb(ChainStep step, walker** top_living) const
+{
 	const walker* head = this;
-	while (head->owner() && head->owner()->dead() == 0 && head->owner() != head && !head->charmed_head())
-		head = head->owner();
+	walker* top = nullptr;
+	int links = 0;
+	// plumbing: the walk up the owner chain; `step` holds where it stops, the loop guard is below
+	for (;;)
+	{
+		// rule: Who gets the hit/kill (#411, kill stamp and on_kill): the topmost LIVING on the
+		//   owner chain — a weapon's thrower, a summon's caster, but a tent or bones troop itself
+		//   (its owner is a post, not a body); nullptr when no living is on the chain (a scripted
+		//   ball FX). Classic score and experience still use the chain root.
+		// tests: ModesOnslaught.a_tent_troops_kill_pays_its_colour
+		// tests: ModesTdm.a_tent_troops_kill_counts_a_frag
+		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
+		// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
+		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
+		if (head->query_order() == Order::Living)
+			top = const_cast<walker*>(head);
+		walker* const up = (head->*step)();
+		// plumbing: the top of the chain
+		if (up == nullptr)
+			break;
+		// rule: #503: every owner-chain climb ends, on both values of Gameplay Fixes. A climb past 16
+		//   links asks whether the chain loops; a loop of two or more links is cut at the link that
+		//   closes it (logged once) and the climb starts again; a long chain with no loop is climbed
+		//   to its head.
+		// tests: OwnerChainLoop.every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_closes_it
+		// tests: OwnerChainLoop.a_three_link_loop_is_cut_at_the_link_that_closes_it
+		// tests: OwnerChainLoop.a_long_chain_with_no_loop_resolves_to_its_head
+		if (++links == kOwnerLoopCheck && cut_owner_loop())
+			return climb(step, top_living);
+		head = up;
+	}
+	// plumbing: only credit_head asks for the topmost living
+	if (top_living != nullptr)
+		*top_living = top;
 	return head;
+}
+
+// #503: an owner loop is cut where it closes. Going up the owner links from
+// this walker (a self-loop ends a chain, as in every climb), the first link that
+// points back to a walker already passed closes the loop: it is cleared and the
+// log names both walkers. This walker's own link is never the one cut (that
+// would be a self-loop). Answers whether a link was cut.
+bool walker::cut_owner_loop() const
+{
+	walker* w = owner();
+	// plumbing: no owner or a self-loop: nothing to cut
+	if (w == nullptr || w == this)
+		return false;
+	std::vector<const walker*> passed{this, w};
+	// plumbing: the walk up the owner links; the loop test is below
+	for (walker* up = w->owner(); up != nullptr && up != w; up = w->owner())
+	{
+		// rule: #503: the link from a walker back to one already passed closes an owner loop: it is
+		//   cleared (that walker no longer has an owner) and one log line names both walkers.
+		// tests: OwnerChainLoop.every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_closes_it
+		// tests: OwnerChainLoop.a_three_link_loop_is_cut_at_the_link_that_closes_it
+		// tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
+		if (std::find(passed.begin(), passed.end(), up) != passed.end())
+		{
+			LogWarn("owner chain: the link from walker {} to walker {} closed an owner loop and is cut\n",
+			        w->entity_id(), up->entity_id());
+			w->set_owner(nullptr);
+			return true;
+		}
+		passed.push_back(up);
+		w = up;
+	}
+	return false;
 }

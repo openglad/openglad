@@ -729,6 +729,12 @@ range.
 `foe()/set_foe(h)` `leader()/set_leader(h)` `owner()/set_owner(h)`
 `collide_ob()`. Setters accept `nil` to clear.
 
+`set_owner(h)` raises a script error naming both walkers when this walker is
+already on `h`'s owner chain (the link would close an owner loop); `nil` and
+owning itself stay legal. A loop that reaches the game another way (a
+snapshot) is cut where it closes the first time a climb meets it, so
+`chain_head()` always answers.
+
 `chain_head()` (read-only) answers the head of this walker's owner chain by
 the game's one climb (Gameplay Fixes AP, #429), the head a blow scores for:
 up through every owner, a dead one included, stopping at a self-loop and,

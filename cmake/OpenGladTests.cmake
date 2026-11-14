@@ -1128,6 +1128,7 @@ og_add_unit_group(og_unit_sim NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_quiet_probe.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_walk.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_charm.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_owner_chain_loop.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_living_act_flow_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
 )
