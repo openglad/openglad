@@ -11796,8 +11796,8 @@ inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
 // A hostile level-1 mage bot (stepsize 2) spawns facing DOWN (the spawn
 // facing) with the idle player soldier straight below it, an 86 px gap
 // between the boxes (both 16x16, a corner distance of 102): it faces its foe
-// from the start. Its only special, TELEPORT, is held while exactly one foe
-// stands within 110 px, on both settings. Its fireball, shot straight down,
+// from the start. Its only special, TELEPORT, is held while one to three foes
+// (one in this arena) stand within 110 px, on both settings. Its fireball, shot straight down,
 // reaches a foe whose corner is at most 64 px off: fire_check's reach is the
 // shot's whole step times its whole range, the fireball's step 6 and range 7
 // scaled for a straight shot by 362/256 and 309/256 (8.48 and 8.45, so

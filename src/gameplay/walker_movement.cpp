@@ -625,7 +625,7 @@ bool walker::turn(short targetdir)
     //   turn reports done; with it off the classic step below turns it one notch counter-clockwise.
     // tests: SemWalker4.a_walker_asked_to_face_the_way_it_faces_stays_put_with_the_setting_on
     // tests: SemWalker4.classic_a_walker_asked_to_face_the_way_it_faces_turns_a_notch_counter_clockwise
-    // tests: parity:orc_bot_faces_foe_scen99, parity:orc_bot_faces_foe_fixes_scen99
+    // tests: parity:orc_bot_faces_foe_scen99, parity:orc_bot_faces_foe_fixes_scen99, parity:mage_bot_far_foe_scen99
     if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)
         return true;
 

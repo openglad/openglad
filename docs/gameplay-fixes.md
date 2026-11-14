@@ -1351,30 +1351,30 @@ CONTROL) turn a walker that strikes in melee or heads its own chain.
 Fix BB's arena, `mage_bot_far_foe_scen99` and
 `mage_bot_far_foe_fixes_scen99`: a hostile level-1 mage bot spawns facing
 down at the idle player soldier straight below it, 86 px between their
-boxes. Its only special, TELEPORT, is held while exactly one foe stands
-within 110 px, on both settings, and its fireball, shot straight, reaches a
-foe 64 px off (the fireball's step 6 and range 7, scaled for a straight shot
-to 8 and 8). Its first act rolls TELEPORT and the rule holds it; with the
-setting off that roll is the act, with it on (fix W) the act goes on and
-starts the hunt, so the classic mage runs one act behind from there. Its
-path counter starts at 7, so six throttled walks of 2 px bring it to 90 px
-from the soldier and the seventh call re-plans, on tick 9 with the setting
-off and tick 8 with it on: the foe is within 100 px, so the near branch
-turns the mage to the facing it has, starts an ATTACK order and asks for a
-swing. With the setting off the turn steps a notch and the swing only turns
-it back; with it on the mage keeps facing (fix AT) and asks its line check
-first, which answers that the soldier is beyond the fireball's 64 px, so it
-throws nothing. Before the fix the setting-on game threw a fireball at the
-air there. The ATTACK order then walks the mage on, 2 px an act, so at the
-end of the recording (B = 11) the classic mage stands 16 px down and the
-fixed one 18 px, no fireball flies and the soldier is whole. B is the tick
-an unasked swing at the re-plan has put its fireball in the air on both rows
-(tick 10 with the setting on, tick 11 off). Each row's pin puts the unasked
-swing back: the setting-on row's makes the near branch's line check answer
-yes, the setting-off row's inverts fix AT's gate so the classic mage keeps
-facing and its swing throws; either way a fireball flies by B. The two rows
-say the same thing on purpose: with fix BB the setting-on game does here
-what the classic game does.
+boxes. Its only special, TELEPORT, is held while one to three foes (one in
+this arena) stand within 110 px, on both settings, and its fireball, shot
+straight, reaches a foe 64 px off (the fireball's step 6 and range 7, scaled
+for a straight shot to 8 and 8). Its first act rolls TELEPORT and the rule
+holds it; with the setting off that roll is the act, with it on (fix W) the
+act goes on and starts the hunt, so the classic mage runs one act behind
+from there. Its path counter starts at 7, so six throttled walks of 2 px
+bring it to 90 px from the soldier and the seventh call re-plans, on tick 9
+with the setting off and tick 8 with it on: the foe is within 100 px, so the
+near branch turns the mage to the facing it has, starts an ATTACK order and
+asks for a swing. With the setting off the turn steps a notch and the swing
+only turns it back; with it on the mage keeps facing (fix AT) and asks its
+line check first, which answers that the soldier is beyond the fireball's
+64 px, so it throws nothing. Before the fix the setting-on game threw a
+fireball at the air there. The ATTACK order then walks the mage on, 2 px an
+act, so at the end of the recording (B = 11) the classic mage stands 16 px
+down and the fixed one 18 px, no fireball flies and the soldier is whole. B
+is the tick an unasked swing at the re-plan has put its fireball in the air
+on both rows (tick 10 with the setting on, tick 11 off). Each row's pin puts
+the unasked swing back: the setting-on row's makes the near branch's line
+check answer yes, the setting-off row's inverts fix AT's gate so the classic
+mage keeps facing and its swing throws; either way a fireball flies by B.
+The two rows say the same thing on purpose: with fix BB the setting-on game
+does here what the classic game does.
 
 Fix BB moves these 28 existing rows with the setting on, as measured in the
 current game before the port (each `_fixes_scen99`; the old game's capture

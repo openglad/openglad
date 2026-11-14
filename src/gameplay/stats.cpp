@@ -2570,7 +2570,7 @@ void statistics::near_swing(bool faced, short xdelta, short ydelta)
 	// tests: SemAi4.a_shooter_fires_from_the_near_branch_only_when_its_line_check_passes
 	// tests: SemAi4.a_melee_only_chaser_swings_from_the_near_branch_only_at_a_body_on_its_pad
 	// tests: SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
-	// tests: parity:mage_bot_far_foe_scen99, parity:mage_bot_far_foe_fixes_scen99
+	// tests: parity:mage_bot_far_foe_fixes_scen99
 	const bool lands = query_bit_flags(BIT_NO_RANGED)
 	        ? controller_->fire_pad_answer() == walker::PadAnswer::Body
 	        : controller_->fire_check(xdelta, ydelta);
