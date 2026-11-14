@@ -269,9 +269,14 @@ still BITE. Facts:
   retunes, and the run this CI lane was accepted on: `rows=222 groups=197
   rebuilds=64 zero_flips=0 predicate_toothless=0`, 19 minutes of wall
   clock at `CMAKE_BUILD_PARALLEL_LEVEL=2` (ledger:
-  "The full `--all` re-measure"). `rebuilds` is exactly 2 × the 32
-  rebuild-cpp groups; another number means a group mutated without
-  restoring, or restored without rebuilding. The two tallies that must
+  "The full `--all` re-measure"). That run rebuilt twice per rebuild-cpp
+  group, once with the mutation and once after restoring it. Since PR #509
+  a group's source is restored as soon as its rows are captured and the
+  NEXT group's build compiles both files, so `rebuilds` is the number of
+  rebuild-cpp groups plus one per unbroken run of them (plus one in all
+  for `--all` or a shard, whose rebuilding groups come last, together): 33
+  for those 32 groups. Fewer means a group was captured on stale objects;
+  more means a rebuild ran that nothing needed. The two tallies that must
   stay 0 are unchanged.
 - Modes, all mutually exclusive: `--scenario <id>`, `--filter <glob>`,
   `--all`, `--touched <ref>`. On any of them, `--plan` prints the plan and
