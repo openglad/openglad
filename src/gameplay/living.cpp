@@ -654,13 +654,13 @@ bool living::act_round()
 				}
 			}  // END RANDOM
 			break;
+		// rule: A sitting walker (ACT_SIT, a scripted sitter) does nothing, as a walker with no known
+		//   act type does, and writes no log line.
+		// tests: SemLiving.a_sitting_walker_does_nothing_and_writes_no_log_line
+		case ACT_SIT: return 0;
 		// rule: A walker with no known act type does nothing.
-		// tests: LivingCombat.living_act_invisibility_skip_exit_and_action_command_paths
-		default:
-			{
-				Log("No act type set.\n");
-				return 0;
-			}
+		// tests: LivingCombat.living_act_invisibility_skip_exit_and_action_command_paths, SemLiving.a_sitting_walker_does_nothing_and_writes_no_log_line
+		default: Log("No act type set.\n"); return 0;
 	}  // END SWITCH
 	return 0;
 }
