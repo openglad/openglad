@@ -2593,7 +2593,8 @@ bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance
 	//   shadow. When the quick foe search answers a foe on the flyer's own floor it takes that
 	//   one, even when it is farther than the foe it holds; the quick search looks about five
 	//   map cells (160 px) round the bot, and with no foe on its floor inside that reach the
-	//   flyer keeps the foe it has.
+	//   flyer keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's rule
+	//   alone.
 	// tests: SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor
 	const walker* held = controller_->foe();
 	return flyer && held != nullptr && held->floor() != controller_->floor()

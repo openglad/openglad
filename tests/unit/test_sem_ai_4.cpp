@@ -1234,8 +1234,17 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
 //    floor heads for a stair and never enters the near branch: it keeps
 //    `above`. The near branch therefore never asks the rule for it, so the
 //    scene asks near_adopts itself, with the flyer flag walk_to_foe gives a
-//    walker that does not fly: no, though `beside` stands on its floor.
-// The four controls assert the foe (the ground walker may step; that is not
+//    walker that does not fly: no, though `beside` stands on its floor;
+//  * control, the held foe on the ghost's own floor (after the loop): the
+//    ghost holds `held` at (288,320) on floor 0, 32 px off, and `first` at
+//    (352,352) on floor 0 is 64 px off. The quick search answers the first
+//    foe in spiral order, not the nearest: it reaches `first`'s cell on its
+//    second step, `held`'s on its fifth. `first` is on the ghost's floor but
+//    the held foe is too, so the flyer rule does not apply and #320's alone
+//    decides: not nearer, the ghost keeps `held` and queues its ATTACK order
+//    (the near branch ran, so the rule was asked). Only this scene tells
+//    "the held foe is on another floor" from "the ghost flies".
+// The five controls assert the foe (the ground walker may step; that is not
 // this rule).
 TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor)
 {
@@ -1304,6 +1313,33 @@ TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_fl
                 EXPECT_EQ(ANI_WALK, bot->ani_type()) << "no swing at a foe on another floor";
             }
         }
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                     "control: the held foe on the ghost's own floor, another the search meets first");
+        fresh_world(fixes);
+        two_floors();
+        walker* ghost = living_at(FAMILY_GHOST, 1, 320, 320, 0);
+        walker* held = living_at(FAMILY_SOLDIER, 0, 288, 320, 0);
+        walker* first = living_at(FAMILY_SOLDIER, 0, 352, 352, 0);
+        ASSERT_TRUE(ghost && held && first);
+        ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost flies";
+        ASSERT_EQ(ghost->floor(), held->floor()) << "the staging: the held foe stands on the ghost's floor";
+        ASSERT_EQ(ghost->floor(), first->floor()) << "the staging: `first` stands on the ghost's floor";
+        ASSERT_EQ(32, ghost->distance_to_ob(held)) << "the staging: the held foe is within 100 px";
+        ASSERT_EQ(64, ghost->distance_to_ob(first)) << "the staging: `first` is not nearer than the held foe";
+        face(ghost, FACE_DOWN);
+        ghost->set_foe(held);
+        ASSERT_EQ(first, world().find_near_foe(ghost))
+            << "the staging: the quick foe search meets `first` before the nearer held foe";
+        ghost->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        ghost->set_path_check_counter(0);
+        world().rng_.state_ = s;
+
+        EXPECT_TRUE(ghost->stats()->walk_to_foe());
+
+        EXPECT_EQ(COMMAND_ATTACK, front_of(ghost).type) << "the near branch ran, so the rule was asked";
+        EXPECT_EQ(held, ghost->foe()) << "the held foe on the ghost's own floor is kept: `first` is not nearer";
     }
 }
 
