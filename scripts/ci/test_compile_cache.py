@@ -324,6 +324,49 @@ class CompileCacheTests(unittest.TestCase):
             compile_cache.verify_producer(argparse.Namespace(
                 cache_program=cache, max_fallbacks=2))
 
+    def test_unwarmed_producer_may_compile_any_number_of_misses_but_must_account_for_each(self):
+        cache = self.root / "sccache-unwarmed"
+        cache.write_text("cache")
+
+        def stats(**changes):
+            base = {
+                "compile_requests": 1450, "requests_executed": 1450,
+                "cache_hits": {"counts": {"C/C++": 1000}},
+                "cache_misses": {"counts": {"C/C++": 450}},
+                "cache_errors": {"counts": {"C/C++": 3}},
+                "compilations": 450, "cache_writes": 450, "not_cached": {},
+            }
+            base.update(changes)
+            return json.dumps({"stats": base})
+
+        unwarmed = argparse.Namespace(cache_program=cache, max_fallbacks=32, unwarmed=True)
+        with patch("compile_cache.subprocess.check_output", return_value=stats()):
+            compile_cache.verify_producer(unwarmed)
+            # The same build after a fan-out is the contract violation it always was.
+            with self.assertRaisesRegex(ValueError, "bounded cache-repair contract"):
+                compile_cache.verify_producer(argparse.Namespace(
+                    cache_program=cache, max_fallbacks=32, unwarmed=False))
+        cold = stats(cache_hits={"counts": {}}, cache_misses={"counts": {"C/C++": 1450}},
+                     cache_errors={"counts": {}}, compilations=1450, cache_writes=1450)
+        with patch("compile_cache.subprocess.check_output", return_value=cold):
+            compile_cache.verify_producer(unwarmed)
+        for name, broken in (
+                ("a request that bypassed the cache", stats(requests_executed=1449)),
+                ("a miss nobody compiled", stats(compilations=449)),
+                ("a compilation nobody stored", stats(cache_writes=449)),
+                ("more read errors than misses", stats(cache_errors={"counts": {"C/C++": 451}})),
+                ("an uncacheable call", stats(requests_not_cacheable=1)),
+                ("a failed compile", stats(compile_fails=1)),
+                ("an uncached reason", stats(not_cached={"multiple input files": 1})),
+                ("no request at all", stats(compile_requests=0, requests_executed=0,
+                                            cache_hits={"counts": {}}, cache_misses={"counts": {}},
+                                            cache_errors={"counts": {}}, compilations=0,
+                                            cache_writes=0))):
+            with self.subTest(name=name), \
+                    patch("compile_cache.subprocess.check_output", return_value=broken), \
+                    self.assertRaisesRegex(ValueError, "did not account for every compilation"):
+                compile_cache.verify_producer(unwarmed)
+
     def test_merge_rejects_missing_shard(self):
         seed = self.cache_root("seed", {})
         first = self.publish_shard("first", 0, {"b/one": b"1"}, seed)

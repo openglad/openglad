@@ -91,9 +91,38 @@ def read_manifest(bundle: Path) -> dict:
     return manifest
 
 
+ONE_CPU_GUARD_HEADER = "tests/coverage_runtime/uniprocessor_counters.h"
+LOCK_PREFIX_OPTION = "-momit-lock-prefix="
+
+
+def _strips_lock_prefixes(arguments: list[str]) -> bool:
+    """The assembler's last word on lock prefixes, as the driver passes it."""
+    settings = [option[len(LOCK_PREFIX_OPTION):]
+                for argument in arguments if argument.startswith("-Wa,")
+                for option in argument.split(",")[1:]
+                if option.startswith(LOCK_PREFIX_OPTION)]
+    if any(setting not in ("yes", "no") for setting in settings):
+        raise ValueError(f"unknown lock-prefix assembler setting: {settings}")
+    return bool(settings) and settings[-1] == "yes"
+
+
+def _forces_one_cpu_guard(arguments: list[str]) -> bool:
+    for position, argument in enumerate(arguments):
+        if argument == "-include" and position + 1 < len(arguments):
+            included = arguments[position + 1]
+        elif argument.startswith("-include") and argument != "-include":
+            included = argument[len("-include"):]
+        else:
+            continue
+        if Path(included).as_posix().endswith("/" + ONE_CPU_GUARD_HEADER):
+            return True
+    return False
+
+
 def validate_coverage_flags(build: Path) -> None:
     records = json.loads((build / "compile_commands.json").read_text())
     measured = 0
+    modes: set[bool] = set()
     for record in records:
         arguments = record.get("arguments") or shlex.split(record["command"])
         if "--coverage" not in arguments:
@@ -107,8 +136,23 @@ def validate_coverage_flags(build: Path) -> None:
                            if argument.startswith("-fprofile-update=")]
         if not profile_updates or profile_updates[-1] != "-fprofile-update=atomic":
             raise ValueError(f"coverage object does not use atomic counters: {record['file']}")
+        # An object assembled without lock prefixes counts exactly on one CPU
+        # only, so it must also carry the forced header whose reference only
+        # the one-CPU runtime resolves; the header without the stripping would
+        # confine a process for nothing. One bundle is one counter mode.
+        stripped = _strips_lock_prefixes(arguments)
+        guarded = _forces_one_cpu_guard(arguments)
+        if stripped and not guarded:
+            raise ValueError("coverage object strips lock prefixes without the "
+                             f"one-CPU guard: {record['file']}")
+        if guarded and not stripped:
+            raise ValueError("coverage object carries the one-CPU guard but keeps "
+                             f"its lock prefixes: {record['file']}")
+        modes.add(stripped)
     if measured == 0:
         raise ValueError("coverage bundle contains no instrumented compilation records")
+    if len(modes) != 1:
+        raise ValueError("coverage bundle mixes locked and lock-free counter objects")
 
 
 def pack(args: argparse.Namespace) -> None:
@@ -690,7 +734,8 @@ def print_compiler_launcher(args: argparse.Namespace) -> None:
 
 
 def local_build_expression(repo: Path, lane: str, *, sccache_seed: Path | None = None,
-                           compile_shards: int = 0, compile_shard: int = -1) -> str:
+                           compile_shards: int = 0, compile_shard: int = -1,
+                           unwarmed: bool = False) -> str:
     """Attach actual Git history to a dirty flake without changing its source."""
     if lane not in LANES:
         raise ValueError("unknown native CI lane")
@@ -705,6 +750,8 @@ def local_build_expression(repo: Path, lane: str, *, sccache_seed: Path | None =
     if compile_shards < 0 or (compile_shards == 0 and compile_shard != -1) or (
             compile_shards > 0 and not 0 <= compile_shard < compile_shards):
         raise ValueError("compile shard index/count are inconsistent")
+    if unwarmed and (compile_shards or lane not in ("asan", "coverage")):
+        raise ValueError("only an ASan or coverage producer can build unwarmed")
     seed_binding = ""
     seed_attribute = ""
     if sccache_seed is not None:
@@ -721,6 +768,7 @@ def local_build_expression(repo: Path, lane: str, *, sccache_seed: Path | None =
         f"in flake.packages.${{builtins.currentSystem}}.ci-{lane}.overrideAttrs (_: {{ "
         f'ciCommitCount = "{count}"; ciGitHash = "{revision[:8]}"; version = "2.{count}"; '
         f'{seed_attribute}ciCompileShards = "{compile_shards}"; ciCompileShard = "{compile_shard}"; '
+        f'ciCompileWarmed = "{0 if unwarmed else 1}"; '
         '__intentionallyOverridingVersion = true; })'
     )
 
@@ -745,6 +793,7 @@ def build_bundle(args: argparse.Namespace) -> None:
         sccache_seed=getattr(args, "sccache_seed", None),
         compile_shards=getattr(args, "compile_shards", 0),
         compile_shard=getattr(args, "compile_shard", -1),
+        unwarmed=getattr(args, "unwarmed", False),
     )
     if getattr(args, "cache_only", False):
         if args.lane not in ("asan", "coverage"):
@@ -775,6 +824,8 @@ def main() -> int:
     building.add_argument("--compile-shards", type=int, default=0)
     building.add_argument("--compile-shard", type=int, default=-1)
     building.add_argument("--cache-only", action="store_true")
+    building.add_argument("--unwarmed", action="store_true",
+                          help="no compile fan-out ran: the producer compiles what its seed lacks")
     building.add_argument("--cores", type=int, default=3)
     building.set_defaults(function=build_bundle)
     packing = commands.add_parser("pack", help="internal derivation install step")

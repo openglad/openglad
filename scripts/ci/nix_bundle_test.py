@@ -470,8 +470,36 @@ class MaterializeTests(unittest.TestCase):
         self.assertIn("builtins.path", expression)
         self.assertIn('ciCompileShards = "8"', expression)
         self.assertIn('ciCompileShard = "3"', expression)
+        self.assertIn('ciCompileWarmed = "1"', expression)
         self.assertTrue(expression.endswith(").sccache"))
         self.assertEqual("4", command[command.index("--cores") + 1])
+
+    def test_unwarmed_build_is_a_whole_producer_of_a_cached_lane_and_says_so(self):
+        repo = self.root / "repo"
+        repo.mkdir()
+        seed = self.root / "seed"
+        (seed / "cache").mkdir(parents=True)
+
+        def expression_for(**settings):
+            arguments = dict(repo=repo, lane="coverage", out_link=self.root / "out",
+                             sccache_seed=seed, cores=4)
+            arguments.update(settings)
+            with patch("nix_bundle.run", side_effect=["false", "1138", "c" * 40]), \
+                    patch("nix_bundle.subprocess.run") as execute, \
+                    patch("nix_bundle.normalize_output_link"):
+                build_bundle(argparse.Namespace(**arguments))
+            command = execute.call_args.args[0]
+            return command[command.index("--expr") + 1]
+
+        self.assertIn('ciCompileWarmed = "0"', expression_for(unwarmed=True))
+        self.assertIn('ciCompileWarmed = "0"', expression_for(unwarmed=True, cache_only=True))
+        self.assertIn('ciCompileWarmed = "1"', expression_for())
+        for refused in (dict(unwarmed=True, compile_shards=8, compile_shard=0),
+                        dict(unwarmed=True, lane="tsan", sccache_seed=None),
+                        dict(unwarmed=True, lane="canary", sccache_seed=None)):
+            with self.subTest(refused=refused), \
+                    self.assertRaisesRegex(ValueError, "can build unwarmed"):
+                expression_for(**refused)
 
     def test_selected_sccache_output_uses_requested_link_name(self):
         requested = self.root / "cache-output"
@@ -515,6 +543,46 @@ class MaterializeTests(unittest.TestCase):
             "arguments": ["c++", "--coverage", "-O0",
                           "-fprofile-update=atomic", "-fprofile-update=single"]}]))
         with self.assertRaisesRegex(ValueError, "atomic counters"):
+            validate_coverage_flags(self.source)
+
+    def test_coverage_requires_stripped_lock_prefixes_and_the_one_cpu_guard_together(self):
+        database = self.source / "compile_commands.json"
+        base = ["c++", "--coverage", "-O0", "-fprofile-update=atomic"]
+        strip = "-Wa,-momit-lock-prefix=yes"
+        guard = ["-include", "/checkout/tests/coverage_runtime/uniprocessor_counters.h"]
+
+        def records(*argument_lists):
+            database.write_text(json.dumps([
+                {"file": f"src/unit{index}.cpp", "arguments": arguments}
+                for index, arguments in enumerate(argument_lists)]))
+
+        records(base + [strip] + guard, base + [strip] + guard)
+        validate_coverage_flags(self.source)
+        records(base, base)
+        validate_coverage_flags(self.source)
+        records(base + [strip] + ["-include" + guard[1]])
+        validate_coverage_flags(self.source)
+
+        records(base + [strip])
+        with self.assertRaisesRegex(ValueError, "without the one-CPU guard"):
+            validate_coverage_flags(self.source)
+        records(base + [strip, "-include", "/checkout/tests/other/uniprocessor_counters.h"])
+        with self.assertRaisesRegex(ValueError, "without the one-CPU guard"):
+            validate_coverage_flags(self.source)
+        records(base + guard)
+        with self.assertRaisesRegex(ValueError, "keeps its lock prefixes"):
+            validate_coverage_flags(self.source)
+        records(base + [strip, "-Wa,-momit-lock-prefix=no"] + guard)
+        with self.assertRaisesRegex(ValueError, "keeps its lock prefixes"):
+            validate_coverage_flags(self.source)
+        records(base + ["-Wa,--noexecstack,-momit-lock-prefix=yes"])
+        with self.assertRaisesRegex(ValueError, "without the one-CPU guard"):
+            validate_coverage_flags(self.source)
+        records(base + ["-Wa,-momit-lock-prefix=maybe"] + guard)
+        with self.assertRaisesRegex(ValueError, "unknown lock-prefix assembler setting"):
+            validate_coverage_flags(self.source)
+        records(base + [strip] + guard, base)
+        with self.assertRaisesRegex(ValueError, "mixes locked and lock-free"):
             validate_coverage_flags(self.source)
 
     def test_pack_consumes_build_without_copying_notes_or_executables_twice(self):

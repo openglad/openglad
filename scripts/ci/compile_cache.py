@@ -398,6 +398,24 @@ def verify_producer(args: argparse.Namespace) -> None:
     within_repair_budget = (
         misses <= max_fallbacks and misses * 100 <= requests * 2
     )
+    if getattr(args, "unwarmed", False):
+        # No fan-out preceded this producer (compile_fanout.py judged the
+        # change small): it compiles whatever its seed lacks, however much
+        # that turns out to be. Every request must still have gone through
+        # the cache and every miss must have been compiled and stored once.
+        if requests < 1 or not (
+                executed == requests and hits + misses == requests and
+                errors <= misses and misses == compilations == writes and
+                not forbidden and not_cached == 0):
+            raise ValueError(
+                "unwarmed producer did not account for every compilation: "
+                f"requests={requests}, executed={executed}, hits={hits}, misses={misses}, "
+                f"errors={errors}, compilations={compilations}, writes={writes}, "
+                f"forbidden={forbidden}, not_cached={not_cached}"
+            )
+        print(f"Unwarmed producer reused {hits}/{requests} seeded compilations "
+              f"and compiled {misses} itself")
+        return
     if requests < 1 or not (
             executed == requests and hits + misses == requests and
             errors == misses == compilations == writes and
@@ -455,6 +473,8 @@ def main() -> int:
         "verify-producer", help="bound authoritative cache repair compilations")
     verifying.add_argument("--cache-program", type=Path, required=True)
     verifying.add_argument("--max-fallbacks", type=int, default=0)
+    verifying.add_argument("--unwarmed", action="store_true",
+                           help="no fan-out ran: the producer may compile any number of misses")
     verifying.set_defaults(function=verify_producer)
 
     args = parser.parse_args()
