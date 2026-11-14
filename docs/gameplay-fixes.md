@@ -1222,7 +1222,8 @@ parity runner never sets a difficulty, which reads as 100 %, and the old
 game's capture tool keeps `current_difficulty = 1`; `ScenarioSpec` has no
 difficulty field), and at 100 % the percent multiplies a summon's
 whole-number hit points, magic and damage by 100 and divides them back
-exactly, so both settings record the same bytes. `DifficultyScaling` in
+exactly, so both settings record the same bytes. The parity entries were
+run with the fix and no row moved. `DifficultyScaling` in
 `tests/unit/test_difficulty_scaling.cpp` pins it on both settings at Easy
 and Hard.
 
