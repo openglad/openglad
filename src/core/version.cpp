@@ -41,14 +41,47 @@ std::string_view git_hash()
 	return OPENGLAD_GIT_HASH;
 }
 
+bool on_master()
+{
+	return OPENGLAD_VERSION_ON_MASTER != 0;
+}
+
+// #508: a build off master's history has no version, only its commit.
+std::string compose_identity(bool on_master, std::string_view version,
+                             std::string_view hash)
+{
+	return std::string(on_master ? version : hash);
+}
+
+std::string compose_stamp(bool on_master, std::string_view version,
+                          std::string_view hash)
+{
+	if (on_master)
+		return std::format("v{} {}", version, hash);
+	return std::string(hash);
+}
+
+std::string compose_cli_line(bool on_master, std::string_view version,
+                             std::string_view hash)
+{
+	if (on_master)
+		return std::format("openglad version {} ({})", version, hash);
+	return std::format("openglad commit {}", hash);
+}
+
+std::string identity()
+{
+	return compose_identity(on_master(), string(), git_hash());
+}
+
 std::string stamp()
 {
-	return std::format("v{} {}", string(), git_hash());
+	return compose_stamp(on_master(), string(), git_hash());
 }
 
 std::string cli_line()
 {
-	return std::format("openglad version {} ({})", string(), git_hash());
+	return compose_cli_line(on_master(), string(), git_hash());
 }
 
 } // namespace og::version

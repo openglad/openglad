@@ -1358,7 +1358,17 @@ which both the configure-time `project(VERSION …)` and the build-time
 `cmake/GitHash.cmake` call. `GitHash.cmake` writes the generated
 `og_git_hash.h`, and `src/core/version.cpp` is the single translation unit that
 includes it; every other caller goes through `include/openglad/core/version.h`
-(`og::version::string()`, `git_hash()`, `stamp()`, `cli_line()`).
+(`og::version::string()`, `git_hash()`, `on_master()`, `identity()`, `stamp()`,
+`cli_line()`).
+
+The number is shown only by a build of a commit on master's history (#508);
+elsewhere the stamp, `-v` / `--version` and the help footer show the hash
+alone. `og_version_on_master` in the same file decides: the `OPENGLAD_ON_MASTER`
+value the release and web workflows pass from their event, else
+`git merge-base --is-ancestor HEAD origin/master`, and "no" whenever git cannot
+tell (no git, a repository with no commit, no `origin/master`, a shallow
+clone). The stamp records the answer as `OPENGLAD_VERSION_ON_MASTER`, and
+`og::version::on_master()` reads it.
 
 This number is display-only — the main-menu stamp, `-v`, the help footer, the
 release tag and the web archive alias. No save, replay, snapshot or wire format

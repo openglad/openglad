@@ -175,6 +175,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
+            -DOPENGLAD_ON_MASTER=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }} \
 
           cmake --build --preset dev-release --target openglad openscen openglad_server openglad_curses -j"$(nproc)"
           bash scripts/test_headless_server_native_link.sh build/dev-release
@@ -186,6 +187,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
+            -DOPENGLAD_ON_MASTER=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }} \
 
           cmake --build build --target openglad openscen -j"$(sysctl -n hw.logicalcpu)"
 
@@ -198,6 +200,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
+            -DOPENGLAD_ON_MASTER=${{ github.event_name == 'pull_request' && 'OFF' || 'ON' }} \
             -DOPENSSL_ROOT_DIR="$(cygpath -am /mingw64)"
 
           # About one build in three used to freeze for good right after a
@@ -227,8 +230,10 @@ jobs:
           test ! -e build/dev-release/builtin/concept.glad
           test -e build/dev-release/builtin/gladiator.glad
           # And the binaries must carry this checkout's version, not the "2.0"
-          # of a history-less build — the release is tagged with that number.
+          # of a history-less build — the release is tagged with that number —
+          # and show it only on a master build (#508).
           grep -q "OPENGLAD_VERSION_STRING \"2.$(git rev-list --count HEAD)\"" build/dev-release/og_git_hash.h
+          grep -q "OPENGLAD_VERSION_ON_MASTER ${{ github.event_name == 'pull_request' && '0' || '1' }}" build/dev-release/og_git_hash.h
           cp -r build/dev-release/builtin staging/openglad/
           tar czf "${{ matrix.artifact_name }}.tar.gz" -C staging openglad
 

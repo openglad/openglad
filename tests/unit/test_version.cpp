@@ -2,11 +2,16 @@
  *
  * og::version is the only accessor for the generated numbers, and three
  * player-facing surfaces are composed from it (the main-menu stamp, the
- * help footer, `-v`). Nothing here can pin the VALUE, which changes with
- * every commit; what is pinned is the exact composition each surface is
- * built from — `std::format("{}.{}", major(), minor())` for the version
- * string, "v<string> <hash>" for the stamp, "openglad version <string>
- * (<hash>)" for `-v` — plus the shape of the generated git hash. The value
+ * help footer, `-v`). Only a build of a commit on master's history shows
+ * the 2.<count> number (#508); any other build shows its hash alone. Both
+ * kinds of text are pinned exactly through the compose_* functions, whose
+ * inputs a test can choose; the live functions are pinned against the
+ * build's own on_master() answer, written out by hand. Nothing here can pin
+ * the VALUE, which changes with every commit; what is pinned is the exact
+ * composition each surface is built from — `std::format("{}.{}", major(),
+ * minor())` for the version string, "v<string> <hash>" (or "<hash>") for
+ * the stamp, "openglad version <string> (<hash>)" (or "openglad commit
+ * <hash>") for `-v` — plus the shape of the generated git hash. The value
  * checks are two independent opt-ins, exported by the CI lanes that run
  * og_unit_core: OG_EXPECT_VERSION_MINOR from `git rev-list --count HEAD`,
  * so a build that stamped 2.0 because the checkout was shallow fails there
@@ -140,18 +145,60 @@ TEST(Version, git_hash_is_a_real_sha_when_the_tree_has_history)
         << "': a git checkout must never stamp nogit";
 }
 
+// #508: the number is shown only by a build of a commit on master's
+// history; every other build (a pull-request build, a local branch) shows
+// its commit hash alone, because its commit count names nothing.
+TEST(Version, stamp_shows_the_number_only_on_master)
+{
+    EXPECT_EQ("v2.1073 7e7f4079",
+              og::version::compose_stamp(true, "2.1073", "7e7f4079"));
+    EXPECT_EQ("7e7f4079",
+              og::version::compose_stamp(false, "2.1073", "7e7f4079"));
+    EXPECT_EQ("7e7f4079+",
+              og::version::compose_stamp(false, "2.1073", "7e7f4079+"));
+    EXPECT_EQ("nogit", og::version::compose_stamp(false, "2.0", "nogit"));
+}
+
+TEST(Version, cli_line_shows_the_number_only_on_master)
+{
+    EXPECT_EQ("openglad version 2.1073 (7e7f4079)",
+              og::version::compose_cli_line(true, "2.1073", "7e7f4079"));
+    EXPECT_EQ("openglad commit 7e7f4079",
+              og::version::compose_cli_line(false, "2.1073", "7e7f4079"));
+}
+
+TEST(Version, identity_shows_the_number_only_on_master)
+{
+    EXPECT_EQ("2.1073",
+              og::version::compose_identity(true, "2.1073", "7e7f4079"));
+    EXPECT_EQ("7e7f4079",
+              og::version::compose_identity(false, "2.1073", "7e7f4079"));
+}
+
 TEST(Version, stamp_is_the_menu_line)
 {
-    EXPECT_EQ("v" + std::string(og::version::string()) + " " +
-                  std::string(og::version::git_hash()),
+    const std::string version(og::version::string());
+    const std::string hash(og::version::git_hash());
+    EXPECT_EQ(og::version::on_master() ? "v" + version + " " + hash : hash,
               og::version::stamp());
 }
 
 TEST(Version, cli_line_is_the_dash_v_line)
 {
-    EXPECT_EQ("openglad version " + std::string(og::version::string()) + " (" +
-                  std::string(og::version::git_hash()) + ")",
+    const std::string version(og::version::string());
+    const std::string hash(og::version::git_hash());
+    EXPECT_EQ(og::version::on_master()
+                  ? "openglad version " + version + " (" + hash + ")"
+                  : "openglad commit " + hash,
               og::version::cli_line());
+}
+
+TEST(Version, identity_is_the_help_footer_version)
+{
+    const std::string version(og::version::string());
+    const std::string hash(og::version::git_hash());
+    EXPECT_EQ(og::version::on_master() ? version : hash,
+              og::version::identity());
 }
 
 TEST(Version, minor_matches_history)

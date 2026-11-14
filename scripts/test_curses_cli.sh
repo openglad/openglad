@@ -68,7 +68,17 @@ check_failure() {
 }
 
 check_success "long help" "Usage: openglad_curses [options]" --help
-check_success "version" "openglad version 2." --version
+check_success "version" "openglad " --version
+# #508: the line is one of exactly two shapes, the version only on a build of
+# a commit on master's history and the commit alone elsewhere. Which shape
+# depends on the build; tests/unit/test_version.cpp pins both texts.
+version_line=$("$curses_bin" --version 2>&1)
+version_re='^openglad (version 2\.[0-9]+ \(([0-9a-f]{8}\+?|nogit)\)|commit ([0-9a-f]{8}\+?|nogit))$'
+if ! printf '%s\n' "$version_line" | grep -Eqx "$version_re"; then
+    printf 'Expected --version to print one line of either shape, got:\n%s\n' \
+        "$version_line" >&2
+    exit 1
+fi
 check_success "short help" "Usage: openglad_curses [options]" -h
 check_success "option parsing before help" "Usage: openglad_curses [options]" \
     --campaign gladiator \

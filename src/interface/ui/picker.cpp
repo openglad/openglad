@@ -2386,10 +2386,10 @@ void view_team(short left, short top, short right, short bottom)
 
 // The build stamp, bottom-centre of the main menu ON EVERY PLATFORM — the
 // deployed web preview is exactly where "is this fix even in the build I'm
-// playing?" needs an in-game answer, and the version beside the commit is
-// what a bug report should quote. Geometry is og::ui::build_stamp_rect
-// (picker_common, unit-tested): one line in the black band under HELP/QUIT,
-// clear of every button and of both column bases.
+// playing?" needs an in-game answer, and the commit (with the version on a
+// master build, #508) is what a bug report should quote. Geometry is
+// og::ui::build_stamp_rect (picker_common, unit-tested): one line in the
+// black band under HELP/QUIT, clear of every button and of both column bases.
 void draw_build_stamp()
 {
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;

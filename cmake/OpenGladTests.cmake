@@ -2252,6 +2252,25 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The build stamp's master rule (#508): only a build of a commit on master's
+# history shows the 2.<count> version. The script drives the real stamp
+# generator (cmake -P cmake/GitHash.cmake) against throwaway repositories in
+# every shape it must answer (on master, a commit on top, a branch, the
+# workflows' ON/OFF, no origin/master, a shallow clone, no git, no commit)
+# and checks that no call site outside src/core/version.cpp reads the bare
+# number.
+add_test(NAME og_version_stamp_selftest
+    COMMAND ${CMAKE_COMMAND} -E env
+        bash
+        ${CMAKE_SOURCE_DIR}/scripts/test_version_stamp.sh
+        ${CMAKE_COMMAND}
+        ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(og_version_stamp_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # The heritage-comment audit (scripts/heritage_audit.py, run before every merge
 # per the openglad-heritage-comments skill) reports which pre-2020 comment lines
 # a branch deleted, and a silently degraded pass makes it under-report rather

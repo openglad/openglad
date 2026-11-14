@@ -793,6 +793,7 @@ add_custom_target(og_git_hash_gen
         -DOUT_FILE=${CMAKE_BINARY_DIR}/og_git_hash.h
         -DOPENGLAD_COMMIT_COUNT=${OPENGLAD_COMMIT_COUNT}
         -DOPENGLAD_GIT_HASH=${OPENGLAD_GIT_HASH}
+        -DOPENGLAD_ON_MASTER=${OPENGLAD_ON_MASTER}
         -P ${CMAKE_SOURCE_DIR}/cmake/GitHash.cmake
     BYPRODUCTS ${CMAKE_BINARY_DIR}/og_git_hash.h
     COMMENT "Stamping git hash and version"

@@ -86,6 +86,9 @@ jobs:
       - name: Build locked-flake WASM configuration once
         env:
           COMPILE_EVERY_OBJECT: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          # #508: only a master build shows the 2.<count> version; a pull
+          # request's count names nothing, so its build shows the hash alone.
+          OPENGLAD_ON_MASTER: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master') && 'ON' || 'OFF' }}
         run: |
           which cmake c++ emcc ccache
           export CCACHE_DIR="$PWD/build/.ccache-web" CCACHE_MAXSIZE=400M
@@ -109,30 +112,17 @@ jobs:
         with:
           path: build/.ccache-web
           key: wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+      # #508: scripts/web/build_stamp.py is the one reader (unit-tested by
+      # the Versions index unit test step above). A build off master gets an
+      # empty version and alias.
       - name: Read the build stamp
         id: stamp
+        env:
+          EXPECT_ON_MASTER: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master') && '1' || '0' }}
         run: |
-          h=build/web-emscripten/og_git_hash.h
-          minor="$(sed -n 's/^#define OPENGLAD_VERSION_MINOR \([0-9]*\)$/\1/p' "$h")"
-          hash="$(sed -n 's/^#define OPENGLAD_GIT_HASH "\([^"]*\)"$/\1/p' "$h")"
-          if [ -z "$minor" ] || [ -z "$hash" ]; then
-            echo "::error::${h} has no version stamp"
-            exit 1
-          fi
-          if [ "$minor" != "$(git rev-list --count HEAD)" ]; then
-            echo "::error::stamp 2.${minor} != git rev-list --count HEAD (shallow checkout?)"
-            exit 1
-          fi
-          if [ "$hash" != "$(git rev-parse --short=8 HEAD)" ]; then
-            echo '::error::WASM build stamp does not match checkout'
-            exit 1
-          fi
-          {
-            echo "version=2.${minor}"
-            echo "minor=${minor}"
-            echo "hash=${hash}"
-            echo "alias=v2-${minor}"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/web/build_stamp.py --header build/web-emscripten/og_git_hash.h \
+            --expect-on-master "$EXPECT_ON_MASTER" --rev-count "$(git rev-list --count HEAD)" \
+            --short-hash "$(git rev-parse --short=8 HEAD)" --output-file "$GITHUB_OUTPUT"
 
       - name: Copy web assets to dist
         run: cp web/index.html web/help.html web/_worker.js dist/
@@ -366,30 +356,16 @@ jobs:
         with:
           name: wasm-dist
           path: .
+      # #508: the same reader as the build job's step (scripts/web/build_stamp.py,
+      # unit-tested there). A build off master gets an empty version and alias.
       - name: Read the build stamp
         id: stamp
+        env:
+          EXPECT_ON_MASTER: ${{ ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master') && '1' || '0' }}
         run: |
-          h=build/web-emscripten/og_git_hash.h
-          minor="$(sed -n 's/^#define OPENGLAD_VERSION_MINOR \([0-9]*\)$/\1/p' "$h")"
-          hash="$(sed -n 's/^#define OPENGLAD_GIT_HASH "\([^"]*\)"$/\1/p' "$h")"
-          if [ -z "$minor" ] || [ -z "$hash" ]; then
-            echo "::error::${h} has no version stamp"
-            exit 1
-          fi
-          if [ "$minor" != "$(git rev-list --count HEAD)" ]; then
-            echo "::error::stamp 2.${minor} != git rev-list --count HEAD (shallow checkout?)"
-            exit 1
-          fi
-          if [ "$hash" != "$(git rev-parse --short=8 HEAD)" ]; then
-            echo '::error::WASM build stamp does not match checkout'
-            exit 1
-          fi
-          {
-            echo "version=2.${minor}"
-            echo "minor=${minor}"
-            echo "hash=${hash}"
-            echo "alias=v2-${minor}"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/web/build_stamp.py --header build/web-emscripten/og_git_hash.h \
+            --expect-on-master "$EXPECT_ON_MASTER" --rev-count "$(git rev-list --count HEAD)" \
+            --short-hash "$(git rev-parse --short=8 HEAD)" --output-file "$GITHUB_OUTPUT"
 
       - name: Deploy PR preview to Cloudflare Pages
         id: preview
@@ -425,15 +401,14 @@ jobs:
 
       # One sticky comment per PR, updated in place on every push, so the link
       # is where a reviewer looks instead of buried in a job summary (#275).
-      # The version and hash come from the built artifact's stamp, so the
-      # comment cannot claim a build the main menu disagrees with.
+      # The hash comes from the built artifact's stamp, so the comment cannot
+      # claim a build the main menu disagrees with.
       - name: Comment the preview link on the pull request
         if: steps.preview.outcome == 'success'
         uses: actions/github-script@v9
         env:
           PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.openglad.pages.dev
           IMMUTABLE_URL: ${{ steps.preview.outputs.deployment-url }}
-          STAMP_VERSION: ${{ steps.stamp.outputs.version }}
           STAMP_HASH: ${{ steps.stamp.outputs.hash }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
@@ -449,7 +424,7 @@ jobs:
               '',
               `**${process.env.PREVIEW_URL}** — tracks the newest passing WASM build of this PR.`,
               '',
-              `Currently serving \`${process.env.STAMP_HASH}\` (version \`${process.env.STAMP_VERSION}\`) — the main menu stamps both bottom-centre; quote them in bug reports. Immutable link for this exact build: ${process.env.IMMUTABLE_URL}`,
+              `Currently serving \`${process.env.STAMP_HASH}\`, the commit the main menu stamps bottom-centre; quote it in bug reports. A pull-request build has no version number: the commit count becomes a version only on master. Immutable link for this exact build: ${process.env.IMMUTABLE_URL}`,
               '',
               `Run: ${process.env.RUN_URL}`,
             ].join('\n');
