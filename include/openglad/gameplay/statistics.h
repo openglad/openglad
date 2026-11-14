@@ -126,6 +126,19 @@ class statistics
 		// along its heading). Everything else the probe met stays untouched.
 		// Off, the probe alone. See right_walk.
 		bool path_probe(Side side, bool quiet);
+		// Gameplay Fixes BB (#497): the turn and the swing of walk_to_foe's
+		// near branch (a foe within 100 px on a tick the bot re-plans).
+		// Both are defined at the end of stats.cpp.
+		// near_turn: one notch toward `aim`; answers whether the bot already
+		// faced it. With the setting on a bot that did not keeps `aim` as the
+		// facing it is turning to (enddir), so its next acts finish the turn.
+		bool near_turn(short aim);
+		// near_swing: classic, init_fire() along the heading, unasked. With
+		// the setting on only a bot that already faced its foe swings or
+		// shoots, along that facing, and only when the blow can land: a
+		// shooter asks fire_check, a melee-only bot (which fire_check always
+		// refuses) asks whether a foe's body stands on its weapon's pad.
+		void near_swing(bool faced, short xdelta, short ydelta);
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
 		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
 		// first, and only a free half takes the classic loud step. Off, the loud step.
