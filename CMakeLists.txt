@@ -156,6 +156,63 @@ endif()
 # that inject neither flag (CI's stock gcc) build warning-free.
 set(OG_COVERAGE_COMPILE_OPTIONS --coverage -O0 -fprofile-update=atomic)
 
+# Counter updates. -fprofile-update=atomic makes every counted arc one
+# `lock addq $1, counter(%rip)`, which no thread can corrupt but which costs
+# six to eight times the whole rest of an -O0 test (measured 2026-11-13 on four
+# compute-bound groups: 105/65/111/31 s against 16/9/14/4 s). The lock prefix
+# buys nothing on ONE CPU: a single instruction is never interrupted halfway.
+# So where the assembler can omit the prefix, instrumented objects are
+# assembled without it and every process that holds one is confined to one
+# CPU before a second thread can exist:
+#   * -Wa,-momit-lock-prefix=yes strips the prefix (GNU as, x86-64);
+#   * -include .../uniprocessor_counters.h plants, in the same objects, a
+#     reference that only the one-CPU runtime resolves, so an executable with
+#     a stripped object and no confinement does not link;
+#   * tests/coverage_runtime/uniprocessor_counters.cpp is that runtime.
+# The three travel together through og_instrument_for_coverage below and
+# nowhere else; scripts/ci/nix_bundle.py refuses a coverage bundle whose
+# compilation records carry one without the other. Every other toolchain keeps
+# the locked update and is not confined.
+# scripts/coverage/README.md ("Counter races") has the measurements.
+set(OG_COVERAGE_ONE_CPU_COUNTERS OFF)
+if(ENABLE_COVERAGE
+   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+   AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
+   AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_FLAGS "-Wa,-momit-lock-prefix=yes")
+    check_cxx_source_compiles("int main() { return 0; }" OG_ASSEMBLER_OMITS_LOCK_PREFIX)
+    unset(CMAKE_REQUIRED_FLAGS)
+    if(OG_ASSEMBLER_OMITS_LOCK_PREFIX)
+        set(OG_COVERAGE_ONE_CPU_COUNTERS ON)
+    endif()
+endif()
+if(OG_COVERAGE_ONE_CPU_COUNTERS)
+    list(APPEND OG_COVERAGE_COMPILE_OPTIONS
+        -Wa,-momit-lock-prefix=yes
+        "SHELL:-include ${CMAKE_SOURCE_DIR}/tests/coverage_runtime/uniprocessor_counters.h")
+    add_library(og_coverage_one_cpu STATIC
+        ${CMAKE_SOURCE_DIR}/tests/coverage_runtime/uniprocessor_counters.cpp)
+    target_compile_features(og_coverage_one_cpu PRIVATE cxx_std_20)
+    message(STATUS "Coverage counters: lock-free, every instrumented process confined to one CPU")
+elseif(ENABLE_COVERAGE)
+    message(STATUS "Coverage counters: locked (this toolchain cannot omit the lock prefix)")
+endif()
+
+# The ONLY way a target becomes coverage-instrumented.
+function(og_instrument_for_coverage target)
+    if(NOT (ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"))
+        return()
+    endif()
+    target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
+    target_link_options(${target} PRIVATE --coverage)
+    if(OG_COVERAGE_ONE_CPU_COUNTERS)
+        target_compile_definitions(${target} PRIVATE OG_COVERAGE_ONE_CPU_COUNTERS=1)
+        # Build-tree only: the installed export set never carries a coverage build.
+        target_link_libraries(${target} PRIVATE $<BUILD_INTERFACE:og_coverage_one_cpu>)
+    endif()
+endfunction()
+
 if(ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
     if(CLANG_TIDY_EXE)
@@ -327,20 +384,14 @@ function(configure_openglad_library target)
     )
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
-    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
-        target_link_options(${target} PRIVATE --coverage)
-    endif()
+    og_instrument_for_coverage(${target})
 endfunction()
 
 function(configure_component_library target include_root)
     target_include_directories(${target} PRIVATE ${include_root})
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
-    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${target} PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
-        target_link_options(${target} PRIVATE --coverage)
-    endif()
+    og_instrument_for_coverage(${target})
 endfunction()
 
 function(configure_openglad_sdl_target target)
@@ -1101,10 +1152,7 @@ if(NOT EMSCRIPTEN)
         m
         pthread
     )
-    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(openglad_text PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
-        target_link_options(openglad_text PRIVATE --coverage)
-    endif()
+    og_instrument_for_coverage(openglad_text)
     add_runtime_assets_dependency(openglad_text)
 
     if(TARGET og_platform_ws_transport)

@@ -1004,10 +1004,7 @@ target_link_libraries(scenario_facts_dump PRIVATE og_game_test project_warnings)
 # og_test_view's tick budget enough to time out at 180s on CI.
 # Only the SANITIZERS are skipped: project_warnings is linked above,
 # so this tool is audited like every other first-party target.
-if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(scenario_facts_dump PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
-    target_link_options(scenario_facts_dump PRIVATE --coverage)
-endif()
+og_instrument_for_coverage(scenario_facts_dump)
 add_custom_command(
     OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
     COMMAND scenario_facts_dump
@@ -1066,6 +1063,7 @@ add_runtime_assets_dependency(parity_runner_smoke)
 
 og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_ids.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_coverage_counters.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_version.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
@@ -1150,7 +1148,7 @@ set(OG_SIM_TESTS ${OG_SIM_REST_TESTS} ${OG_SIM_CURVE_TESTS})
 
 # Real transports, relay threads, lobby/server/client and pack handoffs.
 # TSan selects this transport group; deterministic simulation stays separate.
-og_add_unit_group(og_unit_network FILES
+og_add_unit_group(og_unit_network NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
@@ -1168,6 +1166,25 @@ og_add_unit_group(og_unit_network FILES
 if(TARGET og_platform_ws_transport)
     target_link_libraries(og_unit_network PRIVATE og_platform_ws_transport)
 endif()
+# The two live-WebSocket suites wait on real sockets: 49 s and 43 s of this
+# binary's 98 s on an uninstrumented build (2026-11-13), most of it the
+# server suite's 200 teardown cycles and the client suite's reconnect and
+# handshake timeouts. The group runs with a whole runner to itself
+# (RUN_SERIAL below), so as one entry it was the longest thing its worker
+# did in every lane: 175 s under coverage, 183 s under ASan+UBSan, 199 s
+# under TSan. Each suite owns an entry instead and the planner can give them
+# to different workers. The three filters are exact complements, so every
+# case in the binary still belongs to exactly one entry.
+set(OG_NETWORK_WS_SERVER_FILTER "NetTransportWebSocketServer.*")
+set(OG_NETWORK_WS_CLIENT_FILTER "NetTransportWebSocketClient.*")
+og_add_filtered_test(og_unit_network og_unit_network
+    "*-${OG_NETWORK_WS_SERVER_FILTER}:${OG_NETWORK_WS_CLIENT_FILTER}")
+og_add_filtered_test(og_unit_network_ws_server og_unit_network
+    "${OG_NETWORK_WS_SERVER_FILTER}")
+og_add_filtered_test(og_unit_network_ws_client og_unit_network
+    "${OG_NETWORK_WS_CLIENT_FILTER}")
+set(OG_NETWORK_TESTS
+    og_unit_network og_unit_network_ws_server og_unit_network_ws_client)
 
 og_add_unit_group(og_unit_emscripten_transport FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
@@ -1733,7 +1750,7 @@ set(OG_UNIT_DATA_TESTS ${OG_DATA_TESTS} ${OG_DATA_CAMPAIGNS_TESTS} ${OG_DATA_WES
 
 # Native transport processes share a lock; deterministic simulation does not.
 set_tests_properties(
-    og_test_picker ${OG_MENU_UI_TESTS} og_test_picker_network og_unit_network
+    og_test_picker ${OG_MENU_UI_TESTS} og_test_picker_network ${OG_NETWORK_TESTS}
     PROPERTIES RESOURCE_LOCK native_network_stack
 )
 if(TARGET og_test_curses)
@@ -1741,7 +1758,7 @@ if(TARGET og_test_curses)
 endif()
 # Retain the measured live-socket isolation until concurrent transport proof
 # warrants removing it. The deterministic sim group can run in parallel.
-set_tests_properties(og_unit_network PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
 set_tests_properties(${OG_SIM_TESTS} PROPERTIES TIMEOUT 600)
 # og_unit_data runs ~6s in ci-test but its campaign/battle/round-trip
 # suites multiply under instrumentation: the sanitizer/validation lane
@@ -1838,7 +1855,10 @@ set_property(TEST ${OG_PARITY_CENSUS_TESTS} APPEND PROPERTY
 set_property(TEST og_test_parity_gates APPEND PROPERTY
     FIXTURES_REQUIRED parity_census parity_census_collected)
 
-if(ENABLE_COVERAGE)
+if(ENABLE_COVERAGE AND NOT OG_COVERAGE_ONE_CPU_COUNTERS)
+    # Locked counter updates (CMakeLists.txt, "Counter updates"): a test
+    # process may spread over every core, and the reservations below keep the
+    # heavy ones from starving each other on a 4-core runner.
     # Group binaries execute beside private copies of installed assets (see
     # run_isolated.py), so config-error tests need no global serialization.
     # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
@@ -1869,10 +1889,7 @@ if(ENABLE_COVERAGE)
     # timeout, and a contended 4-core runner hit that ceiling while three
     # other tests were active. Reserve the runner as the sanitizer lane does
     # for the same binary, and retain the established 420 s hang ceiling.
-    set_tests_properties(og_test_snapshot_benchmark PROPERTIES
-        PROCESSORS 4
-        TIMEOUT 420
-    )
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES PROCESSORS 4)
     # These Lua-hooked deterministic simulations consume a full core budget
     # each. Coverage shard 3 overlapped court 826, the water stationarity
     # group and og_unit_sim on 2026-11-11; both 180-second entries timed out,
@@ -1887,7 +1904,10 @@ if(ENABLE_COVERAGE)
     # it can exceed the coverage workflow timeout budget when CTest
     # schedules it beside other heavyweight binaries, so give it full
     # runner isolation in that lane.
-    set_tests_properties(og_unit_network PROPERTIES PROCESSORS 4)
+    set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES PROCESSORS 4)
+endif()
+if(ENABLE_COVERAGE)
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES TIMEOUT 420)
     # Menu UI coverage still runs substantially slower on GitHub's
     # 4-core runners than it does locally, so match the dedicated
     # coverage workflow budget instead of leaving CTest at 300s here.
@@ -1948,7 +1968,7 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # stalled handshake waits that timeout out — 420s left no headroom
     # for even one stall on top of the sanitizer compute cost, so the
     # TSan lane timed out here while ci-test/coverage stayed green.
-    set_tests_properties(og_unit_network PROPERTIES
+    set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES
         PROCESSORS 2
         TIMEOUT 600
     )
@@ -2497,3 +2517,20 @@ set_tests_properties(ability_icons_generator_selftest PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )
+
+# Lock-free coverage counters confine every instrumented process to ONE CPU
+# (CMakeLists.txt, "Counter updates"), children included, so an entry can
+# never use more than one core however many it reserves: the PROCESSORS
+# reservations above this point are for the lanes that are not confined.
+# Here CTest hands each running entry a core of its own (PROCESSOR_AFFINITY
+# takes it out of the pool until the entry ends), the confinement keeps the
+# process on it, and four entries on a 4-core runner neither share a core
+# nor leave one idle. RUN_SERIAL entries still run alone. This is the last
+# statement of the file on purpose: it names every test declared above.
+if(OG_COVERAGE_ONE_CPU_COUNTERS)
+    get_property(og_every_test DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY TESTS)
+    set_tests_properties(${og_every_test} PROPERTIES
+        PROCESSORS 1
+        PROCESSOR_AFFINITY ON
+    )
+endif()
