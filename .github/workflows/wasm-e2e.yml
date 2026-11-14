@@ -50,10 +50,62 @@ jobs:
       - name: Versions index unit test
         run: python3 -m unittest discover -s scripts/web -p 'test_*.py' -v
 
+      # Two caches, both read by this step only.
+      #
+      # Emscripten builds its system libraries and the SDL3 port into
+      # EM_CACHE on first use; that depends on the pinned toolchain and on
+      # the flags the build passes, so it is keyed by both and restored from
+      # the newest entry of the same toolchain.
+      #
+      # The compiler cache holds one entry per object (18 MiB for the whole
+      # game on 2026-11-13). A pull-request build reads it: a warm build of
+      # an unchanged tree compiled in 15 s against 182 s and produced a
+      # byte-identical play.wasm. A master build NEVER reads it: it compiles
+      # every object and only writes (CCACHE_RECACHE), so no deployed
+      # production artifact contains a cached object, and every pull request
+      # starts from the cache its base commit just wrote.
+      - name: Restore the Emscripten system-library cache
+        id: emcache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.emscripten-cache
+          key: wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: |
+            wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
+      - name: Restore the newest compatible WASM compiler cache
+        id: ccache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.ccache-web
+          key: wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
       - name: Build locked-flake WASM configuration once
+        env:
+          COMPILE_EVERY_OBJECT: ${{ github.event_name != 'pull_request' && '1' || '' }}
         run: |
-          which cmake c++ emcc
+          which cmake c++ emcc ccache
+          export CCACHE_DIR="$PWD/build/.ccache-web" CCACHE_MAXSIZE=400M
+          # emcc is a launcher script: name the toolchain by its store path,
+          # which changes whenever any part of it does.
+          export CCACHE_COMPILERCHECK="string:$(readlink -f "$(command -v emcc)")"
+          if [ -n "$COMPILE_EVERY_OBJECT" ]; then export CCACHE_RECACHE=1; fi
+          export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache --zero-stats > /dev/null
           scripts/build_web.sh
+          ccache --show-stats
+      - name: Save the Emscripten system-library cache
+        if: success() && steps.emcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.emscripten-cache
+          key: wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+      - name: Save the WASM compiler cache
+        if: success() && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.ccache-web
+          key: wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
       - name: Read the build stamp
         id: stamp
         run: |

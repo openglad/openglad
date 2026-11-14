@@ -1158,7 +1158,11 @@ through CMake's captured compiler launcher, and publish only immutable
 process; the producer recreates those indexes while resolving the transported
 result objects. If independent workers serialize the same result key
 differently, merge retains the first result just as a shared central cache
-would. The authoritative build requires at least 98% of compiler requests to
+would. Both lanes key every object by its target path as well as its inputs:
+a coverage object embeds that path, and ASan entries shared between targets
+were read by a hundred targets at once, which sccache answered with
+extraction failures (27 repairs against a budget of 26 after one cold
+fan-out). The authoritative build requires at least 98% of compiler requests to
 hit those transported objects, permits at most 32 sccache extraction-repair
 compilations, and rejects ordinary cold misses, uncacheable work, compiler
 failures, timeouts and cache-write errors. The repaired cache becomes the
@@ -1202,6 +1206,13 @@ download. The coverage gate job restores no compiled bundle; see
 ships and what the gate checks. A newer push to a pull request cancels that
 pull request's run in progress in every lane; runs on master, nightly runs
 and manual runs are never cancelled.
+
+The web build keeps two caches of its own. Emscripten's system libraries and
+SDL3 port are restored for the pinned toolchain. Object files go through
+ccache: a pull-request build reads it (an unchanged tree compiled in 15 s
+against 182 s and linked a byte-identical `play.wasm`), while a master build
+compiles every object and only writes it, so no deployed production artifact
+contains a cached object.
 
 Coverage uses GCC; ASan, TSan and fuzzing use the pinned Clang toolchain.
 ASan and UBSan compile at `-O1` without sibling-call optimisation (3.4 to 8

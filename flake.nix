@@ -226,6 +226,9 @@
             SDL2_mixer
             bash
             binutils
+            # Opt-in compiler cache; CI's web build reads and writes it
+            # (.github/workflows/wasm-e2e.yml).
+            ccache
             clang
             llvmPackages.llvm
             cmake
