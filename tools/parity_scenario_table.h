@@ -42,7 +42,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:895 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:906 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -170,7 +170,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:352 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Cycling gate: src/gameplay/sim_input_handler.cpp:356 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
 // Firing gate: src/gameplay/living.cpp:914 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
@@ -669,9 +669,9 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 // `WalkerDiedByFinal`, `WalkerHpRangeAtFinalTick`, `WalkerPositionMoved`,
 // `EventKindAtLeast`, `EventKindExactly`, `ScoreDelta`, and
 // `EffectFamilyCount` all appear in at least one row. The remaining
-// kinds (`WalkerKeysApplied`, `StatDeltaOnPickup`, `WeaponFamilyEmitted`,
-// `TreasureFamilyRemovedFromOblist`) are exercised by gtest fixtures or
-// land with Phase 03+ rows; they remain available in the framework.
+// kinds (`WalkerKeysApplied`, `StatDeltaOnPickup`, `WeaponFamilyEmitted`)
+// are exercised by gtest fixtures or land with Phase 03+ rows; they remain
+// available in the framework.
 //
 // Each predicate uses the SPEC-MANDATED named family (FAMILY_<NAME>) so
 // the row's facts are about the family the row exists to exercise, not a
@@ -1189,7 +1189,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 2659,
+    "src/gameplay/game_world.cpp", 2664,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
@@ -1728,23 +1728,23 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 // packs/core/families/treasure-00-stain.lua; the pack-installed
 // in-world walker ignores the collision grid), so the soldier walks
 // straight through it without triggering the eat-me path. The literal
-// STAIN kOrderTreasure entry stays in oblist; its family_symbol is
-// FAMILY_SOLDIER (id 0 collides with FAMILY_SOLDIER walker), so the
-// row CANNOT honestly use TreasureFamilyRemovedFromOblist(0). Per
-// policy P1 we fall back to the closest schema-v1 observables that
-// flip on the discriminating mutation — the row exercises the OTHER
-// stain source, walker::death()'s generate_bloodspot(): a level-5
-// soldier melees a FAMILY_FAERIE to death, and kMut_treasure_stain_pickup
+// STAIN kOrderTreasure entry stays in oblist; read through the living
+// table its id 0 is FAMILY_SOLDIER, so only a treasure-order count
+// (WalkerOfOrderFamilyAlive) names it. Per policy P1 we fall back to the
+// closest schema-v1 observable that flips on the discriminating mutation:
+// a level-5 soldier wounds a FAMILY_FAERIE in melee (the recording ends
+// with the faerie alive at 17.00 hp), and kMut_treasure_stain_pickup
 // cranks the faerie's derived HP bonus in
-// packs/core/families/living-07-faerie.lua so it never dies and never
-// drops its bloodstain, flipping the faerie-death observables. Once a
-// future dump schema carries an oblist/Order disambiguator, this row
-// should switch to the canonical EffectFamilyCount(FAMILY_STAIN)
-// predicate instead.
+// packs/core/families/living-07-faerie.lua, so the row's teeth are the
+// faerie's hit points at the final tick. The faerie does not die, so no
+// bloodstain is dropped, and no fact could count one: it would go to the
+// effect list (add_fx_ob), which the order-aware counts do not read, and
+// EffectFamilyCount reads its family in the FX order, where id 0 is
+// FAMILY_EXPAND.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window
-    { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. leaves_bloodspot=true with no on_death override, so when the soldier kills it walker::death() (walker.cpp:1521) calls generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), spawning the bloodstain
+    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); wounds the adjacent faerie within the attack window (the recording ends with it alive at 17.00 hp)
+    { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. It lives through the row, so no bloodstain is made here (a kill would make one through walker::death()'s generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), in the effect list, which no fact of this row counts)
     { FAMILY_STAIN,   0, kOrderTreasure, 200, 120, 0, 0 },      // literal FAMILY_STAIN treasure parked off-path; guarantees a live FAMILY_STAIN entity in oblist on both arms, so the WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1) coverage anchor holds regardless of the faerie outcome
 };
 
@@ -1753,8 +1753,9 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_FAERIE, 1),
     // Structural coverage anchor: binds FAMILY_STAIN for
     // behavioural_coverage_gate. The off-path literal stain is still alive
-    // in oblist at the final tick (the faerie lives, so no bloodstain joins
-    // it): exactly one live FAMILY_STAIN, on both arms. Until #449 this was a
+    // in oblist at the final tick (the faerie lives, and the bloodstain a
+    // death leaves goes to the effect list, which this count never reads):
+    // exactly one live FAMILY_STAIN, on both arms. Until #449 this was a
     // removal fact that read `indeterminate` here; the stain was never taken.
     pred::WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
@@ -3515,7 +3516,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 2877,
+    "src/gameplay/game_world.cpp", 2882,
     "level_done = 0; // an awake foe",
     "level_done = 2; // an awake foe",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin names the awake one by its trailing comment, which only that line carries.)"
@@ -11669,7 +11670,7 @@ inline constexpr FactPredicate kFacts_mage_wave_edge_pad_fixes_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000,
         "consequence: the wave's second ring strikes the tower four times as it passes, worn a point a strike, so the strikes are rolled on 12, 11, 10 and 9 (each d - sqrt(d)/2 + rng(3)): 12, 9, 9, 10, and the tower ends at 90 hp"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 6400, 6400,
-        "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), the first from its shot at tick 16 (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
+        "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), at ticks 25, 30, 36, 46, 52 and 57 from its shots at 21, 26, 32, 42, 48 and 53, and its shots at 16 and 37 miss (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
 };
 inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
     "packs/core/families/living-03-mage.lua", 455,
@@ -11741,6 +11742,146 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
     "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
     "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
     "The gate is inverted, so the fixed row loses fix AT: at the re-plan the near branch's turn steps the orc a notch off the soldier although it faced him, and Gameplay Fixes BB then asks the pad along that new facing, which is clear, so no swing starts and no blow lands by tick 11: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
+};
+
+// --- thief_bomb_colour_score (fix AZ, #502: a blow's team score pays the team its chain head wears) ---
+// effect_bomb_bystander_scen99's arena, recoloured: the player thief stands on
+// team 1 (player_team 1) and the stationary level-1 TOWER1 on team 2. The
+// thief drops its bomb on tick 20. The blast it leaves wears no colour (team
+// 0, red): in both games a blast is spawned with its owner, level and damage
+// and no team. It lands its full tier on the tower and its owner's quarter on
+// the thief. A blow pays team score (its damage plus the victim's level) when
+// the head of the hitter's owner chain is a hero or stands on the player's
+// team: the head is the thief, on the player's team, so the blow on the tower
+// scores. With the setting off the tower loses 90 to 92 of its 130 hp (the
+// bystander row's tower fact) and is level 1, so the blow pays 91 to 93 (the
+// setting-on row's bands are below its facts). Classic, it pays the
+// blast's own colour, red; with the setting on, the team its chain head
+// wears, the thief's. The blast's blow on the thief is a blow on its own
+// head's team, and the tower's arrows have a team-2 head that is neither a
+// hero nor on the player's team: neither scores.
+inline constexpr SpawnSpec kFamilySpawns_thief_bomb_colour_score_scen99[] = {
+    { FAMILY_TOWER1, 2, kOrderLiving, 222, 196, 0, 0 },           // stationary team-2 level-1 bystander on effect_bomb_bystander's tile, inside the blast's reach
+    { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // the player LAST, on team 1 (player_team 1); level 5: bomb damage 90 and a blast reach of 20
+};
+inline constexpr FactPredicate kFacts_thief_bomb_colour_score_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3800, 4000,
+        "the blast lands its full tier on the tower: 90 to 92 of its 130 hp"),
+    pred::ScoreDelta(/*team*/0, 91, 93,
+        "consequence: the classic blast wears no colour, so the team-1 thief's bomb pays red its blow: the 90 to 92 hp the tower lost plus its level 1"),
+    pred::ScoreDelta(/*team*/1, 0, 0,
+        "the classic thief's own team is paid nothing for its bomb"),
+};
+inline constexpr Mutation kMut_thief_bomb_colour_score_scen99 = {
+    "src/gameplay/walker_combat.cpp", 509,
+    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
+    "gameplay_fixes != 0 ? headguy->team_num() : headguy->team_num();",
+    "The classic arm pays the chain head's team too, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
+};
+// With the setting on the tower, a stationary shooter facing the thief, no
+// longer turns off it and back before it shoots (fix AT), so its arrows fly a
+// tick sooner and the blast's damage roll is another draw of the stream: the
+// row cannot take the setting-off tower fact. The roll is the bomb's 90 as
+// 90 - sqrt(90)/2 + rng(9) = 85.26 + {0..8} against the placed tower's armour
+// 0, so the rule allows the tower to lose 85 to 93 hp (37 to 45 left) and the
+// blow to pay 86 to 94: the bands are those values.
+inline constexpr FactPredicate kFacts_thief_bomb_colour_score_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3700, 4500,
+        "the blast lands its full tier on the tower: 85 to 93 of its 130 hp"),
+    // rng_drift: with fix AT the tower shoots a tick sooner, so the blast's roll on the bomb's 90 is another draw and the band is every value 85.26 + rng(9) allows; commit 7dd61d2d
+    pred::ScoreDelta(/*team*/0, 0, 0,
+        "with the setting on red, the blast's own colour, is paid nothing"),
+    pred::ScoreDelta(/*team*/1, 86, 94,
+        "consequence: with the setting on the blow's score goes to the team its chain head wears, the thief's: the 85 to 93 hp the tower lost plus its level 1"),
+};
+inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
+    "src/gameplay/walker_combat.cpp", 509,
+    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
+    "gameplay_fixes != 0 ? team_num() : team_num();",
+    "The setting-on arm pays the hitter's own colour again, so the blast's blow on the tower pays red: ScoreDelta(1, 86, 94) reads 0 and ScoreDelta(0, 0, 0) reads 86 to 94."
+};
+
+// --- mage_bot_far_foe (fix BB, #497: a bot near its foe swings only when the blow can land) ---
+// A hostile level-1 mage bot (stepsize 2) spawns facing DOWN (the spawn
+// facing) with the idle player soldier straight below it, an 86 px gap
+// between the boxes (both 16x16, a corner distance of 102): it faces its foe
+// from the start. Its only special, TELEPORT, is held while one to three foes
+// (one in this arena) stand within 110 px, on both settings. Its fireball, shot straight down,
+// reaches a foe whose corner is at most 64 px off: fire_check's reach is the
+// shot's whole step times its whole range, the fireball's step 6 and range 7
+// scaled for a straight shot by 362/256 and 309/256 (8.48 and 8.45, so
+// 8 x 8). Tick by tick:
+// - Tick 1, the special coin rolls TELEPORT and the gate holds it. With the
+//   setting off that roll is the act (the classic game); with it on (fix W)
+//   the act goes on and queues the hunt for the soldier. Off, the hunt is
+//   queued on tick 2, so the classic row runs one act behind from here.
+// - The mage's path_check_counter starts at 7 (its construction draw), so
+//   its first six walk_to_foe calls (ticks 3 to 8 off, 2 to 7 on) are
+//   throttled walks of 2 px straight at the soldier (y 120 -> 132), and the
+//   seventh (tick 9 off, tick 8 on) re-plans: the foe, 90 px off, is within
+//   100 px, so the near branch turns the mage to the facing it has, starts an
+//   ATTACK order and asks for a swing. Off, the turn steps a notch and
+//   init_fire only turns the mage back: no swing (the classic flaw, in both
+//   games). On (fix AT) it keeps facing, and with fix BB it asks fire_check
+//   first, which answers that the soldier, 90 px off, is beyond the
+//   fireball's 64: no swing. Before fix BB the setting-on game swung there
+//   unasked and threw a fireball at the air.
+// - The ATTACK order cannot shoot from out of reach, so it walks the mage on
+//   2 px an act: two walks by the budget off (y 136), three on (y 138). No
+//   fireball flies by then and the soldier is whole; the first real fireball
+//   leaves only once the mage stands within its fireball's reach (at least
+//   13 more walks from the re-plan, 90 px down to 64), well after the budget.
+// The budget B = 11 is the tick an unasked swing at the re-plan has put its
+// fireball in the air on both rows: started on tick 8 with the setting on,
+// the attack animation ends on tick 10, when fire() throws it; on the
+// classic row under its pin, one tick later (swing on tick 9, fireball on
+// tick 11). A fireball flies eight steps, so it is still in flight at B.
+// The pins put the unasked swing back. The setting-on row's makes the near
+// branch's line check answer yes, so the fireball flies at the air; the
+// setting-off row's inverts fix AT's gate, so the classic mage keeps facing at
+// the re-plan and its unasked init_fire throws. Either way
+// WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1. The two rows say the
+// same thing on purpose: with fix BB the setting-on game does here what the
+// classic one does.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_far_foe_scen99[] = {
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 120, 0, 0, 1, 0 },   // hostile level-1 mage bot, facing DOWN at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 222, 0, 0 },         // the idle player LAST, straight below the mage: an 86 px gap (mage box ends at 136)
+};
+inline constexpr FactPredicate kFacts_mage_bot_far_foe_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_MAGE, 120, 136,
+        "consequence: six throttled walks and, after the re-plan on tick 9, two walks of the ATTACK order take the mage 16 px down"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "the soldier is whole: no fireball has reached it"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0,
+        "consequence: the classic near-branch turn steps off the foe, init_fire only turns back, and the mage throws nothing by tick 11"),
+    // negative_assertion: no fireball flies by tick 11 on the classic run; the pin gives the classic row fix AT, so the mage keeps facing at the re-plan and its unasked init_fire throws one at the air (0 -> 1).
+};
+inline constexpr Mutation kMut_mage_bot_far_foe_scen99 = {
+    "src/gameplay/walker_movement.cpp", 629,
+    "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
+    "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
+    "The gate is inverted, so the classic row gets fix AT: the mage keeps facing the soldier at the re-plan on tick 9, the near branch's unasked init_fire swings and the fireball is in flight on tick 11, so WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1."
+};
+inline constexpr FactPredicate kFacts_mage_bot_far_foe_fixes_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_MAGE, 120, 138,
+        "consequence: six throttled walks and, after the re-plan on tick 8, three walks of the ATTACK order take the mage 18 px down"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "the soldier is whole: no fireball has reached it"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0,
+        "consequence: with the setting on the mage re-plans facing a foe beyond its fireball's reach and throws nothing"),
+    // negative_assertion: no fireball flies by tick 11 with the setting on; the pin makes the near branch's line check answer yes, so the mage throws one at the air on tick 10 (0 -> 1).
+};
+inline constexpr Mutation kMut_mage_bot_far_foe_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2576,
+    ": controller_->fire_check(xdelta, ydelta);",
+    ": (static_cast<void>(xdelta), static_cast<void>(ydelta), true);",
+    "The near branch's line check answers yes, so the mage facing the soldier 90 px off swings at the re-plan on tick 8 and throws a fireball at the air on tick 10, as the setting-on game did before fix BB: WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -14806,6 +14947,34 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_bot_faces_foe_fixes_scen99, std::size(kFacts_orc_bot_faces_foe_fixes_scen99),
       kMut_orc_bot_faces_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "thief_bomb_colour_score_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_colour_score_scen99, std::size(kFamilySpawns_thief_bomb_colour_score_scen99),
+      1, false, true, Exercises::None,
+      kFacts_thief_bomb_colour_score_scen99, std::size(kFacts_thief_bomb_colour_score_scen99),
+      kMut_thief_bomb_colour_score_scen99 },
+    { "thief_bomb_colour_score_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_colour_score_scen99, std::size(kFamilySpawns_thief_bomb_colour_score_scen99),
+      1, false, true, Exercises::None,
+      kFacts_thief_bomb_colour_score_fixes_scen99, std::size(kFacts_thief_bomb_colour_score_fixes_scen99),
+      kMut_thief_bomb_colour_score_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "mage_bot_far_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_far_foe_scen99, std::size(kFamilySpawns_mage_bot_far_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_far_foe_scen99, std::size(kFacts_mage_bot_far_foe_scen99),
+      kMut_mage_bot_far_foe_scen99 },
+    { "mage_bot_far_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_far_foe_scen99, std::size(kFamilySpawns_mage_bot_far_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_far_foe_fixes_scen99, std::size(kFacts_mage_bot_far_foe_fixes_scen99),
+      kMut_mage_bot_far_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
