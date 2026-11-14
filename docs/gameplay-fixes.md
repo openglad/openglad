@@ -516,8 +516,9 @@ Fixes X to AV, in play:
   other owned effects that strike are POISON CLOUD and a mine's puff, a
   magic shield and a boomerang, chain lightning's blast and an archer's or
   barbarian's exploding shot, and with New Specials a fire elemental's
-  embers, IMMOLATE's contact burn and its meteors and novas, and the orc
-  captain's hook blade; each now pays once. Experience is not in the
+  embers, IMMOLATE's contact burn and its meteors, and the orc captain's
+  hook blade; each now pays once (a SUPERNOVA blast goes off after its
+  caster is gone, owns itself and pays no one). Experience is not in the
   recordings (the dump holds each walker's place, hit points, team and
   life), so no golden can move.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
