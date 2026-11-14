@@ -376,6 +376,24 @@ static bool seat_may_claim(walker* w)
 	return !myscreen->gameplay_fixes || w->charm_left <= 0 || w->real_team_num == 255;
 }
 
+// Port of the current game's 4c496a1d (Gameplay Fixes AY, #496): with the
+// setting on, the first two death searches below hand a seat only a walker
+// whose owner chain heads the seat's team, the question the switch search
+// asks with is_friendly(oldcontrol). So a faerie an enemy druid summoned
+// while our side had the druid charmed, still on our team when the charm
+// ran out, is not handed to a seat whose hero died. The dead hero cannot be
+// asked, so the head's colour is read against my_team. Jonathan Dearborn,
+// adding that test to the switch in 2013 (6ce8a346): "That can still happen
+// when you die, though. viewscreen::input() and
+// viewscreen::continuous_input() may need to be fixed for that."
+// chain_head() is the climb is_friendly reads with the setting on; not
+// is_friendly_to_team, whose allied-mode branch calls a hired walker
+// friendly to red alone.
+static bool seat_side_may_claim(walker* w, short my_team)
+{
+	return !myscreen->gameplay_fixes || w->chain_head()->team_num == my_team;
+}
+
 short viewscreen::input(const SDL_Event& event)
 {
 	static char somemessage[80];
@@ -407,6 +425,7 @@ short viewscreen::input(const SDL_Event& event)
 		    walker* w = *e;
 			if (w &&
 			        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
+			        seat_side_may_claim(w, my_team) && // Gameplay Fixes AY (#496): only a walker that fights for our side
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
 			        w->user == -1 && // mean's we're not player-controlled
@@ -426,6 +445,7 @@ short viewscreen::input(const SDL_Event& event)
                 walker* w = *e;
                 if (w &&
                         seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
+                        seat_side_may_claim(w, my_team) && // Gameplay Fixes AY (#496): only a walker that fights for our side
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->user == -1 && // mean's we're not player-controlled
@@ -915,6 +935,7 @@ short viewscreen::continuous_input()
 		    walker* w = *e;
 			if (w &&
 			        seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
+			        seat_side_may_claim(w, my_team) && // Gameplay Fixes AY (#496): only a walker that fights for our side
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
 			        w->user == -1 && // mean's we're not player-controlled
@@ -934,6 +955,7 @@ short viewscreen::continuous_input()
                 walker* w = *e;
                 if (w &&
                         seat_may_claim(w) && // Gameplay Fixes M (#354, #450): never a charmed walker
+                        seat_side_may_claim(w, my_team) && // Gameplay Fixes AY (#496): only a walker that fights for our side
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
                         w->user == -1 && // mean's we're not player-controlled
