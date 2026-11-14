@@ -1711,6 +1711,8 @@ void expect_next_mission_follows(bool on)
     }
 
     // 5. Key 2.
+    session.pause_calls.clear();
+    session.belts_sent.clear();
     session.sent.clear();
     term.push_char(U'2');
     run_level_loop(session, term, clock, input, renderer, opt);

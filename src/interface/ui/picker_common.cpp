@@ -5539,7 +5539,9 @@ bool ability_select_pref(cfg_store& config)
 // Every client's switch lands here: the SDL UI FX row and the text and
 // curses Game Settings prompts. The keys, the HUD and the PAUSED menu read
 // og::input::ability_select_on()'s cached copy, so the setter refreshes it
-// and they follow the answer at once (#398).
+// and they follow the answer at once (#398). The refresh re-reads the global
+// cfg, not `config`: every caller passes the global store, and a caller with
+// another store would change that store and leave the cached copy alone.
 void set_ability_select_pref(cfg_store& config, bool on)
 {
     config.apply_setting("effects", "new_ability_select", on ? "on" : "off");
