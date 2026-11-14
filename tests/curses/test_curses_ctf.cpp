@@ -3,6 +3,7 @@
  * world's replicated ModeState, and an in-process 2-client round where the
  * host's authoritative server world is stamped CTF and both mirrors converge.
  */
+#include "fake_clock.h"
 #include <gtest/gtest.h>
 
 #include <cstring>
@@ -10,7 +11,7 @@
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/platform/curses/glyph_map.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 #include <openglad/platform/curses/clock.h>
 
 #include <openglad/core/constants.h>

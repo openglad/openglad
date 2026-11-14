@@ -26,6 +26,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
@@ -52,11 +53,32 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace {
+
+class SequenceRandom final : public IRandom
+{
+public:
+    explicit SequenceRandom(std::initializer_list<std::uint32_t> values)
+        : values_(values) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        bounds.push_back(max_exclusive);
+        const std::uint32_t value = values_[index_++ % values_.size()];
+        return max_exclusive == 0 ? 0 : value % max_exclusive;
+    }
+
+    std::vector<std::uint32_t> bounds;
+
+private:
+    std::vector<std::uint32_t> values_;
+    std::size_t index_ = 0;
+};
 
 // Every row of the table is {0, 1, -1}: two frames, then the sentinel.
 signed char** two_frame_table()
@@ -1440,6 +1462,31 @@ TEST_F(SemWalker1, a_roaming_walker_that_casts_on_its_wander_tick_does_not_wande
     EXPECT_EQ(std::vector<std::string>{"special"}, log_since_mark()) << "the special went off";
     EXPECT_FLOAT_EQ(593.0f, w->stats()->magicpoints()) << "its price is paid";
     EXPECT_TRUE(w->stats()->commands.empty()) << "and no wander is queued";
+}
+
+TEST_F(SemWalker1, a_roaming_walk_draws_y_then_x_then_duration)
+{
+    register_test_hooks(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  do_special = function(self) return false, 'test refusal' end,\n"
+        "})\n");
+    walker* w = plain_at(Order::Living, FAMILY_SOLDIER, 1, 96, 96);
+    ASSERT_NE(nullptr, w);
+    w->set_act_type(ACT_RANDOM);
+    w->set_current_special(1);
+    w->stats()->clear_command();
+
+    // The two gates open, then the legacy GCC order is y, x, duration.
+    SequenceRandom rolls({0, 0, 0, 2, 7});
+    ScopedSimRandom scripted(&rolls);
+    EXPECT_TRUE(w->act());
+    ASSERT_EQ(1u, w->stats()->commands.size());
+    const command& c = w->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, c.commandtype);
+    EXPECT_EQ(7, c.commandcount);
+    EXPECT_EQ(1, c.com1) << "second direction draw is x";
+    EXPECT_EQ(-1, c.com2) << "first direction draw is y";
+    EXPECT_EQ((std::vector<std::uint32_t>{4, 20, 3, 3, 30}), rolls.bounds);
 }
 
 // ---------------------------------------------------------------------------

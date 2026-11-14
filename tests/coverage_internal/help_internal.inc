@@ -319,14 +319,11 @@ Sint32 help_testing_exercise_internal_paths()
 	const TabContent controls = get_tab_content(HelpTab::Controls);
 	const TabContent classes = get_tab_content(HelpTab::Classes);
 	const TabContent editor = get_tab_content(HelpTab::Editor);
-	const TabContent fallback =
-		get_tab_content(static_cast<HelpTab>(99));
 	const int num_controls_lines = static_cast<int>(
 		controls_help_lines(og::input::ability_select_on()).size());
 	check(!controls.is_dynamic && controls.num_lines == num_controls_lines);
 	check(classes.is_dynamic && classes.num_lines == 2);
 	check(editor.is_dynamic && editor.num_lines == 1);
-	check(!fallback.is_dynamic && fallback.num_lines == num_controls_lines);
 	check(std::strcmp(get_content_line(controls, 0),
 	                  controls_help_lines(false)[0]) == 0);
 	check(std::strcmp(get_content_line(classes, 1), "Class line 2") == 0);

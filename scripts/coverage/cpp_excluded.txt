@@ -14,7 +14,5 @@
 # Format: <repo-relative path> <reason>   (one per line, reason mandatory)
 
 src/core/frame_rate_config.cpp no-coverable-lines: the TU is a single static_assert; its .gcno carries no line records, so gcovr emits no record for it
-src/fuzz/fuzz_savefile.cpp fuzz-only TU: libFuzzer driver, built by the ci-fuzz preset, never part of the test suite
-src/fuzz/fuzz_scenario.cpp fuzz-only TU: libFuzzer driver, built by the ci-fuzz preset, never part of the test suite
 src/platform/emscripten/web_runtime_diagnostics.cpp emscripten-only TU: compiled only for the wasm target, which has no gcov
 src/platform/emscripten/web_touch_bridge.cpp emscripten-only TU: compiled only for the wasm target, which has no gcov

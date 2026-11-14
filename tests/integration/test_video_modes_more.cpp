@@ -1260,3 +1260,263 @@ TEST(VideoModesMore, stale_display_event_cannot_confirm_a_newer_request)
     EXPECT_EQ("off", cfg.get_setting("graphics", "fullscreen"))
         << "a current LeaveFullscreen adopts Windowed";
 }
+
+namespace {
+struct DefaultVideoObservation
+{
+    CanvasTarget canvas;
+    int world_w;
+    int world_h;
+    int view_scale;
+    int marker;
+    bool pinned;
+    std::vector<std::array<int, 8>> slices;
+    std::array<std::string, 5> display_cfg;
+};
+
+DefaultVideoObservation observe_default_video(screen& output)
+{
+    int marker = -1;
+    output.get_pixel(17, 23, &marker);
+    std::vector<std::array<int, 8>> slices;
+    for (const auto& slice : E_Screen->world_present_slices())
+        slices.push_back({slice.src_x, slice.src_y, slice.src_w, slice.src_h,
+                          slice.dst_x, slice.dst_y, slice.dst_w, slice.dst_h});
+    return {output.active_canvas(), output.world_canvas_w(), output.world_canvas_h(),
+            E_Screen->world_view_scale_num(), marker, E_Screen->world_canvas_pinned_classic(),
+            std::move(slices), {cfg.get_setting("graphics", "fullscreen"),
+                cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"),
+                cfg.get_setting("graphics", "windowed_width"), cfg.get_setting("graphics", "windowed_height")}};
+}
+
+void expect_default_video_unchanged(screen& output, const DefaultVideoObservation& expected)
+{
+    const auto actual = observe_default_video(output);
+    EXPECT_EQ(expected.canvas, actual.canvas);
+    EXPECT_EQ(expected.world_w, actual.world_w);
+    EXPECT_EQ(expected.world_h, actual.world_h);
+    EXPECT_EQ(expected.view_scale, actual.view_scale);
+    EXPECT_EQ(expected.marker, actual.marker);
+    EXPECT_EQ(expected.pinned, actual.pinned);
+    EXPECT_EQ(expected.slices, actual.slices);
+    EXPECT_EQ(expected.display_cfg, actual.display_cfg);
+}
+
+DefaultVideoObservation mark_default_video(screen& output)
+{
+    output.set_active_canvas(CanvasTarget::UI);
+    output.pointb(17, 23, static_cast<unsigned char>(100));
+    const auto marked = observe_default_video(output);
+    EXPECT_EQ(100, marked.marker) << "the unchanged-pixel oracle starts with ink";
+    // Positive control: real canvas routing changes the observed target.
+    output.set_active_canvas(CanvasTarget::World);
+    EXPECT_EQ(CanvasTarget::World, output.active_canvas());
+    output.set_active_canvas(CanvasTarget::UI);
+    return marked;
+}
+
+// Reuse screen's complete rendering implementation; only geometry answers
+// vary, so the base interface must consult virtual queries rather than a
+// constant classic size. Construction still uses the real SDL backend.
+class DefaultGeometryProbe final : public screen
+{
+public:
+    explicit DefaultGeometryProbe(GameWorld& world)
+        : screen(world, std::make_unique<sdl_video>(false), 1, false) {}
+    int world_canvas_w() const override { return world_w; }
+    int world_canvas_h() const override { return world_h; }
+    int gameplay_ui_canvas_w() const override { return ui_w; }
+    int gameplay_ui_canvas_h() const override { return ui_h; }
+    CanvasTarget active_canvas() const override { return target; }
+
+    int world_w = 713;
+    int world_h = 379;
+    int ui_w = 713;
+    int ui_h = 379;
+    CanvasTarget target = CanvasTarget::GameplayUI;
+};
+} // namespace
+
+TEST(VideoDefaults, unsupported_native_planes_reject_without_redirecting_or_drawing)
+{
+    screen& output = *og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, E_Screen);
+    const auto marked = mark_default_video(output);
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {CanvasTarget::GameplayUI, 12, 18, 80, 60}}};
+    const auto source = output.video::begin_native_world_view(destinations);
+    EXPECT_EQ(0, source.w);
+    EXPECT_EQ(0, source.h);
+    EXPECT_FALSE(static_cast<bool>(source));
+    EXPECT_FALSE(output.video::native_world_view_active());
+    EXPECT_FALSE(output.video::end_native_world_view());
+    output.video::cancel_native_world_view();
+    expect_default_video_unchanged(output, marked);
+
+    EXPECT_FLOAT_EQ(0.0f, output.video::hud_sprite_scale());
+    EXPECT_FALSE(output.video::begin_native_hud_sprite(destinations[0], 7, 9));
+    EXPECT_FALSE(output.video::end_native_hud_sprite());
+    output.video::cancel_native_hud_sprite();
+    expect_default_video_unchanged(output, marked);
+
+    const og::io::RgbaImage image{1, 1, {255, 4, 3, 255}, 1};
+    EXPECT_FALSE(output.video::draw_rgba_scaled(image, 17, 23, 5, 7));
+    expect_default_video_unchanged(output, marked);
+}
+
+TEST(VideoDefaults, unsupported_floor_composition_preserves_pixels_and_reports_no_work)
+{
+    screen& output = *og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, E_Screen);
+    const auto marked = mark_default_video(output);
+    EXPECT_FALSE(output.video::floor_layer_begin(1, 2, 30, 40));
+    output.video::floor_layer_end(1, 2, 30, 40, 0.8f, 15, 20, 200, {}, 3, 4);
+    expect_default_video_unchanged(output, marked);
+    output.video::fail_next_floor_layer_allocation_for_testing();
+    EXPECT_EQ(0, output.video::floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(0, output.video::floor_layer_source_pixels_for_testing());
+    EXPECT_EQ(0, output.video::floor_layer_scaled_pixels_for_testing());
+    EXPECT_FALSE(output.video::floor_layer_redirect_active_for_testing());
+    expect_default_video_unchanged(output, marked);
+}
+
+TEST(VideoDefaults, fixed_geometry_queries_delegate_and_optional_zoom_reports_its_contract)
+{
+    auto* const session = og::runtime::current_session;
+    struct RestoreScreen
+    {
+        decltype(og::runtime::current_session) session;
+        screen* previous;
+        ~RestoreScreen() { session->myscreen_ = previous; }
+    } restore{session, session->myscreen_};
+    GameWorld world(1);
+    DefaultGeometryProbe output(world);
+    EXPECT_EQ(713, output.video::gameplay_ui_canvas_w());
+    EXPECT_EQ(379, output.video::gameplay_ui_canvas_h());
+    EXPECT_TRUE(output.video::gameplay_ui_canvas_available());
+    output.ui_w = 712;
+    EXPECT_FALSE(output.video::gameplay_ui_canvas_available());
+    output.ui_w = 713;
+    output.ui_h = 378;
+    EXPECT_FALSE(output.video::gameplay_ui_canvas_available());
+    output.ui_h = 379;
+    EXPECT_TRUE(output.video::gameplay_ui_canvas_available());
+
+    EXPECT_EQ(CanvasTarget::GameplayUI, output.video::last_presented_canvas());
+    output.target = CanvasTarget::World;
+    EXPECT_EQ(CanvasTarget::World, output.video::last_presented_canvas());
+    EXPECT_EQ(1, output.video::minimum_world_zoom_steps());
+    EXPECT_TRUE(output.video::world_zoom_composition_fits(1));
+    EXPECT_TRUE(output.video::world_zoom_composition_fits(10));
+    EXPECT_FALSE(output.video::world_present_partition_supported());
+    EXPECT_FALSE(output.video::world_canvas_pinned_classic());
+    EXPECT_TRUE(output.video::world_smoothing_supported());
+}
+
+TEST(VideoDefaults, optional_frame_and_display_hooks_leave_fixed_backends_untouched)
+{
+    screen& output = *og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, E_Screen);
+    const auto marked = mark_default_video(output);
+    output.video::begin_gameplay_frame();
+    expect_default_video_unchanged(output, marked);
+    output.video::prepare_ui_canvas_from_world();
+    expect_default_video_unchanged(output, marked);
+    output.video::set_world_canvas_pinned_classic(true);
+    expect_default_video_unchanged(output, marked);
+    output.video::set_world_canvas_pinned_classic(false);
+    expect_default_video_unchanged(output, marked);
+    output.video::reapply_world_scale();
+    output.video::set_world_view_scale(5);
+    expect_default_video_unchanged(output, marked);
+    const std::array<WorldPresentSlice, 1> slices = {{{1, 2, 30, 40, 5, 6, 20, 25}}};
+    output.video::set_world_present_slices(slices);
+    expect_default_video_unchanged(output, marked);
+    output.video::set_world_present_slices({});
+    expect_default_video_unchanged(output, marked);
+    output.video::apply_display_settings_from_cfg();
+    output.video::reflect_display_settings_from_window(DisplayStateConfirmation::Resized, 1234);
+    expect_default_video_unchanged(output, marked);
+    EXPECT_EQ((std::vector<std::pair<int, int>>{}), output.video::display_resolutions());
+    EXPECT_EQ((std::pair<int, int>{0, 0}), output.video::desktop_resolution());
+    EXPECT_EQ((std::pair<int, int>{0, 0}), output.video::windowed_desktop_resolution());
+}
+
+TEST(ScreenVideoContract, view_scale_and_presentation_slices_reach_the_backend_and_clear_again)
+{
+    screen& output = *og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, E_Screen);
+    struct RestorePresentation
+    {
+        int scale;
+        bool pinned;
+        std::vector<WorldPresentSlice> slices;
+        ~RestorePresentation()
+        {
+            E_Screen->set_world_view_scale_num(scale);
+            E_Screen->set_world_canvas_pinned_classic(pinned);
+            E_Screen->set_world_present_slices(slices);
+        }
+    } restore{E_Screen->world_view_scale_num(), E_Screen->world_canvas_pinned_classic(),
+              E_Screen->world_present_slices()};
+    // Pin the canvas so this forwarding contract is independent of the
+    // current zoom's texture budget or allocation fallback.
+    E_Screen->set_world_canvas_pinned_classic(true);
+    output.set_world_view_scale(7);
+    EXPECT_EQ(7, E_Screen->world_view_scale_num());
+    output.set_world_view_scale(10);
+    EXPECT_EQ(10, E_Screen->world_view_scale_num());
+    const std::array<WorldPresentSlice, 1> slices = {{{1, 2, 30, 40, 5, 6, 20, 25}}};
+    output.set_world_present_slices(slices);
+    ASSERT_EQ(1u, E_Screen->world_present_slices().size());
+    const auto& actual = E_Screen->world_present_slices()[0];
+    EXPECT_EQ(1, actual.src_x);
+    EXPECT_EQ(2, actual.src_y);
+    EXPECT_EQ(30, actual.src_w);
+    EXPECT_EQ(40, actual.src_h);
+    EXPECT_EQ(5, actual.dst_x);
+    EXPECT_EQ(6, actual.dst_y);
+    EXPECT_EQ(20, actual.dst_w);
+    EXPECT_EQ(25, actual.dst_h);
+    output.set_world_present_slices({});
+    EXPECT_EQ(0u, E_Screen->world_present_slices().size());
+}
+
+TEST(ScreenVideoContract, palette_cycle_and_big_text_accessors_alias_the_owned_state)
+{
+    screen& output = *og::runtime::current_session->myscreen_;
+    EXPECT_EQ(&output.ourpalette, &output.ourpalette_ref());
+    EXPECT_EQ(&output.redpalette, &output.redpalette_ref());
+    EXPECT_EQ(&output.bluepalette, &output.bluepalette_ref());
+    EXPECT_EQ(&output.dospalette, &output.dospalette_ref());
+    EXPECT_NE(&output.ourpalette, &output.redpalette);
+    EXPECT_NE(&output.bluepalette, &output.dospalette);
+    EXPECT_EQ(&output.cyclemode, &output.cyclemode_ref());
+    EXPECT_NE(&output.text_normal, &output.text_big);
+    EXPECT_EQ(&output.text_big, &output.text_big_ref());
+    struct RestorePaletteValues
+    {
+        screen& output;
+        std::array<unsigned char, 4> values;
+        short cycle;
+        ~RestorePaletteValues()
+        {
+            output.ourpalette[0] = values[0];
+            output.redpalette[1] = values[1];
+            output.bluepalette[2] = values[2];
+            output.dospalette[3] = values[3];
+            output.cyclemode = cycle;
+        }
+    } restore{output, {output.ourpalette[0], output.redpalette[1],
+                       output.bluepalette[2], output.dospalette[3]}, output.cyclemode};
+    output.ourpalette_ref()[0] = 11;
+    output.redpalette_ref()[1] = 22;
+    output.bluepalette_ref()[2] = 33;
+    output.dospalette_ref()[3] = 44;
+    output.cyclemode_ref() = 2;
+    EXPECT_EQ(11, output.ourpalette[0]);
+    EXPECT_EQ(22, output.redpalette[1]);
+    EXPECT_EQ(33, output.bluepalette[2]);
+    EXPECT_EQ(44, output.dospalette[3]);
+    EXPECT_EQ(2, output.cyclemode);
+}

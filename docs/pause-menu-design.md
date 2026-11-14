@@ -306,7 +306,7 @@ change on playback is accepted as a known cosmetic limitation (a
 - **Frame-level** (`og_test_game_core`): rewrite the two Esc tests
   (`test_game_loop.cpp:3601/:3685`) for menu-open/resume/quit/restart;
   keep the key-repeat guard pin; keep-alive refresh + host rate-limit
-  exemption units in `og_unit_sim` server tests.
+  exemption units in `og_unit_network` server tests.
 - **Mid-game seats** (`og_test_game_core` + `og_unit_core`): add/remove
   through a real `glad_init` shadow (idiom at `test_game_loop.cpp:3757`),
   view_layout projections per count, profile compaction interplay,

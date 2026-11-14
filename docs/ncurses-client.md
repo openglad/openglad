@@ -122,11 +122,10 @@ walker whose id is in `GameClient::controlled_entity_ids()[0]`.
 
 ```
 include/openglad/platform/curses/
-  clock.h            IClock + SteadyClock + FakeClock
+  clock.h            IClock + SteadyClock
   terminal.h         ITerminal, Cell, Key (event type + mods), KeyCode, Color enums
   kitty_keys.h       Kitty keyboard protocol decoder (pure; byte stream -> Key events)
   curses_terminal.h  CursesTerminal : ITerminal      (real ncurses; not run in CI)
-  headless_terminal.h HeadlessTerminal : ITerminal   (in-memory grid + scripted keys)
   glyph_map.h        Glyph (char + Color + bold); pure mapping functions
   curses_input.h     CursesInput : key events -> InputState via the config bindings
   curses_renderer.h  CursesRenderer : draw mirror GameWorld + HUD + message log
@@ -400,7 +399,7 @@ players join from separate clients.
 
 ## Tests (CI-safe, no TTY)
 
-All tests use `HeadlessTerminal` + `FakeClock`, so they run headlessly (no TTY) —
+All tests use `HeadlessTerminal` + `FakeClock` from `tests/curses/`, so they run headlessly (no TTY) —
 the tty-specific bits of `CursesTerminal` (raw I/O, signals) are the only untested
 code; the parsing they depend on is covered by the `kitty_keys` decoder tests.
 Every case lives in a single CTest binary, **`og_test_curses`** (unit + component

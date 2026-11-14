@@ -1,0 +1,15 @@
+name: Install Nix with resilient downloads
+description: Install pinned Nix while retrying transient curl failures.
+
+runs:
+  using: composite
+  steps:
+    - name: Enable retrying curl wrapper
+      shell: bash
+      run: |
+        system_curl="${OPENGLAD_SYSTEM_CURL:-$(command -v curl)}"
+        test -x "$system_curl"
+        echo "OPENGLAD_SYSTEM_CURL=$system_curl" >> "$GITHUB_ENV"
+        echo "$GITHUB_ACTION_PATH/bin" >> "$GITHUB_PATH"
+    - name: Install Nix
+      uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31

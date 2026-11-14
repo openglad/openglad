@@ -3,8 +3,8 @@
 
 TEST(ResultsScreenInternalHelper, exercises_core_paths)
 {
-    ASSERT_EQ(0, results_screen_test_exercise_internal())
-        << "internal helper should report the first failed check as a negative index";
+    ASSERT_EQ(25, results_screen_test_exercise_internal())
+        << "every internal postcondition must run; failures report a negative check index";
 }
 
 #include <openglad/gameplay/families/belt.h>

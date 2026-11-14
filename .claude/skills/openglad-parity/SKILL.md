@@ -20,19 +20,25 @@ against a non-deterministic reference.
 
 ## Running it
 
-- **Always from the repo root.** Goldens are cwd-relative: run from
-  `build/ci-test` and every scenario reads as "missing golden" — mass
-  drift that isn't. `ctest --preset ci-test -R '^og_test_parity'` is the
-  canonical invocation: the binary runs as three entries (slices of one
-  binary, `cmake/OpenGladTests.cmake`), `og_test_parity_gates` (the umbrella
-  `Parity.coverage_gate` and every `Parity.coverage_gate_*`),
-  `og_test_parity_a_m` (the other tests named `Parity.a*` to `Parity.m*`) and
-  `og_test_parity` (everything else), so an anchored `'^og_test_parity$'`
-  runs about half the scenarios and none of the gates.
-- Fresh worktrees fail the scen99-fixture scenarios until `og_test_level`
-  has run once (it generates the gitignored `temp/scen/scen99.fss`); ctest
-  DEPENDS handles ordering, standalone runs don't. Copy `temp/scen/*.fss`
-  from the main tree when setting up a worktree.
+- From the repo root, run `ctest --preset ci-test -R '^og_test_parity'`.
+  CTest launches each group in a private fixture workspace. The binary has
+  scenario comparisons split between `og_test_parity_a_m` (tests named
+  `Parity.a*` to `Parity.m*`) and `og_test_parity` (the remaining comparisons
+  and harness contracts), with four GoogleTest shards per filter. Four
+  `og_test_parity_census_*` entries replay
+  disjoint scenario sets; `og_test_parity_gates` then checks their combined
+  observations. The aggregate requires every scenario ID exactly once and
+  rejects records from an earlier fixture run. CTest fixture dependencies
+  include all collectors even when only the aggregate is selected. An anchored
+  `'^og_test_parity$'` still selects only one comparison slice.
+- `scenario99_setup` independently creates the historical 163-byte scen99
+  input through `tests/fixtures/scenario99.py`; `scenario99_cleanup` removes
+  it after its consumers. CTest `FIXTURES_REQUIRED` automatically includes
+  setup and cleanup even in a filtered parity run. No level-test execution or
+  copy from another checkout is needed. For direct binary/canary runs, use
+  `python3 tests/fixtures/scenario99.py setup "$PWD"` first and the matching
+  `cleanup` command afterward. This fixture is an input, not a parity golden;
+  its checksum must stay equal to the pre-extraction bytes.
 - `./build/ci-test/parity_runner_smoke --scenario <id> --out <file>`
   prints the canonical branch StateDump JSON; `--evaluate-facts` runs the
   predicates. The gate's own byte compare (`tests/parity/golden_compare.h`) is
@@ -228,9 +234,12 @@ request the job runs `--touched <merge-base>` — the whole Lua arm (free,
 no rebuild), every C++ pin whose file the PR changed, and every row whose
 parsed spec differs from the base table — escalating to `--all` when the
 PR touches the machinery itself (`scripts/parity/`, `tests/parity`
-sources, `cmake/OpenGladTests.cmake`, or the workflow), because a change
-there can detooth a pin without editing one. Nightly at 03:30 UTC and on
-`workflow_dispatch` it runs `--all`. Red is any nonzero exit of the
+sources, `tests/fixtures/`, `cmake/OpenGladTests.cmake`, `CMakePresets.json`,
+`flake.nix`/`flake.lock`, `nix/`, `scripts/ci/`, or the workflow), because a change
+there can detooth a pin without editing one. Master pushes, nightly runs at
+03:30 UTC and `workflow_dispatch` run `--all`. The selected mutation groups
+are partitioned across three private checkouts; the aggregate requires every
+selected row exactly once. Red is any nonzero exit of the
 script: a `0 flips` row, a PREDICATE-TOOTHLESS row, an environment abort,
 a staged-mirror mismatch or a dirty tree, with one `::error::` line per
 offending row and the tallies in the step summary. There is no
@@ -260,9 +269,14 @@ still BITE. Facts:
   retunes, and the run this CI lane was accepted on: `rows=222 groups=197
   rebuilds=64 zero_flips=0 predicate_toothless=0`, 19 minutes of wall
   clock at `CMAKE_BUILD_PARALLEL_LEVEL=2` (ledger:
-  "The full `--all` re-measure"). `rebuilds` is exactly 2 × the 32
-  rebuild-cpp groups; another number means a group mutated without
-  restoring, or restored without rebuilding. The two tallies that must
+  "The full `--all` re-measure"). That run rebuilt twice per rebuild-cpp
+  group, once with the mutation and once after restoring it. Since PR #509
+  a group's source is restored as soon as its rows are captured and the
+  NEXT group's build compiles both files, so `rebuilds` is the number of
+  rebuild-cpp groups plus one per unbroken run of them (plus one in all
+  for `--all` or a shard, whose rebuilding groups come last, together): 33
+  for those 32 groups. Fewer means a group was captured on stale objects;
+  more means a rebuild ran that nothing needed. The two tallies that must
   stay 0 are unchanged.
 - Modes, all mutually exclusive: `--scenario <id>`, `--filter <glob>`,
   `--all`, `--touched <ref>`. On any of them, `--plan` prints the plan and

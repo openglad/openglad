@@ -332,23 +332,46 @@ bool wait_until(Pred pred, Uint32 ceiling_ms)
     return true;
 }
 
-// Queue one click / key press and wait for the editor's own pump to consume it.
+// A drained queue can precede the handler's draw or prompt. The editor's
+// trace is published after the handler returns, under the trace mutex.
+std::size_t completed_editor_inputs(og::input_native::EventType kind)
+{
+    const std::string message = "input_processed kind=" + std::to_string(static_cast<int>(kind));
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    std::size_t count = 0;
+    for (const auto& entry : g_trace_buffer)
+        if (entry.category == "editor" && entry.message == message)
+            ++count;
+    return count;
+}
+
+template<class Send>
+bool editor_input_settled(og::input_native::EventType kind, Send send)
+{
+    if (!wait_for_trace_line("editor", "input_ready", kEditorEntryCeilingMs))
+        return false;
+    const auto before = completed_editor_inputs(kind);
+    send();
+    return wait_until([&] { return completed_editor_inputs(kind) > before; },
+                      kEditorDrainCeilingMs);
+}
+
 bool click_settled(int gx, int gy)
 {
-    inject_click_game(gx, gy, 20);
-    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    return editor_input_settled(og::input_native::EventType::MouseButtonUp,
+                               [=] { inject_click_game(gx, gy, 20); });
 }
 
 bool key_settled(SDL_Keycode key)
 {
-    inject_key_press(static_cast<int>(key), 10);
-    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    return editor_input_settled(og::input_native::EventType::KeyUp,
+                               [=] { inject_key_press(static_cast<int>(key), 10); });
 }
 
 bool right_click_settled(int gx, int gy)
 {
-    inject_right_click_game(gx, gy, 20);
-    return wait_for_drained_event_queue(kEditorDrainCeilingMs);
+    return editor_input_settled(og::input_native::EventType::MouseButtonUp,
+                               [=] { inject_right_click_game(gx, gy, 20); });
 }
 
 // `send` must be an IDEMPOTENT chain (a menu walk, a brush pick, a paint
@@ -954,76 +977,84 @@ TEST(LevelEditorInteractions, select_rect_then_delete_key_removes_the_placed_obj
 
 namespace
 {
+struct EditorAuthoringThreadState
+{
+    bool started = false;
+    bool finished = false;
+    const char* step = "editor entry";
+};
+
+std::vector<std::string> editor_authoring_messages(const char* prefix)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    std::vector<std::string> messages;
+    for (const auto& entry : g_trace_buffer)
+        if (entry.category == "editor" && entry.message.starts_with(prefix))
+            messages.push_back(entry.message);
+    return messages;
+}
+
+bool prepare_authoring_brush(EditorAuthoringThreadState& state)
+{
+    state.step = "first complete editor frame";
+    if (!wait_for_trace_line("editor", "input_ready", kEditorEntryCeilingMs))
+        return false;
+    state.step = "clear stock objects";
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    if (!click_settled(90, 10) || !click_settled(90, 145) ||
+        picker_testing_yes_or_no_queue_remaining() != 0)
+        return false;
+    state.step = "Object mode and soldier brush";
+    return key_settled(SDLK_T) && key_settled(SDLK_O) &&
+           click_settled(246, 81);
+}
+
+bool place_and_select_authoring_soldier(EditorAuthoringThreadState& state)
+{
+    // Retain the original decoy/pick-disarming stroke and selected placement.
+    state.step = "soldier placement";
+    if (!click_settled(120, 60) || !click_settled(160, 120) || !key_settled(SDLK_O))
+        return false;
+    state.step = "selection rectangle";
+    return editor_input_settled(og::input_native::EventType::MouseButtonDown, [] {
+               inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
+           }) &&
+           editor_input_settled(og::input_native::EventType::MouseMotion, [] {
+               push_mouse_motion_game(135, 100, 5, 5);
+           }) &&
+           editor_input_settled(og::input_native::EventType::MouseMotion, [] {
+               push_mouse_motion_game(200, 155, 65, 55);
+           }) &&
+           editor_input_settled(og::input_native::EventType::MouseButtonUp, [] {
+               inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
+           });
+}
+
 static int editor_ai_cycle_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    EditorThreadState* st = static_cast<EditorThreadState*>(data);
-    st->started = true;
-
-    SDL_Delay(300);
-
-    // Clear the stock level objects so the rect-select below grabs exactly
-    // the soldier this test places (queued answer accepts the prompt).
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
-    inject_click_game(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click_game(90, 145, 20);  // Clear all objects
-    SDL_Delay(30);
-
-    // Object mode with a known brush: click the picker pane's first cell
-    // (Living / soldier), regardless of what earlier tests left behind.
-    inject_key_press(SDLK_T, 10);   // -> Terrain
-    inject_key_press(SDLK_O, 10);   // Terrain -> Object
-    eds().rowsdown = 0;
-    SDL_Delay(30);
-    inject_click_game(246, 81, 20); // object pane cell (0,0): soldier brush
-    SDL_Delay(30);
-
-    // Place the soldier. The first click either places a decoy far from the
-    // select rect or disarms a leftover pick toggle; the second click always
-    // places a fresh (ROAM) soldier near game coords (160,120).
-    inject_click_game(120, 60, 20);
-    SDL_Delay(30);
-    inject_click_game(160, 120, 20);
-    SDL_Delay(30);
-
-    // Select mode: rect-select the placed soldier. The first small motion
-    // anchors the rectangle near the press before stretching it.
-    inject_key_press(SDLK_O, 10);   // Object -> Select
-    SDL_Delay(30);
-    inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
-    SDL_Delay(20);
-    push_mouse_motion_game(135, 100, 5, 5);
-    SDL_Delay(20);
-    push_mouse_motion_game(200, 155, 65, 55);
-    SDL_Delay(20);
-    inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
-    SDL_Delay(60);
-
-    // The "AI >" cycle button sits right of "Facing >" in the select panel.
-    // Three clicks walk ROAM -> GUARD -> HOLD -> ROAM.
-    inject_click_game(60, 112, 20);
-    SDL_Delay(100);
-    inject_click_game(60, 112, 20);
-    SDL_Delay(100);
-    inject_click_game(60, 112, 20);
-    SDL_Delay(100);
-
-    SDL_Delay(200);
+    auto& state = *static_cast<EditorAuthoringThreadState*>(data);
+    state.started = true;
+    bool ok = prepare_authoring_brush(state) && place_and_select_authoring_soldier(state);
+    state.step = ok ? "AI cycle clicks" : state.step;
+    // One click per state transition. Wait for dispatch, not the desired value.
+    for (int click = 0; ok && click < 3; ++click)
+        ok = click_settled(60, 112);
     og::runtime::current_session->myscreen_->world().end = 1;
-
-    st->finished = true;
-    return 0;
+    state.finished = true;
+    return ok ? 0 : 1;
 }
 } // namespace
 
 TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
 {
+    EditorDecorStateGuard guard;
+    eds().rowsdown = 0;
     og::runtime::current_session->myscreen_->world().end = 0;
     trace_clear();
 
-    EditorThreadState st{false, false};
+    EditorAuthoringThreadState st;
     SDL_Thread* thread = SDL_CreateThread(editor_ai_cycle_injector, "editor_ai_cycle", &st);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -1034,6 +1065,7 @@ TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
 
     og::runtime::current_session->myscreen_->world().end = 0;
 
+    ASSERT_EQ(0, thread_result) << "editor input step: " << st.step;
     ASSERT_TRUE(st.started) << "injector thread should have started";
     ASSERT_TRUE(st.finished) << "injector thread should have finished";
 
@@ -1043,6 +1075,10 @@ TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
         << "second AI click should author HOLD (ACT_GUARD + guard_hold_post)";
     ASSERT_TRUE(trace_contains("editor", "ai_cycle to=ROAM act=0 hold=0"))
         << "third AI click should return to ROAM (ACT_RANDOM)";
+    EXPECT_EQ((std::vector<std::string>{"ai_cycle to=GUARD act=3 hold=0",
+                                       "ai_cycle to=HOLD act=3 hold=1",
+                                       "ai_cycle to=ROAM act=0 hold=0"}),
+              editor_authoring_messages("ai_cycle "));
 }
 
 
@@ -1051,81 +1087,35 @@ namespace
 static int editor_spawn_delay_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    EditorThreadState* st = static_cast<EditorThreadState*>(data);
-    st->started = true;
-
-    SDL_Delay(300);
-
-    // Clear the stock level objects so the rect-select below grabs exactly
-    // the soldier this test places.
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
-    inject_click_game(90, 10, 20);   // Level (top menu)
-    SDL_Delay(30);
-    inject_click_game(90, 145, 20);  // Clear all objects
-    SDL_Delay(30);
-
-    // Object mode with a known brush: the object pane's first cell is the
-    // Living/soldier brush.
-    inject_key_press(SDLK_T, 10);   // -> Terrain
-    inject_key_press(SDLK_O, 10);   // Terrain -> Object
-    eds().rowsdown = 0;
-    SDL_Delay(30);
-    inject_click_game(246, 81, 20); // object pane cell (0,0): soldier brush
-    SDL_Delay(30);
-
-    // "Delay" sits right of "AI >" on the facing row and is shown in Object
-    // mode too, where it presets the brush.
-    level_editor_testing_prompt_queue_clear();
-    level_editor_testing_prompt_queue_push("240");
-    inject_click_game(100, 112, 20);
-    SDL_Delay(100);
-
-    // Place the soldier. The first click either places a decoy far from the
-    // select rect or disarms a leftover pick toggle; the second click always
-    // places a fresh soldier near game coords (160,120) — both inherit the
-    // brush's 240-tick delay.
-    inject_click_game(120, 60, 20);
-    SDL_Delay(30);
-    inject_click_game(160, 120, 20);
-    SDL_Delay(30);
-
-    // Select mode: rect-select the placed soldier.
-    inject_key_press(SDLK_O, 10);   // Object -> Select
-    SDL_Delay(30);
-    inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
-    SDL_Delay(20);
-    push_mouse_motion_game(135, 100, 5, 5);
-    SDL_Delay(20);
-    push_mouse_motion_game(200, 155, 65, 55);
-    SDL_Delay(20);
-    inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
-    SDL_Delay(60);
-
-    // Empty queue: the TESTING prompt accepts the seeded value, which is the
-    // selected walker's current delay. Re-applying it proves placement
-    // stamped the brush's 240 onto the object.
-    level_editor_testing_prompt_queue_clear();
-    inject_click_game(100, 112, 20);
-    SDL_Delay(150);
-
-    // Author a new delay on the selection.
-    level_editor_testing_prompt_queue_clear();
-    level_editor_testing_prompt_queue_push("900");
-    inject_click_game(100, 112, 20);
-    SDL_Delay(150);
-
-    // ... and clear it back to 0.
-    level_editor_testing_prompt_queue_clear();
-    level_editor_testing_prompt_queue_push("0");
-    inject_click_game(100, 112, 20);
-    SDL_Delay(150);
-
-    SDL_Delay(200);
+    auto& state = *static_cast<EditorAuthoringThreadState*>(data);
+    state.started = true;
+    bool ok = prepare_authoring_brush(state);
+    if (ok)
+    {
+        state.step = "brush spawn delay";
+        level_editor_testing_prompt_queue_clear();
+        level_editor_testing_prompt_queue_push("240");
+        ok = click_settled(100, 112);
+    }
+    if (ok)
+        ok = place_and_select_authoring_soldier(state);
+    if (ok)
+    {
+        state.step = "selected soldier's seeded delay";
+        level_editor_testing_prompt_queue_clear();
+        ok = click_settled(100, 112);
+    }
+    for (const char* value : {"900", "0"})
+    {
+        if (!ok) break;
+        state.step = "selected soldier's authored delay";
+        level_editor_testing_prompt_queue_clear();
+        level_editor_testing_prompt_queue_push(value);
+        ok = click_settled(100, 112);
+    }
     og::runtime::current_session->myscreen_->world().end = 1;
-
-    st->finished = true;
-    return 0;
+    state.finished = true;
+    return ok ? 0 : 1;
 }
 } // namespace
 
@@ -1133,10 +1123,12 @@ static int editor_spawn_delay_injector(void* data)
 // the "WAVE: Ns" HUD row; this pins the editor control that authors it.
 TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
 {
+    EditorDecorStateGuard guard;
+    eds().rowsdown = 0;
     og::runtime::current_session->myscreen_->world().end = 0;
     trace_clear();
 
-    EditorThreadState st{false, false};
+    EditorAuthoringThreadState st;
     SDL_Thread* thread = SDL_CreateThread(editor_spawn_delay_injector, "editor_spawn_delay", &st);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -1148,6 +1140,7 @@ TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
     og::runtime::current_session->myscreen_->world().end = 0;
     level_editor_testing_prompt_queue_clear();
 
+    ASSERT_EQ(0, thread_result) << "editor input step: " << st.step;
     ASSERT_TRUE(st.started) << "injector thread should have started";
     ASSERT_TRUE(st.finished) << "injector thread should have finished";
 
@@ -1159,6 +1152,11 @@ TEST(LevelEditorInteractions, level_editor_delay_button_authors_spawn_delay)
         << "Select-mode Delay should author the walker's spawn_delay and leave it awake";
     ASSERT_TRUE(trace_contains("editor", "spawn_delay set=0 order=0 dormant=0"))
         << "0 should clear the delay again";
+    EXPECT_EQ((std::vector<std::string>{"spawn_delay brush=240 order=0",
+                                       "spawn_delay set=240 order=0 dormant=0",
+                                       "spawn_delay set=900 order=0 dormant=0",
+                                       "spawn_delay set=0 order=0 dormant=0"}),
+              editor_authoring_messages("spawn_delay "));
 }
 
 // The object brush's team is picked straight off a walker, whose team_num() is

@@ -645,6 +645,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 			break;
         
         edit.step();
+		og::input_native::publish_text_input_value(editstring);
 
 		og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
         if(!edit.has_typed && strlen(editstring) > 0)
@@ -792,6 +793,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 				edit.cancel();
 			}
 		}
+		og::input_native::publish_text_input_value(editstring);
 		
 		rendered_hover = hover_action();
 		draw_prompt(rendered_hover == 1, rendered_hover == 2);

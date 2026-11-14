@@ -9,7 +9,6 @@
 #include <chrono>
 #include <deque>
 #include <format>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -276,40 +275,10 @@ struct WebSocketServerTransport::Impl
         if (!listening)
             return;
 
-        // ix can throw out of its own teardown (see close_quietly), and an
-        // exception leaving a destructor ends the process. Teardown has
-        // nothing left to report, so swallow it here rather than abort.
-        try
-        {
-            stop_server_and_keep_closing();
-        }
-        catch (...)
-        {
-        }
+        stop_server_and_keep_closing();
     }
 
 private:
-    // ix::WebSocket's close callback calls the message callback without
-    // checking it (IXWebSocket.cpp:46-56), and WebSocketServer::handleConnection
-    // clears the message callback BEFORE removing the socket from the client
-    // set (IXWebSocketServer.cpp:167-176). A connection whose thread has just
-    // finished is therefore briefly visible with an empty callback, and closing
-    // it throws std::bad_function_call out of ix. ix's own stop() walks the
-    // same set and hits the same window — it aborted this binary once in ~8000
-    // teardown cycles before any of this existed — so the throw is caught here
-    // rather than allowed to end the process. A socket that throws is one whose
-    // thread has already ended, which is what teardown is waiting for anyway.
-    static void close_quietly(ix::WebSocket& client)
-    {
-        try
-        {
-            client.close();
-        }
-        catch (const std::bad_function_call&)
-        {
-        }
-    }
-
     // Stop the server, closing every connection that turns up while it stops.
     //
     // ix::WebSocketServer::stop() closes the clients it can see and then joins
@@ -339,13 +308,7 @@ private:
     {
         std::atomic<bool> stopped{false};
         std::thread stopper([this, &stopped] {
-            try
-            {
-                server.stop();
-            }
-            catch (...)
-            {
-            }
+            server.stop();
             stopped.store(true, std::memory_order_release);
         });
 
@@ -355,7 +318,7 @@ private:
                  server.getClients())
             {
                 if (client && client->getReadyState() != ix::ReadyState::Closing)
-                    close_quietly(*client);
+                    client->close();
             }
 
             std::this_thread::sleep_for(detail::kWebSocketQuiescePollInterval);

@@ -33,7 +33,12 @@
 # rebuilds — runs in 40 s, against ~41.7 s PER ROW before (about 1 h 50 m for
 # the same arm), and reproduces the same verdicts the rebuild-per-row run
 # recorded on 2026-09-08 (zero_flips=0, the same nine PREDICATE-TOOTHLESS rows).
-# The C++ half is 32 distinct pins over 63 rows, two rebuilds each.
+# The C++ half is 32 distinct pins over 63 rows, and one rebuild each plus one:
+# a group's sources are restored the moment its rows are captured, but the
+# objects are rebuilt by the NEXT group's build, which compiles the restored
+# file and the newly mutated one together (see OBJECTS_STALE). Rebuilding
+# after every restore as well cost a second ~15 s build per group, 31 s a
+# group on CI (2026-11-13), for objects nothing ever ran.
 #
 # Usage:
 #   run_mutation_canary.sh --scenario <id>
@@ -76,8 +81,9 @@
 # rather than mutate a textual twin of the line the pin means.
 #
 # WARNING — the EXIT trap restores SOURCES, not OBJECTS. If this script is
-# interrupted while a rebuild-cpp group is in flight, build/ci-test still holds
-# the og_test_parity and parity_runner_smoke built from that mutation. Anything
+# interrupted anywhere between the first rebuild-cpp group's build and the
+# rebuild that follows the last one, build/ci-test still holds the
+# og_test_parity and parity_runner_smoke built from a mutation. Anything
 # you run out of that build dir afterwards — a parity run, a golden capture, a
 # gate — is measuring mutated code. Rebuild before trusting any binary there.
 # (The staged arm never rebuilds, so it cannot leave mutated objects; it can
@@ -127,6 +133,8 @@ usage:
   run_mutation_canary.sh --touched <ref>
 options:
   --plan                      print the plan and run the preflight only
+  --shard INDEX/COUNT         partition independent mutation groups after selection
+  --manifest PATH            write the complete three-shard manifest
   --report <path>             write per-row verdicts as JSON
   --changed-files-from <file> test seam: changed-file list for --touched
 EOF
@@ -204,6 +212,11 @@ require_clean_worktree() {
 # accepts() in check_mutation_pins.py.
 IN_FLIGHT_JSON=""
 declare -i TOTAL_REBUILDS=0
+# 1 while the compiled objects still hold a mutation whose SOURCE has already
+# been restored. Nothing may be captured in that state: every capture is
+# preceded either by a group's own rebuild_targets (which compiles the
+# restored file too) or by objects_must_match_sources.
+declare -i OBJECTS_STALE=0
 
 # Build targets needed for the canary loop. `--target` accepts multiple
 # names so Ninja can schedule them together; the binaries share most TUs
@@ -226,6 +239,16 @@ rebuild_targets() {
         || { OPENGLAD_MUTATION_IN_FLIGHT="${IN_FLIGHT_JSON}" \
                 cmake --build --preset "${PRESET}" \
                     --target og_test_parity parity_runner_smoke </dev/null; exit 1; }
+    OBJECTS_STALE=0
+}
+
+# Bring the objects back to the restored sources when the last thing that
+# happened to them was a mutation. A staged group runs the binaries as they
+# are, and the run must end on the baseline it started from.
+objects_must_match_sources() {
+    if (( OBJECTS_STALE == 1 )); then
+        rebuild_targets
+    fi
 }
 
 # Run a single scenario through the smoke runner with --evaluate-facts;
@@ -313,6 +336,8 @@ selector=""
 plan_only=0
 report_path=""
 changed_files_from=""
+shard=""
+manifest_path=""
 
 while (( $# > 0 )); do
     case "$1" in
@@ -329,6 +354,12 @@ while (( $# > 0 )); do
             mode="all"
             ;;
         --plan) plan_only=1 ;;
+        --shard|--manifest)
+            option="$1"
+            shift
+            [[ $# -gt 0 ]] || { usage; exit 2; }
+            if [[ "$option" == "--shard" ]]; then shard="$1"; else manifest_path="$1"; fi
+            ;;
         --report)
             shift
             [[ $# -gt 0 ]] || { usage; exit 2; }
@@ -384,6 +415,8 @@ case "${mode}" in
         ;;
 esac
 
+[[ -z "$shard" ]] || plan_args+=(--shard "$shard")
+[[ -z "$manifest_path" ]] || plan_args+=(--manifest "$manifest_path")
 PLAN_DIR="${TMPDIR_CANARY}/plan"
 plan_rc=0
 python3 "${PLAN_TOOL}" "${plan_args[@]}" --emit records --out "${PLAN_DIR}" \
@@ -439,8 +472,8 @@ fi
 
 # Scenario fixtures. Most rows load scen/scen1.fss, which the harness serves
 # from the gladiator campaign it mounts (campaigns/gladiator/scen/scen1.fss).
-# The scen99 rows read temp/scen/scen99.fss, which og_test_level PRODUCES and
-# exports into the checkout. A missing one turns every capture into an
+# The scen99 rows read temp/scen/scen99.fss, installed by the scenario99 CTest
+# fixture or tests/fixtures/scenario99.py. A missing one turns every capture into an
 # environment abort, one row at a time, with nothing saying why.
 while IFS= read -r fixture; do
     [[ -z "${fixture}" ]] && continue
@@ -454,7 +487,7 @@ while IFS= read -r fixture; do
 canary: scenario fixture ${fixture} is missing (looked for ${fixture},
 scen/${base}, temp/scen/${base} and campaigns/gladiator/${fixture} under
 ${REPO_ROOT}).
-run ctest -R ^og_test_level$ first — that suite produces temp/scen/scen99.fss.
+run python3 tests/fixtures/scenario99.py setup "$REPO_ROOT" first.
 EOF
     exit 7
 done < "${PLAN_DIR}/fixtures"
@@ -525,6 +558,10 @@ while read -r gidx gmode gcount; do
     echo "=== group ${gidx}/${plan_groups} ${gmode} ${mut_file}:${mut_line} rows=${gcount}"
 
     if [[ "${gmode}" == "staged-lua" ]]; then
+        # A staged group measures the binaries as they stand, so they must
+        # hold no earlier C++ mutation; and this has to happen before the
+        # staged file is touched, because a build re-mirrors packs/.
+        objects_must_match_sources
         # Mutate the STAGED copy. The repository file is never touched, so the
         # worktree stays clean and no rebuild is needed or allowed.
         STAGED_FILES+=("${mut_file}")
@@ -561,6 +598,8 @@ while read -r gidx gmode gcount; do
         # Declared only between a successful apply and the restore below: the
         # window in which the pinned line legitimately holds a mutated state.
         IN_FLIGHT_JSON="${mut_decl}"
+        # One build: this mutation in, and the previous group's out (its
+        # source was restored when its rows were captured).
         rebuild_targets
     fi
 
@@ -580,7 +619,9 @@ while read -r gidx gmode gcount; do
         git -C "${REPO_ROOT}" checkout -- "${mut_file}" >/dev/null 2>&1 || true
         MUTATED_FILES=()
         IN_FLIGHT_JSON=""
-        rebuild_targets
+        # The sources are the baseline again; the objects are not until the
+        # next build, and nothing is captured before it.
+        OBJECTS_STALE=1
     fi
 
     for sid in "${group_rows[@]}"; do
@@ -604,6 +645,9 @@ while read -r gidx gmode gcount; do
     done
     unset POST_GTEST
 done < "${PLAN_DIR}/index"
+
+# The last C++ group left its mutation in the objects.
+objects_must_match_sources
 
 echo
 echo "canary: processed ${total_processed} rows, ${total_zero_flips} with zero flips, ${total_pred_toothless} predicate-toothless"

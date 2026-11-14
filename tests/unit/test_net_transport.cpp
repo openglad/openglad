@@ -4787,3 +4787,17 @@ TEST(NetTransport, initial_setup_round_trip_carries_gameplay_fixes)
         << "gameplay_fixes is the i16 right after new_specials (41..42), "
            "right before the guy count at 45";
 }
+
+TEST(NetTransport, generic_transport_defaults_to_connected_without_peer_inference)
+{
+    MockTransport transport;
+    const og::sim::ITransport& base = transport;
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, base.link_state());
+    transport.set_connected_peers({3u, 7u});
+    EXPECT_EQ((std::vector<og::sim::PeerId>{3u, 7u}), base.connected_peers());
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, base.link_state());
+    transport.set_connected_peers({});
+    EXPECT_TRUE(base.connected_peers().empty());
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, base.link_state());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+}

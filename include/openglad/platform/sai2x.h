@@ -171,11 +171,10 @@ class Screen
 		{
 			return last_world_present_used_render2_;
 		}
+#ifdef TESTING
 		void fail_next_gameplay_ui_allocation_for_testing();
-		void fail_next_world_canvas_allocation_for_testing()
-		{
-			fail_next_world_canvas_allocation_ = true;
-		}
+		void fail_next_world_canvas_allocation_for_testing();
+#endif
 		// Downsample the current split world frame into the fixed UI canvas
 		// with nearest filtering before drawing an in-game modal overlay.
 		void prepare_ui_canvas_from_world();
@@ -259,29 +258,14 @@ class Screen
 		}
 		void end_native_world_view_fade();
 #ifdef TESTING
-		std::size_t native_world_view_ready_count_for_testing() const
-		{
-			return native_world_view_ready_count_;
-		}
+		std::size_t native_world_view_ready_count_for_testing() const;
 		SDL_Surface* native_world_view_surface_for_testing(
 			std::size_t index = 0) const;
 		std::span<const NativeWorldViewDestination>
 		native_world_view_destinations_for_testing(
-			std::size_t index = 0) const
-		{
-			return index < native_world_view_planes_.size()
-				? std::span<const NativeWorldViewDestination>(
-					native_world_view_planes_[index].destinations)
-				: std::span<const NativeWorldViewDestination>{};
-		}
-		void discard_native_world_views_for_testing()
-		{
-			discard_native_world_views();
-		}
-		void fail_next_native_world_view_allocation_for_testing()
-		{
-			fail_next_native_world_view_allocation_ = true;
-		}
+			std::size_t index = 0) const;
+		void discard_native_world_views_for_testing();
+		void fail_next_native_world_view_allocation_for_testing();
 #endif
 
 		// HUD sprite planes: a caller-sized straight-alpha raster (ARGB, cleared
@@ -306,27 +290,12 @@ class Screen
 		// blend (blend_pixel).
 		bool render_target_is_straight_alpha() const;
 #ifdef TESTING
-		std::size_t hud_sprite_ready_count_for_testing() const
-		{
-			return hud_sprite_ready_count_;
-		}
-		SDL_Surface* hud_sprite_surface_for_testing(std::size_t index) const
-		{
-			return index < hud_sprite_planes_.size()
-				? hud_sprite_planes_[index].surface : nullptr;
-		}
+		std::size_t hud_sprite_ready_count_for_testing() const;
+		SDL_Surface* hud_sprite_surface_for_testing(std::size_t index) const;
 		NativeWorldViewDestination hud_sprite_destination_for_testing(
-			std::size_t index) const
-		{
-			return index < hud_sprite_planes_.size()
-				? hud_sprite_planes_[index].destination
-				: NativeWorldViewDestination{};
-		}
-		void discard_hud_sprites_for_testing() { discard_hud_sprites(); }
-		void fail_next_hud_sprite_allocation_for_testing()
-		{
-			fail_next_hud_sprite_allocation_ = true;
-		}
+			std::size_t index) const;
+		void discard_hud_sprites_for_testing();
+		void fail_next_hud_sprite_allocation_for_testing();
 #endif
 
 		// Screen owns SDL handles (window/renderer/surfaces/textures) freed in
@@ -479,7 +448,9 @@ class Screen
 		CanvasTarget hud_sprite_saved_canvas_ = CanvasTarget::UI;
 		SDL_Surface* hud_sprite_saved_render_ = nullptr;
 		SDL_Texture* hud_sprite_saved_texture_ = nullptr;
+#ifdef TESTING
 		bool fail_next_hud_sprite_allocation_ = false;
+#endif
 		// A failed SDL allocation is not retried every frame for the same
 		// target dimensions. A canvas/config change clears the latch.
 		int render2_failed_w_ = 0;
@@ -510,9 +481,13 @@ class Screen
 		// The suppression persists until a later begin succeeds/config resets.
 		bool smart_present_suppressed_ = false;
 		bool last_world_present_used_render2_ = false;
+#ifdef TESTING
 		bool fail_next_gameplay_ui_allocation_ = false;
+
 		bool fail_next_world_canvas_allocation_ = false;
+
 		bool fail_next_native_world_view_allocation_ = false;
+#endif
 		bool vsync_enabled_ = true;
 };
 

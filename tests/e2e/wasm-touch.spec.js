@@ -440,6 +440,10 @@ test.describe('Touch overlay activation', () => {
     // runs with the iPhone device descriptor, and this Playwright version
     // injects the project's context options into manual newContext() calls —
     // so every touch-relevant option must be overridden explicitly here.
+    // The touch half is complete, so release its WASM renderer before opening
+    // a second game. Keeping both alive adds no coverage and can exhaust a
+    // browser renderer process on memory-constrained CI hosts.
+    await page.close();
     const desktop = await browser.newContext({
       baseURL: 'http://localhost:8089',
       hasTouch: false,
@@ -663,6 +667,11 @@ test.describe('Touch overlay activation', () => {
     );
     const touchAcceptedField = await captureRegion(page, ROOM_VALUE_REGION);
     expect(touchAcceptedField.equals(acceptedField)).toBe(false);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__opengladNetworkingRoomValue),
+      )
+      .toBe('TOUCH-OK');
 
     // Reopen the prompt, type junk, then CANCEL: openglad_web_text_cancel
     // must deliver input_string's Escape path, restoring the original value.
@@ -684,12 +693,15 @@ test.describe('Touch overlay activation', () => {
     await cancelButton.focus();
     await page.keyboard.press('Enter');
     await expect(wrap).toBeHidden({ timeout: 10_000 });
-    await waitForRegionToMatch(
-      page,
-      ROOM_VALUE_REGION,
-      touchAcceptedField,
-      'CANCEL should restore the previously accepted room code',
-    );
+    // WebKit's fractional-DPR compositor can produce different antialiasing
+    // pixels for identical canvas frames. Assert the exact value represented
+    // by the freshly synchronized button snapshot instead of conflating that
+    // semantic with transient focus/highlight pixels.
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__opengladNetworkingRoomValue),
+      )
+      .toBe('TOUCH-OK');
   });
 
   test('room-code prompt: physical typing before the field is touched leaves no residue', async ({
@@ -730,14 +742,10 @@ test.describe('Touch overlay activation', () => {
     // while the DOM field is still untouched. Those keystrokes edit the C++
     // buffer with no way to tell the field about them.
     await page.evaluate(() => document.getElementById('og-text-entry').blur());
-    const promptBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
     await page.keyboard.type('ABC', { delay: 60 });
-    await waitForRegionToLeave(
-      page,
-      PROMPT_INPUT_REGION,
-      promptBaseline,
-      'physically typed characters should reach the in-canvas prompt',
-    );
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('ABC');
     await expect(input).toHaveValue('');
 
     // The field is now authoritative: its first edit must replace the whole
@@ -782,16 +790,15 @@ test.describe('Touch overlay activation', () => {
     await page.keyboard.press('Backspace');
     await page.keyboard.type('X', { delay: 60 });
     await expect(input).toHaveValue('X');
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('X');
 
-    const blurBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
     await page.evaluate(() => document.getElementById('og-text-entry').blur());
     await page.keyboard.type('YZ', { delay: 60 });
-    await waitForRegionToLeave(
-      page,
-      PROMPT_INPUT_REGION,
-      blurBaseline,
-      'typing after the field blurs should still reach the in-canvas prompt',
-    );
+    await expect
+      .poll(() => page.evaluate(() => window.__opengladTextInputValue))
+      .toBe('XYZ');
     await expect(input).toHaveValue('X');
 
     await tapCanvasGameCoord(page, 160, 100); // gesture-refocus the input

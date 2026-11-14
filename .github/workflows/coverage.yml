@@ -8,314 +8,349 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # The test workers look up this run's bundle artifact to fetch it by ranges.
+  actions: read
 
+# Large Nix closures otherwise fan out enough cache downloads for hosted-runner
+# TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
+# retried binary-cache policy.
+env:
+  NIX_CONFIG: |
+    http-connections = 5
+    download-attempts = 10
+    max-substitution-jobs = 2
+
+# The coverage jobs run in a shell that carries only what they use: the
+# general native shell is three times the download (1.7 GiB against 0.5 GiB)
+# and every stage of this workflow pays for its shell in series.
+defaults:
+  run:
+    shell: nix develop .#ci-coverage --command bash -e {0}
+
+# A newer push to a pull request supersedes the run in progress: its verdict
+# is about a commit nobody will merge, and while it ran the new run waited
+# behind it (6m43s on 2026-11-12). A run on master is never cancelled: each
+# one reports a merged commit and seeds the compiler cache pull requests
+# start from.
 concurrency:
   group: coverage-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  plan-coverage:
+    name: Decide the coverage compile fan-out
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      warm: ${{ steps.decide.outputs.warm }}
+    steps:
+      # Commits and trees only: the decision compares two trees by name.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Find the newest compatible compiler cache without downloading it
+        id: seed
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+          lookup-only: true
+      # Eight warmers that find every object already cached cost 1m34s before
+      # the producer starts (2026-11-13). They run only when this push can
+      # have changed more objects than the producer compiles in that time.
+      - name: Compare this commit with the one the cache was saved for
+        id: decide
+        shell: bash
+        env:
+          PREFIX: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+          MATCHED_KEY: ${{ steps.seed.outputs.cache-matched-key }}
+        run: python3 scripts/ci/compile_fanout.py --prefix "$PREFIX" --matched-key "$MATCHED_KEY"
+
+  compile-coverage:
+    name: Warm coverage compile cache (${{ matrix.shard }}/8)
+    needs: plan-coverage
+    if: needs['plan-coverage'].outputs.warm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the compiler cache restores
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      # actions/cache derives a cache's version from its path as well as its
+      # key, so the seed is restored into and saved from this one directory:
+      # saved from any other, it is never found again.
+      - name: Restore the newest compatible cross-commit compiler cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+      - name: Compile one complete-plan object shard
+        run: |
+          mkdir -p build/sccache-seed/cache
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            --sccache-seed build/sccache-seed --compile-shards 8 \
+            --compile-shard ${{ matrix.shard }} --cache-only --cores 4 \
+            --out-link build/sccache-shard
+          mkdir -p build/sccache-upload
+          cp -a --reflink=auto build/sccache-shard/. build/sccache-upload/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-compile-cache-${{ matrix.shard }}
+          path: build/sccache-upload/
+          compression-level: 0
+          if-no-files-found: error
+
+  build-coverage:
+    name: Build coverage once
+    needs: [plan-coverage, compile-coverage]
+    if: ${{ !cancelled() && needs['plan-coverage'].result == 'success' && (needs['plan-coverage'].outputs.warm != 'true' || needs['compile-coverage'].result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the compile cache downloads
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - name: Download every compile-cache shard
+        if: needs['plan-coverage'].outputs.warm == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-compile-cache-*
+          path: build/sccache-shards
+      - name: Restore the cross-commit compiler-cache seed
+        id: sccache-seed
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-
+      - name: Verify and merge the complete compile cache
+        if: needs['plan-coverage'].outputs.warm == 'true'
+        run: |
+          mkdir -p build/sccache-seed/cache
+          shard_args=()
+          for shard in build/sccache-shards/coverage-compile-cache-*; do
+            shard_args+=(--input "$shard")
+          done
+          python3 scripts/ci/compile_cache.py merge \
+            --seed build/sccache-seed "${shard_args[@]}" \
+            --output build/sccache-merged --lane coverage \
+            --revision "$(git rev-parse HEAD)" --shards 8
+      - name: Build and export immutable configuration
+        env:
+          WARMED: ${{ needs['plan-coverage'].outputs.warm }}
+        run: |
+          which cmake c++
+          realization_started="$(date +%s)"
+          if [ "$WARMED" = true ]; then
+            producer=(--sccache-seed build/sccache-merged)
+          else
+            # No fan-out ran: the producer compiles what the seed lacks.
+            mkdir -p build/sccache-seed/cache
+            producer=(--sccache-seed build/sccache-seed --unwarmed)
+          fi
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            "${producer[@]}" --cores 4 --out-link build/bundle-coverage
+          python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD" \
+            "${producer[@]}" --cores 4 --cache-only --out-link build/sccache-output
+          realization_seconds="$(( $(date +%s) - realization_started ))"
+          echo "Nix coverage realization: ${realization_seconds} seconds; compile fan-out: $WARMED" >> "$GITHUB_STEP_SUMMARY"
+          # The eight workers enter the same shell this job runs in, so the
+          # toolchain half of the closure (538 MiB of 1.9 GiB) is already in
+          # their stores; ship the product and the paths this build made.
+          python3 scripts/ci/nix_bundle.py export --prune-substitutable --bundle build/bundle-coverage --cache build/nix-cache
+          python3 scripts/ci/nix_bundle.py plan-tree --bundle build/bundle-coverage --repo "$PWD"
+      - name: Validate real checkout and plan complete inventory
+        run: |
+          bash scripts/check_parity_companion_refs.sh
+          python3 scripts/check_luals.py --luals-exe "$(command -v lua-language-server)" --log-dir build/luals-check
+          python3 scripts/check_lua_statement_lines.py
+          python3 scripts/modding/check_api_stubs.py --repo-root .
+          python3 scripts/coverage/test_coverage_report.py
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+          python3 scripts/ci/nix_bundle_test.py
+          python3 scripts/ci/test_matrix.py plan --build build/ci-coverage --lane coverage --shards 8 --out build/plan --notes-out build/notes
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-bundle
+          path: build/nix-cache/
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-plan
+          path: build/plan/
+          if-no-files-found: error
+      # The complete compiler-note inventory, for the gate's one gcov scan:
+      # 1.4 GiB of notes in a 71 MiB archive (2026-11-13), already compressed.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-notes
+          path: build/notes/
+          compression-level: 0
+          if-no-files-found: error
+      - name: Stage the updated compiler cache under the restored path
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
+        run: |
+          # The restored seed is spent: the merged cache was built from it.
+          # Replace it in place, because the path is part of the cache
+          # version (see the restore step in compile-coverage).
+          if [ -d build/sccache-seed ]; then chmod -R u+w build/sccache-seed; fi
+          rm -rf build/sccache-seed
+          mkdir -p build/sccache-seed
+          cp -a --reflink=auto build/sccache-output/. build/sccache-seed/
+      - name: Save the updated cross-commit compiler cache
+        if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/sccache-seed
+          key: native-sccache-v2-${{ runner.os }}-coverage-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+
+  test-coverage:
+    name: coverage (${{ matrix.shard }}/8)
+    needs: build-coverage
+    # Spelled out because the default is success() over EVERY ancestor: with
+    # the fan-out skipped, the skipped warmers would skip these workers too.
+    if: ${{ !cancelled() && needs['build-coverage'].result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      # The shell closure and the compiled bundle are both network-bound and
+      # independent. Substituting the shell behind the artifact downloads
+      # instead of after them takes it off this job's serial path; the first
+      # shell step below waits on the store locks for whatever is left.
+      - name: Fetch the lane shell while the compiled bundle downloads
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      - uses: ./.github/actions/fetch-bundle
+        with:
+          name: coverage-bundle
+          path: build/nix-cache
+          token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-plan
+          path: build/plan
+      - name: Restore compiled artifacts without a store copy (no compilation)
+        run: |
+          python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"
+      - name: Run every assigned test once
+        run: python3 scripts/ci/test_matrix.py run --build build/ci-coverage --plan build/plan/plan.json --shard ${{ matrix.shard }} --out build/results/shard-${{ matrix.shard }}
+      # Raw counter files only: the gate sums every worker's and runs gcov
+      # over the complete note inventory once.
+      - name: Collect this worker's C++ counter files and Lua evidence
+        if: always()
+        run: python3 scripts/ci/test_matrix.py collect-coverage --build build/ci-coverage --out build/results/shard-${{ matrix.shard }}
+      - name: Upload all results, including the first failure
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-result-${{ matrix.shard }}
+          path: build/results/
+          if-no-files-found: error
+          # Counter files and JUnit output compress about 7:1; unlike the
+          # binary/cache bundles above, storing them raw makes the gate
+          # download hundreds of unnecessary MiB.
+          compression-level: 6
+
   coverage:
     name: Coverage
+    if: always()
+    needs: [build-coverage, test-coverage]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
-      - name: Checkout push ref
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/checkout@v7
+      # The gate reads the tracked file inventory, never history.
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-
-      - name: Checkout PR head ref
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/checkout@v7
+      - uses: ./.github/actions/install-nix # v31
+      - name: Fetch the lane shell while the worker results download
+        shell: bash
+        run: nohup nix develop .#ci-coverage --command true > "$RUNNER_TEMP/shell-prefetch.log" 2>&1 &
+      # The plan carries the one built tool the gate runs (the Lua
+      # executable-line oracle), and the notes archive carries what gcov
+      # reads; both are pinned by digest in the plan. The compiled bundle is
+      # 2 GiB of test binaries this job never executes; downloading and
+      # restoring it took 4m24s of this job's 8m33s on 2026-11-12.
+      - uses: actions/download-artifact@v8
         with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v7
+          name: coverage-plan
+          path: build/plan
+      - uses: actions/download-artifact@v8
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: relay/package-lock.json
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev libpng-dev libgtest-dev libncurses-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev
-
-      - name: Install relay npm dependencies
-        working-directory: relay
-        run: npm ci
-
-      - name: Install coverage tools
-        run: python3 -m pip install gcovr
-
-      - name: Install pinned lua-language-server
-        env:
-          LUALS_VERSION: 3.18.1
-          LUALS_SHA256: 0c4a8a2b085df2e5cb56f075867eebe643c09d6fd3d998c70f9c3b7ab93f29dd
-        run: |
-          luals_archive="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
-          luals_dir="${RUNNER_TEMP}/lua-language-server-${LUALS_VERSION}"
-          curl --fail --location --retry 3 \
-            --proto '=https' --tlsv1.2 \
-            --output "${luals_archive}" \
-            "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz"
-          echo "${LUALS_SHA256}  ${luals_archive}" | sha256sum --check -
-          mkdir -p "${luals_dir}"
-          tar -xzf "${luals_archive}" -C "${luals_dir}"
-          echo "${luals_dir}/bin" >> "${GITHUB_PATH}"
-          "${luals_dir}/bin/lua-language-server" --version
-
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+          name: coverage-notes
+          path: build/notes
+      - uses: actions/download-artifact@v8
         with:
-          key: ci-coverage
-          max-size: 2G
-
-      - name: Configure (ci-coverage preset)
-        run: cmake --preset ci-coverage -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build all test binaries
-        run: cmake --build --preset ci-coverage -j"$(nproc)"
-
-      - name: Enforce pack Lua quality gates
-        # coverage_report's CMake target depends on these checks, but this
-        # workflow deliberately invokes coverage_report.py directly below to
-        # retain its strict-C++ arguments and PR-summary outputs. Keep the
-        # checks explicit here so that direct invocation cannot bypass them.
-        run: |
-          cmake --build --preset ci-coverage \
-            --target check_luals api_stub_check check_lua_statement_lines_full
-
-      - name: Reset pre-test coverage counters
-        run: |
-          find build/ci-coverage -type f -name '*.gcda' -delete
-          remaining_counters=$(find build/ci-coverage -type f -name '*.gcda' | wc -l)
-          if (( remaining_counters != 0 )); then
-            echo "Failed to reset pre-test coverage counters" >&2
-            exit 1
-          fi
-
-      - name: Run tests with coverage
-        # A failure of THIS step means tests failed. Collection sanity has its
-        # own step below, and the threshold gate its own further down, so the
-        # job summary always names the right culprit.
-        #
-        # CTest continues to enforce the RUN_SERIAL, RESOURCE_LOCK, and
-        # PROCESSORS properties registered in CMakeLists.txt. Those processor
-        # reservations are calibrated for four-slot GitHub runners, so keep the
-        # parallel level at min(nproc, 4) on larger or smaller hosts.
-        #
-        # OPENGLAD_LUA_COVERAGE arms the in-process pack-Lua line/function
-        # recorder for this one pass, so the SAME run produces both halves of
-        # the gate: gcov .gcda for src/ and *.luacov dumps for packs/. The
-        # recorder is a runtime switch, never a compile flag — the binary the
-        # deterministic-sim tests exercise here has to be the binary that
-        # ships (og_test_parity passes 188/188 armed and disarmed).
-        #
-        # --repeat until-pass:3 deliberately matches test.yml: both lanes must
-        # agree on what "the suite passes" means, or a flake that retries
-        # green there reds only here and masquerades as a coverage problem.
-        # Retrying inside the COLLECTION run is sound for coverage
-        # specifically because both denominators are static — Lua's comes
-        # from scripts/lua_inventory.py and C++'s from the .gcno set this
-        # fresh build emitted, neither from which tests ran — so a rerun can
-        # only ADD numerator evidence of executions that really happened:
-        # libgcov merges counters into .gcda across process exits, and every
-        # recorder process writes its own uniquely-named *.luacov dump that
-        # the report merges additively; its process-population check is
-        # set-equality on names precisely so "rerunning a flaky binary adds
-        # dumps but no names" (scripts/coverage/README.md). Corollary: a
-        # local single pass can read slightly LOWER than a CI run that
-        # retried a flake — judge local work by its before/after delta. A
-        # test that fails all three attempts still fails this step. Budget:
-        # the whole job measured ~24 min WITH one 420 s timeout burned; a
-        # hard-hanging test costs at most two further attempts (+14 min)
-        # under until-pass:3, far inside the 90 min job cap.
-        #
-        # The two OG_EXPECT_* exports arm og_unit_core's version teeth, which
-        # were dormant on this lane (unarmed = skipped): the stamped minor must
-        # equal this checkout's commit count and the stamped hash must equal its
-        # short hash exactly, so a shallow clone, a broken hash probe (nogit) or
-        # a stale build tree fails as a TEST failure in this step rather than
-        # shipping a build whose menu names the wrong commit. Both are computed
-        # with the same git commands cmake/OpenGladVersion.cmake runs, on the
-        # same checkout. They belong here and not in a step of their own so the
-        # collected/threshold steps below keep their own failure classes.
-        run: |
-          parallel_jobs="$(nproc)"
-          if (( parallel_jobs > 4 )); then
-            parallel_jobs=4
-          fi
-          rm -rf build/ci-coverage/coverage/lua-raw
-          mkdir -p build/ci-coverage/coverage/lua-raw
-          OG_EXPECT_VERSION_MINOR="$(git rev-list --count HEAD)"
-          export OG_EXPECT_VERSION_MINOR
-          OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
-          export OG_EXPECT_GIT_HASH
-          OPENGLAD_LUA_COVERAGE="$PWD/build/ci-coverage/coverage/lua-raw" \
-            ctest --test-dir build/ci-coverage --parallel "${parallel_jobs}" --output-on-failure --timeout 420 --repeat until-pass:3 --no-tests=error
-
-      - name: Assert coverage counters were collected
-        # The inverse of the pre-test reset above, and deliberately a separate
-        # step: a red here reads as "collection produced nothing", never as a
-        # test failure (previous step) or a threshold failure (the gate
-        # below). It must sit AFTER the (possibly retried) test run and
-        # BEFORE the gate: prove the run really produced counters for BOTH
-        # halves. A gcov build that wrote no .gcda "measured" an empty C++
-        # half, and an unarmed recorder an empty Lua half — the report
-        # hard-errors on both, but the step that owns collection should say
-        # so first and plainly. (The report additionally checks WHICH
-        # recorder processes contributed, against
-        # scripts/coverage/recorder_processes.txt.)
-        run: |
-          gcda_count=$(find build/ci-coverage -type f -name '*.gcda' | wc -l)
-          lua_dump_count=$(find build/ci-coverage/coverage/lua-raw -type f -name '*.luacov' | wc -l)
-          echo "collected ${gcda_count} .gcda file(s) and ${lua_dump_count} .luacov dump(s)"
-          if (( gcda_count == 0 )); then
-            echo "ctest ran but produced no .gcda coverage counters" >&2
-            exit 1
-          fi
-          if (( lua_dump_count == 0 )); then
-            echo "ctest ran but produced no pack-Lua coverage dumps" >&2
-            exit 1
-          fi
-
-      - name: Typecheck relay worker
-        working-directory: relay
-        run: npm run typecheck
-
-      - name: Run relay worker tests
-        working-directory: relay
-        run: npm test
-
-      - name: Generate coverage reports and enforce thresholds
+          pattern: coverage-result-*
+          merge-multiple: true
+          path: build/results
+      - name: Require every shard and test result and enforce both language floors
+        run: python3 scripts/ci/test_matrix.py merge-coverage --lines-tool build/plan/og_lua_lines --notes build/notes/compiler-notes.tar.zst --out build/coverage --plan build/plan/plan.json --results build/results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-report
+          path: build/coverage/
+          if-no-files-found: error
+      - name: Read combined coverage metrics
+        if: always()
         id: coverage_metrics
-        # THE SAME bar for BOTH languages — each half alone AND the union.
-        # Family behaviour is Lua now (packs/**/scripts/*.lua is thousands of
-        # lines of live game logic against a few hundred of C++ plumbing in
-        # src/gameplay/families), so a gate that measured src/ alone would
-        # report green while the half of the codebase that decides what a
-        # soldier does went untested. And a single union-only bar was
-        # gameable from either side: with C++ at ~98%, a Lua half at 94.50%
-        # still cleared a combined 95. scripts/coverage/coverage_report.py
-        # takes the Lua denominator from scripts/lua_inventory.py — a purely
-        # static enumeration of the repository's Lua, identical no matter
-        # which tests ran — attributes the recorder's dumps to it by content
-        # hash, per recording process, merges gcovr's src/ tracefile, and
-        # gates on C++ alone, Lua alone, and the union.
-        #
-        # The report also fails on conditions that are not a percentage: a
-        # recorded pack script whose bytes are not repository content, a
-        # hit bound to a source its own dump never declared (every hit
-        # carries the digest of the generation that was executing), a
-        # declared sidecar that does not hash to its declared digest, an
-        # absent or empty set of dumps, a REQUESTED C++ half that measured
-        # nothing, a recorder process population that differs from the
-        # committed manifest (scripts/coverage/recorder_processes.txt), a
-        # runtime_only_lua.txt digest no run observes any more, a tracked
-        # src/ TU absent from the gcov data and not in
-        # scripts/coverage/cpp_excluded.txt, and a numerator that lands off
-        # the static grid. Each of those is a way for a half to look
-        # measured while measuring nothing, so none of them is a warning.
-        #
-        # --strict-cpp: this job configures the build directory from scratch,
-        # so there is no such thing as a legitimately stale gcov record here;
-        # ANY record the tree cannot account for is an error rather than the
-        # incremental-build warning developers get locally.
         run: |
-          LINE_THRESHOLD=98
-          FUNCTION_THRESHOLD=100
-
-          mkdir -p build/ci-coverage/coverage
-          # HTML detail for the C++ half stays in the uploaded artifact; the
-          # gate itself is the combined report below.
-          python3 -m gcovr \
-            --root . \
-            --filter src/ \
-            --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
-            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
-            --html-details build/ci-coverage/coverage/coverage.html \
-            --txt build/ci-coverage/coverage/coverage-summary.txt \
-            build/ci-coverage || true
-
-          set +e
-          python3 scripts/coverage/coverage_report.py \
-            --repo-root . \
-            --lua-raw-dir build/ci-coverage/coverage/lua-raw \
-            --lines-tool build/ci-coverage/og_lua_lines \
-            --cpp-build-dir build/ci-coverage \
-            --output-dir build/ci-coverage/coverage \
-            --line-threshold "${LINE_THRESHOLD}" \
-            --function-threshold "${FUNCTION_THRESHOLD}" \
-            --strict-cpp
-          gate_status=$?
-          set -e
-
-          read -r line_covered line_total function_covered function_total \
-            line_pct function_pct line_status function_status \
-            < <(python3 - <<'PY'
-          import json
-          with open("build/ci-coverage/coverage/summary.json", "r", encoding="utf-8") as f:
-              s = json.load(f)
-          c = s["combined"]
-          line_covered = c["lines_hit"]
-          line_total = c["lines_found"]
-          function_covered = c["functions_hit"]
-          function_total = c["functions_found"]
-          line_pct = 100.0 * line_covered / line_total if line_total else 0.0
-          function_pct = 100.0 * function_covered / function_total if function_total else 0.0
-          print(line_covered, line_total, function_covered, function_total,
-                f"{line_pct:.3f}", f"{function_pct:.3f}",
-                s["line_status"], s["function_status"])
-          PY
-          )
-
-          # The gate itself lives in coverage_report.py (exact integer
-          # comparison, so 94.96% cannot round into 95). These are the
-          # numbers it reported, re-read for the PR comment.
-          {
-            echo "line_pct=$line_pct"
-            echo "function_pct=$function_pct"
-            echo "line_counts=${line_covered}/${line_total}"
-            echo "function_counts=${function_covered}/${function_total}"
-            echo "line_status=$line_status"
-            echo "function_status=$function_status"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "## Coverage Summary (C++ and pack Lua)"
-            echo
-            echo "| Metric | Coverage | Threshold | Status |"
-            echo "|---|---:|---:|---|"
-            echo "| Line | ${line_pct}% (${line_covered}/${line_total}) | ${LINE_THRESHOLD}% | ${line_status} |"
-            echo "| Function | ${function_pct}% (${function_covered}/${function_total}) | ${FUNCTION_THRESHOLD}% | ${function_status} |"
-            echo
-            echo '```'
-            python3 - <<'PY'
-          import json
-          with open("build/ci-coverage/coverage/summary.json", "r", encoding="utf-8") as f:
-              s = json.load(f)
-          gate = s.get("gate", {})
-          for label, key in (("C++ (src/)", "cpp"), ("Lua (packs/)", "lua"),
-                             ("COMBINED", "combined")):
-              t = s[key]
-              lp = 100.0 * t["lines_hit"] / t["lines_found"] if t["lines_found"] else 0.0
-              fp = 100.0 * t["functions_hit"] / t["functions_found"] if t["functions_found"] else 0.0
-              v = gate.get(key, {})
-              verdict = f'  line {v.get("line", "?"):<4} function {v.get("function", "?")}'
-              print(f'{label:<14}{t["lines_hit"]:>7}/{t["lines_found"]:<7}{lp:>7.2f}%'
-                    f'{t["functions_hit"]:>7}/{t["functions_found"]:<7}{fp:>7.2f}%{verdict}')
-          print("(the bar applies to each half alone AND to the union)")
-          PY
-            echo '```'
-            echo
-            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          exit $gate_status
-
+          python3 - <<'PYMETRICS'
+          import json, os
+          from pathlib import Path
+          path = Path('build/coverage/summary.json')
+          if not path.is_file():
+              raise SystemExit('coverage summary missing: collection/gate failed')
+          summary = json.loads(path.read_text())
+          counts = summary['combined']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              for prefix, key in [('line', 'lines'), ('function', 'functions')]:
+                  hit, found = counts[key+'_hit'], counts[key+'_found']
+                  out.write(f'{prefix}_pct={100*hit/found if found else 0:.3f}\n')
+                  out.write(f'{prefix}_counts={hit}/{found}\n')
+                  out.write(f'{prefix}_status={summary[prefix+"_status"]}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('Coverage gates apply independently to C++, Lua, and their union: line >98%, function 100%.\n')
+              for key in ['cpp', 'lua', 'combined']:
+                  out.write(f'{key}: {summary[key]} {summary.get("gate", {}).get(key, {})}\n')
+          PYMETRICS
       - name: Comment coverage on pull request
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v9
@@ -348,11 +383,11 @@ jobs:
 
             const body = [
               marker,
-              '## Coverage Summary (C++ `src/` + pack Lua `packs/`)',
+              '## Coverage Summary (C++ `src/` + `include/openglad/`, pack Lua `packs/`)',
               '',
               '| Metric | Coverage | Threshold | Status |',
               '|---|---:|---:|---|',
-              `| Line | ${linePct}% (${lineCounts}) | ${lineThreshold}% | ${lineStatus} |`,
+              `| Line | ${linePct}% (${lineCounts}) | >${lineThreshold}% | ${lineStatus} |`,
               `| Function | ${functionPct}% (${functionCounts}) | ${functionThreshold}% | ${functionStatus} |`,
               '',
               `Run: ${runUrl}`,
@@ -391,10 +426,11 @@ jobs:
             } catch (error) {
               core.warning(`Unable to create/update coverage comment: ${error.message}`);
             }
-
-      - name: Upload coverage artifact
+      - name: Require successful producer and every worker job
         if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: build/ci-coverage/coverage/
+        env:
+          PRODUCER_RESULT: ${{ needs['build-coverage'].result }}
+          WORKER_RESULT: ${{ needs['test-coverage'].result }}
+        run: |
+          test "$PRODUCER_RESULT" = success
+          test "$WORKER_RESULT" = success

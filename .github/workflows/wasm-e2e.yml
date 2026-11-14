@@ -1,8 +1,6 @@
 name: WASM E2E Tests
 
 on:
-  push:
-    branches-ignore: [master]
   workflow_call:
 
 permissions:
@@ -10,64 +8,107 @@ permissions:
   deployments: write
   pull-requests: write
 
-# PR previews follow their newest revision. Master runs are called by Release,
-# which queues the entire pipeline; give each called run its own group so no
-# intermediate master push loses its web archive or production deployment.
+# Large Nix closures otherwise fan out enough cache downloads for hosted-runner
+# TLS resets to poison a ranged NAR resume. Keep every job on a bounded,
+# retried binary-cache policy.
+env:
+  NIX_CONFIG: |
+    http-connections = 5
+    download-attempts = 10
+    max-substitution-jobs = 2
+
 concurrency:
   group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every job below names the shell it needs; this is what a job that does not
+# would get, and it is the smallest one.
+defaults:
+  run:
+    shell: nix develop .#ci-web --command bash -e {0}
+
 jobs:
-  wasm-e2e:
-    name: Playwright WASM Tests
+  build:
+    name: Build WASM once
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    # Every step of this job runs in the one shell the build needs:
+    # Emscripten, the build tools and ccache (1.3 GiB). It used to enter two,
+    # the 1.7 GiB native CI shell for a 0.2 s unit test and then the 2.1 GiB
+    # development shell, which builds two native packages before it opens.
+    defaults:
+      run:
+        shell: nix develop .#ci-wasm --command bash -e {0}
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      hash: ${{ steps.stamp.outputs.hash }}
+      alias: ${{ steps.stamp.outputs.alias }}
     steps:
-      # Build the PR's own head commit, not the synthetic merge commit: the
-      # version stamped into the binary is `git rev-list --count HEAD`, and the
-      # preview comment quotes it, so it has to name a commit a human can find
-      # with `git log`. Full history for the same reason — a depth-1 clone
-      # would stamp the honest-but-useless 2.1.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
+      - uses: ./.github/actions/install-nix # v31
       - name: Versions index unit test
         run: python3 -m unittest discover -s scripts/web -p 'test_*.py' -v
 
-      - name: Set up Emscripten
-        uses: emscripten-core/setup-emsdk@v16
+      # Two caches, both read by this step only.
+      #
+      # Emscripten builds its system libraries and the SDL3 port into
+      # EM_CACHE on first use; that depends on the pinned toolchain and on
+      # the flags the build passes, so it is keyed by both and restored from
+      # the newest entry of the same toolchain.
+      #
+      # The compiler cache holds one entry per object (18 MiB for the whole
+      # game on 2026-11-13). A pull-request build reads it: a warm build of
+      # an unchanged tree compiled in 15 s against 182 s and produced a
+      # byte-identical play.wasm. A master build NEVER reads it: it compiles
+      # every object and only writes (CCACHE_RECACHE), so no deployed
+      # production artifact contains a cached object, and every pull request
+      # starts from the cache its base commit just wrote.
+      - name: Restore the Emscripten system-library cache
+        id: emcache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          version: 6.0.3
-
-      - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
-      - name: Configure WASM build
-        run: cmake --preset web-emscripten
-
-      - name: Build WASM target
+          path: build/.emscripten-cache
+          key: wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: |
+            wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
+      - name: Restore the newest compatible WASM compiler cache
+        id: ccache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.ccache-web
+          key: wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
+      - name: Build locked-flake WASM configuration once
+        env:
+          COMPILE_EVERY_OBJECT: ${{ github.event_name != 'pull_request' && '1' || '' }}
         run: |
-          for attempt in 1 2 3; do
-            echo "WASM build attempt ${attempt}/3"
-            if cmake --build --preset web-emscripten --target play -j"$(nproc)"; then
-              exit 0
-            fi
-            if [ "${attempt}" -lt 3 ]; then
-              echo "Build failed. Clearing Emscripten ports cache and retrying..."
-              emcc --clear-ports
-              sleep 10
-            fi
-          done
-          echo "WASM build failed after 3 attempts."
-          exit 1
-
-      # Read the version out of the artifact rather than recomputing it, so the
-      # preview comment, the archive alias and the main-menu stamp can never
-      # disagree. The equality check catches a checkout that lost its history:
-      # a shallow clone stamps 2.1 and would archive the build at v2-1.
+          which cmake c++ emcc ccache
+          export CCACHE_DIR="$PWD/build/.ccache-web" CCACHE_MAXSIZE=400M
+          # emcc is a launcher script: name the toolchain by its store path,
+          # which changes whenever any part of it does.
+          export CCACHE_COMPILERCHECK="string:$(readlink -f "$(command -v emcc)")"
+          if [ -n "$COMPILE_EVERY_OBJECT" ]; then export CCACHE_RECACHE=1; fi
+          export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache --zero-stats > /dev/null
+          scripts/build_web.sh
+          ccache --show-stats
+      - name: Save the Emscripten system-library cache
+        if: success() && steps.emcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.emscripten-cache
+          key: wasm-emcache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+      - name: Save the WASM compiler cache
+        if: success() && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: build/.ccache-web
+          key: wasm-ccache-v1-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
       - name: Read the build stamp
         id: stamp
         run: |
@@ -80,6 +121,10 @@ jobs:
           fi
           if [ "$minor" != "$(git rev-list --count HEAD)" ]; then
             echo "::error::stamp 2.${minor} != git rev-list --count HEAD (shallow checkout?)"
+            exit 1
+          fi
+          if [ "$hash" != "$(git rev-parse --short=8 HEAD)" ]; then
+            echo '::error::WASM build stamp does not match checkout'
             exit 1
           fi
           {
@@ -152,38 +197,200 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wasm-dist
+          path: |
+            dist/
+            build/web-emscripten/og_git_hash.h
+          if-no-files-found: error
+          compression-level: 0
+
+  browser:
+    name: Browser (${{ matrix.shard }}/4)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: nix develop .#ci-browser --command bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-dist
+          path: .
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require the flake's runnable Chromium
+        run: test -x "$OG_CHROMIUM_PATH"
+      - name: Run listed shard once and retain first failure
+        run: python3 scripts/ci/browser_matrix.py run --shard ${{ matrix.shard }}/4 --out build/browser/shard-${{ matrix.shard }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: browser-result-${{ matrix.shard }}
+          path: build/browser/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: browser-failure-media-${{ matrix.shard }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
-      - name: Install npm dependencies
-        run: npm ci
+  browser-completeness:
+    name: Browser completeness
+    if: always()
+    needs: [build, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: browser-result-*
+          merge-multiple: true
+          path: build/browser
+      - name: Require disjoint complete browser inventory and all results
+        run: python3 scripts/ci/browser_matrix.py verify --results build/browser --shards 4
+      - name: Require successful producer and every worker job
+        if: always()
+        env:
+          PRODUCER_RESULT: ${{ needs['build'].result }}
+          WORKER_RESULT: ${{ needs['browser'].result }}
+        run: |
+          test "$PRODUCER_RESULT" = success
+          test "$WORKER_RESULT" = success
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: Run Playwright tests
-        run: npx playwright test --workers=1
-
-      # True-WebKit iPhone emulation for the touch suite. The ubuntu CI image
-      # satisfies WebKit's library deps (dev boxes often cannot); advisory
-      # (continue-on-error) until headless WebKit+WebGL proves stable here.
-      - name: Run WebKit iPhone touch tests (advisory)
+  # One job per device orientation: the two projects are independent and ran
+  # back to back in one worker, 186 s and 188 s of an 8m25s job (2026-11-13),
+  # the last check of the whole pull request to finish.
+  webkit-touch:
+    name: WebKit iPhone touch, ${{ matrix.project }} (advisory)
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [webkit-iphone, webkit-iphone-portrait]
+    # `playwright install --with-deps webkit` downloads a large Ubuntu host
+    # library closure before the browser itself. A slow Azure mirror can take
+    # more than 15 minutes while still making steady progress, and the true
+    # WebKit suite must retain its own execution budget after that setup.
+    timeout-minutes: 45
+    continue-on-error: true
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-dist
+          path: .
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install WebKit and its host libraries
+        run: env PATH="/usr/bin:/bin:$PATH" npx playwright install --with-deps webkit
+      - name: Require the host GSettings schema cache
+        run: test -r /usr/share/glib-2.0/schemas/gschemas.compiled
+      - name: Run true WebKit touch projects once
         env:
           OG_WEBKIT: '1'
-        continue-on-error: true
-        # Bound engine-start/test hangs inside the advisory step so they cannot
-        # consume the enclosing required job's full 30-minute timeout.
-        timeout-minutes: 10
-        run: >-
-          npx playwright test --workers=1
-          --project=webkit-iphone
-          --project=webkit-iphone-portrait
+          # Managed WebKit links the Ubuntu GLib installed above. Do not let
+          # the outer Nix shell hide its GSettings schemas from WPE children.
+          XDG_DATA_DIRS: /usr/local/share:/usr/share
+        # Playwright installs WebKit's Ubuntu libraries above. Resolve the
+        # host ldd first so its launch-time validation sees those libraries;
+        # Nix's ldd intentionally searches only the Nix store.
+        run: env PATH="/usr/bin:/bin:$PATH" npx playwright test --workers=1 --retries=0 --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: webkit-touch-results-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
-      # pull_request workflows do not receive repository secrets for forks.
-      # Keep the privileged deploy in this same-repository-only path rather
-      # than using pull_request_target with untrusted PR code or artifacts.
+  # The WebKit touch job is advisory (continue-on-error): its result never
+  # decided a deploy, only delayed one by the 3m47s it runs past the browser
+  # matrix (2026-11-13). It is not a dependency.
+  deploy:
+    name: Deploy tested WASM artifact
+    needs: [build, browser, browser-completeness]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: nix develop .#ci-web --command bash -e {0}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/install-nix # v31
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-dist
+          path: .
+      - name: Read the build stamp
+        id: stamp
+        run: |
+          h=build/web-emscripten/og_git_hash.h
+          minor="$(sed -n 's/^#define OPENGLAD_VERSION_MINOR \([0-9]*\)$/\1/p' "$h")"
+          hash="$(sed -n 's/^#define OPENGLAD_GIT_HASH "\([^"]*\)"$/\1/p' "$h")"
+          if [ -z "$minor" ] || [ -z "$hash" ]; then
+            echo "::error::${h} has no version stamp"
+            exit 1
+          fi
+          if [ "$minor" != "$(git rev-list --count HEAD)" ]; then
+            echo "::error::stamp 2.${minor} != git rev-list --count HEAD (shallow checkout?)"
+            exit 1
+          fi
+          if [ "$hash" != "$(git rev-parse --short=8 HEAD)" ]; then
+            echo '::error::WASM build stamp does not match checkout'
+            exit 1
+          fi
+          {
+            echo "version=2.${minor}"
+            echo "minor=${minor}"
+            echo "hash=${hash}"
+            echo "alias=v2-${minor}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Deploy PR preview to Cloudflare Pages
         id: preview
         if: >-
@@ -338,13 +545,3 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=openglad --branch=master
-
-      - name: Upload test results
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 14

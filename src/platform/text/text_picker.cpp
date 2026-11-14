@@ -1792,7 +1792,7 @@ private:
     TerminalCampaignPickerIo make_camp_io()
     {
         TerminalCampaignPickerIo io;
-        io.prompt = [this](const std::string& title,
+        io.prompt = [](const std::string& title,
                            const std::vector<std::string>& lines,
                            const std::string& label)
             -> std::optional<std::string> {

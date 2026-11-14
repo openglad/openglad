@@ -1,0 +1,76 @@
+diff --git a/ixwebsocket/IXWebSocket.h b/ixwebsocket/IXWebSocket.h
+--- a/ixwebsocket/IXWebSocket.h
++++ b/ixwebsocket/IXWebSocket.h
+@@ -11,0 +12,2 @@
++#define IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK 1
++
+@@ -128,0 +131 @@ namespace ix
++        void invokeOnMessageCallback(const WebSocketMessagePtr& message);
+diff --git a/ixwebsocket/IXWebSocket.cpp b/ixwebsocket/IXWebSocket.cpp
+--- a/ixwebsocket/IXWebSocket.cpp
++++ b/ixwebsocket/IXWebSocket.cpp
+@@ -16,0 +17 @@
++#include <memory>
+@@ -49 +50 @@ namespace ix
+-                _onMessageCallback(
++                invokeOnMessageCallback(
+@@ -239 +240 @@ namespace ix
+-        _onMessageCallback(ix::make_unique<WebSocketMessage>(
++        invokeOnMessageCallback(ix::make_unique<WebSocketMessage>(
+@@ -275 +276 @@ namespace ix
+-        _onMessageCallback(
++        invokeOnMessageCallback(
+@@ -363 +364 @@ namespace ix
+-                _onMessageCallback(ix::make_unique<WebSocketMessage>(WebSocketMessageType::Error,
++                invokeOnMessageCallback(ix::make_unique<WebSocketMessage>(WebSocketMessageType::Error,
+@@ -443 +444 @@ namespace ix
+-                    _onMessageCallback(ix::make_unique<WebSocketMessage>(webSocketMessageType,
++                    invokeOnMessageCallback(ix::make_unique<WebSocketMessage>(webSocketMessageType,
+@@ -455,0 +457,11 @@ namespace ix
++    void WebSocket::invokeOnMessageCallback(const WebSocketMessagePtr& message)
++    {
++        OnMessageCallback callback;
++        {
++            std::lock_guard<std::mutex> lock(_configMutex);
++            callback = _onMessageCallback;
++        }
++        // Invoke outside the lock: callbacks may replace themselves or read config.
++        if (callback) callback(message);
++    }
++
+@@ -458 +470,13 @@ namespace ix
+-        _onMessageCallback = callback;
++        OnMessageCallback replacement;
++        if (callback)
++        {
++            // Copies of the dispatch wrapper share the registered callable, so
++            // mutable captures retain their state and an in-flight call owns it.
++            auto target = std::make_shared<OnMessageCallback>(callback);
++            replacement = [target](const WebSocketMessagePtr& message) { (*target)(message); };
++        }
++        {
++            std::lock_guard<std::mutex> lock(_configMutex);
++            _onMessageCallback.swap(replacement);
++        }
++        // Destroy the old target after unlocking; its captures may reenter us.
+@@ -462,0 +487 @@ namespace ix
++        std::lock_guard<std::mutex> lock(_configMutex);
+diff --git a/ixwebsocket/IXGetFreePort.h b/ixwebsocket/IXGetFreePort.h
+--- a/ixwebsocket/IXGetFreePort.h
++++ b/ixwebsocket/IXGetFreePort.h
+@@ -7,0 +8,2 @@
++#define IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO 1
++
+diff --git a/ixwebsocket/IXGetFreePort.cpp b/ixwebsocket/IXGetFreePort.cpp
+--- a/ixwebsocket/IXGetFreePort.cpp
++++ b/ixwebsocket/IXGetFreePort.cpp
+@@ -76,9 +76 @@ namespace ix
+-#if defined(__has_feature)
+-#if __has_feature(address_sanitizer)
+-            int port = getAnyFreePortRandom();
+-#else
+-            int port = getAnyFreePort();
+-#endif
+-#else
+             int port = getAnyFreePort();
+-#endif

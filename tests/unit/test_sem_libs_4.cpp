@@ -204,7 +204,6 @@ bool eat(walker* pad, walker* eater)
 namespace {
 
 constexpr int kProbeTeam = 7;  // the probe's own body: wildlife, so no census sees it
-constexpr int kCursorSlot = 20;
 
 class SemLineup : public ::testing::Test {
 protected:

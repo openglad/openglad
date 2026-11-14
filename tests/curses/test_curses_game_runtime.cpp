@@ -5,6 +5,7 @@
  * and drive the loop headlessly with a HeadlessTerminal + FakeClock. No SDL, no
  * TTY.
  */
+#include "fake_clock.h"
 #include <gtest/gtest.h>
 
 #include <array>
@@ -12,7 +13,7 @@
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_renderer.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 #include <openglad/platform/curses/clock.h>
 
 #include <openglad/core/constants.h>

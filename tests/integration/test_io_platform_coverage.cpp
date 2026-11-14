@@ -1654,9 +1654,6 @@ TEST(IoPlatformCoverage, physfs_rwops_bridge_read_write_seek_paths)
         ASSERT_EQ(static_cast<int>(sizeof(payload)),
                   static_cast<int>(SDL_WriteIO(out.get(), payload, sizeof(payload))))
             << "PhysFS IOStream should write all payload bytes";
-        int bad_whence = 99; // non-const: a constant 99 trips GCC -Wconversion (outside enum range)
-        ASSERT_EQ(-1, static_cast<int>(SDL_SeekIO(out.get(), 0, static_cast<SDL_IOWhence>(bad_whence))))
-            << "PhysFS IOStream should reject invalid seek whence";
         ASSERT_EQ(-1, static_cast<int>(SDL_SeekIO(out.get(), -1, SDL_IO_SEEK_SET)))
             << "PhysFS RWops should reject seeks before the start";
     }

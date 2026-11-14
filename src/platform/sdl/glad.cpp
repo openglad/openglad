@@ -117,7 +117,7 @@ void publish_web_game_state()
 
 
 #ifdef TESTING
-// Defined in src/runtime/glad_gameplay.cpp (linked into test binaries via og_game_test).
+// Defined in src/platform/sdl/glad_gameplay.cpp (linked via og_game_test).
 extern bool g_test_remove_exits;
 #endif
 

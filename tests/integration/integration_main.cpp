@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -77,6 +78,44 @@ void seed_stray_company_slots(const std::string& csv);
 void reap_non_baseline_companies();
 
 namespace {
+
+// The real-X11 one-screen lane starts its window manager only after SDL has
+// finished constructing the boot window and renderer. On some hosted runners,
+// starting Openbox first can leave SDL's synchronous X11 boot path waiting
+// forever, while the same X server without a manager boots immediately. The
+// lane writes the two marker paths into the environment; every other
+// integration process returns without touching the filesystem.
+void coordinate_x11_window_manager_startup()
+{
+    const char* const window_ready =
+        std::getenv("OG_X11_WINDOW_READY_FILE");
+    const char* const wm_ready = std::getenv("OG_X11_WM_READY_FILE");
+    if (window_ready == nullptr && wm_ready == nullptr)
+        return;
+    if (window_ready == nullptr || wm_ready == nullptr)
+        throw std::runtime_error(
+            "X11 startup coordination requires both marker paths");
+
+    std::FILE* const marker = std::fopen(window_ready, "w");
+    if (marker == nullptr)
+        throw std::runtime_error(
+            std::string("Cannot write X11 window-ready marker: ") +
+            window_ready);
+    std::fputs("ready\n", marker);
+    std::fclose(marker);
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (std::filesystem::exists(wm_ready))
+            return;
+        SDL_Delay(10);
+    }
+    throw std::runtime_error(
+        std::string("Timed out waiting for X11 window manager marker: ") +
+        wm_ready);
+}
 
 void reset_integration_ui_state()
 {
@@ -657,6 +696,18 @@ int main(int argc, char** argv)
     std::signal(SIGPIPE, SIG_IGN);
 #endif
 
+#ifdef OPENGLAD_CAPTURE_TOOL
+    if (std::getenv("OG_FX_CAPTURE_DIR") == nullptr)
+    {
+        std::fprintf(stderr, "og_capture_gameplay: set OG_FX_CAPTURE_DIR to the media output directory\n");
+        return 2;
+    }
+    ::testing::GTEST_FLAG(filter) =
+        "GameLoop.zz_capture_epic_battles:GameLoop.zz_capture_westlands:"
+        "GameLoop.zz_capture_westlands_decor:GameLoop.zz_capture_longseason:"
+        "GameLoop.zz_capture_imaginations:GameLoop.zz_capture_imaginations_moments:"
+        "GameLoop.zz_capture_imaginations_overview";
+#endif
     ::testing::InitGoogleTest(&argc, argv);
     // #338: one match seed for the whole process (tests/test_match_seed.h).
     // Without it every lobby/GO/solo launch stages a std::random_device world
@@ -707,6 +758,7 @@ int main(int argc, char** argv)
     cfg.apply_setting("effects", "new_ability_select", "on");
 
     create_global_screen(1);
+    coordinate_x11_window_manager_startup();
     init_input();
 
     og::runtime::current_session->overscan_percentage_ = static_cast<float>(

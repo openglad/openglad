@@ -236,8 +236,8 @@ grep -Fq "${victim#"$mirror/"}" <<<"$mirror_out" ||
 $mirror_out"
 
 # --- (7) a missing scenario fixture aborts the environment, not the pin -----
-# coverage_catchall_scen99 loads scen99.fss, which og_test_level produces into
-# temp/scen/. Without it every capture would abort one row at a time with
+# coverage_catchall_scen99 loads scen99.fss, installed into temp/scen/ by
+# tests/fixtures/scenario99.py. Without it every capture would abort with
 # nothing saying why, so the preflight names it up front.
 hidden=0
 for candidate in "$repo_root/temp/scen/scen99.fss" "$repo_root/scen/scen99.fss"; do
@@ -252,7 +252,7 @@ for candidate in "$repo_root/temp/scen/scen99.fss" "$repo_root/scen/scen99.fss";
     fi
 done
 if (( hidden == 0 )); then
-    fail 'no scen99.fss fixture was present to hide — run ctest -R ^og_test_level$ first'
+    fail 'no scen99.fss fixture was present to hide — run python3 tests/fixtures/scenario99.py setup <repo-root> first'
 fi
 
 missing_rc=0
@@ -265,8 +265,8 @@ $missing_out"
 grep -Fq 'scen99.fss' <<<"$missing_out" ||
     fail "the fixture refusal did not name the fixture
 $missing_out"
-grep -Fq 'og_test_level' <<<"$missing_out" ||
-    fail "the fixture refusal did not say which suite produces it
+grep -Fq 'tests/fixtures/scenario99.py setup' <<<"$missing_out" ||
+    fail "the fixture refusal did not name the standalone fixture setup command
 $missing_out"
 
 echo 'test_mutation_canary_plan: OK'

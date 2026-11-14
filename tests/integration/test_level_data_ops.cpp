@@ -569,26 +569,13 @@ TEST(LevelDataOps, level_data_get_description_line)
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed with populated lists";
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // This level is og_test_parity's scen99 fixture (effect_bomb_lifetime_scen99,
-    // coverage_catchall_scen99), read from the source tree's gitignored
-    // temp/scen/ (ctest orders og_test_level first). The save lands in the
-    // write dir, so export it there explicitly, byte for byte.
-    {
-        namespace fs = std::filesystem;
-        const fs::path saved = fs::path(get_user_path()) / "temp" / "scen" / "scen99.fss";
-        const fs::path exported = fs::current_path() / "temp" / "scen" / "scen99.fss";
-        ASSERT_TRUE(fs::is_regular_file(saved)) << "the save landed in the write dir: " << saved;
-        fs::create_directories(exported.parent_path());
-        fs::copy_file(saved, exported, fs::copy_options::overwrite_existing);
-        std::vector<uint8_t> saved_bytes;
-        std::vector<uint8_t> exported_bytes;
-        ASSERT_TRUE(read_file_bytes(saved.string(), &saved_bytes));
-        ASSERT_TRUE(read_file_bytes(exported.string(), &exported_bytes))
-            << "the scen99 fixture export exists: " << exported;
-        ASSERT_EQ(std::string("FSS"), std::string(saved_bytes.begin(), saved_bytes.end()).substr(0, 3))
-            << "the saved scen99 is a scenario file";
-        ASSERT_EQ(saved_bytes, exported_bytes) << "the scen99 fixture export is byte-equal to the save";
-    }
+    // The independent CTest fixture owns parity's scen99. This test verifies
+    // the production save in its private user directory and never publishes
+    // a file for another test process.
+    std::vector<uint8_t> saved_bytes;
+    ASSERT_TRUE(read_file_bytes(get_user_path() + "temp/scen/scen99.fss", &saved_bytes));
+    ASSERT_EQ(163u, saved_bytes.size());
+    ASSERT_EQ(std::string("FSS"), std::string(saved_bytes.begin(), saved_bytes.begin() + 3));
 
     delete_campaign(tmp_id);
 }

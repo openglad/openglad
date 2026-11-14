@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -119,3 +120,40 @@ TEST(Util, time_delay_returns_immediately_for_non_positive_delays)
         << "time_delay(<= 0) must return without waiting";
 }
 
+
+TEST(Util, formatted_error_diagnostics_preserve_values_and_severity)
+{
+    int width = 17;
+    int height = 9;
+    int pixel = 0;
+    const int source_width = 34;
+    const int source_height = 18;
+    const std::string reason = "100% unavailable";
+    char address[2 + 2 * sizeof(void*) + 1]{};
+    std::snprintf(address, sizeof(address), "%p", static_cast<void*>(&pixel));
+    const std::string expected =
+        "[ERROR] surface 17x9 at " + std::string(address) + ": 100% unavailable\n" +
+        "[ERROR] 34x18 -> 17x9: 100% unavailable\n" +
+        "[ERROR] item 17: 100% unavailable\n";
+
+    testing::internal::CaptureStderr();
+    LogError("{} {}x{} at {}: {}\n", "surface", width, height,
+             static_cast<void*>(&pixel), reason.c_str());
+    LogError("{}x{} -> {}x{}: {}\n", source_width, source_height,
+             width, height, reason.c_str());
+    LogError("item {}: {}\n", width, reason.c_str());
+    EXPECT_EQ(expected, testing::internal::GetCapturedStderr());
+}
+
+TEST(Util, formatted_info_and_warning_keep_severity_and_literal_braces)
+{
+    const int frame = 7;
+    const std::string pack = "core";
+    testing::internal::CaptureStderr();
+    Log("frame {}\n", frame);
+    LogWarn("pack {}: {}\n", pack, std::string("unavailable"));
+    Log("{{ready}}={} missing={} unmatched={\n", true);
+    EXPECT_EQ("frame 7\n[WARN] pack core: unavailable\n"
+              "{ready}=true missing={} unmatched={\n",
+              testing::internal::GetCapturedStderr());
+}

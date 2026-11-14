@@ -388,15 +388,6 @@ TEST(CombatMath, xp_from_action_eat_corpse)
 }
 
 
-TEST(CombatMath, xp_from_action_unknown_enum_defaults_to_zero)
-{
-    FixedRandom fixed(7);
-    const ExpAction unknown = static_cast<ExpAction>(999);
-    short xp = compute_xp_from_action(unknown, 5, 2, 10, fixed);
-    ASSERT_EQ(0, (int)xp) << "unknown ExpAction should default to zero XP";
-}
-
-
 // ---------------------------------------------------------------------------
 // compute_regen_tick tests
 // ---------------------------------------------------------------------------

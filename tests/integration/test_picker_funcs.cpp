@@ -255,7 +255,7 @@ public:
 // A client that overrides NOTHING past the pure virtuals, so the
 // IPickerLobbyClient defaults for the LINEUP §6 seam are exercised as the
 // contract every non-networked client inherits.
-class DefaultSeamPickerLobbyClient final : public og::ui::IPickerLobbyClient
+class DefaultSeamPickerLobbyClient : public og::ui::IPickerLobbyClient
 {
 public:
     void initialize_from_save() override {}
@@ -4674,7 +4674,8 @@ int g_spritesheet_step_drops = 0;
 // top row had never moved ("" instead of the first pack).
 void inject_mouse_wheel(int integer_y);  // defined with the step kinds below
 
-bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
+bool send_acknowledged_sheet_input(
+    bool wheel, int x, int y, int ticks, int click_hold_ms = 60)
 {
     constexpr int kStepAttempts = 4;
     // Ten frames of a runner where a frame costs ten times what it does
@@ -4695,7 +4696,7 @@ bool send_acknowledged_sheet_input(bool wheel, int x, int y, int ticks)
         }
         else
         {
-            inject_mouse_click(x, y, 60);
+            inject_mouse_click(x, y, click_hold_ms);
         }
         int elapsed = 0;
         while (elapsed < kStepWaitMs && trace_count("sheet") <= before)
@@ -4749,7 +4750,9 @@ static int picker_spritesheet_select_first_pack_injector(void*)
     SDL_Delay(200);
 
     // Row 0 is "Standard"; row 1 is the first sorted pack.
-    (void)send_acknowledged_sheet_input(false, 80, 56, 0);
+    // Queue DOWN+UP without a hold so the picker must honor SDL's collapsed-
+    // click token after the BACK button probe has sampled the same event.
+    (void)send_acknowledged_sheet_input(false, 80, 56, 0, 0);
     SDL_Delay(120);
     spritesheet_click_out();
     return 0;
@@ -5276,4 +5279,63 @@ TEST_F(SpriteSheetPicker, a_pack_that_vanishes_rolls_back_to_the_previous_sheet)
     EXPECT_TRUE(trace_contains("popup",
                                "Sprite Sheet: Could not load"))
         << "and the player must be told why";
+}
+
+TEST(PickerFuncs, default_lobby_rejects_unsupported_seat_and_start_operations)
+{
+    DefaultSeamPickerLobbyClient client;
+    EXPECT_FALSE(client.add_local_seat());
+    EXPECT_FALSE(client.remove_local_seat(2, 91u));
+    EXPECT_FALSE(client.request_seat_team_change(2, 3));
+    EXPECT_FALSE(client.has_game_start_config());
+    EXPECT_EQ(0u, client.local_seat_count());
+    EXPECT_TRUE(client.lobby_players().empty());
+}
+
+TEST(PickerFuncs, default_stable_seat_adapter_requires_both_identity_fields)
+{
+    class SeatClient final : public DefaultSeamPickerLobbyClient
+    {
+    public:
+        using og::ui::IPickerLobbyClient::request_seat_team_change;
+        std::vector<og::sim::LobbyPlayer> players;
+        std::vector<std::pair<std::uint8_t, short>> requests;
+        bool accept = true;
+        std::vector<og::sim::LobbyPlayer> lobby_players() const override
+        {
+            return players;
+        }
+        bool request_seat_team_change(std::uint8_t index, short team) override
+        {
+            requests.emplace_back(index, team);
+            return accept;
+        }
+    } client;
+    og::sim::LobbyPlayer first;
+    first.player_index = 2;
+    first.seat_id = 41u;
+    og::sim::LobbyPlayer second;
+    second.player_index = 3;
+    second.seat_id = 42u;
+    client.players = {first, second};
+
+    // Each half is a real seat, but their mismatched pair is stale.
+    EXPECT_FALSE(client.request_seat_team_change(2, 42u, 1));
+    EXPECT_FALSE(client.request_seat_team_change(99, 42u, 1));
+    EXPECT_FALSE(client.request_seat_team_change(2, 999u, 1));
+    EXPECT_TRUE(client.requests.empty());
+
+    EXPECT_TRUE(client.request_seat_team_change(3, 42u, 1));
+    ASSERT_EQ(1u, client.requests.size());
+    EXPECT_EQ((std::pair<std::uint8_t, short>{3, 1}), client.requests[0]);
+    // The legacy form has no stable token; the implementation owns its
+    // remaining validation and receives the original index and team.
+    EXPECT_TRUE(client.request_seat_team_change(7, og::sim::kInvalidLobbySeatId, 4));
+    ASSERT_EQ(2u, client.requests.size());
+    EXPECT_EQ((std::pair<std::uint8_t, short>{7, 4}), client.requests[1]);
+
+    client.accept = false;
+    EXPECT_FALSE(client.request_seat_team_change(2, 41u, 0));
+    ASSERT_EQ(3u, client.requests.size());
+    EXPECT_EQ((std::pair<std::uint8_t, short>{2, 0}), client.requests[2]);
 }

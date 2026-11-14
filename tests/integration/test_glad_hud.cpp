@@ -6049,9 +6049,7 @@ TEST_F(GladHud, zz_capture_belt_hud)
 TEST_F(GladHud, zz_capture_belt_hud_physical)
 {
     const char* const base = getenv("OG_FX_CAPTURE_DIR");
-    if (base == nullptr)
-        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
-    const std::string dir = std::string(base) + "/belt_hud_physical";
+    const std::string dir = base == nullptr ? "" : std::string(base) + "/belt_hud_physical";
     ScopedAbilitySelect on(true);
     std::array<PixieData, 5> tiles = {
         read_pixie_file("16grass1.png"), read_pixie_file("16grass2.png"),
@@ -6135,8 +6133,15 @@ TEST_F(GladHud, zz_capture_belt_hud_physical)
             shot.shift ? "-shift" : "", shot.box ? "-box" : "", shot.w, shot.h);
         PhysicalFrame frame = scene.present(name.c_str());
         EXPECT_EQ(shot.w, frame.w) << name;
-        write_physical_frame(frame, dir.c_str());
-        EXPECT_TRUE(frame.written) << name;
+        EXPECT_EQ(shot.h, frame.h) << name;
+        for (int seat = 0; seat < shot.seats; ++seat)
+            EXPECT_EQ(3u, belt_cells_for_view(seat).size())
+                << name << ": every seat presents its three ability cells";
+        if (base != nullptr)
+        {
+            write_physical_frame(frame, dir.c_str());
+            EXPECT_TRUE(frame.written) << name;
+        }
         for (int i = 0; i < s->numviews; ++i)
         {
             s->viewob[i]->prefs[PREF_VIEW] = PREF_VIEW_FULL;

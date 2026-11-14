@@ -1,6 +1,6 @@
 ---
 name: openglad-dev-environment
-description: Local development environment for OpenGlad — the nix flake, local-vs-CI configuration divergence, accepted local test failures and standing rulings, git hygiene traps, agent-orchestration traps, and setting up a fresh machine. Use whenever a local test result disagrees with CI, a tool seems missing, a full local ctest run has unexplained reds, worktrees or subagents produce surprising state, or development moves to a new machine.
+description: Local development environment for OpenGlad — the nix flake, local-vs-CI configuration divergence, first-attempt test results and delegated lanes, git hygiene traps, agent-orchestration traps, and setting up a fresh machine. Use whenever a local test result disagrees with CI, a tool seems missing, a full local ctest run has unexplained reds, worktrees or subagents produce surprising state, or development moves to a new machine.
 ---
 
 # OpenGlad dev environment
@@ -9,48 +9,84 @@ AGENTS.md is the base contract: everything builds inside `nix develop`,
 tools come from `flake.nix` (add missing ones there — never hand-roll a
 utility a package provides, never apt/snap-install, never source
 ~/emsdk), presets only, no in-source configure. This file covers what
-AGENTS.md doesn't: divergence, accepted failures, and traps.
+AGENTS.md doesn't: configuration differences, fixture isolation, and traps.
 
-## Local green is not CI green (five known divergences)
+## Matching the native CI configuration
 
-1. **VALIDATE_SERIALIZATION=ON** is set in CI's test/drift/asan/tsan
-   lanes and the ci-asan cache, OFF in a default local ci-test build. It
-   round-trips every typed in-process message requiring equality —
-   asymmetric (de)serialization passes locally, fails CI
-   deterministically. Reproduce with the flag or the ci-asan preset.
-2. **The TSan lane compiles with clang -Werror** (incl.
-   tautological-compare); ci-test is GCC and misses that class. Sweep
-   new wire/guard code with clang syntax-only.
-3. **The Campaign Regeneration Drift job builds all standalone tools
-   fresh** (the mapgens + grid_migrate compile headless TUs directly);
-   local ctest never links them. After moving/splitting any
-   headless-shared TU, build the tools locally.
-4. **CI coverage accumulates .gcda across `--repeat until-pass:3`**, so
-   local single-run numbers undercount CI. Judge coverage work by local
-   before/after DELTA, never absolutes (see openglad-test-integrity).
-5. **The nix cc-wrapper injects -O2 into every local compile.** Its
-   hardening set (`NIX_HARDENING_ENABLE=... fortify3 ...`) prepends the
-   optimization flag; `NIX_DEBUG=1 g++ ...` prints
+The Linux native lanes produce one authoritative Nix bundle for the exact
+checkout revision, then run consumers against that bundle. ASan and coverage
+compile through a cross-commit `sccache` seed. A first job
+(`scripts/ci/compile_fanout.py`) compares the commit with the one the newest
+seed was saved for: when few objects can have changed, the producer compiles
+the difference itself (`nix_bundle.py build --unwarmed`); otherwise eight
+cache-warming workers divide the generated compile-command inventory first.
+The workers execute the exact assigned compiler commands through CMake's
+captured launcher (not Ninja object edges, which carry broad target-order
+dependencies) and transport only immutable `sccache` result entries. Mutable
+preprocessor indexes remain local. After a fan-out the producer verifies the
+workers' complete disjoint plan, performs the ordinary full configure/build,
+and refuses any compiler-cache miss,
+including every archive, link and build gate, against the merged cache. The
+cache seed is an explicit Nix input, never mutable state read through the
+sandbox. Each CI lane enters a shell of its own (`.#ci-coverage`,
+`.#ci-sanitizer`, `.#ci-canary`, `.#ci-wasm`, `.#ci-verify`); use the lane's
+shell, or the general
+`nix develop .#ci-native`, to restore and run a downloaded bundle:
+`python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"`.
+Restore realises the dependencies the public Nix cache serves, imports the
+rest of the closure and verifies the product NAR before
+moving its build tree into place, without importing a second product copy
+into the Nix store. Canary bundles retain objects for incremental rebuilds
+using their existing CMake cache, dependency paths and lane options. Other
+bundles strip objects; rebuild them through the Nix producer, or configure
+a separate fresh build tree in the full shell. The lane shells omit custom
+dependency packages that consumers obtain from the bundle
+closure, so entering a consumer shell does not build those packages again.
 
-       extra flags before to .../gcc-15.2.0/bin/g++:
-         -fPIC
-         -fstack-clash-protection
-         -O2
-         -U_FORTIFY_SOURCE
-         ...
+The coverage lane counts with lock-free counter updates and confines every
+instrumented process to one CPU (`scripts/coverage/README.md`, "The lock
+prefix, and the one CPU that replaces it"). A coverage test that needs two
+CPUs at once cannot have them there: a program that calls an affinity
+function ends with a message naming this rule, and threads that used to run
+beside each other take turns (the demo's worker threads, for one, get less
+done before its single frame ends).
 
-   so inside `nix develop` the ci-asan preset (CMAKE_BUILD_TYPE=Debug,
-   inherited from dev-debug) builds at `-O2 -g` plus sanitizers, while
-   CI's Ubuntu GCC does not. Consequence: a TU
-   that includes `<regex>` fails locally under GCC 15 + -O2 + ASan/UBSan
-   with `bits/std_function.h:407:42: error: ... may be used uninitialized
-   [-Werror=maybe-uninitialized]` — a libstdc++ false positive, not our
-   bug (the same TU without sanitizers compiles clean, and forcing -O0
-   only trades it for glibc's `_FORTIFY_SOURCE requires compiling with
-   optimization`). `<regex>` is therefore banned repo-wide and gated by
-   scripts/check_no_std_regex.sh; write predicates or exact-string
-   oracles instead (tests/unit/test_version.cpp,
-   tests/curses/test_curses_mount_guard.cpp are the shapes).
+Every GitHub-hosted Nix job must install through
+`.github/actions/install-nix`. The local composite action retains the pinned
+upstream installer but puts a retrying curl wrapper in front of both its small
+installer-script download and the official installer's large binary-tarball
+download. Do not bypass it with a direct `cachix/install-nix-action` use: the
+upstream action retries the first request, but the official installer does not
+retry the tarball request that failed in production CI.
+
+Coverage uses GCC; ASan, TSan and fuzzing use pinned Clang. Native CI bundles
+retain file/line diagnostics with `-g1`, packed relocations and compressed
+debug sections. Nix `strictoverflow` hardening is disabled because its wrapping
+arithmetic flags suppress signed-overflow UBSan reports. Producer jobs run the
+bundled `og_sanitizer_diagnostics` fixture on every invocation, including cache
+hits; the checker requires the expected diagnostic and exact source line.
+
+Use the full default `nix develop` shell for a fresh local CMake configure;
+it also provides Emscripten and media tools. Run the mandatory tool lookup in
+that shell before a build task. The native CI shell intentionally omits
+Emscripten. Do not reset an imported bundle's cache with a fresh configure or
+change its compiler/hardening settings.
+
+- `VALIDATE_SERIALIZATION=ON` round-trips typed in-process messages. Match the
+  lane's value when reproducing failures; an unvalidated local run cannot prove
+  the serialization gate.
+- TSan focuses on `og_unit_network`, which owns real WebSocket/relay threads
+  and server/client/lobby handoffs. `og_unit_sim` retains deterministic gameplay.
+- The normal canary lane builds the standalone mapgens and runs campaign drift
+  and the X11 cases. A local unit run does not replace those checks.
+- Native gates run each planned test once. Retrying a failed test is diagnostic
+  only; preserve its first failure and fix it. Coverage measurements use clean
+  profiles and a complete population, never accumulated retry profiles.
+- The default Nix development wrapper can inject optimization through fortify.
+  The `ci-native` shell matches native CI's hardening/compiler settings; do not
+  reuse its configured tree with another compiler or hardening mode. `<regex>`
+  remains banned by `scripts/check_no_std_regex.sh`; use exact-string oracles
+  or predicates instead.
 
 The **x11-display CI job** (#329) runs og_test_display_x11 on SDL's real
 x11 driver under Xvfb; no plain local ctest runs it (the group is built and
@@ -62,37 +98,51 @@ Starting Xvfb by hand, keep `-noreset`: without it the server resets when
 its last client disconnects and every xrandr-added mode is gone before SDL
 connects.
 
-## Accepted local failures and standing rulings
+## Failures and delegated lanes
 
-- `emscripten_build_test` fails on machines without `$EMSDK` set — this
-  is ACCEPTED, and the maintainer has explicitly ordered the build
-  script NOT to be patched around it ("emscripten fuckery, not
-  necessary"; a fix was authored and reverted twice). Exclude it from
-  local full-suite runs (`ctest --preset ci-test -E
-  emscripten_build_test`); CI's wasm lanes are unaffected. It reports as
-  a Timeout because the broken build churns past the cap. Do not
-  reintroduce a script fix; do not report it as a regression.
-- The og_unit_sim websocket loopback test and the injector-heavy SDL
-  suites (menu_ui, picker, view, basecamp) are wall-clock flaky under
-  machine load — check `uptime` before trusting a timeout, adjudicate
-  with CI's own `--repeat until-pass:3 --timeout 420` isolated, and get
-  fast signal from headless og_unit_* first.
-- Standing rulings like the emscripten one are invisible to subagents.
-  Any agent that may run the full suite — fixers and gate-runners above
-  all — gets the ruling IN ITS PROMPT, or it will "fix" the accepted
-  failure (this happened twice in one session). Before pushing a branch
-  containing subagent commits, diff the commit list against known
-  rulings.
+Every failure in a run you own needs a fix or an explicit current user waiver.
+Historical notes about a flaky socket, slow menu or missing EMSDK are not a
+waiver. Native CI records `emscripten_build_test` as delegated to the separately
+required WASM graph; use the generated inventory and its completeness check,
+not an ad hoc exclusion, when reproducing that split.
 
-## cfg clobber hazard
+A loaded machine can expose a bad timeout or injector handshake. Record the
+load and reproduce the failure, then fix its cause. Do not increase deadlines,
+add retries, or declare a passing rerun the gate result. Keep the first log.
 
-A headless test binary run by hand with no campaign mounted can error
-out mid-session and rewrite the TRACKED `cfg/openglad.yaml` via the cwd
-fallback — the next og_test_io run then fails a settings test with a
-bizarre wrong-value diff. After any manually-run failing headless
-binary: `git status cfg/`, restore if dirty. Tests driving full
-text-client sessions must mount a campaign up front
-(`restore_default_campaigns()` + `mount_campaign_package_with_error`).
+## Selecting bounded test groups
+
+Slow GoogleTest binaries have several CTest entries. An anchored base name,
+for example `^og_test_level$`, selects only its first partition. Use a prefix
+such as `^og_test_level($|_part_)` to run that complete group; inspect the CTest
+inventory when selecting several groups.
+
+Campaign calibration cases follow the same rule: the original case name owns
+partition zero, and `_part_*` cases retain the other original rows. A direct
+filter such as `WestlandsCampaignTest.curve_*` runs the complete curve. No
+calibration case skips an ASan run for its execution budget.
+
+## Private native fixtures
+
+CTest group entries use `tests/fixtures/run_isolated.py`. Each process gets
+private installed assets, campaigns, cwd scratch and executable companions;
+its harness also creates a private config/save directory. Missing-file and
+malformed-config tests may change those copies without racing another group.
+Only remove a resource lock or `RUN_SERIAL` after a concurrent run proves its
+reason no longer applies; private files do not remove CPU or network limits.
+
+Use the same launcher for a filtered binary run:
+
+```bash
+nix develop .#ci-native --command python3 tests/fixtures/run_isolated.py . \
+  build/ci-test/og_unit_data --gtest_filter='GparserUnit.*'
+```
+
+A direct binary invocation bypasses that isolation and can still write through
+a cwd fallback. Inspect `git status cfg/` after such a failure; never discard
+someone else's configuration edits. Source-oracle helpers resolve the real
+checkout through their canonical source paths, rather than treating the private
+workspace as a Git repository.
 
 ## Git hygiene traps (each cost real time)
 
@@ -116,8 +166,9 @@ text-client sessions must mount a campaign up front
   the launching HEAD — this recurred across many waves. Always state
   the intended base SHA in the prompt and have the agent verify
   (`git reset --hard <sha>` + a marker file) before working.
-- Fresh worktrees lack the gitignored `temp/scen/*.fss` parity fixtures
-  (copy from the main tree) and inherit no built assets.
+- Fresh worktrees inherit no built assets. CTest creates scen99 through its
+  fixture setup; direct runs use `tests/fixtures/scenario99.py setup "$PWD"`.
+  Do not copy an unknown fixture from another checkout.
 - High concurrent agent counts trip server-side rate limits (~9
   concurrent on a shared machine); run waves of ~3 with a barrier.
   Agents killed mid-edit leave partial trees — `git restore` and rerun
@@ -179,18 +230,10 @@ the example. Re-run them on a new box; never carry the numbers over.
   a 500 MB probe and re-read `df /` and `df <repo>`. Today's probe, inside
   the symlinked lane: LV available 3323193264 → 3322680052 KB (−513212),
   overlay available unmoved (27688392 → 27689020, noise).
-- Run og_unit_*/og_test_* binaries from the REPO ROOT: ctest gives them
-  `WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}` (cmake/OpenGladTests.cmake), so
-  they resolve assets relative to it. `cd build/ci-test && ./og_unit_data`
-  fails 8 tests (six ExampleClassPack.*, plus FamilyRegistryGolden and
-  CompanyClock) that pass from the root (`./build/ci-test/og_unit_data`
-  → 534/534) — phantom reds that look like a real regression. The
-  exceptions are the three standalone lifecycle tests
-  (og_test_sdl_video_lifecycle,
-  og_test_sdl_renderer_fallback, og_test_runtime_bootstrap_lifecycle),
-  which ctest runs on `${CMAKE_BINARY_DIR}`, and og_test_curses, which
-  finds its sources through the compile definition
-  OG_CURSES_TESTS_SOURCE_DIR.
+- Run CTest from the repo root so the selected preset resolves correctly.
+  Group entries arrange their own private runtime cwd through the launcher
+  above. Standalone lifecycle tests and the curses harness retain their own
+  CTest working directories; use their registered entries to reproduce them.
 - Keep-going is ninja's flag and belongs after `--`:
   `cmake --build --preset ci-test -j3 -- -k 0`. Spelled before the `--`,
   cmake answers `Unknown argument -k` and builds nothing; left out
@@ -211,16 +254,15 @@ the example. Re-run them on a new box; never carry the numbers over.
   ffmpeg, imagemagick). The shell also carries `sdl2-compat` and
   `SDL2_mixer` (dev outputs) for the parity companion's build script
   only; the game itself finds and links SDL3.
-- **gcovr is in the nix dev shell**, so local coverage runs need no separate
-  install. CI's Ubuntu runner still installs gcovr with pip before configuring
-  the coverage preset.
+- gcovr is in the Nix environments used by the coverage lane and local
+  measurements; no separate pip installation is needed.
 - The old game (branch `parity-companion`, the source of every parity
   golden): to rebuild it and reproduce every golden, follow
   `tests/parity/golden/DRIFT_LEDGER.md`, "Recapturing every golden from the
   old game". For a recapture the worktree is at the ledger's pin, not the
   branch tip; the build traps are in openglad-parity, "The old game".
-- `temp/scen/*.fss` fixtures regenerate via a full ctest run
-  (og_test_level writes them).
+- Filtered parity CTest runs include `scenario99_setup` and cleanup
+  automatically; they do not require `og_test_level`.
 - Relay/Pages deploys read credentials from the gitignored `./env`
   (never printed — see AGENTS.md Secrets).
 - Playwright browser installs may need a platform override on very new

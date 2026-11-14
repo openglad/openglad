@@ -9,10 +9,12 @@
 #include <ixwebsocket/IXWebSocket.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <format>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -687,6 +689,194 @@ TEST(NetTransportWebSocketServer,
     EXPECT_EQ(4u, snapshot_hash_checks);
 }
 
+TEST(IXWebSocketMessageCallback,
+     an_empty_callback_ignores_dispatch_and_the_socket_remains_usable)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    ix::WebSocket socket;
+    socket.disableAutomaticReconnection();
+    socket.setUrl(std::format("ws://127.0.0.1:{}", port));
+    EXPECT_FALSE(socket.isOnMessageCallbackRegistered());
+    socket.start();
+
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+    const std::uint8_t payload = 0x5au;
+    transport.send(peers.front(), &payload, 1u);
+    ASSERT_TRUE(socket.sendBinary("reply").success);
+    const std::vector<og::sim::ReceivedMessage> reply =
+        poll_until_messages(transport, 1u);
+    ASSERT_EQ(1u, reply.size());
+    EXPECT_EQ(peers.front(), reply.front().peer_id);
+    EXPECT_EQ((std::vector<std::uint8_t>{'r', 'e', 'p', 'l', 'y'}),
+              reply.front().data);
+    socket.stop();
+    ASSERT_TRUE(poll_until_peer_count(transport, 0u));
+}
+
+TEST(IXWebSocketMessageCallback,
+     dispatch_snapshots_share_mutable_callback_state)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    ix::WebSocket socket;
+    socket.disableAutomaticReconnection();
+    socket.setUrl(std::format("ws://127.0.0.1:{}", port));
+
+    std::mutex mutex;
+    std::condition_variable condition;
+    std::vector<int> observed_counts;
+    socket.setOnMessageCallback(
+        [&, dispatch_count = 0](const ix::WebSocketMessagePtr& message) mutable {
+            if (!message ||
+                (message->type != ix::WebSocketMessageType::Open &&
+                 message->type != ix::WebSocketMessageType::Message))
+            {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(mutex);
+            observed_counts.push_back(++dispatch_count);
+            condition.notify_all();
+        });
+    socket.start();
+
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+    const std::array<std::uint8_t, 2> payloads = {0x31u, 0x32u};
+    transport.send(peers.front(), &payloads[0], 1u);
+    transport.send(peers.front(), &payloads[1], 1u);
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(condition.wait_for(lock, 5s, [&] {
+            return observed_counts.size() == 3u;
+        }));
+        EXPECT_EQ((std::vector<int>{1, 2, 3}), observed_counts);
+    }
+    socket.stop();
+}
+
+TEST(IXWebSocketMessageCallback,
+     replacement_completes_while_the_prior_dispatch_retains_its_target)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    ix::WebSocket socket;
+    socket.disableAutomaticReconnection();
+    socket.setUrl(std::format("ws://127.0.0.1:{}", port));
+
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool entered = false;
+    bool release = false;
+    auto lifetime = std::make_shared<int>(17);
+    std::weak_ptr<int> observed_lifetime = lifetime;
+    socket.setOnMessageCallback(
+        [&, lifetime](const ix::WebSocketMessagePtr& message) {
+            (void)lifetime;
+            if (!message || message->type != ix::WebSocketMessageType::Message)
+                return;
+            std::unique_lock<std::mutex> lock(mutex);
+            entered = true;
+            condition.notify_all();
+            condition.wait(lock, [&] { return release; });
+        });
+    lifetime.reset();
+    socket.start();
+
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+    const std::uint8_t payload = 0x71u;
+    transport.send(peers.front(), &payload, 1u);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(condition.wait_for(lock, 5s, [&] { return entered; }));
+    }
+
+    std::future<void> replacement = std::async(std::launch::async, [&] {
+        socket.setOnMessageCallback(
+            [](const ix::WebSocketMessagePtr&) {});
+    });
+    const std::future_status replacement_status = replacement.wait_for(2s);
+    EXPECT_EQ(std::future_status::ready, replacement_status)
+        << "callback dispatch must not hold the registration mutex";
+    EXPECT_FALSE(observed_lifetime.expired())
+        << "the in-flight dispatch must retain the callback it copied";
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release = true;
+    }
+    condition.notify_all();
+    replacement.get();
+    EXPECT_TRUE(wait_until([&] { return observed_lifetime.expired(); }))
+        << "the replaced callback must be released after dispatch returns";
+    socket.stop();
+}
+
+TEST(IXWebSocketMessageCallback,
+     registration_and_registration_queries_are_thread_safe)
+{
+    ix::WebSocket socket;
+    constexpr int kRounds = 20'000;
+    std::atomic<bool> start = false;
+    std::atomic<int> writes = 0;
+    std::atomic<int> reads = 0;
+
+    std::thread writer([&] {
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        for (int round = 0; round < kRounds; ++round)
+        {
+            if ((round & 1) == 0)
+                socket.setOnMessageCallback(
+                    [](const ix::WebSocketMessagePtr&) {});
+            else
+                socket.setOnMessageCallback({});
+            writes.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+    std::thread reader([&] {
+        while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        for (int round = 0; round < kRounds; ++round)
+        {
+            (void)socket.isOnMessageCallbackRegistered();
+            reads.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    start.store(true, std::memory_order_release);
+    writer.join();
+    reader.join();
+    EXPECT_EQ(kRounds, writes.load(std::memory_order_relaxed));
+    EXPECT_EQ(kRounds, reads.load(std::memory_order_relaxed));
+
+    socket.setOnMessageCallback([](const ix::WebSocketMessagePtr&) {});
+    EXPECT_TRUE(socket.isOnMessageCallbackRegistered());
+    socket.setOnMessageCallback({});
+    EXPECT_FALSE(socket.isOnMessageCallbackRegistered());
+}
+
 TEST(NetTransportWebSocketServer,
      destruction_returns_while_a_client_is_still_connected)
 {
@@ -708,12 +898,12 @@ TEST(NetTransportWebSocketServer,
 
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
-        const int port = ix::getFreePort();
         og::sim::WebSocketServerTransport::Options options;
         options.host = "127.0.0.1";
-        auto transport =
-            std::make_unique<og::sim::WebSocketServerTransport>(port, options);
-        transport->accept_connections();
+        og::test::ListeningWebSocketServer listening =
+            og::test::listen_websocket_server_on_available_port(options);
+        const int port = listening.port;
+        auto transport = std::move(listening.transport);
 
         const std::string url = std::format("ws://127.0.0.1:{}", port);
         std::vector<std::unique_ptr<WebSocketClientProbe>> probes;

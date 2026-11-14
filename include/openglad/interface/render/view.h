@@ -329,14 +329,12 @@ class viewscreen
 		const void*     glide_world_key_       = nullptr;  // &GameWorld identity
 		std::uint32_t   glide_world_tick_      = 0;   // world tick monotonicity check
 
-		// Glide introspection (unconditional, for tests and instrumentation).
-		[[nodiscard]] Sint32 floor_glide_frames_left() const { return glide_frames_left_; }
-		[[nodiscard]] float  floor_glide_camera_z()   const
-		{
-			return glide_frames_left_ > 0 ? glide_camera_z_
-			                              : static_cast<float>(current_floor_);
-		}
-		[[nodiscard]] Sint32 floor_glide_cause()      const { return static_cast<Sint32>(glide_cause_); }
+#ifdef TESTING
+		// Test observers for the render-only floor glide.
+		[[nodiscard]] Sint32 floor_glide_frames_left() const;
+		[[nodiscard]] float floor_glide_camera_z() const;
+		[[nodiscard]] Sint32 floor_glide_cause() const;
+#endif
 
 	private:
 		// make_camera's constructor, tag-dispatched so the seat-flavored

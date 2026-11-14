@@ -30,6 +30,8 @@
             hash = "sha256-2QWIpLVIs2vGuMEhewDyihYdDQBz7SsOtfZ6pE67j2Q=";
           };
 
+          patches = [ ./cmake/patches/ixwebsocket-safety.patch ];
+
           nativeBuildInputs = with pkgs; [
             cmake
             ninja
@@ -95,6 +97,19 @@
           };
         };
 
+      # Lua is compiled as C++ by the project, never replaced by a system VM.
+      # Supplying the pinned source keeps every Nix build network-independent.
+      mkLuaSource = pkgs: pkgs.fetchFromGitHub {
+        owner = "lua";
+        repo = "lua";
+        rev = "v5.4.8";
+        hash = "sha256-1K/cjW5VO1K9YthvAzYYbv6HYgu1Ph1w/tcPoIrsmH8=";
+      };
+
+      mkNativeCI = pkgs: import ./nix/native-ci.nix {
+        inherit pkgs self mkIXWebSocket mkLodePNG mkLuaSource;
+      };
+
       mkOpenGlad =
         pkgs:
         let
@@ -133,6 +148,8 @@
           ];
 
           cmakeFlags = [
+            "-DFETCHCONTENT_SOURCE_DIR_LUA=${mkLuaSource pkgs}"
+            "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
             "-DBUILD_EDITOR=ON"
             "-DBUILD_TESTING=OFF"
             "-DOPENGLAD_INSTALL_ASSETS=ON"
@@ -144,10 +161,6 @@
             "-DOPENGLAD_COMMIT_COUNT=${toString (self.revCount or 0)}"
             "-DOPENGLAD_GIT_HASH=${if self ? rev then builtins.substring 0 8 self.rev else "nogit"}"
           ];
-
-          postPatch = ''
-            patchShebangs scripts
-          '';
 
           postInstall = ''
             asset_dir="$out/share/openglad"
@@ -200,8 +213,11 @@
           lodepngHead = mkLodePNG pkgs;
         in
         pkgs.mkShell {
+          # Nix wrapping arithmetic masks signed-overflow UBSan diagnostics.
+          hardeningDisable = [ "strictoverflow" ];
           packages = with pkgs; [
             actionlint
+            shellcheck
             sdl3
             # Dev shell only: scripts/parity/build_parity_dump_master.sh in the
             # SDL2-era parity companion checks `pkg-config --exists sdl2
@@ -210,7 +226,11 @@
             SDL2_mixer
             bash
             binutils
+            # Opt-in compiler cache; CI's web build reads and writes it
+            # (.github/workflows/wasm-e2e.yml).
+            ccache
             clang
+            llvmPackages.llvm
             cmake
             coreutils
             findutils
@@ -243,6 +263,7 @@
             # Local coverage runs use the same gcovr report input as CI.
             gcovr
             zlib
+            zstd
             # Web target: emcmake/emcc for the web-emscripten preset, so the
             # wasm build is reachable from the dev shell instead of needing a
             # separately installed emsdk.
@@ -294,6 +315,32 @@
             echo "  LuaLS:  python3 scripts/check_luals.py   (enforced: gates coverage_report)"
           '';
         };
+
+      mkWebShell =
+        pkgs: includeChromium:
+        pkgs.mkShellNoCC {
+          packages =
+            (with pkgs; [
+              bash
+              coreutils
+              gawk
+              git
+              gnused
+              nodejs
+              python3
+            ])
+            ++ pkgs.lib.optionals includeChromium [
+              pkgs.chromium
+              # Headless Chromium still resolves DOM/input glyphs through
+              # fontconfig. Without an installed font it can render blank
+              # text and abort in SkFontMgr_FontConfigInterface.
+              pkgs.dejavu_fonts
+            ];
+
+          shellHook = pkgs.lib.optionalString includeChromium ''
+            export OG_CHROMIUM_PATH="''${OG_CHROMIUM_PATH:-${pkgs.chromium}/bin/chromium}"
+          '';
+        };
     in
     {
       packages = forAllSystems (
@@ -306,6 +353,7 @@
           ixwebsocket = mkIXWebSocket pkgs;
           lodepng = mkLodePNG pkgs;
           openglad = mkOpenGlad pkgs;
+          inherit (mkNativeCI pkgs) ci-coverage ci-asan ci-tsan ci-canary ci-fuzz;
         }
       );
 
@@ -326,6 +374,16 @@
         in
         {
           default = mkDevShell pkgs;
+          ci-native = (mkNativeCI pkgs).nativeShell;
+          ci-coverage = (mkNativeCI pkgs).coverageShell;
+          ci-sanitizer = (mkNativeCI pkgs).sanitizerShell;
+          ci-tsan = (mkNativeCI pkgs).sanitizerShell;
+          ci-fuzz = (mkNativeCI pkgs).sanitizerShell;
+          ci-canary = (mkNativeCI pkgs).canaryShell;
+          ci-verify = (mkNativeCI pkgs).verifyShell;
+          ci-wasm = (mkNativeCI pkgs).wasmShell;
+          ci-web = mkWebShell pkgs false;
+          ci-browser = mkWebShell pkgs true;
         }
       );
     };

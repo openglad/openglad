@@ -656,3 +656,36 @@ TEST(PickerStateMachine, picker_state_round10_continue_game_to_quit_transition)
     ASSERT_EQ(1, client.run_game_calls) << "continue game should execute one game run";
     ASSERT_EQ(1, client.show_main_menu_calls) << "screen_after_game=Quit should exit picker without re-entering main menu";
 }
+
+TEST(PickerStateMachine, minimal_client_defaults_to_local_play_without_networking)
+{
+    class MinimalClient final : public og::ui::IPickerClient
+    {
+    public:
+        int callbacks = 0;
+        std::string show_campaign_select() override { ++callbacks; return "campaign"; }
+        void show_options() override { ++callbacks; }
+        void show_help() override { ++callbacks; }
+        void run_game() override { ++callbacks; }
+        bool load_game() override { ++callbacks; return true; }
+        bool save_game() override { ++callbacks; return true; }
+    } client;
+
+    // Mandatory callbacks are observable; optional defaults must not dispatch
+    // them as a side effect of declining an unsupported operation.
+    client.run_game();
+    ASSERT_EQ(1, client.callbacks);
+    client.callbacks = 0;
+    EXPECT_TRUE(client.prepare_new_game());
+    EXPECT_FALSE(client.configure_networking());
+    EXPECT_FALSE(client.host_game());
+    EXPECT_FALSE(client.join_game());
+    EXPECT_EQ(nullptr, client.present_menu(og::ui::PickerMenuId::Main));
+    EXPECT_EQ(og::ui::MainMenuAction::Quit, client.show_main_menu());
+    EXPECT_EQ(og::ui::TeamBuildAction::BackToMainMenu, client.show_team_build());
+    EXPECT_EQ(og::ui::PickerScreen::MainMenu, client.screen_after_game());
+    const og::ui::PickerMenuItem item{
+        "ignored", "Ignored", og::ui::PickerMenuCommand::LoadGame, 0};
+    client.handle_menu_item(og::ui::PickerMenuId::Main, item);
+    EXPECT_EQ(0, client.callbacks);
+}

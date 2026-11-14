@@ -184,35 +184,7 @@ void picker_request_start_game()
 }
 
 #ifdef TESTING
-void picker_testing_mark_game_start()
-{
-    g_test_game_epoch.fetch_add(1, std::memory_order_release);
-    g_test_game_frame_ticks.store(0, std::memory_order_release);
-    g_test_in_game.store(true, std::memory_order_release);
-}
-
-void picker_testing_mark_frame_advance()
-{
-    g_test_game_frame_ticks.fetch_add(1, std::memory_order_release);
-    std::function<void()> observer;
-    {
-        std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
-        observer.swap(g_test_frame_observer);
-    }
-    if (observer)
-        observer();
-}
-
-void picker_testing_observe_next_game_frame(std::function<void()> observer)
-{
-    std::lock_guard<std::mutex> lock(g_test_frame_observer_mutex);
-    g_test_frame_observer = std::move(observer);
-}
-
-void picker_testing_mark_game_end()
-{
-    g_test_in_game.store(false, std::memory_order_release);
-}
+#include "../../../tests/coverage_internal/picker_frame_observers.inc"
 #endif
 
 // allowable_guys moved to og::ui::kAllowableGuys in picker_common.h
@@ -509,6 +481,14 @@ EM_JS(void, publish_relay_room_snapshot_js,
         roomCount: room_count,
         firstRoomCode: UTF8ToString(first_code),
     };
+});
+
+// Exact browser diagnostic for the ROOM CODE value represented by the current
+// networking-menu button snapshot. Canvas screenshots still prove the field is
+// painted; this seam lets browser tests distinguish its value from transient
+// focus/highlight pixels introduced by the compositor.
+EM_JS(void, publish_networking_room_value_js, (const char* value), {
+    window.__opengladNetworkingRoomValue = UTF8ToString(value);
 });
 #endif
 
@@ -1063,6 +1043,10 @@ public:
                         ? std::string(kRoomCodePlaceholder)
                         : networking_settings_.room_code;
             }
+#ifdef __EMSCRIPTEN__
+            publish_networking_room_value_js(
+                buttons[kNetworkingMenuRoomValueIndex].label.c_str());
+#endif
 
             const int room_count = visible_room_count();
             const int list_rows = session
@@ -3047,28 +3031,7 @@ void render_family_abilities(text& mytext, const guy* g,
 } // namespace
 
 #ifdef TESTING
-namespace {
-// The family the open DETAILS page shows, -1 while none is open (an
-// injector reads it on the menu thread).
-int g_detail_menu_testing_family = -1;
-int g_detail_menu_testing_page = -1;
-int g_detail_menu_testing_pages = -1;
-}  // namespace
-
-int detail_menu_testing_family()
-{
-    return g_detail_menu_testing_family;
-}
-
-int detail_menu_testing_page()
-{
-    return g_detail_menu_testing_page;
-}
-
-int detail_menu_testing_pages()
-{
-    return g_detail_menu_testing_pages;
-}
+#include "../../../tests/coverage_internal/picker_detail_observers.inc"
 #endif
 
 #ifdef TESTING
@@ -3431,7 +3394,8 @@ static std::string pick_spritesheet()
 
     while (true) {
         Sint32 ret = 0;
-        if (leftmouse(back_btn)) {
+        const Sint32 click = leftmouse(back_btn);
+        if (click == 1) {
             if (og::runtime::current_session->localbuttons_->leftclick() & MENU_EXIT)
                 break;
         }
@@ -3458,7 +3422,10 @@ static std::string pick_spritesheet()
                   static_cast<int>(scroll_delta), scroll_top);
 
         MouseState& ms = query_mouse();
-        if (ms.left) {
+        // leftmouse() owns the collapsed-click queue. Reuse the click it
+        // observed even when no ordinary button was under the pointer, or a
+        // fast list/trough tap is consumed by the BACK probe and disappears.
+        if (click == 1) {
             int mx = static_cast<int>(ms.x);
             int my = static_cast<int>(ms.y);
 

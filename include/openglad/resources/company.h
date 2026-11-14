@@ -47,7 +47,9 @@ std::int64_t company_clock_now_s();
 
 // Installs (or, with std::nullopt, removes) a fixed wall-clock value so tests
 // can pin `last_played_unix_s` deterministically.
+#ifdef TESTING
 void set_company_clock_for_tests(std::optional<std::int64_t> fixed_now_s);
+#endif
 
 // ---------------------------------------------------------------------------
 // Active-company indirection (§3.4)

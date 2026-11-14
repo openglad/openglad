@@ -467,25 +467,21 @@ bool injector_open_lineup()
     return true;
 }
 
-// SCENARIO -> Base Camp -> main menu -> quit (every flow's unwind).
-void injector_unwind_from_scenario()
+// LINEUP, SCENARIO and Base Camp all publish a BACK with the same id. Keep
+// taking that door until the one-visit picker returns; if the main menu is
+// reached between visits, CONTINUE is the forward door back to Base Camp.
+// Watching the main thread's flag, rather than a clock, is what makes a lost
+// final BACK recoverable.
+constexpr EscapeDoor kLineupEscapeDoors[] = {
+    {"back", "back"},
+    {"continue_game", "continue_game"},
+};
+
+int escape_lineup_to_main_thread(std::atomic<bool>& menu_returned, int leg,
+                                  const char* why)
 {
-    if (wait_for_interactable_at("back", 30, 170, 5000)) {
-        SDL_Delay(300);
-        interact("back");
-    }
-    if (wait_for_team_menu(10000)) {
-        SDL_Delay(300);
-        interact("back");
-    }
-    // A one-visit picker exits as soon as BACK would reopen the main menu, so
-    // there is no surface to quit and waiting for one only burns the harness
-    // deadline. Unlimited flows still close the real main menu explicitly.
-    if (g_picker_max_mainmenu_calls == 0 &&
-        wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        interact("quit");
-    }
+    return escape_to_the_main_thread(menu_returned, leg, why,
+                                     kLineupEscapeDoors);
 }
 
 // create_team_menu publishes BACK and keeps it published until it returns, so
@@ -642,6 +638,7 @@ void seed_session_save_for_net(const std::string& campaign, short scen_num)
 
 struct LineupFillFlowState
 {
+    std::atomic<bool> menu_returned{false};
     bool finished = false;
     bool door_seen = false;
     bool score_cell_seen = false;
@@ -657,6 +654,12 @@ struct LineupFillFlowState
     bool troops_line_after = true;
     std::string red_line_after;
     int captures = 0;
+};
+
+constexpr EscapeDoor kLineupFillEscapeDoors[] = {
+    {"back", "back"},
+    {"go", "back"},
+    {"continue_game", "continue_game"},
 };
 
 // Walk a knob through consecutive labels, one click per step (each step
@@ -734,9 +737,13 @@ int lineup_fill_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupFillFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->menu_returned, leg, why,
+                                         kLineupFillEscapeDoors);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "Base Camp -> SCENARIO did not publish LINEUP");
     }
     state->door_seen = true;
     // The knob row is EMPTY since SCORE retired into the SETUP wizard's
@@ -854,9 +861,8 @@ int lineup_fill_flow_injector(void* data)
             SDL_Delay(300);
         }
     }
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -875,17 +881,28 @@ TEST(LineupUi, fill_wheel_map_units_box_and_staged_labels_end_to_end)
                               {{"Alpha", 3, true, 1}, {"Beta", 2, true, 1}});
 
     LineupFillFlowState state;
+    // Prove this flow's binding to the shared escape tail: the first final
+    // escape press evaporates exactly like the ASan failure's last BACK did.
+    g_escape_tail_drops.store(1);
     SDL_Thread* thread = SDL_CreateThread(lineup_fill_flow_injector,
                                           "lineup_fill", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_EQ(0, remaining_escape_drops)
+        << "the bound escape tail must consume and retry the planted drop";
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.door_seen) << "SCENARIO should carry the LINEUP door";
     EXPECT_TRUE(state.score_cell_seen)
@@ -951,6 +968,7 @@ namespace {
 struct LineupSplitFlowState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     bool splits_visible = false;
     int captures = 0;
@@ -960,9 +978,12 @@ int lineup_split_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupSplitFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
     SDL_Delay(300);
     interact("lineup");
@@ -985,9 +1006,8 @@ int lineup_split_flow_injector(void* data)
         }
         interact("back");
     }
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -1015,10 +1035,15 @@ TEST(LineupUi, split_fair_two_seats_six_fighters_snake_draft)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened);
@@ -1057,6 +1082,7 @@ namespace {
 struct LineupNetFlowState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     bool knobs_visible = false;
     bool boxes_visible = false;
@@ -1068,6 +1094,9 @@ int lineup_net_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupNetFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (wait_for_team_menu()) {
         SDL_Delay(1000);
         interact("scenario");
@@ -1091,13 +1120,9 @@ int lineup_net_flow_injector(void* data)
             SDL_Delay(300);
             interact("back");  // SCENARIO -> Base Camp
         }
-        if (wait_for_team_menu(5000)) {
-            SDL_Delay(300);
-            interact("back");
-        }
     }
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 void run_lineup_net_flow(bool host_view, const char* capture_name,
@@ -1132,9 +1157,14 @@ void run_lineup_net_flow(bool host_view, const char* capture_name,
     ASSERT_NE(nullptr, thread);
     picker_load_menu_backdrops();
     create_team_menu(0);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     restore_gladiator_mount();
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
 }
 
 } // namespace
@@ -1379,6 +1409,7 @@ namespace {
 struct LineupClassicFlowState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     bool knobs_visible = false;
     bool fill_cycled = false;
@@ -1392,9 +1423,12 @@ int lineup_classic_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupClassicFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
     SDL_Delay(300);
     interact("lineup");
@@ -1426,9 +1460,8 @@ int lineup_classic_flow_injector(void* data)
         SDL_Delay(200);
         interact("back");
     }
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -1447,10 +1480,15 @@ TEST(LineupUi, classic_campaign_knobs_are_live)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened);
@@ -1550,6 +1588,7 @@ namespace {
 struct LineupClassicViewerState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool viewer_opened = false;
     bool company_line_seen = false;
     bool troops_line_seen = false;
@@ -1570,9 +1609,12 @@ int lineup_classic_viewer_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupClassicViewerState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
     SDL_Delay(300);
 
@@ -1594,9 +1636,8 @@ int lineup_classic_viewer_injector(void* data)
     state->page_opened = click_and_wait_for_interactable_at(
         "lineup", "back", 8, 176, 10000);
     if (!state->page_opened) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(2, "the LINEUP page never published");
     }
     SDL_Delay(750);
     // E1: the band rests on NONE, so STRONG is three stops along.
@@ -1665,9 +1706,8 @@ int lineup_classic_viewer_injector(void* data)
         }
     }
 
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -1686,10 +1726,15 @@ TEST(LineupUi, classic_view_level_censuses_the_staged_world)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open";
@@ -1747,6 +1792,7 @@ namespace {
 struct LineupWheelCycleState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     std::string unauthored_rest_label;
     std::string authored_rest_label;
@@ -1771,16 +1817,18 @@ int lineup_wheel_cycle_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupWheelCycleState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (!state->page_opened) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(2, "the LINEUP page never published");
     }
     SDL_Delay(750);
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -1837,9 +1885,8 @@ int lineup_wheel_cycle_injector(void* data)
 
     interact("back");
     SDL_Delay(300);
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -1858,10 +1905,15 @@ TEST(LineupUi, fill_wheel_full_cycle_on_authored_and_unauthored_bands)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_EQ("FILL: NONE", state.unauthored_rest_label)
@@ -1916,6 +1968,7 @@ namespace {
 struct LineupE3FlowState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     std::array<std::string, 4> rest_labels;
     bool viewer_opened_at_rest = false;
@@ -1934,18 +1987,20 @@ int lineup_e3_flow_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupE3FlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
 
     // (a) At rest: read all four faces, then go and read the census.
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (!state->page_opened) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(2, "the LINEUP page never published");
     }
     SDL_Delay(750);
     for (int t = 0; t < 4; ++t) {
@@ -2026,9 +2081,8 @@ int lineup_e3_flow_injector(void* data)
         SDL_Delay(300);
     }
 
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -2048,10 +2102,15 @@ TEST(LineupUi, arena_rest_deals_fair_and_an_explicit_none_still_refuses)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     EXPECT_TRUE(state.finished);
     ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
@@ -2777,17 +2836,22 @@ namespace {
 
 struct LineupBlinkState
 {
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     bool cycled = false;
     bool rebuilt_buttons = true;
+    bool finished = false;
 };
 
 int lineup_no_rebuild_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupBlinkState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup())
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (state->page_opened) {
@@ -2805,8 +2869,8 @@ int lineup_no_rebuild_injector(void* data)
         interact("back");
         SDL_Delay(300);
     }
-    injector_unwind_from_scenario();
-    return 0;
+    state->finished = true;
+    return escape(0, "");
 }
 
 } // namespace
@@ -2819,17 +2883,27 @@ TEST(LineupUi, fill_cycle_never_rebuilds_the_live_buttons)
                               {{"Alpha", 3, true, 1}, {"Beta", 2, true, 1}});
 
     LineupBlinkState state;
+    g_escape_tail_drops.store(1);
     SDL_Thread* thread = SDL_CreateThread(lineup_no_rebuild_injector,
                                           "lineup_blink", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
     restore_gladiator_mount();
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_EQ(0, remaining_escape_drops)
+        << "the bound escape tail must consume and retry the planted drop";
+    EXPECT_TRUE(state.finished);
     EXPECT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_TRUE(state.cycled) << "the FILL knob should have stepped";
     EXPECT_FALSE(state.rebuilt_buttons)
@@ -2880,6 +2954,7 @@ constexpr long long kSolverTolerancePercent = 12;
 struct LineupOutcomeState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     bool elves_brutal = false;
     bool empty_side_fair = false;
@@ -2899,20 +2974,18 @@ int lineup_outcome_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupOutcomeState*>(data);
-    if (!injector_open_lineup()) {
-        state->finished = true;
-        return 0;
-    }
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
+    if (!injector_open_lineup())
+        return escape(1, "the LINEUP door never opened");
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
     // (a) FILL: BRUTAL beside the elves, MAP UNITS left ON — D3's shape.
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
-    if (!state->page_opened) {
-        injector_unwind_from_scenario();
-        state->finished = true;
-        return 0;
-    }
+    if (!state->page_opened)
+        return escape(2, "the LINEUP page never published");
     SDL_Delay(750);
     // E1: the band rests on NONE, so BRUTAL is four stops along.
     state->elves_brutal = click_through_labels(
@@ -2981,26 +3054,22 @@ int lineup_outcome_injector(void* data)
     interact("back");
     SDL_Delay(300);
     if (!wait_for_team_menu(15000)) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(4, "Base Camp never returned before the first launch");
     }
     SDL_Delay(500);
     state->brutal_launched = go_and_census(state->brutal);
     if (!wait_for_team_menu(20000)) {
         state->finished = true;
-        return 0;
+        return escape(5, "Base Camp never returned after the first launch");
     }
     SDL_Delay(500);
 
     // (c) + (d) The restage pin: turn the elves' knob down to WEAK and press
     // GO without reopening the viewer or anything else.
     interact("scenario");
-    if (!wait_for_interactable("lineup", 15000)) {
-        injector_unwind_from_scenario();
-        state->finished = true;
-        return 0;
-    }
+    if (!wait_for_interactable("lineup", 15000))
+        return escape(3, "SCENARIO never reopened after the first launch");
     SDL_Delay(300);
     interact("lineup");
     state->second_page_opened =
@@ -3028,14 +3097,8 @@ int lineup_outcome_injector(void* data)
             static_cast<int>(save.fill[0]), static_cast<int>(save.fill[1]),
             static_cast<int>(save.fill[2]), static_cast<int>(save.fill[3]));
 
-    interact("back");  // team menu -> main menu
-    if (g_picker_max_mainmenu_calls == 0 &&
-        wait_for_interactable("begin_new_game", 10000)) {
-        SDL_Delay(750);
-        interact("quit");
-    }
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -3069,16 +3132,28 @@ TEST(LineupUi, explicit_fill_fields_a_solved_squad_in_the_launched_world)
     }
 
     LineupOutcomeState state;
+    // Prove the outcome flow owns the final transition: reproduce the remote
+    // ASan wedge by swallowing its first exit press, then require the shared
+    // escape tail to observe the still-live menu and press again.
+    g_escape_tail_drops.store(1);
     SDL_Thread* thread = SDL_CreateThread(lineup_outcome_injector,
                                           "lineup_outcome", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_EQ(0, remaining_escape_drops)
+        << "the bound escape tail must consume and retry the planted drop";
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_TRUE(state.elves_brutal) << "FILL: BRUTAL on the elves' band";
@@ -3210,6 +3285,7 @@ constexpr int kArenaSoloFairSquad = 1;
 struct ArenaDefaultsState
 {
     bool finished = false;
+    std::atomic<bool> menu_returned{false};
     bool rest_launched = false;
     LaunchedCensus rest;
     bool page_opened = false;
@@ -3223,6 +3299,9 @@ int arena_defaults_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<ArenaDefaultsState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
 
     // Base Camp, then GO with every knob exactly as the company found it.
     wait_for_interactable("continue_game", 5000);
@@ -3230,30 +3309,28 @@ int arena_defaults_injector(void* data)
     interact("continue_game");
     if (!wait_for_team_menu(15000)) {
         state->finished = true;
-        return 0;
+        return escape(1, "Base Camp never published");
     }
     SDL_Delay(750);
     state->rest_launched = go_and_census(state->rest);
     if (!wait_for_team_menu(20000)) {
         state->finished = true;
-        return 0;
+        return escape(2, "Base Camp never returned after the launch");
     }
     SDL_Delay(500);
 
     // The faces the launch read: SCENARIO -> LINEUP.
     interact("scenario");
     if (!wait_for_interactable("lineup", 15000)) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(3, "SCENARIO never published LINEUP");
     }
     SDL_Delay(300);
     interact("lineup");
     state->page_opened = wait_for_interactable_at("back", 8, 176, 10000);
     if (!state->page_opened) {
-        injector_unwind_from_scenario();
         state->finished = true;
-        return 0;
+        return escape(4, "the LINEUP page never published");
     }
     SDL_Delay(750);
     for (int t = 0; t < 4; ++t) {
@@ -3284,9 +3361,8 @@ int arena_defaults_injector(void* data)
         }
     }
 
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -3305,10 +3381,15 @@ TEST(LineupUi, arena_defaults_field_a_fair_match_in_the_launched_world)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     // The teams the map defines, read off the level itself rather than
     // assumed: scen 500 authors start markers for RED and GREEN only.
     std::uint8_t authored = 0;
@@ -3681,7 +3762,7 @@ namespace {
 
 struct LineupCensusState
 {
-    std::atomic<bool> test_finished{false};
+    std::atomic<bool> menu_returned{false};
     bool page_opened = false;
     std::string own_band;
     std::string opponent_band;
@@ -3693,9 +3774,12 @@ int lineup_census_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<LineupCensusState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_lineup_to_main_thread(state->menu_returned, leg, why);
+    };
     if (!injector_open_lineup()) {
         state->finished = true;
-        return 0;
+        return escape(1, "the LINEUP door never opened");
     }
     interact("lineup");
     state->page_opened = wait_for_interactable("lineup_unite", 10000);
@@ -3713,9 +3797,8 @@ int lineup_census_injector(void* data)
         SDL_Delay(50);
         (void)wait_for_interactable("progress", 10000);
     }
-    injector_unwind_from_scenario();
     state->finished = true;
-    return 0;
+    return escape(0, "");
 }
 
 } // namespace
@@ -3735,10 +3818,15 @@ TEST(LineupUi, strong_on_a_soccer_arena_reads_two_bots_on_the_band)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
     picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
     EXPECT_TRUE(state.finished);
     ASSERT_TRUE(state.page_opened) << "the LINEUP page should open";
     EXPECT_EQ("census 0 1 FIGHTER", state.own_band)

@@ -2565,3 +2565,7 @@ void run_curses_picker(ITerminal& term, IClock& clock,
 }
 
 } // namespace og::curses
+
+#ifdef TESTING
+#include "../../../tests/coverage_internal/curses_picker_observers.inc"
+#endif

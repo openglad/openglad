@@ -761,13 +761,12 @@ TEST(NetTransportWebSocketClient,
 
     for (int cycle = 0; cycle < kCycles; ++cycle)
     {
-        const int port = ix::getFreePort();
-
         og::sim::WebSocketServerTransport::Options server_options;
         server_options.host = "127.0.0.1";
-        auto server = std::make_unique<og::sim::WebSocketServerTransport>(
-            port, server_options);
-        server->accept_connections();
+        og::test::ListeningWebSocketServer listening =
+            og::test::listen_websocket_server_on_available_port(server_options);
+        const int port = listening.port;
+        auto server = std::move(listening.transport);
 
         og::sim::WebSocketClientTransport::Options client_options;
         client_options.remote_peer_id = 9u;

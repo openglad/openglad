@@ -15,13 +15,14 @@
  * These mirror the existing engine net tests (tests/test_network_fixture.h) but
  * route through the ncurses client's own session/lobby construction.
  */
+#include "fake_clock.h"
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_renderer.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 #include <openglad/platform/curses/clock.h>
 
 #include <openglad/core/constants.h>

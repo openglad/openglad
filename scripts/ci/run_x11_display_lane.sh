@@ -64,9 +64,15 @@ expected_mode_count=6
 
 xvfb_pid=""
 wm_pid=""
+test_pid=""
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/og_x11_lane.XXXXXX")
 
 stop_x() {
+    if [ -n "$test_pid" ]; then
+        kill "$test_pid" 2>/dev/null || true
+        wait "$test_pid" 2>/dev/null || true
+        test_pid=""
+    fi
     if [ -n "$wm_pid" ]; then
         kill "$wm_pid" 2>/dev/null || true
         wait "$wm_pid" 2>/dev/null || true
@@ -161,14 +167,38 @@ add_modes() {
     echo "verified: $got video modes"
 }
 
-# openbox maps no window of its own; it announces itself through the EWMH
-# _NET_SUPPORTING_WM_CHECK property on the root window.
+# Openbox announces itself through _NET_SUPPORTING_WM_CHECK on the root, but
+# that property can appear before the manager has finished publishing its
+# check-window identity and supported fullscreen protocol. Wait for the full
+# EWMH handshake: the check window must point to itself, have a name, and the
+# root must advertise the state transition these tests exercise. This is a
+# condition-based readiness barrier, not a timing settle. Run A starts it only
+# after the integration harness reports that SDL's boot window and renderer
+# exist; requiring a managed client proves Openbox adopted that existing
+# window before the tests continue.
 start_wm() {
     openbox > "$work_dir/wm.log" 2>&1 &
     wm_pid=$!
     tries=0
-    while ! xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null |
-            grep -q 'window id #'; do
+    while :; do
+        root_check=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null || true)
+        wm_window=$(printf '%s\n' "$root_check" |
+            awk '/window id #/ { print $NF; exit }')
+        if [ -n "$wm_window" ]; then
+            window_identity=$(xprop -id "$wm_window" \
+                _NET_SUPPORTING_WM_CHECK _NET_WM_NAME 2>/dev/null || true)
+            self_check=$(printf '%s\n' "$window_identity" |
+                awk '/_NET_SUPPORTING_WM_CHECK.*window id #/ { print $NF; exit }')
+            if [ "$self_check" = "$wm_window" ] &&
+                    printf '%s\n' "$window_identity" |
+                        grep -q '^_NET_WM_NAME.*=' &&
+                    xprop -root _NET_SUPPORTED 2>/dev/null |
+                        grep -q '_NET_WM_STATE_FULLSCREEN' &&
+                    xprop -root _NET_CLIENT_LIST 2>/dev/null |
+                        grep -q 'window id #'; then
+                break
+            fi
+        fi
         if ! kill -0 "$wm_pid" 2>/dev/null; then
             wm_pid=""
             env_abort "openbox exited before announcing itself"
@@ -179,7 +209,43 @@ start_wm() {
         fi
         sleep 0.1
     done
-    echo "verified: openbox is the window manager (pid $wm_pid)"
+    echo "verified: openbox completed its EWMH fullscreen handshake (pid $wm_pid)"
+}
+
+run_one_screen_ctest() {
+    window_ready_file="$work_dir/window.ready"
+    wm_ready_file="$work_dir/wm.ready"
+    export OG_X11_WINDOW_READY_FILE="$window_ready_file"
+    export OG_X11_WM_READY_FILE="$wm_ready_file"
+
+    ctest --test-dir "$build_dir" -L x11-one --no-tests=error \
+        --output-on-failure --timeout 420 &
+    test_pid=$!
+    tries=0
+    while [ ! -f "$window_ready_file" ]; do
+        if ! kill -0 "$test_pid" 2>/dev/null; then
+            wait "$test_pid" 2>/dev/null || true
+            test_pid=""
+            env_abort "one-screen test exited before constructing its SDL window"
+        fi
+        tries=$((tries + 1))
+        if [ "$tries" -gt 300 ]; then
+            env_abort "SDL did not construct the one-screen boot window within 30 s"
+        fi
+        sleep 0.1
+    done
+    echo "verified: SDL boot window and renderer are ready before Openbox"
+
+    start_wm
+    : > "$wm_ready_file"
+    if wait "$test_pid"; then
+        test_status=0
+    else
+        test_status=$?
+    fi
+    test_pid=""
+    unset OG_X11_WINDOW_READY_FILE OG_X11_WM_READY_FILE
+    return "$test_status"
 }
 
 run_ctest() {
@@ -187,7 +253,7 @@ run_ctest() {
     # --no-tests=error: a build dir configured without the option (no
     # x11-* entries) must fail, not pass vacuously.
     ctest --test-dir "$build_dir" -L "$label" --no-tests=error \
-        --output-on-failure --repeat until-pass:3 --timeout 420
+        --output-on-failure --timeout 420
 }
 
 status=0
@@ -198,8 +264,7 @@ for topology in $topologies; do
             start_xvfb -screen 0 1920x1080x24
             verify_screen_count 1
             add_modes
-            start_wm
-            run_ctest x11-one || status=1
+            run_one_screen_ctest || status=1
             ;;
         two)
             echo "=== run B: two X screens, no window manager ==="

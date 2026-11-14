@@ -1311,13 +1311,26 @@ TEST_F(WestlandsCampaignTest, livings_and_generators_reachable_from_the_lead_sta
 // designed stand-in crew (4x lvl-5 soldiers + a lvl-3 thief on the authored
 // start markers). Neither side may be extinct at tick 150, and the crew must
 // not be wiped by tick 300.
+//
+// One battle per case. As a single case the five battles ran 148 s under
+// coverage instrumentation and 400 s of the entry's 420 s ceiling on a slow
+// runner (GitHub run 43319946466, 2026-11-12). Each level still plays both
+// seeds with the same crew, ticks and assertions; the original test ID owns
+// the first level.
 // ---------------------------------------------------------------------------
-TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line)
+namespace {
+constexpr int kSmokeLevels[] = {3, 15, 16, 17, 24};
+// A level added here needs its own case below, or it is never played.
+static_assert(std::size(kSmokeLevels) == 5,
+              "register one battle_smokes case per smoke level");
+
+void check_battle_smoke(std::size_t partition)
 {
-    static constexpr int kSmokeLevels[] = {3, 15, 16, 17, 24};
     static constexpr std::uint32_t kSeeds[] = {1337u, 424242u};
 
-    for (const int id : kSmokeLevels)
+    ASSERT_LT(partition, std::size(kSmokeLevels))
+        << "a partition past the table plays no battle and passes vacuously";
+    const int id = kSmokeLevels[partition];
     {
         for (const std::uint32_t seed : kSeeds)
         {
@@ -1386,6 +1399,32 @@ TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line)
             }
         }
     }
+}
+} // namespace
+
+TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line)
+{
+    ASSERT_NO_FATAL_FAILURE(check_battle_smoke(0));
+}
+
+TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line_part_1)
+{
+    ASSERT_NO_FATAL_FAILURE(check_battle_smoke(1));
+}
+
+TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line_part_2)
+{
+    ASSERT_NO_FATAL_FAILURE(check_battle_smoke(2));
+}
+
+TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line_part_3)
+{
+    ASSERT_NO_FATAL_FAILURE(check_battle_smoke(3));
+}
+
+TEST_F(WestlandsCampaignTest, battle_smokes_hold_the_line_part_4)
+{
+    ASSERT_NO_FATAL_FAILURE(check_battle_smoke(4));
 }
 
 // ---------------------------------------------------------------------------

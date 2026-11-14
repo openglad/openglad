@@ -196,7 +196,9 @@ inline bool push_campaign_picker_mouse_event(Uint32 event_type, int x, int y)
 
 // A click on one of the browser's own rects, acknowledged on both edges: the
 // press is proven consumed by the action counter it bumps, and the release is
-// proven gone from the queue before the caller may press again.
+// proven gone from the queue before the caller may press again. A press proven
+// to have produced no action is safe to retry; one that bumped the action
+// counter is never repeated.
 //
 // A press the browser took WITHOUT acting on it is not waited out: the
 // iteration that polls the DOWN decides on it before it can block (see
@@ -205,93 +207,128 @@ inline bool push_campaign_picker_mouse_event(Uint32 event_type, int x, int y)
 // MISSED — with the frame count, the pushed coordinates and the viewport
 // the input layer mapped them through, which is what decides whether a
 // window point lands inside the active canvas at all
-// (window_point_in_active_canvas) — and the browser is aborted.
-inline bool click_campaign_picker_action(int x, int y)
-{
-    const std::uint64_t action_before =
-        campaign_picker_testing_action_count();
-    if (!push_campaign_picker_mouse_event(
-            SDL_EVENT_MOUSE_BUTTON_DOWN, x, y))
-    {
-        campaign_picker_testing_abort();
-        return false;
-    }
+// (window_point_in_active_canvas). A bounded ladder retries only that proven
+// miss and aborts the blocking browser if every attempt misses.
+inline int g_campaign_picker_click_retries = 0;
+// TESTING-only tooth: make the next attempt land outside every browser rect.
+inline int g_campaign_picker_click_drops = 0;
 
-    bool drained = false;
-    bool missed = false;
-    int probes_drained = 0;
-    bool probe_pending = false;
-    std::uint64_t drained_at_frame = 0;
-    std::uint64_t missed_at_frame = 0;
-    const bool waited = wait_for_campaign_picker(
-        "the browser acknowledging the click", [&] {
-            if (campaign_picker_testing_action_count() > action_before)
-                return true;
-            if (!drained)
-            {
-                if (SDL_HasEvent(SDL_EVENT_MOUSE_BUTTON_DOWN))
-                    return false;
-                drained = true;
-                drained_at_frame = campaign_picker_testing_frame_count();
-            }
-            if (probe_pending)
-            {
-                if (SDL_HasEvent(SDL_EVENT_USER))
-                    return false;
-                probe_pending = false;
-                ++probes_drained;
-            }
-            if (probes_drained >= kCampaignPickerMissProbes)
-            {
-                // Read the action AFTER the last probe drained: the poll
-                // that took it comes after the iteration's action decision.
+inline bool click_campaign_picker_action(int x, int y, int attempts = 3)
+{
+    for (int attempt = 0; attempt < attempts; ++attempt)
+    {
+        const bool injected_drop = g_campaign_picker_click_drops > 0;
+        if (injected_drop)
+        {
+            --g_campaign_picker_click_drops;
+            fprintf(stderr,
+                    "  [picker-drive] sending the press outside every "
+                    "browser rect (injected)\n");
+        }
+        const int press_x = injected_drop ? -1 : x;
+        const int press_y = injected_drop ? -1 : y;
+        const std::uint64_t action_before =
+            campaign_picker_testing_action_count();
+        if (!push_campaign_picker_mouse_event(
+                SDL_EVENT_MOUSE_BUTTON_DOWN, press_x, press_y))
+        {
+            campaign_picker_testing_abort();
+            return false;
+        }
+
+        bool drained = false;
+        bool missed = false;
+        int probes_drained = 0;
+        bool probe_pending = false;
+        std::uint64_t drained_at_frame = 0;
+        std::uint64_t missed_at_frame = 0;
+        const bool waited = wait_for_campaign_picker(
+            "the browser acknowledging the click", [&] {
                 if (campaign_picker_testing_action_count() > action_before)
                     return true;
-                missed = true;
-                missed_at_frame = campaign_picker_testing_frame_count();
-                return true;
-            }
-            SDL_Event probe{};
-            probe.type = SDL_EVENT_USER;
-            probe_pending = SDL_PushEvent(&probe);
+                if (!drained)
+                {
+                    if (SDL_HasEvent(SDL_EVENT_MOUSE_BUTTON_DOWN))
+                        return false;
+                    drained = true;
+                    drained_at_frame = campaign_picker_testing_frame_count();
+                }
+                if (probe_pending)
+                {
+                    if (SDL_HasEvent(SDL_EVENT_USER))
+                        return false;
+                    probe_pending = false;
+                    ++probes_drained;
+                }
+                if (probes_drained >= kCampaignPickerMissProbes)
+                {
+                    // Read the action AFTER the last probe drained: the poll
+                    // that took it follows the iteration's action decision.
+                    if (campaign_picker_testing_action_count() > action_before)
+                        return true;
+                    missed = true;
+                    missed_at_frame = campaign_picker_testing_frame_count();
+                    return true;
+                }
+                SDL_Event probe{};
+                probe.type = SDL_EVENT_USER;
+                probe_pending = SDL_PushEvent(&probe);
+                return false;
+            });
+        const bool acknowledged = waited && !missed;
+        if (missed)
+        {
+            const auto* session = og::runtime::current_session;
+            fprintf(stderr,
+                    "  [picker-drive] the click at window (%d,%d) was MISSED: "
+                    "the browser took the press at frame %llu and polled %d "
+                    "probes after it with no action (%llu frames later; window "
+                    "%gx%g, viewport offset (%g,%g) size %gx%g)\n",
+                    press_x, press_y,
+                    static_cast<unsigned long long>(drained_at_frame),
+                    kCampaignPickerMissProbes,
+                    static_cast<unsigned long long>(missed_at_frame -
+                                                    drained_at_frame),
+                    session ? static_cast<double>(session->window_w_) : -1.0,
+                    session ? static_cast<double>(session->window_h_) : -1.0,
+                    session ? static_cast<double>(session->viewport_offset_x_)
+                            : -1.0,
+                    session ? static_cast<double>(session->viewport_offset_y_)
+                            : -1.0,
+                    session ? static_cast<double>(session->viewport_w_) : -1.0,
+                    session ? static_cast<double>(session->viewport_h_) : -1.0);
+        }
+        if (!push_campaign_picker_mouse_event(
+                SDL_EVENT_MOUSE_BUTTON_UP, press_x, press_y))
+        {
+            campaign_picker_testing_abort();
             return false;
-        });
-    const bool acknowledged = waited && !missed;
-    if (missed)
-    {
-        const auto* session = og::runtime::current_session;
-        fprintf(stderr,
-                "  [picker-drive] the click at window (%d,%d) was MISSED: the "
-                "browser took the press at frame %llu and polled %d probes "
-                "after it with no action (%llu frames later; window %gx%g, "
-                "viewport offset (%g,%g) size %gx%g)\n",
-                x, y, static_cast<unsigned long long>(drained_at_frame),
-                kCampaignPickerMissProbes,
-                static_cast<unsigned long long>(missed_at_frame -
-                                                drained_at_frame),
-                session ? static_cast<double>(session->window_w_) : -1.0,
-                session ? static_cast<double>(session->window_h_) : -1.0,
-                session ? static_cast<double>(session->viewport_offset_x_)
-                        : -1.0,
-                session ? static_cast<double>(session->viewport_offset_y_)
-                        : -1.0,
-                session ? static_cast<double>(session->viewport_w_) : -1.0,
-                session ? static_cast<double>(session->viewport_h_) : -1.0);
-        campaign_picker_testing_abort();
-    }
-    if (!push_campaign_picker_mouse_event(
-            SDL_EVENT_MOUSE_BUTTON_UP, x, y))
-    {
+        }
+        if (acknowledged)
+        {
+            return wait_for_campaign_picker_event_consumed(
+                SDL_EVENT_MOUSE_BUTTON_UP);
+        }
+        // A timed-out wait already aborted the browser. Only the explicit
+        // no-action verdict above is retryable.
+        if (!waited)
+            return false;
+        if (!wait_for_campaign_picker_event_consumed(
+                SDL_EVENT_MOUSE_BUTTON_UP) ||
+            !wait_for_campaign_picker_frames(1))
+        {
+            return false;
+        }
+        if (attempt + 1 < attempts)
+        {
+            ++g_campaign_picker_click_retries;
+            continue;
+        }
         campaign_picker_testing_abort();
         return false;
     }
-    // An unacknowledged press has already aborted the browser: there is no
-    // loop left to take the release, and waiting for one would only stack a
-    // second ceiling on the verdict above.
-    if (!acknowledged)
-        return false;
-    return wait_for_campaign_picker_event_consumed(
-        SDL_EVENT_MOUSE_BUTTON_UP);
+    campaign_picker_testing_abort();
+    return false;
 }
 
 // The browser's input hygiene, on both edges. It owns the main thread and

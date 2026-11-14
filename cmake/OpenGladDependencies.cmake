@@ -428,6 +428,28 @@ if(NOT EMSCRIPTEN)
         find_package(ixwebsocket CONFIG QUIET)
         foreach(candidate IN ITEMS ixwebsocket::ixwebsocket ixwebsocket)
             if(NOT OG_IXWEBSOCKET_TARGET AND TARGET ${candidate})
+                include(CMakePushCheckState)
+                cmake_push_check_state(RESET)
+                set(CMAKE_REQUIRED_LIBRARIES ${candidate})
+                unset(OG_IXWEBSOCKET_SAFETY_PATCHED CACHE)
+                check_cxx_source_compiles([=[
+                    #include <ixwebsocket/IXWebSocket.h>
+                    #include <ixwebsocket/IXGetFreePort.h>
+                    #if !defined(IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK) || IXWEBSOCKET_HAS_SYNCHRONIZED_MESSAGE_CALLBACK != 1
+                    #error "IXWebSocket callback synchronization patch is required"
+                    #endif
+                    #if !defined(IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO) || IXWEBSOCKET_GET_FREE_PORT_BINDS_PORT_ZERO != 1
+                    #error "IXWebSocket free-port safety patch is required"
+                    #endif
+                    int main() { return 0; }
+                ]=] OG_IXWEBSOCKET_SAFETY_PATCHED)
+                cmake_pop_check_state()
+                if(NOT OG_IXWEBSOCKET_SAFETY_PATCHED)
+                    message(FATAL_ERROR
+                        "IXWebSocket requires cmake/patches/ixwebsocket-safety.patch. "
+                        "Use the Nix package or set OPENGLAD_USE_PACKAGED_IXWEBSOCKET=OFF "
+                        "to fetch and patch the pinned source.")
+                endif()
                 set(OG_IXWEBSOCKET_TARGET ${candidate})
                 set(OG_IXWEBSOCKET_FROM_PACKAGE ON)
             endif()
@@ -453,6 +475,10 @@ if(NOT EMSCRIPTEN)
             GIT_TAG ${OPENGLAD_IXWEBSOCKET_GIT_TAG}
             GIT_SHALLOW FALSE
             GIT_PROGRESS TRUE
+            PATCH_COMMAND
+                ${CMAKE_COMMAND}
+                -DOPENGLAD_IXWEBSOCKET_SOURCE_DIR=<SOURCE_DIR>
+                -P ${CMAKE_SOURCE_DIR}/cmake/OpenGladPatchIXWebSocket.cmake
         )
         FetchContent_MakeAvailable(ixwebsocket)
         set(OG_IXWEBSOCKET_TARGET ixwebsocket)

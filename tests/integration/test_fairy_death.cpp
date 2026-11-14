@@ -8,6 +8,7 @@
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -47,10 +48,11 @@ constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
 constexpr int kFairyPollMs = 10;
-// §2.5 base camp: BACK sits on the command strip at (8,178,44,18) —
-// click its center.
-constexpr int kTeamMenuBackGameX = 30;
-constexpr int kTeamMenuBackGameY = 187;
+constexpr EscapeDoor kFairyEscapeDoors[] = {
+    {"back", "back"},
+    {"continue_game", "continue_game"},
+    {"begin_new_game", "quit"},
+};
 
 template <typename Predicate>
 bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kFairyPollMs)
@@ -142,6 +144,7 @@ struct FairyState {
     bool saw_generic_defeat = false;
     float original_speed;
     const char* failure_message = nullptr;
+    std::atomic<bool> menu_returned{false};
 };
 
 enum class FairyLifeState {
@@ -213,7 +216,8 @@ static int fail_fairy_run(FairyState* state, const char* message)
     fprintf(stderr, "  [test] ERROR: %s\n", message);
     state->failure_message = message;
     unwind_picker_after_failure(state);
-    return 0;
+    return escape_to_the_main_thread(state->menu_returned, 1, message,
+                                     kFairyEscapeDoors);
 }
 
 static int fairy_injector(void* data)
@@ -454,20 +458,10 @@ static int fairy_injector(void* data)
                                   "expected observed fairy death or generic defeat");
         }
         SDL_Delay(kMenuTransitionMs + kUiSettleMs);
-        // UI-canvas-pinned map — raw viewport math mismaps in non-16:10
-        // windows (see test_interact.h).
-        const auto [back_mapped_x, back_mapped_y] = ui_canvas_to_window(
-            static_cast<float>(kTeamMenuBackGameX),
-            static_cast<float>(kTeamMenuBackGameY));
-        const int back_win_x = static_cast<int>(back_mapped_x);
-        const int back_win_y = static_cast<int>(back_mapped_y);
-        fprintf(stderr,
-                "  [test] clicking back from team menu after auto-defeat\n");
-        inject_click(back_win_x, back_win_y);
-        SDL_Delay(kUiSettleMs);
         set_game_speed(state->original_speed);
         state->finished = true;
-        return 0;
+        return escape_to_the_main_thread(state->menu_returned, 0, "",
+                                         kFairyEscapeDoors);
     }
 }
 
@@ -494,6 +488,7 @@ TEST(FairyDeath, fairy_death) {
                          false,
                          og::runtime::current_session->g_game_speed_factor_,
                          nullptr };
+    g_escape_tail_drops.store(1);
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -502,13 +497,20 @@ TEST(FairyDeath, fairy_death) {
 
     // picker_main blocks — the injector thread drives all navigation
     picker_main(0, nullptr);
+    state.menu_returned.store(true, std::memory_order_release);
 
-    int thread_result;
+    int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    const int remaining_escape_drops = g_escape_tail_drops.exchange(0);
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_EQ(0, thread_result)
+        << "the injector gave up at leg " << thread_result;
+    EXPECT_EQ(0, remaining_escape_drops)
+        << "the fairy flow's escape tail must retry its planted drop";
     ASSERT_TRUE(state.finished)
         << (state.failure_message != nullptr
                 ? state.failure_message

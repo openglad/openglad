@@ -23,6 +23,9 @@
 #include <openglad/platform/curses/curses_network.h>
 
 #include <openglad/platform/curses/clock.h>
+#ifdef TESTING
+#include "../../../tests/curses/fake_clock.h"
+#endif
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/platform/curses/terminal.h>
@@ -587,67 +590,27 @@ public:
                                      local_player_index_, next_level());
     }
 
-    og::sim::GameServer& server() { return *server_; }
-    og::sim::GameClient& client() { return *client_; }
-    GameWorld& server_world_ref() { return server_world(); }
+#ifdef TESTING
+    og::sim::GameServer& server();
+#endif
+#ifdef TESTING
+    og::sim::GameClient& client();
+#endif
+#ifdef TESTING
+    GameWorld& server_world_ref();
+#endif
 
 #ifdef TESTING
     // V5 Option A (host history): the authoritative session save, so tests can
     // pin what the seed carried — the completed set, the campaign decision
     // book, and the transient replay arm (VISIT vs REPLAY intent).
-    const SaveData& testing_server_save() const { return server_save_; }
+    const SaveData& testing_server_save() const;
 
     // Turn the loaded classic level into a CTF map on the authoritative server
     // world: armed ModeState + respawn anchors for teams 0/1. Runs
     // under the server context so the obmap writes land in the server's grid;
     // the host's own mirror gets the (authored, non-replicated) type bit too.
-    bool inject_mode_scenario_for_testing(short requested_respawn_ticks)
-    {
-        GameplayContext* const saved = current_game;
-        current_game = &server_ctx_;
-        GameWorld& world = server_world();
-        world.type |= GameWorld::TYPE_SCRIPTED;
-        // Hand-arm the mode (a mounted pack's on_mode_init would do this on
-        // the first scripted tick) with a name and a scoreboard HUD line so
-        // the mirror renderers have replicated text to show.
-        world.mode.active = true;
-        world.mode.init_attempted = true;
-        std::strncpy(world.mode.name.data(), "CTF", world.mode.name.size() - 1);
-        world.mode.hud[0].team = 0;
-        std::strncpy(world.mode.hud[0].text.data(), "Caps 0:0",
-                     world.mode.hud[0].text.size() - 1);
-        if (requested_respawn_ticks > 0) {
-            world.ctf_requested_respawn_ticks = requested_respawn_ticks;
-            world.respawn.respawn_ticks =
-                static_cast<std::uint16_t>(requested_respawn_ticks);
-        }
-
-        bool ok = true;
-        const auto spawn_anchor = [&world, &ok](int team, int x, int y) {
-            walker* const marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
-            if (marker == nullptr) {
-                ok = false;
-                return;
-            }
-            marker->setxy(static_cast<short>(x), static_cast<short>(y));
-            marker->set_team_num(static_cast<unsigned char>(team));
-            // The level bootstrap consumes start markers (the anchor scan
-            // reads dead markers by design); a live marker acts.
-            marker->set_dead(1);
-        };
-
-        const int far_x = std::max(160, static_cast<int>(world.pixmaxx) - 48);
-        const int far_y = std::max(160, static_cast<int>(world.pixmaxy) - 48);
-        spawn_anchor(0, 80, 48);
-        spawn_anchor(0, 48, 80);
-        spawn_anchor(1, far_x - 32, far_y);
-        spawn_anchor(1, far_x, far_y - 32);
-        og::sim::respawn_scan_anchors(world);
-
-        client_level_->world().type |= GameWorld::TYPE_SCRIPTED;
-        current_game = saved;
-        return ok;
-    }
+    bool inject_mode_scenario_for_testing(short requested_respawn_ticks);
 
     // Force the deterministic WIN shape on the AUTHORITATIVE world, mirroring
     // the SDL e2e recipe (g_test_remove_exits + clear-all-foes): pin a nonzero
@@ -655,56 +618,14 @@ public:
     // the host team. The next server steps then declare the win
     // (level_done == 2) and forward the terminal EndGame to every peer.
     // Returns the number of foes slain.
-    int force_server_win_for_testing(std::uint32_t pinned_team0_score)
-    {
-        GameplayContext* const saved = current_game;
-        current_game = &server_ctx_;
-        GameWorld& world = server_world();
-        world.m_score[0] = pinned_team0_score;
-        for (auto& uptr : world.fxlist) {
-            walker* const w = uptr.get();
-            if (w != nullptr && w->query_order() == Order::Treasure &&
-                w->family() == FAMILY_EXIT)
-                w->set_dead(1);
-        }
-        const unsigned char host_team =
-            static_cast<unsigned char>(world.my_team);
-        int slain = 0;
-        for (auto& uptr : world.oblist) {
-            walker* const w = uptr.get();
-            if (w != nullptr && !w->dead() &&
-                w->is_friendly_to_team(host_team) == 0) {
-                w->set_dead(1);
-                ++slain;
-            }
-        }
-        current_game = saved;
-        return slain;
-    }
+    int force_server_win_for_testing(std::uint32_t pinned_team0_score);
 
     // Kill every living walker on `team` in the AUTHORITATIVE server world
     // (§4.5 follow tests). With the whole team gone the seat's
     // death-reacquire finds nothing claimable; while another bound team
     // stays alive the wipe is suppressed, the seat goes null, and the
     // mirror's follow camera engages. Returns the number of walkers slain.
-    int clear_server_team_for_testing(short team)
-    {
-        GameplayContext* const saved = current_game;
-        current_game = &server_ctx_;
-        GameWorld& world = server_world();
-        int slain = 0;
-        for (auto& uptr : world.oblist) {
-            walker* const w = uptr.get();
-            if (w != nullptr && !w->dead() &&
-                w->query_order() == Order::Living &&
-                static_cast<short>(w->team_num()) == team) {
-                w->set_dead(1);
-                ++slain;
-            }
-        }
-        current_game = saved;
-        return slain;
-    }
+    int clear_server_team_for_testing(short team);
 #endif
 
 protected:
@@ -1048,13 +969,15 @@ public:
                                      local_player_index_, next_level());
     }
 
-    og::sim::GameClient& client() { return *client_; }
+#ifdef TESTING
+    og::sim::GameClient& client();
+#endif
 
 #ifdef TESTING
     // #207: lets the internal-helpers exercise assert the joiner's
     // own-company seeding + lobby-config arm without widening the
     // production surface.
-    const SaveData& testing_client_save() const { return client_save_; }
+    const SaveData& testing_client_save() const;
 #endif
 
 protected:
@@ -1204,20 +1127,14 @@ public:
     // Test-only: replace the constructor's random_device draw with a fixed
     // seed, before any poll() has staged a world. See
     // make_host_lobby_over_transport_for_testing.
-    void pin_match_seed_for_testing(std::uint32_t seed) { match_seed_ = seed; }
+#ifdef TESTING
+    void pin_match_seed_for_testing(std::uint32_t seed);
+#endif
 
 #ifdef TESTING
     // Test-only observer: the pack ids this lobby is currently offering
     // joiners (protocol v10). See curses_network_testing_hosted_pack_ids.
-    std::vector<std::string> testing_hosted_pack_ids() const
-    {
-        std::vector<std::string> ids;
-        if (server_ == nullptr)
-            return ids;
-        for (const og::sim::HostedPack& pack : server_->pack_host().packs())
-            ids.push_back(pack.manifest.pack_id);
-        return ids;
-    }
+    std::vector<std::string> testing_hosted_pack_ids() const;
 #endif
 
     // Offer this host's mounted non-core class packs (protocol v10). The
@@ -1346,36 +1263,16 @@ public:
     }
 
     // --- TEST hook: drive the whole flow over an injected in-process server ----
+#ifdef TESTING
     void init_host_over_transport(
         std::shared_ptr<og::sim::ITransport> combined_transport,
-        std::shared_ptr<og::sim::InProcessTransport> host_client_transport)
-    {
-        combined_transport_ = std::move(combined_transport);
-        host_client_transport_ = std::move(host_client_transport);
-        combined_transport_->accept_connections();
-        server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
-        hosted_packs_.reset();
-        sync_hosted_packs();
-        wire_start_gate();
+        std::shared_ptr<og::sim::InProcessTransport> host_client_transport);
+#endif
 
-        send_lobby_message(*host_client_transport_,
-                           host_client_transport_->local_peer_id(),
-                           make_settings_message(save_, difficulty_));
-        send_lobby_message(*host_client_transport_,
-                           host_client_transport_->local_peer_id(),
-                           make_join_message(save_, player_name_, local_team_));
-        pump_once();
-    }
-
+#ifdef TESTING
     void init_join_over_transport(std::shared_ptr<og::sim::ITransport> transport,
-                                  og::sim::PeerId server_peer_id)
-    {
-        transport_ = std::move(transport);
-        server_peer_id_ = server_peer_id;
-        join_sent_ = false;
-        make_pack_client();
-        pump_once();
-    }
+                                  og::sim::PeerId server_peer_id);
+#endif
 
     // --- CursesLobby contract -------------------------------------------------
 
@@ -1881,12 +1778,12 @@ public:
     }
 
     // --- test accessors -------------------------------------------------------
-    const std::optional<og::sim::LobbyState>& state() const { return state_; }
-    std::size_t player_count() const
-    {
-        return state_.has_value() ? state_->players.size() : 0u;
-    }
-    bool start_negotiated() const { return start_negotiated_; }
+#ifdef TESTING
+    const std::optional<og::sim::LobbyState>& state() const;
+#endif
+#ifdef TESTING
+    bool start_negotiated() const;
+#endif
 
 private:
     void render(ITerminal& term)
@@ -2450,6 +2347,7 @@ private:
 } // namespace
 
 #ifdef TESTING
+#include "../../../tests/coverage_internal/curses_network_class_observers.inc"
 #include "../../../tests/curses/curses_network_internal.inc"
 #endif
 
@@ -2500,105 +2398,10 @@ GameRunResult run_curses_lobby(CursesLobby& lobby, ITerminal& term, IClock& cloc
 // networked sessions over an InProcessTransport, with no real sockets.
 // =====================================================================
 
-std::unique_ptr<CursesLobby> make_host_lobby_over_transport_for_testing(
-    SaveData& save, int difficulty,
-    std::shared_ptr<og::sim::ITransport> combined_transport,
-    std::shared_ptr<og::sim::InProcessTransport> host_client_transport,
-    std::uint32_t pinned_match_seed)
-{
-    auto lobby = std::make_unique<CursesLobbyImpl>(LobbyRole::Host, save, difficulty);
-    // A real match draws its seed from std::random_device (draw_match_seed);
-    // an in-process test that then asserts on the staged world would be
-    // asserting across a different level layout every run. A non-zero pin
-    // makes the host's stage — and with it the joiner, which rebuilds the
-    // seed from the host's lobby echo — reproducible.
-    if (pinned_match_seed != 0)
-        lobby->pin_match_seed_for_testing(pinned_match_seed);
-    lobby->init_host_over_transport(std::move(combined_transport),
-                                    std::move(host_client_transport));
-    return lobby;
-}
 
-std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
-    SaveData& save, int difficulty,
-    std::shared_ptr<og::sim::ITransport> transport,
-    og::sim::PeerId server_peer_id)
-{
-    auto lobby = std::make_unique<CursesLobbyImpl>(LobbyRole::Join, save, difficulty);
-    lobby->init_join_over_transport(std::move(transport), server_peer_id);
-    return lobby;
-}
 
 #ifdef TESTING
-og::sim::LobbySaveDataEquivalent
-curses_network_testing_build_join_save_equivalent(
-    const og::sim::LobbyState& state)
-{
-    return build_join_save_equivalent_from_state(state);
-}
-
-bool curses_network_testing_inject_mode(CursesGameSession& session,
-                                        short requested_respawn_ticks)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    if (host == nullptr)
-        return false;
-    return host->inject_mode_scenario_for_testing(requested_respawn_ticks);
-}
-
-int curses_network_testing_force_server_win(CursesGameSession& session,
-                                            std::uint32_t pinned_team0_score)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    if (host == nullptr)
-        return -1;
-    return host->force_server_win_for_testing(pinned_team0_score);
-}
-
-int curses_network_testing_clear_server_team(CursesGameSession& session,
-                                             short team)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    if (host == nullptr)
-        return -1;
-    return host->clear_server_team_for_testing(team);
-}
-
-// V5 Option A observers: the authoritative server world and its session save
-// (host sessions only; null for a join session).
-GameWorld* curses_network_testing_server_world(CursesGameSession& session)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    return host != nullptr ? &host->server_world_ref() : nullptr;
-}
-
-// Swap the host server's wall clock (steady_clock by default) so a test can
-// move the pause and starvation timers without waiting.
-bool curses_network_testing_set_server_clock(
-    CursesGameSession& session, std::function<std::uint64_t()> source)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    if (host == nullptr)
-        return false;
-    host->server().set_wall_clock_ms_source(std::move(source));
-    return true;
-}
-
-const SaveData* curses_network_testing_host_server_save(
-    CursesGameSession& session)
-{
-    auto* const host = dynamic_cast<HostCursesSession*>(&session);
-    return host != nullptr ? &host->testing_server_save() : nullptr;
-}
-
-// The pack ids this lobby is currently offering joiners (protocol v10).
-std::vector<std::string> curses_network_testing_hosted_pack_ids(
-    CursesLobby& lobby)
-{
-    auto* const impl = dynamic_cast<CursesLobbyImpl*>(&lobby);
-    return impl != nullptr ? impl->testing_hosted_pack_ids()
-                           : std::vector<std::string>{};
-}
+#include "../../../tests/coverage_internal/curses_network_observers.inc"
 #endif
 
 } // namespace og::curses

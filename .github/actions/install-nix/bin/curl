@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The upstream action retries its small installer-script request, but the
+# official installer performs the much larger binary-tarball request only
+# once. Keep the pinned action and make every curl it launches retry transient
+# TLS, timeout, HTTP/2, and connection failures.
+exec "${OPENGLAD_SYSTEM_CURL:?missing original curl path}" \
+  --retry 4 \
+  --retry-all-errors \
+  --retry-delay 2 \
+  --connect-timeout 30 \
+  --speed-limit 1024 \
+  --speed-time 30 \
+  "$@"

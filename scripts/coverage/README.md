@@ -8,14 +8,43 @@ untested. Everything here exists to put both languages behind one bar.
 
 ## The one gate command
 
+Run these local configure/build commands inside `nix develop`. The general
+`nix develop .#ci-native` shell runs any restored bundle; their closures
+provide the lane-specific dependencies without compiling another copy in each
+worker. Each CI lane runs in a shell cut to what it uses: the coverage
+workflow in `.#ci-coverage` (0.5 GiB to fetch against 1.7 GiB: the producer's
+tools and libraries plus gcovr and LuaLS), the sanitizer and fuzz lanes in
+`.#ci-sanitizer` (Clang and LLVM), the canary in `.#ci-canary` (GCC and the
+X11 display stack), and the completeness jobs in `.#ci-verify` (an
+interpreter).
+
 ```bash
 cmake --preset ci-coverage
-cmake --build --preset ci-coverage -j"$(nproc)"
+cmake --build --preset ci-coverage -j3
 find build/ci-coverage -type f -name '*.gcda' -delete
 
 cmake --build --preset ci-coverage --target coverage_run     # collect
 cmake --build --preset ci-coverage --target coverage_report  # merge + gate
 ```
+
+To build a reusable bundle from a dirty local checkout, run
+`python3 scripts/ci/nix_bundle.py build --lane coverage --repo "$PWD"
+--out-link build/bundle-coverage` inside the shell. The command supplies the
+checkout's complete Git history count and HEAD hash as explicit derivation
+attributes. Clean CI checkouts obtain those values directly from the flake.
+Dirty builds without them fail instead of stamping the binary `2.0 nogit`.
+
+Consumers run `python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache
+--repo "$PWD"` on the exported cache. The command verifies both the compressed
+archive hash and the uncompressed NAR hash, imports and roots the dependencies,
+and restores an owned build tree. Moving that tree into place avoids a second
+unpacked product copy in the Nix store. Coverage CI exports with
+`--prune-substitutable`, which leaves out every dependency the public Nix
+cache signed; `restore` then realises those from the consumer's own store or
+its substituters and copies only the paths the cache still carries. Producer
+jobs use `plan-tree` to read
+CTest metadata through a read-only link to their store output. Neither step
+executes tests; every consumer runs its assigned tests with fresh profiles.
 
 `coverage_report` prints line% and function% for C++, for Lua, and for the
 union, and exits non-zero unless the C++ half alone, the Lua half alone AND
@@ -24,14 +53,29 @@ the union all meet the thresholds. It writes `build/ci-coverage/coverage/`:
 | file | what |
 |---|---|
 | `lua.info` | lcov tracefile for every Lua source the repository ships |
-| `cpp.info` | lcov tracefile for `src/` (gcovr) |
+| `cpp.info` | LCOV for `src/` and `include/openglad/` |
+| `cpp.json` | canonical gcovr data, including zero-hit bodies |
+| `production.info`, `production.json` | separate diagnostic measurement of objects compiled without `TESTING` |
+| `coverage.html` | annotated C++ report (`--cpp-html`, enabled by the CMake target) |
+| `coverage-summary.txt` | C++ text summary from that collection |
 | `combined.info` | both halves in one tracefile — feed to `genhtml` / `lcov` |
 | `summary.json` | totals plus a per-Lua-file breakdown |
 
-`gcovr` 8.4 or newer must be on `PATH` (`python3 -m pip install gcovr`). 8.4
+The pinned Nix shells provide `gcovr` 8.4 or newer. Version 8.4
 spells explicit LCOV-1.x output `--lcov-format-1.x`; 8.5 and newer spell it
 `--lcov-format-version=1.x`. The report inspects `gcovr --help` and selects
-the advertised form before its single collection invocation. Lua-only
+the advertised form. One profile pass produces JSON. The formatter resolves
+CMake component-header symlinks to their physical source paths, then uses
+`--add-tracefile` to merge their records and write canonical JSON, LCOV, HTML
+and text together. Different template instantiations retain their mangled
+function identities; unused linker copies of the same body do not become
+extra uncovered functions. A copied component header must match the original
+source bytes before it can share that identity. Formatting does not reread
+profiles.
+
+Shard jobs use the same canonicalization helper before checking their grids.
+They pass merged LCOV with `--cpp-tracefile` and the separate production trace
+with `--cpp-production-tracefile`. Both cover the same source/header roots. Lua-only
 numbers need no gcov build at all, so the same two targets work in the much
 cheaper `ci-test` preset — the report then says the C++ half was not measured
 and does not apply its bar (a half nobody requested is different from a
@@ -40,7 +84,7 @@ measures both.
 
 ## The bar, and where it is enforced
 
-**98 % line, 100 % function — for the C++ half alone, for the Lua half
+**More than 98 % line, 100 % function — for the C++ half alone, for the Lua half
 alone, and for their union.** A union-only bar was walked straight through
 (back when the bar was 95): with C++ near 98 %, keeping only the 10 largest
 of 61 dumps left the Lua half at 94.50 % line while the union still read
@@ -59,16 +103,10 @@ comparison and the exit status. The percentages in the job summary and the
 PR comment are read back out of `summary.json`; they are formatting, and the
 gate is on integer counts, so 94.96 % cannot round its way into 95.
 
-That ctest pass retries failures exactly as `test.yml` does (`--repeat
-until-pass:3`), so the two lanes agree on what "the suite passes" means.
-Retrying inside the collection run is sound because both denominators are
-static — this file's whole design — so a rerun can only add numerator
-evidence of executions that really happened: `.gcda` counters merge across
-process exits, and each rerun writes one more uniquely-named dump ("adds
-dumps but no names", below). The corollary when comparing numbers: a CI run
-that retried a flake accumulates the failed attempt's hits too, so a local
-single pass can read slightly lower than CI — judge local work by its
-before/after delta, not by matching CI's absolute number.
+Collection uses one complete test pass. A failed test fails its shard; retry
+accumulation is not evidence that the original run passed. Clear `.gcda` and
+Lua dumps before a new run, and keep each shard's evidence separate until the
+manifest proves that their union contains every registered test exactly once.
 
 What "100 % function" quantifies over differs by language, and the
 difference is part of the claim:
@@ -76,16 +114,34 @@ difference is part of the claim:
 * **Lua** — every prototype of every source in the static inventory: hooks,
   local helpers, anonymous callbacks, and each file's main chunk. One Lua
   function whose body never ran fails the build.
-* **C++** — the functions gcov instruments in `src/` translation units
-  (`gcovr --filter src/`). Inline functions living entirely in `include/`
-  headers are OUTSIDE the denominator except where a `src/` TU emits them.
-  The adversarial review measured the wider scope once: with `include/`
-  added, the tree read 4713/4890 = 96.38 % function — roughly 177 uncovered
-  header functions the gate does not see. Widening the C++ scope to
-  `include/` is an explicit follow-up with those numbers attached; this file
-  does not claim it is done. (Re-measure on a clean gcov build: an
-  incremental build dir's stale records can crash gcovr at the wider
-  scope.)
+* **C++** — compiler-emitted function bodies in `src/` and
+  `include/openglad/`, including inline functions and template instantiations.
+  Both roots are collected without per-file or per-function exclusions. Test
+  orchestration belongs under `tests/`; its helper bodies must not inflate
+  the product count merely because a test-only include shares a product TU.
+  An imported source-only tracefile, or one padded with test/vendor records,
+  fails validation. `summary.json` records totals for each root and lists
+  uncovered functions with their paths and declaration lines.
+
+This widens the former `src/` denominator. The old percentages do not describe
+the new scope. For context, the saved 2026-10-08 source-only report measured
+72,995/74,370 lines and 6,279/6,279 functions; Lua measured 15,515/15,678 lines
+and 962/962 functions. Those artifacts contain incompatible header generations
+and cannot supply a valid widened baseline. Use a clean build for comparisons.
+
+The C++ claim has two limits. Gcov cannot count a template that no translation
+unit instantiates, or a platform-specific branch that this native build does
+not compile. Also, the combined report unions the production and `TESTING`
+object variants by source location; executing a test variant can cover a
+function name without executing the alternative production body. A separate
+profile pass excludes object directories whose compilation records define
+`TESTING`; it does not exclude source files. This includes test executable
+objects even when they link production archives. `cpp_production_variant` in
+`summary.json` reports its own numerator, denominator, missed functions and
+unhit lines inside `TESTING` conditionals. These are diagnostic totals, not
+an additional percentage gate. Production executables participate in the
+suite, and their distinct branches need observable behavior tests; a merged
+function percentage alone is not proof of every compiled alternative.
 
 These conditions fail the gate without being a percentage at all, because
 each is a way for a half to look measured while measuring nothing:
@@ -322,9 +378,10 @@ bodies in `family_decl.cpp` (1485-1488), `pack_scripts.cpp` (31-33),
 `script_coverage.cpp` (228, 517, 531-534, 536, 538). They are 0 in all
 three unarmed passes and hit in an armed one, every time the recorder is on.
 So an armed pass, the one the gate reads, sits at **72480-72481**, the
-unarmed band plus 29. One armed whole-suite pass, run exactly as
-`coverage.yml` runs it (recorder armed, `--repeat until-pass:3`, no retry
-taken, only `-E emscripten_build_test` added) at dd21576f with no `src/`
+unarmed band plus 29. One armed whole-suite pass, run with the
+then-current workflow settings (recorder armed, the historical
+`--repeat until-pass:3` option but no retry taken, and
+`-E emscripten_build_test`) at dd21576f with no `src/`
 change since the unarmed passes, read 72480. `noise_probe.py compare` of
 that tracefile against the three unarmed ones finds the 29 recorder lines,
 flips already listed in the table below, and that table's last two rows,
@@ -386,18 +443,155 @@ Measured and **not** noise: the forked `openglad_server` children in
 fixed-count curses poll loops that straddle the 250 ms stage debounce
 produced no flipped line in 5 runs of `og_test_curses`.
 
-**Counter races.** The build has no `-fprofile-update=atomic`, so threaded
-code can tear a gcov counter. gcovr reported 16, 16 and 20 tolerated
-negative-hit warnings on the three passes, all on hot lines. With the flag,
-`lines_found` was identical (73838) and the warnings went to 0, but
-`og_unit_sim` went from 156 s to 548 s, `og_unit_data` from 53 s to 327 s
-and `og_test_menu_ui` from 188 s to 241 s. The flag is not set.
+**Counter races.** Coverage compilation uses `-fprofile-update=atomic`, so a
+counter update is one read-modify-write instruction and concurrent threads
+cannot lose one. The bundle checks the final optimization and counter-update
+flags in every instrumented compilation record: `-O0` and atomic updates
+must remain effective after all target-specific options. Collection rejects
+negative counters and counts at or beyond the signed 64-bit counter limit; it
+never ignores or clamps them.
 
-**CI retries are a separate effect.** CI runs the suite with `--repeat
-until-pass:3`, and a failed attempt keeps its `.gcda` hits. A CI pass that
-retried a test can therefore read above any local single pass, by up to
-that test's own noise. Check the run log for a repeated test before reading
-a CI difference as real.
+**The lock prefix, and the one CPU that replaces it.** On x86-64 GCC emits
+that update as `lock addq $1, counter(%rip)`. The prefix is what makes it
+safe across CPUs, and it is most of what an instrumented test costs: on
+2026-11-13 four compute-bound groups ran 105, 65, 111 and 31 s with it and
+16, 9, 14 and 4 s without (same machine, same `-O0`). Its cost also varies
+by processor model, and that was most of CI's "slow runner": the machines
+that ran those groups 2.4 times slower ran the menu and network groups
+(mostly waiting) 1.2 times slower and gcovr at full speed. Without the prefix
+the hosted runners that had been fast gained 1.3 to 3 times on those groups
+rather than six, and the spread between machines shrank without vanishing:
+in the first two runs the slowest of eight workers was 1.6 and 1.2 times off
+the pace on compute-bound entries.
+
+The prefix buys nothing on one CPU. An instruction is never interrupted
+halfway, so when every thread of a process runs on the same CPU no thread can
+see or overwrite a half-finished update, and the count is exact. A
+GNU/Linux x86-64 GCC coverage build therefore does three things, together
+(`og_instrument_for_coverage` in `CMakeLists.txt` is the only place any of
+them is applied):
+
+- assembles every instrumented object with `-Wa,-momit-lock-prefix=yes`, which
+  strips the prefix (from the counters and from everything else in the
+  object, `std::atomic` included, which is exact on one CPU for the same
+  reason);
+- force-includes `tests/coverage_runtime/uniprocessor_counters.h` into the
+  same objects. It plants a reference that only the one-CPU runtime defines,
+  so an executable that holds a stripped object and no confinement does not
+  link;
+- links `tests/coverage_runtime/uniprocessor_counters.cpp`, which is compiled
+  without instrumentation and with its lock prefixes. Its constructor runs
+  before every other static initializer, requires that the process still has
+  one thread, and narrows the process to one CPU. Threads and child
+  processes inherit that set. The three libc calls that could widen it are
+  replaced by definitions that end the process.
+
+`scripts/ci/nix_bundle.py` refuses a coverage bundle in which any instrumented
+compilation record strips the prefix without the header, carries the header
+without stripping, or disagrees with another record. `CoverageCounters.*`
+(`tests/unit/test_coverage_counters.cpp`, in `og_unit_core`) reads the
+allowed CPU set from the kernel in the test process and in a copy of it
+started on every CPU, and requires each affinity call to end the process; on
+every other build the same tests require that nothing confined the process.
+
+Measured with the prefix stripped and the process on one CPU: 16, 9, 14 and
+4 s for the same four groups, and counter files equal to the locked build's in
+393 of 398 `.gcda` files. The other five differ between two runs of the
+locked build as well (timing-dependent paths in the harness, the WebSocket
+server, `obmap.cpp` and `level_runtime_data.cpp`). The whole live-socket
+network group passed that way with no negative count.
+
+CTest gives each entry of such a build a core of its own
+(`PROCESSOR_AFFINITY`, last block of `cmake/OpenGladTests.cmake`), so the
+entries of a worker neither share a core nor leave one idle; the per-entry
+core reservations that the locked build needed do not apply. Any other
+toolchain (Clang, macOS, a non-x86 target, an assembler without the option)
+keeps the locked update and is not confined.
+Gcovr's default suspicious-value cutoff is only 2³². The full atomic run
+recorded 53,249,716,800 SHA-256 rotations, exactly 576 per compression, with
+matching loop counts and no negative counters. Those valid hits remain intact.
+The sanitizer, fuzz and canary lanes use `-g1`, packed relative relocations
+and zlib-compressed debug sections. File/line diagnostics remain available to
+GNU `addr2line` and LLVM `llvm-symbolizer`; ordinary developer debug builds
+retain full debug information. The coverage lane compiles without debug
+information: gcov reads counters and notes, never DWARF, and `-g1` was 11 to
+17 percent of every coverage object.
+Coverage uses GCC, while ASan, TSan and fuzzing use the pinned Clang toolchain.
+The Nix environments disable `strictoverflow` hardening because its `-fwrapv`
+flag suppresses signed integer overflow diagnostics. Instrumented IXWebSocket
+and LodePNG builds use the same compiler and retain their debug line tables.
+
+The earlier experiment recorded 16, 16 and 20 tolerated negative-hit warnings
+without atomic updates. Enabling them kept `lines_found` at 73,838 and removed
+the warnings, but increased the old unsplit groups' times: `og_unit_sim`
+156→548 s, `og_unit_data` 53→327 s and `og_test_menu_ui` 188→241 s. Those
+historical costs explain the former omission; they are not permission to
+accept corrupt counters or increase the current timeout limits.
+
+**Current CI collection.** Eight workers run disjoint parts of one CTest
+inventory, once each. Fixture setup, consumers and cleanup stay on the same
+worker. A worker scans and formats nothing: it ships the raw counter files
+(`.gcda`) its tests wrote, plus its raw Lua dumps. Each counter file must sit
+beside a planned compiler note, and is parsed where it was written: a
+negative counter, an unknown record or a truncated file fails that worker.
+
+The gate sums the workers' counter files with `gcov-tool merge`, the
+compiler's own merge and the one libgcov applies when two processes write one
+file, and does not take its word for it: every merged file must hold the
+counters of its inputs and their total must be the inputs' totals added up.
+The complete compiler-note inventory travels from the producer in one archive
+(1.4 GiB of notes, 71 MiB compressed), is checked note by note against the
+SHA-256 the plan recorded, and is scanned by gcov exactly once, with or
+without a counter file beside each note, so an uncovered translation unit
+stays in the report as zero-hit functions and lines.
+
+Summing counters and then scanning reports the same thing as scanning each
+worker and adding the reports. On two runs of different test binaries over
+the 61 game objects of one target (2026-11-13) the two orders agreed on
+every line, every line's count and every function's count: 23,987 lines,
+10,939 of them hit, 2,624 functions. What changed is the cost: each worker
+used to spend 71 to 108 s running gcov over the whole inventory and writing
+two reports of it, and the gate another 82 s reading those sixteen reports.
+
+The scan visits each object directory exactly once. gcovr runs gcov under a
+lock on its working directory, and without an object directory that directory
+is `--root` for every object, so one gcovr process runs one gcov at a time
+whatever `-j` says. The scan therefore splits the CMake target directories
+into directory-disjoint jobs, one gcovr process each, with gcov running beside
+its object (`--gcov-object-directory .`). Objects compiled with `TESTING` and
+objects compiled without it never share a job: the production trace is the
+merge of the non-`TESTING` jobs, and the complete trace the merge of all of
+them, over the same roots and path identities. On identical profiles the two
+merged traces equal a single whole-tree scan and a second scan with
+`--gcov-exclude-directory`, record for record. A note outside a CMake target
+directory fails the scan rather than leaving the inventory. Which directories
+are the `TESTING` variant is decided by the producer from its compilation
+records and travels in the plan.
+
+The gate checks every worker's `.gcno` path and SHA-256 against the producer
+manifest. It also proves that the test results cover the planned inventory
+exactly once. A missing worker, a changed object graph or a counter file
+without a note fails before scoring. Each object population's partitions are
+merged once, and that pass writes its LCOV, its text summary and (for the
+complete population) the HTML detail; gcov does not reread the profiles for
+any output. The gate job restores no compiled tree: the notes and the one
+built tool it runs, the Lua executable-line oracle `og_lua_lines`, travel
+beside the plan and must match the digests the plan recorded.
+
+The notes name their sources by the paths the compiler saw, and the gate
+makes both kinds of path resolve in its own checkout for the length of the
+scan. The producer's source directory becomes a link to the checkout. And
+every link in the producer's build tree that leads back into the source tree
+is recorded in the plan and recreated: the components compile against
+per-component include roots (`component_includes/<component>/openglad/<name>`
+linked to `include/openglad/<name>`), and gcov files a header under the path
+it was included through. Without those links the first run of this pipeline
+reported 62 header functions as never executed, although their counters had
+arrived intact: their hits had been filed under a build-tree path that no
+report counts. Lua dump names gain a
+worker prefix when flattened. Same-named source sidecars must have identical
+bytes before they share the aggregate `sources/` directory, so workers cannot
+overwrite conflicting source evidence.
 
 ### Lines only the x11 display lane reaches
 
@@ -410,7 +604,8 @@ All are in `src/platform/sdl/video_sdl.cpp`.
 Line numbers and counts are WP-LANE's reading of the 8ca01f96 CI coverage
 artifact; `video_sdl.cpp` is unchanged through 7d399af0. A local single pass
 at 7753ffed reads 58 uncovered `sai2x.cpp` lines, not 55 (CI's retried
-passes read differently; see the retry note above).
+passes accumulated hits differently; this is a historical comparison, not
+the current single-pass collection policy).
 
 - Covered by the one-screen run (25 lines): 2895, 2896, 2899, 2900;
   3437-3441, 3448; 2980; 3353; 3083, 3085; 3013-3021; 3318, 3319.
@@ -458,6 +653,30 @@ a freed Proto address and resurrect a dead generation's binding across an
 enable transition (see `script_coverage.h`). None of it is visible to script
 code or to sim state. `og_test_parity` passes 188/188 both with the recorder
 compiled in and disabled and with it armed.
+
+An armed line hook caches the map nodes for its compiled prototype's source
+generation and function span. The source key still binds at compilation;
+redeclaring a chunk never moves existing closures to the new generation.
+Measurement scopes invalidate those node pointers when they clear, swap or
+restore the maps. The regression test executes an already warmed closure
+through nested recording scopes, restoration and reset, checking exact body
+counts in each store.
+
+A local five-trial microbenchmark of 250,000 Lua loop iterations measured a
+median 2.410 s before this cache and 0.870 s after it with `-O0 -g1 --coverage
+-fprofile-update=atomic`. Every recorded line and function-body count matched.
+That 2.77× result measures this hook-heavy workload, not whole-suite speed.
+The existing stale-generation, disabled-compile and raw-report adversarial
+cases remain part of `og_unit_script`.
+
+Repeated declarations and compilations compare against the exact source bytes
+already owned by the recorder. A matching chunk and byte sequence reuses its
+digest; a new byte sequence computes a new digest. This adds no cache lifetime
+or retained payload. A five-trial benchmark of 500 declarations, compilations
+and executions of a 24 KB source under two chunk names measured a median
+10.184 s before reuse and 0.0386 s after it under the same O0/atomic flags.
+All source, digest, line and function-body records matched. The 264× ratio
+measures repeated hashing in that workload, not whole-suite performance.
 
 Each process writes one `*.luacov` dump into the directory at exit. Harnesses
 that end in `_exit()` skip static destructors, so `tests/integration/integration_main.cpp`

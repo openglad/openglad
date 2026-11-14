@@ -113,6 +113,8 @@ inline void dump_dir_for(const char* scene, char* dir, size_t n)
 // `frame` of `scene`: $OG_FX_CAPTURE_DIR/<scene>/NNN.ppm, a P6 PPM.
 inline void dump_viewport(screen* s, const char* scene, int frame)
 {
+    if (getenv("OG_FX_CAPTURE_DIR") == nullptr)
+        return;
     viewscreen* vs = s->viewob[0].get();
     const int x0 = vs->xloc, y0 = vs->yloc, w = vs->xview, h = vs->yview;
     char dir[512];

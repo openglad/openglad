@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/gameplay/game_world.h>
+#include "sim_random_state.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
@@ -109,7 +110,7 @@ namespace og::sim {
 // Test hook to shorten mission timeout checks in deterministic harnesses.
 std::int32_t g_test_level_tick_limit_override = 0;
 
-namespace {
+namespace detail {
 thread_local IRandom** g_sim_random_override_ref = nullptr;
 }
 
@@ -117,15 +118,11 @@ IRandom* sim_random_override()
 {
     // plumbing: the thread-local RNG override (parity harness / tests) when one is installed, else
     //   none.
-    return (g_sim_random_override_ref != nullptr)
-        ? *g_sim_random_override_ref
+    return (detail::g_sim_random_override_ref != nullptr)
+        ? *detail::g_sim_random_override_ref
         : nullptr;
 }
 
-IRandom** set_sim_random_override(IRandom** rng_ref)
-{
-    return std::exchange(g_sim_random_override_ref, rng_ref);
-}
 } // namespace og::sim
 
 GameWorld::GameWorld(std::uint32_t seed)

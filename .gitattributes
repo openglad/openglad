@@ -29,6 +29,10 @@ tests/parity/golden/*.json -text
 # A CRLF checkout turns every line into "...\r: command not found".
 *.sh text eol=lf
 
+# Dependency patches are applied to freshly fetched LF source trees. Windows
+# checkout defaults must not inject CR bytes into context and removed lines.
+*.patch text eol=lf
+
 # The keyboard picture's glyph atlas: scripts/check_keyboard_glyphs.sh hashes
 # the generator and compares the table it wrote, so a checkout must never
 # turn their line ends into CRLF (the atlas PNG is binary already).

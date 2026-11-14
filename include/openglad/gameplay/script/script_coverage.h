@@ -10,7 +10,7 @@
 // Coverage recorder for pack Lua.
 //
 // Family behavior lives in the Lua under packs/. The repo's gcovr gate
-// measures src/ only, so by itself it would
+// measures C++ source and headers, so by itself it would
 // report green while thousands of lines of game logic went untested. This
 // records the two things a Lua coverage report needs —
 //
@@ -91,8 +91,7 @@ namespace og::script::coverage {
 namespace detail {
 // Hot-path flag; see the determinism contract above. Never read by the sim.
 extern bool g_enabled;
-// Test seam (unconditional, like set_enabled_for_testing below — the game
-// libraries are not recompiled for the unit binaries): invoked after a
+// Test seam (the recorder is shared with unit binaries): invoked after a
 // dump's temp file has been written in full and flushed, immediately before
 // the rename() that publishes it — the one instant where a kill used to be
 // able to leave a torn dump. The atomicity test points it at raise(SIGKILL)
@@ -128,34 +127,6 @@ const std::string& output_dir();
 // Exposed so the rule is unit-testable. The process itself reads the
 // environment exactly once, at static-init time.
 std::string validate_output_dir(std::string_view value);
-
-// Test seam: arm/disarm the recorder regardless of the environment. Setting
-// it true without an output directory records in memory only.
-void set_enabled_for_testing(bool on);
-
-// Test seam: redirect (or, with an empty string, disable) the exit dump.
-void set_output_dir_for_testing(std::string dir);
-
-// Drop everything recorded so far.
-void reset();
-
-// Test seam: record into a private, empty set for the lifetime of the object,
-// then put back exactly what was there before. Tests cannot simply reset()
-// the recorder — under an actual coverage run the process-global store is
-// already accumulating real pack coverage, and a bare reset would throw its
-// own binary's numbers away.
-class ScopedRecording {
-public:
-    ScopedRecording();
-    ~ScopedRecording();
-    ScopedRecording(const ScopedRecording&) = delete;
-    ScopedRecording& operator=(const ScopedRecording&) = delete;
-
-private:
-    struct State;
-    std::unique_ptr<State> saved_;
-    bool previously_enabled_ = false;
-};
 
 // --- recording sites -------------------------------------------------------
 //

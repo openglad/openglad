@@ -624,7 +624,11 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 			// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
 			// tests: WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living
 			// tests: parity:cleric_turn_undead_scen99
-			if (current_game->world->rng_.next(roll_bound) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )
+			const std::uint32_t caster_roll =
+			    current_game->world->rng_.next(roll_bound);
+			const std::uint32_t victim_roll = current_game->world->rng_.next(
+			    static_cast<std::uint32_t>(w->stats()->level()*10));
+			if (caster_roll > victim_roll)
 			{
 				GameWorld* const world = current_game->world;
 				const bool scripted_mode =

@@ -20,6 +20,23 @@ const MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO = 0.50;
 // periods scattered across 467-933ms over four contaminated runs on the
 // 2026-07-17 ubuntu-24.04 runner image. 0.5 leaves ~2x margin both ways.
 const MINIMUM_DOMINANT_PERIOD_SCORE = 0.5;
+// The score above is a FRACTION of the intervals between jitter runs, and a
+// fraction of a handful is what scattered runs reach by chance. The capture
+// that reddened GitHub run 43325303315 (2026-11-12) held seven leftover runs:
+// six intervals, three of them between 1.6 s and 2.4 s, which is 0.5 on the
+// 2 s heartbeat candidate. Runs falling at random would do that about one
+// capture in six. So a period match must also be UNLIKELY for runs with no
+// period at all: given how many runs there were and how far apart on
+// average, the chance that this many intervals land inside the best
+// candidate's tolerance window, counted over every distinct candidate period
+// the match was picked from. The pinned bug put some two dozen runs on its
+// 486 ms beat in a capture this long, a chance far below any threshold; a
+// 2 s period shows five intervals and passes when all five agree.
+//
+// What this gives up, deliberately: a 12 s capture holds at most two
+// intervals of the 4.92 s candidates, and two intervals are not evidence of
+// a period whatever they measure.
+const MAXIMUM_PERIOD_MATCH_CHANCE = 0.01;
 const FLOAT_MOTION_EPSILON = 0.01;
 
 function parseArgs(argv) {
@@ -358,6 +375,57 @@ function correlateEvents(jitterIndexes, samples, engineEvents, rafWindowMs) {
   return best;
 }
 
+// P(X >= successes) for X ~ Binomial(trials, probability).
+function binomialUpperTail(trials, successes, probability) {
+  if (successes <= 0) {
+    return 1;
+  }
+  if (successes > trials || probability <= 0) {
+    return 0;
+  }
+  if (probability >= 1) {
+    return 1;
+  }
+  let term = (1 - probability) ** trials;  // P(X = 0)
+  let below = 0;
+  for (let k = 0; k < successes; k += 1) {
+    below += term;
+    term *= ((trials - k) / (k + 1)) * (probability / (1 - probability));
+  }
+  return Math.min(1, Math.max(0, 1 - below));
+}
+
+// The chance that runs with NO period would match a candidate this well.
+// Runs scattered at random at the observed rate leave intervals that are
+// exponential around the observed mean, so each interval lands in the
+// candidate's tolerance window with a fixed probability and the number that
+// do is binomial. The match was picked as the best of several candidate
+// periods, so the chance is counted once per distinct period (Bonferroni).
+function periodMatchChance(intervals, matchCount, candidate, toleranceRatio, candidates) {
+  if (!candidate || intervals.length === 0 || matchCount === 0) {
+    return 1;
+  }
+  const meanInterval =
+    intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+  if (!(meanInterval > 0)) {
+    return 1;
+  }
+  const low = candidate.candidate_period_ms * (1 - toleranceRatio);
+  const high = candidate.candidate_period_ms * (1 + toleranceRatio);
+  const windowProbability =
+    Math.exp(-low / meanInterval) - Math.exp(-high / meanInterval);
+  const distinctPeriods = new Set(
+    candidates
+      .map((entry) => entry.candidate_period_ms)
+      .filter((period) => period > 0),
+  ).size;
+  return Math.min(
+    1,
+    Math.max(1, distinctPeriods) *
+      binomialUpperTail(intervals.length, matchCount, windowProbability),
+  );
+}
+
 function chooseDominantPeriod(
   runStartIndexes,
   samples,
@@ -368,7 +436,14 @@ function chooseDominantPeriod(
     .map((index) => samples[index]?.raf_time_ms)
     .filter(Number.isFinite);
   if (runStartTimes.length < 2) {
-    return { dominantPeriodMs: 0, dominantPeriodScore: 0, matchedCandidate: null };
+    return {
+      dominantPeriodMs: 0,
+      dominantPeriodScore: 0,
+      matchedCandidate: null,
+      dominantPeriodMatchCount: 0,
+      dominantPeriodIntervalCount: 0,
+      dominantPeriodChance: 1,
+    };
   }
 
   const intervals = [];
@@ -378,6 +453,7 @@ function chooseDominantPeriod(
 
   let bestCandidate = null;
   let bestScore = 0;
+  let bestMatchCount = 0;
   let bestMeasuredPeriod = median(intervals);
 
   for (const candidate of candidates) {
@@ -390,6 +466,7 @@ function chooseDominantPeriod(
     if (score > bestScore) {
       bestScore = score;
       bestCandidate = candidate;
+      bestMatchCount = matches.length;
       bestMeasuredPeriod = matches.length > 0 ? median(matches) : median(intervals);
     }
   }
@@ -398,6 +475,15 @@ function chooseDominantPeriod(
     dominantPeriodMs: bestMeasuredPeriod,
     dominantPeriodScore: bestScore,
     matchedCandidate: bestCandidate,
+    dominantPeriodMatchCount: bestMatchCount,
+    dominantPeriodIntervalCount: intervals.length,
+    dominantPeriodChance: periodMatchChance(
+      intervals,
+      bestMatchCount,
+      bestCandidate,
+      toleranceRatio,
+      candidates,
+    ),
   };
 }
 
@@ -558,12 +644,23 @@ function buildMeasurementMethod(browserCaptureProfile, renderContractVersion, ex
       dominant_period_tolerance_ratio: DOMINANT_PERIOD_TOLERANCE_RATIO,
       minimum_correlated_event_overlap_ratio: MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO,
       minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
+      maximum_period_match_chance: MAXIMUM_PERIOD_MATCH_CHANCE,
     },
   };
 }
 
 function normalizeMeasurementMethodForComparison(measurementMethod) {
-  return deepClone(measurementMethod);
+  const normalized = deepClone(measurementMethod);
+  // A baseline saved before the gate recorded its chance bound was judged
+  // without one; it is the same method with this one field unstated.
+  if (
+    normalized?.reproduced_gate &&
+    normalized.reproduced_gate.maximum_period_match_chance === undefined
+  ) {
+    normalized.reproduced_gate.maximum_period_match_chance =
+      MAXIMUM_PERIOD_MATCH_CHANCE;
+  }
+  return normalized;
 }
 
 function assertBaselineAnalysis(baseline) {
@@ -608,9 +705,11 @@ function buildAnalysisMarkdown(analysis) {
     `- capture_duration_ms: ${analysis.capture_duration_ms.toFixed(2)}`,
     `- positive_motion_frame_count: ${analysis.positive_motion_frame_count}`,
     `- jitter_frame_count: ${analysis.jitter_frame_count}`,
+    `- engine_jitter_frame_count: ${analysis.engine_jitter_frame_count ?? 0} (${((analysis.testifying_frame_ratio ?? 0) * 100).toFixed(0)}% of frames arrived on cadence and could testify)`,
     `- jitter_signature_kind: ${analysis.jitter_signature_kind}`,
     `- dominant_period_ms: ${analysis.dominant_period_ms.toFixed(2)}`,
     `- dominant_period_score: ${analysis.dominant_period_score.toFixed(3)}`,
+    `- dominant_period_support: ${analysis.dominant_period_match_count ?? 0} of ${analysis.dominant_period_interval_count ?? 0} intervals (chance ${(analysis.dominant_period_chance ?? 1).toExponential(2)})`,
     `- correlated_event: ${(analysis.remaining_correlated_event || analysis.correlated_event).family || 'none'} (${(((analysis.remaining_correlated_event || analysis.correlated_event).overlap_ratio) || 0).toFixed(3)} overlap ratio)`,
     '',
   );
@@ -1180,8 +1279,26 @@ function main() {
   );
 
   // Host-starvation discount: a jitter frame that coincides with an abnormal
-  // RAF delivery gap (at the frame itself or the catch-up frame right after)
-  // is the RUNNER dropping frames, not the engine mispresenting them. The
+  // RAF delivery gap (the frame's own turn, the turn just before it or the
+  // turn just after it) is the RUNNER dropping frames, not the engine
+  // mispresenting them. The turn BEFORE is the catch-up case: the frame
+  // itself arrives on time, right after a late one, and its motion is judged
+  // against a neighbour that covered two refreshes. This test read only the
+  // frame and the turn after it until 2026-11-12, and all seven frames it
+  // then blamed on the engine in GitHub run 43325303315 were catch-up
+  // frames.
+  //
+  // A frame's own turn can also be abnormally SHORT. Hosted runners mostly
+  // deliver every second refresh (25 of 31 captures from 2026-11-09..12 had
+  // a 33 ms median turn), and a 17 ms turn among those carries half a
+  // frame's motion and often no fresh engine sample at all: the same
+  // artifact from the other side. One capture split its turns evenly
+  // between the two lengths and scored 0.39 on a candidate period from
+  // nothing else; with its short turns discounted it scores 0.14. A short
+  // NEIGHBOUR leaves nothing to catch up on, so only the frame's own turn is
+  // read for this.
+  //
+  // The
   // pinned engine bug produced jitter on NORMAL-cadence RAF turns (frames
   // arrived on time; the engine presented stale/irregular content), so
   // discounting starved frames keeps the pin's teeth while making the gate
@@ -1190,11 +1307,25 @@ function main() {
   // p50, every stale-presentation frame sitting on a 33-67ms gap).
   const rafP50 = rafDeltaMsStats.p50 || 16.67;
   const hostStarvationThresholdMs = Math.max(rafP50 * 1.5, rafP50 + 8);
-  const frameIsHostStarved = (index) => {
-    const own = samples[index]?.raf_delta_ms || 0;
-    const next = samples[index + 1]?.raf_delta_ms || 0;
-    return own > hostStarvationThresholdMs || next > hostStarvationThresholdMs;
+  const hostShortTurnThresholdMs = rafP50 * 0.75;
+  const turnIsHostStarved = (index) =>
+    (samples[index]?.raf_delta_ms || 0) > hostStarvationThresholdMs;
+  const turnIsShort = (index) => {
+    const delta = samples[index]?.raf_delta_ms || 0;
+    return delta > 0 && delta < hostShortTurnThresholdMs;
   };
+  const frameIsHostStarved = (index) =>
+    turnIsHostStarved(index - 1) ||
+    turnIsHostStarved(index) ||
+    turnIsHostStarved(index + 1) ||
+    turnIsShort(index);
+  // How much of the capture could have testified against the engine at all.
+  // Reported, not gated: it is what a reader needs to weigh a clean verdict.
+  const testifyingFrameRatio =
+    samples.length > 0
+      ? samples.filter((_, index) => !frameIsHostStarved(index)).length /
+        samples.length
+      : 0;
   const hostStarvedJitterFrameIndexes = jitterFrameIndexes.filter((index) =>
     frameIsHostStarved(index),
   );
@@ -1235,7 +1366,14 @@ function main() {
   );
   const analysisPeriodCandidatesMs = expectedPeriodCandidatesMs;
 
-  const { dominantPeriodMs, dominantPeriodScore, matchedCandidate } =
+  const {
+    dominantPeriodMs,
+    dominantPeriodScore,
+    matchedCandidate,
+    dominantPeriodMatchCount,
+    dominantPeriodIntervalCount,
+    dominantPeriodChance,
+  } =
     chooseDominantPeriod(
       jitterRuns.runStarts,
       samples,
@@ -1283,6 +1421,7 @@ function main() {
           dominant_period_tolerance_ratio: DOMINANT_PERIOD_TOLERANCE_RATIO,
           minimum_correlated_event_overlap_ratio: MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO,
           minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
+          maximum_period_match_chance: MAXIMUM_PERIOD_MATCH_CHANCE,
         };
   const dominantPeriodToleranceRatio =
     reproducedGate.dominant_period_tolerance_ratio;
@@ -1294,7 +1433,10 @@ function main() {
     matchedCandidate.candidate_period_ms > 0 &&
     Math.abs(dominantPeriodMs - matchedCandidate.candidate_period_ms) <=
       matchedCandidate.candidate_period_ms * dominantPeriodToleranceRatio &&
-    dominantPeriodScore >= minimumDominantPeriodScore;
+    dominantPeriodScore >= minimumDominantPeriodScore &&
+    dominantPeriodChance <=
+      (reproducedGate.maximum_period_match_chance ??
+        MAXIMUM_PERIOD_MATCH_CHANCE);
   const minimumCaptureDurationMs =
     expectMode === 'fixed'
       ? baseline.measurement_method.minimum_capture_duration_ms
@@ -1365,9 +1507,14 @@ function main() {
     engine_jitter_frame_count: engineJitterFrameIndexes.length,
     host_starved_jitter_frame_count: hostStarvedJitterFrameIndexes.length,
     host_starvation_threshold_ms: hostStarvationThresholdMs,
+    host_short_turn_threshold_ms: hostShortTurnThresholdMs,
+    testifying_frame_ratio: testifyingFrameRatio,
     jitter_signature_kind: jitterSignatureKind,
     dominant_period_ms: dominantPeriodMs,
     dominant_period_score: dominantPeriodScore,
+    dominant_period_match_count: dominantPeriodMatchCount,
+    dominant_period_interval_count: dominantPeriodIntervalCount,
+    dominant_period_chance: dominantPeriodChance,
     expected_motion_update_count: expectedMotionUpdateCount,
     motion_completeness_ratio: motionCompletenessRatio,
     capture_sufficient: captureSufficient,

@@ -796,10 +796,7 @@ std::uint32_t draw_match_seed()
 }
 
 #ifdef TESTING
-void set_match_seed_for_testing(std::optional<std::uint32_t> seed)
-{
-    s_match_seed_for_testing = seed;
-}
+#include "../../tests/coverage_internal/match_stage_observers.inc"
 #endif
 
 std::uint64_t stage_clock_now_ms()

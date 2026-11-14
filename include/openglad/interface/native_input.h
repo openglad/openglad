@@ -224,6 +224,10 @@ void start_text_input(const char* initial_value = nullptr,
                       int max_bytes = 0,
                       const char* prompt = nullptr,
                       bool multiline = false);
+// Publish the exact one-line editor buffer represented by the active prompt.
+// Web browser tests use this read-only snapshot to distinguish engine input
+// from DOM-overlay state and compositor pixels; native builds are a no-op.
+void publish_text_input_value(const char* value);
 void stop_text_input();
 // Deliver Escape-cancel semantics to the active text prompt (input_string's
 // restore-original-and-return-null path). Needed by the web DOM text-entry

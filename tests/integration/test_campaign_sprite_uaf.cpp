@@ -231,6 +231,7 @@ struct SpriteFlowState
     // Point one leg at an id the flow never publishes, so the give-up path is
     // itself testable.
     int sabotage_leg = 0;
+    int enter_id_retries = 0;
 };
 
 int set_campaign_flow_injector(void* data)
@@ -315,11 +316,18 @@ int set_campaign_flow_injector(void* data)
     // click with it instead of silently missing.
     const og::ui::PickerRect id_button =
         og::ui::campaign_picker_layout().id_button;
+    const int retries_before = g_campaign_picker_click_retries;
+    // Exercise the bounded ladder on every run: the first press is consumed
+    // outside all browser rects, then the helper must prove the miss and send
+    // exactly one replacement to the real ENTER ID face.
+    g_campaign_picker_click_drops = 1;
     if (!click_campaign_picker_action(id_button.x + id_button.w / 2,
                                       id_button.y + id_button.h / 2))
     {
         return escape(4, "the ENTER ID button never acknowledged the click");
     }
+    state->enter_id_retries =
+        g_campaign_picker_click_retries - retries_before;
 
     // -- Leg 5: the handler mounts the fixture and reloads --
     if (!wait_for_trace("gloader", "reloaded stale"))
@@ -407,6 +415,8 @@ TEST(CampaignSpriteUaf, set_campaign_flow_reloads_shipped_art_safely)
         << " (1=SCENARIO composed, 2=SET CAMPAIGN acknowledged by the "
            "browser, 3=pointer handoff, 4=ENTER ID click, 5=reload trace, "
            "6=SCENARIO resumed)";
+    EXPECT_EQ(1, state.enter_id_retries)
+        << "the deliberately missed ENTER ID press must be retried once";
     EXPECT_TRUE(ret & 2) << "BACK must propagate MENU_REDRAW";
     EXPECT_EQ(kFixtureId, get_mounted_campaign())
         << "the flow must land on the entered campaign";

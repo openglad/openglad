@@ -92,40 +92,21 @@ protected:
     void TearDown() override { og::script::clear_pack_scripts(); }
 };
 
-// The first world-RNG state from which next(bound_a) and next(bound_b),
-// drawn in EITHER order from the same two raw draws, keep the order the
-// test wants: `a_wins` means the first operand of turn_undead's compare
-// (the roll, bound_a) is greater than the second (the level, bound_b).
-// Either order, because C++ leaves the evaluation order of the two
-// operands of `>` unspecified.
+// The first world-RNG state where the caster-first pair has the requested
+// answers at the classic and comparison bounds.
 std::uint32_t state_where_roll(std::uint32_t bound_a, std::uint32_t bound_b,
                                bool a_wins_with_a, std::uint32_t other_bound_a,
                                bool a_wins_with_other)
 {
     for (std::uint32_t seed = 1;; ++seed) {
-        bool ok = true;
-        for (const bool a_first : {true, false}) {
-            og::sim::SimRandom r(seed);
-            og::sim::SimRandom q(seed);
-            std::uint32_t a = 0;
-            std::uint32_t b = 0;
-            std::uint32_t a2 = 0;
-            std::uint32_t b2 = 0;
-            if (a_first) {
-                a = r.next(bound_a);
-                b = r.next(bound_b);
-                a2 = q.next(other_bound_a);
-                b2 = q.next(bound_b);
-            } else {
-                b = r.next(bound_b);
-                a = r.next(bound_a);
-                b2 = q.next(bound_b);
-                a2 = q.next(other_bound_a);
-            }
-            ok = ok && ((a > b) == a_wins_with_a) &&
-                 ((a2 > b2) == a_wins_with_other);
-        }
-        if (ok)
+        og::sim::SimRandom r(seed);
+        og::sim::SimRandom q(seed);
+        const std::uint32_t a = r.next(bound_a);
+        const std::uint32_t b = r.next(bound_b);
+        const std::uint32_t a2 = q.next(other_bound_a);
+        const std::uint32_t b2 = q.next(bound_b);
+        if (((a > b) == a_wins_with_a) &&
+            ((a2 > b2) == a_wins_with_other))
             return seed;
     }
 }
@@ -260,7 +241,7 @@ TEST_F(GameplayFixesEngine, turn_undead_roll_bound_is_classic_on_both_values)
 {
     og::test::ScopedHookFailureGuard guard;
     // The skeleton (level 10, so next(100)) resists a bound of 800 and
-    // loses to one of 2400, whichever operand is drawn first.
+    // loses to one of 2400 with the caster draw first.
     const std::uint32_t start = state_where_roll(800, 100, false, 2400, true);
 
     const auto cast = [&](short fixes, std::int32_t range,

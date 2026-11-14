@@ -65,6 +65,7 @@ og_unit_imaginations_asteroid
 og_unit_kits
 og_unit_mapgen
 og_unit_mode
+og_unit_network
 og_unit_modes
 og_unit_modes_water
 og_unit_onslaught

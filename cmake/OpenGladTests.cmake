@@ -7,6 +7,20 @@
 
 find_package(GTest REQUIRED)
 
+# Unit groups use the production gameplay archive with test-only observers.
+target_compile_definitions(og_gameplay PRIVATE OPENGLAD_TEST_SUPPORT)
+
+add_library(og_test_support STATIC
+    ${CMAKE_SOURCE_DIR}/tests/support/script_coverage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/coverage_internal/company_clock_observers.cpp
+    ${CMAKE_SOURCE_DIR}/tests/coverage_internal/game_client_observers.cpp
+    ${CMAKE_SOURCE_DIR}/tests/coverage_internal/game_context_observers.cpp
+    ${CMAKE_SOURCE_DIR}/tests/coverage_internal/sim_random_observers.cpp
+    ${CMAKE_SOURCE_DIR}/tests/coverage_internal/walker_observers.cpp
+)
+configure_openglad_library(og_test_support)
+target_compile_definitions(og_test_support PRIVATE TESTING)
+
 set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_trace_buffer.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_company_litter_guard.cpp
@@ -227,7 +241,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_keymap_screen.cpp
 )
 
-# The ctest defaults every group entry starts from: the source tree as cwd,
+# The ctest defaults every group entry starts from: the launcher cwd,
 # the 180 s group budget, the group label and the sanitizer environment.
 function(og_set_group_test_defaults TEST_NAME LABEL)
     set_tests_properties(${TEST_NAME} PROPERTIES
@@ -266,12 +280,12 @@ function(og_add_test_group NAME)
     target_include_directories(${NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/tests
     )
-    target_link_libraries(${NAME} PRIVATE og_game_test GTest::gtest)
+    target_link_libraries(${NAME} PRIVATE og_test_support og_game_test GTest::gtest)
     configure_openglad_runtime_target(${NAME})
     add_runtime_assets_dependency(${NAME})
 
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${NAME} PRIVATE -O1 -g)
+        target_compile_options(${NAME} PRIVATE -O0)
         target_compile_definitions(${NAME} PRIVATE ENABLE_COVERAGE)
     endif()
 
@@ -279,7 +293,9 @@ function(og_add_test_group NAME)
     if(ARG_NO_DEFAULT_TEST)
         return()
     endif()
-    add_test(NAME ${NAME} COMMAND ${NAME})
+    add_test(NAME ${NAME} COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tests/fixtures/run_isolated.py
+        ${CMAKE_SOURCE_DIR} $<TARGET_FILE:${NAME}>)
     og_set_group_test_defaults(${NAME} integration)
 endfunction()
 
@@ -298,12 +314,12 @@ function(og_add_unit_group NAME)
     configure_openglad_sdl_target(${NAME})
     target_compile_definitions(${NAME} PRIVATE TESTING)
     target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    target_link_libraries(${NAME} PRIVATE og_game GTest::gtest)
+    target_link_libraries(${NAME} PRIVATE og_test_support og_game GTest::gtest)
     configure_openglad_runtime_target(${NAME})
     add_runtime_assets_dependency(${NAME})
 
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(${NAME} PRIVATE -O1 -g)
+        target_compile_options(${NAME} PRIVATE -O0)
         target_compile_definitions(${NAME} PRIVATE ENABLE_COVERAGE)
     endif()
 
@@ -311,7 +327,9 @@ function(og_add_unit_group NAME)
     if(ARG_NO_DEFAULT_TEST)
         return()
     endif()
-    add_test(NAME ${NAME} COMMAND ${NAME})
+    add_test(NAME ${NAME} COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tests/fixtures/run_isolated.py
+        ${CMAKE_SOURCE_DIR} $<TARGET_FILE:${NAME}>)
     og_set_group_test_defaults(${NAME} unit)
 endfunction()
 
@@ -334,24 +352,109 @@ function(og_add_filtered_test NAME BIN FILTER)
         message(FATAL_ERROR
             "og_add_filtered_test(${NAME}): ${BIN} is not an og_add_*_group binary")
     endif()
-    add_test(NAME ${NAME} COMMAND ${BIN} "--gtest_filter=${FILTER}")
+    cmake_parse_arguments(ARG "DIRECT" "" "" ${ARGN})
+    if(ARG_DIRECT)
+        add_test(NAME ${NAME} COMMAND $<TARGET_FILE:${BIN}> "--gtest_filter=${FILTER}")
+    else()
+        add_test(NAME ${NAME} COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/tests/fixtures/run_isolated.py
+            ${CMAKE_SOURCE_DIR} $<TARGET_FILE:${BIN}> "--gtest_filter=${FILTER}")
+    endif()
     og_set_group_test_defaults(${NAME} ${label})
     set_tests_properties(${NAME} PROPERTIES
         FAIL_REGULAR_EXPRESSION "\\[  PASSED  \\] 0 tests"
     )
 endfunction()
 
-add_library(og_game_test STATIC
-    ${GAME_SOURCES_NO_MAIN}
+# GoogleTest partitions runnable cases by stable index. Keep one compiled
+# binary and its original filter; every case belongs to exactly one entry.
+# The base CTest ID remains slice zero. Deliberate cross-test cleanup pairs
+# must be excluded here and registered together as an unsharded entry.
+function(og_add_sharded_group_tests NAME BIN COUNT FILTER OUT_VAR)
+    if(NOT COUNT MATCHES "^[1-9][0-9]*$" OR COUNT LESS 2)
+        message(FATAL_ERROR "Invalid GoogleTest shard count for ${BIN}: ${COUNT}")
+    endif()
+    math(EXPR last "${COUNT} - 1")
+    set(entries)
+    foreach(index RANGE 0 ${last})
+        if(index EQUAL 0)
+            set(name ${NAME})
+        else()
+            set(name ${NAME}_part_${index})
+        endif()
+        og_add_filtered_test(${name} ${BIN} "${FILTER}" ${ARGN})
+        set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
+            "GTEST_TOTAL_SHARDS=${COUNT}"
+            "GTEST_SHARD_INDEX=${index}"
+            "GTEST_FAIL_IF_NO_TEST_SELECTED=1")
+        list(APPEND entries ${name})
+    endforeach()
+    set(${OUT_VAR} ${entries} PARENT_SCOPE)
+endfunction()
+
+# The integration build needs every game TU under TESTING, but it does not need
+# them in one 100+ MiB archive.  Keep the same source union while exposing the
+# real component boundaries to compile-cache workers.  The component archives
+# deliberately have no dependencies on one another: a TU only needs headers to
+# compile, and the aggregate link group resolves the game's historical static
+# library cycles at the final executable link.
+function(og_add_testing_component TARGET)
+    add_library(${TARGET} STATIC ${ARGN})
+    configure_openglad_library(${TARGET})
+    configure_openglad_sdl_target(${TARGET})
+    target_compile_definitions(${TARGET} PRIVATE TESTING)
+    # Preserve the monolithic og_game_test compile environment.  In
+    # particular, gameplay sources include vendored Lua headers, resource
+    # sources include the IO package headers, and native transport sources
+    # include IXWebSocket headers.
+    target_link_libraries(${TARGET} PRIVATE ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(${TARGET} PRIVATE og_ext_ixwebsocket)
+    endif()
+endfunction()
+
+og_add_testing_component(og_core_test ${OG_CORE_SOURCES})
+og_add_testing_component(og_gameplay_test ${OG_GAMEPLAY_COMPONENT_SOURCES})
+og_add_testing_component(og_resources_test ${OG_RESOURCES_COMPONENT_SOURCES})
+og_add_testing_component(og_interface_test ${OG_INTERFACE_COMPONENT_SOURCES})
+if(OG_NETWORK_SOURCES)
+    og_add_testing_component(og_platform_ws_transport_test ${OG_NETWORK_SOURCES})
+endif()
+og_add_testing_component(og_platform_test
+    ${OG_PLATFORM_SDL_COMPONENT_SOURCES}
+    ${OG_PLATFORM_EMSCRIPTEN_COMPONENT_SOURCES}
     ${SRC_DIR}/platform/sdl/glad.cpp
-    ${SRC_DIR}/core/test_trace.cpp
+    ${CMAKE_SOURCE_DIR}/tests/support/test_trace.cpp
 )
-configure_openglad_library(og_game_test)
-configure_openglad_sdl_target(og_game_test)
-target_compile_definitions(og_game_test PRIVATE TESTING)
-target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+
+add_library(og_game_test INTERFACE)
+set(OG_GAME_TEST_COMPONENTS og_platform_test)
+if(TARGET og_platform_ws_transport_test)
+    list(APPEND OG_GAME_TEST_COMPONENTS og_platform_ws_transport_test)
+endif()
+list(APPEND OG_GAME_TEST_COMPONENTS
+    og_interface_test og_resources_test og_gameplay_test og_core_test)
+if(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+    list(JOIN OG_GAME_TEST_COMPONENTS "," OG_GAME_TEST_LINK_GROUP)
+    target_link_libraries(og_game_test INTERFACE
+        "$<LINK_GROUP:RESCAN,${OG_GAME_TEST_LINK_GROUP}>"
+        ${OG_IO_EXTERNAL_LIBS}
+        og_runtime_deps
+    )
+else()
+    set(OG_GAME_TEST_COMPONENT_REPEATS og_platform_test)
+    if(TARGET og_platform_ws_transport_test)
+        list(APPEND OG_GAME_TEST_COMPONENT_REPEATS og_platform_ws_transport_test)
+    endif()
+    target_link_libraries(og_game_test INTERFACE
+        ${OG_GAME_TEST_COMPONENTS}
+        ${OG_GAME_TEST_COMPONENT_REPEATS}
+        ${OG_IO_EXTERNAL_LIBS}
+        og_runtime_deps
+    )
+endif()
 if(NOT EMSCRIPTEN)
-    target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
+    target_link_libraries(og_game_test INTERFACE og_ext_ixwebsocket)
 endif()
 add_dependencies(og_game_test check_vendor_leaks check_injector_settles check_no_std_regex check_escape_tail_twins)
 
@@ -363,6 +466,7 @@ enable_testing()
 # owning teardown without disturbing another test's SDL globals.
 add_executable(og_test_sdl_video_lifecycle
     ${CMAKE_SOURCE_DIR}/tests/integration/sdl_video_default_lifecycle.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/production_game_frame.cpp
 )
 configure_openglad_library(og_test_sdl_video_lifecycle)
 configure_openglad_sdl_target(og_test_sdl_video_lifecycle)
@@ -505,7 +609,7 @@ og_add_test_group(og_test_guy FILES
     test_guy_extended.cpp
 )
 
-og_add_test_group(og_test_game_core FILES
+og_add_test_group(og_test_game_core NO_DEFAULT_TEST FILES
     test_combat_math.cpp
     test_game_context.cpp
     test_startup.cpp
@@ -525,6 +629,13 @@ og_add_test_group(og_test_game_core FILES
     test_pause_menu.cpp
     test_belt_persistence.cpp
 )
+og_add_sharded_group_tests(og_test_game_core og_test_game_core 4 "*" OG_GAME_CORE_TESTS)
+
+# Explicit cinematic media tool; it shares the real-game harness but does
+# not count as an automated test and is built only when requested.
+og_add_test_group(og_capture_gameplay NO_DEFAULT_TEST FILES test_game_loop.cpp)
+set_target_properties(og_capture_gameplay PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_compile_definitions(og_capture_gameplay PRIVATE OPENGLAD_CAPTURE_TOOL)
 
 # The New Specials and Gameplay Fixes scenes (tests/integration/
 # test_special_scenes.cpp): 43 scenes, 64 plays of the real game loop
@@ -533,9 +644,10 @@ og_add_test_group(og_test_game_core FILES
 # Gameplay Fixes scenes alone (fde713b8), and the New Specials scenes add
 # to that (locally 0.58 of the Gameplay Fixes time on a plain build, 0.22
 # under ASan+UBSan). The budgets are in the lane blocks below.
-og_add_test_group(og_test_special_scenes FILES
+og_add_test_group(og_test_special_scenes NO_DEFAULT_TEST FILES
     test_special_scenes.cpp
 )
+og_add_sharded_group_tests(og_test_special_scenes og_test_special_scenes 4 "*" OG_SPECIAL_SCENES_TESTS)
 
 # The bots of The Tryxian Chronicles' first level, played headlessly for 2400
 # ticks on three seeds with a level-14 crew (tests/integration/
@@ -563,7 +675,7 @@ og_add_test_group(og_test_screen FILES
     test_runtime_coverage_paths.cpp
 )
 
-og_add_test_group(og_test_view FILES
+og_add_test_group(og_test_view NO_DEFAULT_TEST FILES
     test_view_draw.cpp
     test_view_redraw.cpp
     test_camera_view.cpp
@@ -580,6 +692,7 @@ og_add_test_group(og_test_view FILES
     test_view_team.cpp
     test_player_hud_zoom.cpp
 )
+og_add_sharded_group_tests(og_test_view og_test_view 4 "*" OG_VIEW_TESTS)
 
 og_add_test_group(og_test_rendering FILES
     test_canvas_scale.cpp
@@ -633,8 +746,13 @@ if(OPENGLAD_X11_DISPLAY_TESTS)
             set(x11_displays 2)
             set(x11_filter "X11TwoScreens.*")
         endif()
+        # Keep the lane about the real X11 window/mode path. Renderer
+        # auto-probing can block inside an accelerated Xvfb backend before
+        # the first display assertion and is covered by its own lifecycle
+        # tests; software presentation still creates and maps the X11 window.
         set(x11_environment
-            "SDL_VIDEODRIVER=x11" "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
+            "SDL_VIDEODRIVER=x11" "SDL_RENDER_DRIVER=software"
+            "OG_X11_EXPECT_DISPLAYS=${x11_displays}")
         if(OG_SANITIZER_TEST_ENVIRONMENT)
             list(APPEND x11_environment ${OG_SANITIZER_TEST_ENVIRONMENT})
         endif()
@@ -668,7 +786,7 @@ og_add_test_group(og_test_picker_network FILES
     test_local_transport_shadow_budget.cpp
 )
 
-og_add_test_group(og_test_menu_ui FILES
+og_add_test_group(og_test_menu_ui NO_DEFAULT_TEST FILES
     test_back_to_mainmenu.cpp
     test_menu_capture.cpp
     test_menu_frame_wait.cpp
@@ -690,6 +808,7 @@ og_add_test_group(og_test_menu_ui FILES
     test_results_screen_internal_helper.cpp
     test_level_progress.cpp
 )
+og_add_sharded_group_tests(og_test_menu_ui og_test_menu_ui 4 "*" OG_MENU_UI_TESTS)
 
 # Light menu group (split out of og_test_menu_ui per the coverage-lane
 # rule: a group near its ceiling is SPLIT, never given more clock). The
@@ -714,7 +833,7 @@ og_add_test_group(og_test_menu_engine FILES
 # Layer-F Company & Base Camp flow group (design G10): heavyweight
 # picker_main injector flows for the §2.2-§2.5 feature screens live
 # here, never in og_test_menu_ui (~130s vs the 180s timeout).
-og_add_test_group(og_test_basecamp FILES
+og_add_test_group(og_test_basecamp NO_DEFAULT_TEST FILES
     test_company_litter_guard.cpp
     test_company_list.cpp
     test_uxshots_probe.cpp
@@ -722,6 +841,9 @@ og_add_test_group(og_test_basecamp FILES
     test_seat_chip.cpp
     test_fade_ownership.cpp
 )
+og_add_sharded_group_tests(og_test_basecamp og_test_basecamp 4 "-CompanyLitter.*" OG_BASECAMP_TESTS)
+og_add_filtered_test(og_test_basecamp_company_litter og_test_basecamp "CompanyLitter.*")
+list(APPEND OG_BASECAMP_TESTS og_test_basecamp_company_litter)
 
 og_add_test_group(og_test_input FILES
     test_input.cpp
@@ -734,7 +856,7 @@ og_add_test_group(og_test_input FILES
     test_sim_input_handler.cpp
 )
 
-og_add_test_group(og_test_level FILES
+og_add_test_group(og_test_level NO_DEFAULT_TEST FILES
     test_level_data_error_paths.cpp
     test_level_data_load_versions.cpp
     test_level_data_ops.cpp
@@ -747,6 +869,7 @@ og_add_test_group(og_test_level FILES
     test_png_conversion.cpp
     test_aseprite_round_trip.cpp
 )
+og_add_sharded_group_tests(og_test_level og_test_level 4 "*" OG_LEVEL_TESTS)
 
 og_add_test_group(og_test_io FILES
     test_io_filesystem.cpp
@@ -818,12 +941,13 @@ og_add_test_group(og_test_parity NO_DEFAULT_TEST FILES
     golden_evaluation_helper.cpp
 )
 
-og_add_test_group(og_test_matchup FILES
+og_add_test_group(og_test_matchup NO_DEFAULT_TEST FILES
     test_ctf_ui.cpp
     test_mode_ui.cpp
     test_campaign_zone_ui.cpp
     test_match_setup_ui.cpp
 )
+og_add_sharded_group_tests(og_test_matchup og_test_matchup 4 "*" OG_MATCHUP_TESTS)
 
 # The LINEUP flows live in their own binary. They are injector-driven
 # picker_main runs whose click ladders wait on named edges but whose screen
@@ -834,9 +958,10 @@ og_add_test_group(og_test_matchup FILES
 # loaded CI runner tipped a lane over. Split at the natural seam — the
 # LineupUi suite alone is ~111s of that — so each binary keeps its own
 # generous budget. Both carry the same lane properties below.
-og_add_test_group(og_test_lineup FILES
+og_add_test_group(og_test_lineup NO_DEFAULT_TEST FILES
     test_lineup_ui.cpp
 )
+og_add_sharded_group_tests(og_test_lineup og_test_lineup 4 "*" OG_LINEUP_TESTS)
 
 # New Ability Select (docs/ability-select-design.md G.5): the ABILITIES
 # screen's layout pins and its picker_main injector flows. A group of its
@@ -870,19 +995,16 @@ target_include_directories(scenario_facts_dump PRIVATE
 )
 target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
 target_link_libraries(scenario_facts_dump PRIVATE og_game_test project_warnings)
-# Coverage builds: libog_game_test.a is compiled with --coverage and
-# leaves undefined references to __gcov_init / __gcov_exit /
-# __gcov_merge_add in the static archive. Link against gcov via
+# Coverage builds: the og_*_test component archives are compiled with
+# --coverage and leave undefined references to __gcov_init / __gcov_exit /
+# __gcov_merge_add. Link against gcov via
 # --coverage so the standalone executable resolves them. The ASan
 # / TSan presets do NOT route through configure_openglad_library
 # here because pulling in project_sanitizers transitively slows
 # og_test_view's tick budget enough to time out at 180s on CI.
 # Only the SANITIZERS are skipped: project_warnings is linked above,
 # so this tool is audited like every other first-party target.
-if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(scenario_facts_dump PRIVATE ${OG_COVERAGE_COMPILE_OPTIONS})
-    target_link_options(scenario_facts_dump PRIVATE --coverage)
-endif()
+og_instrument_for_coverage(scenario_facts_dump)
 add_custom_command(
     OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
     COMMAND scenario_facts_dump
@@ -935,12 +1057,13 @@ target_include_directories(parity_runner_smoke PRIVATE
     ${CMAKE_SOURCE_DIR}/tests
     ${CMAKE_SOURCE_DIR}/tests/parity
 )
-target_link_libraries(parity_runner_smoke PRIVATE og_game_test)
+target_link_libraries(parity_runner_smoke PRIVATE og_test_support og_game_test)
 configure_openglad_runtime_target(parity_runner_smoke)
 add_runtime_assets_dependency(parity_runner_smoke)
 
 og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_ids.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_coverage_counters.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_version.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
@@ -967,22 +1090,11 @@ og_add_unit_group(og_unit_core FILES
 add_dependencies(og_unit_core check_keyboard_glyphs)
 add_dependencies(og_game_test check_keyboard_glyphs)
 
-og_add_unit_group(og_unit_sim FILES
+# Deterministic gameplay cases stay independent of live socket pacing.
+og_add_unit_group(og_unit_sim NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_damage_number_events.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
@@ -1018,11 +1130,61 @@ og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_charm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_living_act_flow_unit.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_scenario_strip.cpp
+)
+# The campaign curve battles are the heaviest cases in the tree under
+# instrumentation (one Westlands case alone ran 321 s under coverage on
+# 2026-11-12). GoogleTest shards by runnable index, so in one mixed group
+# every added sim test re-dealt them: an entry recorded at 110 s ran 394 s
+# one commit later, and the planner packed two of them into one worker.
+# They own their entries instead. The two filters are exact complements,
+# so every case in the binary still belongs to exactly one entry.
+set(OG_SIM_CURVE_FILTER
+    "WestlandsCampaignTest.curve_levels_*:LongSeasonCalibration.curve_levels_*:ImaginationsCalibration.curve_levels_*")
+og_add_sharded_group_tests(og_unit_sim_curves og_unit_sim 12
+    "${OG_SIM_CURVE_FILTER}" OG_SIM_CURVE_TESTS)
+og_add_sharded_group_tests(og_unit_sim og_unit_sim 4
+    "*-${OG_SIM_CURVE_FILTER}" OG_SIM_REST_TESTS)
+set(OG_SIM_TESTS ${OG_SIM_REST_TESTS} ${OG_SIM_CURVE_TESTS})
+
+# Real transports, relay threads, lobby/server/client and pack handoffs.
+# TSan selects this transport group; deterministic simulation stays separate.
+og_add_unit_group(og_unit_network NO_DEFAULT_TEST FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_transfer_errors.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_game_server_coverage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_game_client_coverage.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_link_loss_window.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_ctf_network.cpp
 )
 if(TARGET og_platform_ws_transport)
-    target_link_libraries(og_unit_sim PRIVATE og_platform_ws_transport)
+    target_link_libraries(og_unit_network PRIVATE og_platform_ws_transport)
 endif()
+# The two live-WebSocket suites wait on real sockets: 49 s and 43 s of this
+# binary's 98 s on an uninstrumented build (2026-11-13), most of it the
+# server suite's 200 teardown cycles and the client suite's reconnect and
+# handshake timeouts. The group runs with a whole runner to itself
+# (RUN_SERIAL below), so as one entry it was the longest thing its worker
+# did in every lane: 175 s under coverage, 183 s under ASan+UBSan, 199 s
+# under TSan. Each suite owns an entry instead and the planner can give them
+# to different workers. The three filters are exact complements, so every
+# case in the binary still belongs to exactly one entry.
+set(OG_NETWORK_WS_SERVER_FILTER "NetTransportWebSocketServer.*")
+set(OG_NETWORK_WS_CLIENT_FILTER "NetTransportWebSocketClient.*")
+og_add_filtered_test(og_unit_network og_unit_network
+    "*-${OG_NETWORK_WS_SERVER_FILTER}:${OG_NETWORK_WS_CLIENT_FILTER}")
+og_add_filtered_test(og_unit_network_ws_server og_unit_network
+    "${OG_NETWORK_WS_SERVER_FILTER}")
+og_add_filtered_test(og_unit_network_ws_client og_unit_network
+    "${OG_NETWORK_WS_CLIENT_FILTER}")
+set(OG_NETWORK_TESTS
+    og_unit_network og_unit_network_ws_server og_unit_network_ws_client)
 
 og_add_unit_group(og_unit_emscripten_transport FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
@@ -1034,7 +1196,7 @@ target_include_directories(og_unit_emscripten_transport PRIVATE
     ${SRC_DIR}/platform/emscripten
 )
 
-og_add_unit_group(og_unit_families FILES
+og_add_unit_group(og_unit_families NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_pack_lua_paths.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_family_cleric.cpp
@@ -1051,10 +1213,11 @@ og_add_unit_group(og_unit_families FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_fighters.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_casters.cpp
 )
+og_add_sharded_group_tests(og_unit_families og_unit_families 4 "*" OG_FAMILIES_TESTS)
 
 # New Specials: the setting's view of the specials table, the engine seams
 # the kits stand on, and one test file per kit.
-og_add_unit_group(og_unit_kits FILES
+og_add_unit_group(og_unit_kits NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_specials_view.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_possession.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_kit_seams_hidden.cpp
@@ -1073,8 +1236,9 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_belt.cpp
 )
+og_add_sharded_group_tests(og_unit_kits og_unit_kits 4 "*" OG_KITS_TESTS)
 
-og_add_unit_group(og_unit_script FILES
+og_add_unit_group(og_unit_script NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_host.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_errors.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_script_bindings_math.cpp
@@ -1084,6 +1248,7 @@ og_add_unit_group(og_unit_script FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_hooks.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_classpack_lua_bind.cpp
 )
+og_add_sharded_group_tests(og_unit_script og_unit_script 4 "*" OG_SCRIPT_TESTS)
 # The P8-A tests forge REAL stripped Lua bytecode through the C API
 # (string.dump is sandbox-stripped, so the attack artifact has to be
 # generated in the test) and prove the engine and the report refuse
@@ -1213,12 +1378,13 @@ target_compile_definitions(og_unit_stage PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 
-og_add_unit_group(og_unit_modes FILES
+og_add_unit_group(og_unit_modes NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ctf.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_tdm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_strip.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_items.cpp
 )
+og_add_sharded_group_tests(og_unit_modes og_unit_modes 4 "*" OG_MODES_TESTS)
 # The modes-pack fixture zips the CURRENT repo pack sources into its
 # temp .glad so the tests always exercise the shipped bytes.
 target_compile_definitions(og_unit_modes PRIVATE
@@ -1230,10 +1396,11 @@ target_compile_definitions(og_unit_modes PRIVATE
 # 180 s ceiling on the 4-slot CI runner and timed out on a loaded first
 # attempt, so the deathmatch suites run beside the ctf/tdm/strip/items half
 # instead of on top of it.
-og_add_unit_group(og_unit_ffa FILES
+og_add_unit_group(og_unit_ffa NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_ffa.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_mutant.cpp
 )
+og_add_sharded_group_tests(og_unit_ffa og_unit_ffa 4 "*" OG_FFA_TESTS)
 target_compile_definitions(og_unit_ffa PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
@@ -1255,9 +1422,10 @@ target_compile_definitions(og_unit_modes_water PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 
-og_add_unit_group(og_unit_soccer FILES
+og_add_unit_group(og_unit_soccer NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_soccer.cpp
 )
+og_add_sharded_group_tests(og_unit_soccer og_unit_soccer 4 "*" OG_SOCCER_TESTS)
 target_compile_definitions(og_unit_soccer PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
@@ -1281,15 +1449,16 @@ og_add_unit_group(og_unit_tower_progression FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_progression.cpp
 )
 
-og_add_unit_group(og_unit_tower_calibration FILES
+og_add_unit_group(og_unit_tower_calibration NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_calibration.cpp
 )
+og_add_sharded_group_tests(og_unit_tower_calibration og_unit_tower_calibration 4 "*" OG_TOWER_CALIBRATION_TESTS)
 
 add_executable(og_unit_server
     ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_runtime.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_tick_interval.cpp
-    ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
+    ${CMAKE_SOURCE_DIR}/tests/support/test_trace.cpp
     ${SRC_DIR}/platform/text/text_platform_globals.cpp
     ${HEADLESS_SERVER_RUNTIME_SOURCES}
 )
@@ -1299,6 +1468,7 @@ target_include_directories(og_unit_server PRIVATE
     ${CMAKE_SOURCE_DIR}/tests
 )
 target_link_libraries(og_unit_server PRIVATE
+    og_test_support
     og_core
     og_gameplay
     og_resources
@@ -1326,7 +1496,7 @@ add_executable(og_unit_headless_platform
     ${CMAKE_SOURCE_DIR}/tests/unit/test_text_campaign_sprites.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_picker_session.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_zone_session.cpp
-    ${SRC_DIR}/core/test_trace.cpp
+    ${CMAKE_SOURCE_DIR}/tests/support/test_trace.cpp
     ${HEADLESS_TEST_SOURCES}
 )
 configure_openglad_library(og_unit_headless_platform)
@@ -1335,6 +1505,7 @@ target_include_directories(og_unit_headless_platform PRIVATE
     ${CMAKE_SOURCE_DIR}/tests
 )
 target_link_libraries(og_unit_headless_platform PRIVATE
+    og_test_support
     ${OG_IO_EXTERNAL_LIBS}
     GTest::gtest
     m
@@ -1342,17 +1513,13 @@ target_link_libraries(og_unit_headless_platform PRIVATE
 )
 configure_openglad_runtime_target(og_unit_headless_platform)
 add_runtime_assets_dependency(og_unit_headless_platform)
-add_test(NAME og_unit_headless_platform COMMAND og_unit_headless_platform)
-set_tests_properties(og_unit_headless_platform PROPERTIES
+set_property(TARGET og_unit_headless_platform PROPERTY OG_TEST_GROUP_LABEL unit)
+og_add_sharded_group_tests(og_unit_headless_platform og_unit_headless_platform 4 "*" OG_HEADLESS_PLATFORM_TESTS DIRECT)
+set_tests_properties(${OG_HEADLESS_PLATFORM_TESTS} PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 180
     LABELS "unit"
 )
-if(OG_SANITIZER_TEST_ENVIRONMENT)
-    set_tests_properties(og_unit_headless_platform PROPERTIES ENVIRONMENT
-        "${OG_SANITIZER_TEST_ENVIRONMENT}"
-    )
-endif()
 
 # --- og_test_curses (ncurses client test suite) ---
 # All curses tests are SDL-free and TTY-free (HeadlessTerminal + FakeClock),
@@ -1364,6 +1531,8 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/curses_test_main.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_glyph_map.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_headless_terminal.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_interface_defaults.cpp
+        ${CMAKE_SOURCE_DIR}/tests/curses/headless_terminal.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_kitty_keys.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_app.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_input.cpp
@@ -1376,7 +1545,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_mount_guard.cpp
         ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_company_litter_guard.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/test_trace.cpp
+        ${CMAKE_SOURCE_DIR}/tests/support/test_trace.cpp
         ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
         ${OG_CURSES_LIB_SOURCES}
         ${OG_CURSES_MENU_SOURCES}
@@ -1402,6 +1571,7 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         target_link_libraries(og_test_curses PRIVATE ${CURSES_LIBRARIES})
     endif()
     target_link_libraries(og_test_curses PRIVATE
+    og_test_support
         og_core
         og_gameplay
         og_resources
@@ -1412,17 +1582,15 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
     )
     configure_openglad_runtime_target(og_test_curses)
     add_runtime_assets_dependency(og_test_curses)
-    add_test(NAME og_test_curses COMMAND og_test_curses)
-    set_tests_properties(og_test_curses PROPERTIES
+    set_property(TARGET og_test_curses PROPERTY OG_TEST_GROUP_LABEL curses)
+    og_add_sharded_group_tests(og_test_curses og_test_curses 4 "-CursesCompanyLitter.*" OG_CURSES_TESTS DIRECT)
+    og_add_filtered_test(og_test_curses_company_litter og_test_curses "CursesCompanyLitter.*" DIRECT)
+    list(APPEND OG_CURSES_TESTS og_test_curses_company_litter)
+    set_tests_properties(${OG_CURSES_TESTS} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         TIMEOUT 240
         LABELS "curses"
     )
-    if(OG_SANITIZER_TEST_ENVIRONMENT)
-        set_tests_properties(og_test_curses PROPERTIES ENVIRONMENT
-            "${OG_SANITIZER_TEST_ENVIRONMENT}"
-        )
-    endif()
 
     # Enforce the zero-SDL invariant of the ncurses client in CI: the
     # binary must contain no SDL symbols and not link libSDL3.
@@ -1450,28 +1618,22 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
     )
 endif()
 
-# Three binaries run as several ctest entries each (og_add_filtered_test).
+# Filtered and GoogleTest shards keep one compiled binary per test group.
 # Under ASan+UBSan each of them ran into its budget on slow CI runners
 # (2026-10-27: og_test_parity and og_unit_modes_water at 180 s in four of
 # fifteen runs, og_unit_data at 420 s in two), and one entry is only as fast
 # as the single process that runs it. The slices are the same in every lane.
 #
-# og_test_parity: the coverage gates share one memoised replay of every
-# scenario (about 85 s under ASan, tests/parity/test_parity_coverage_gate.cpp),
-# paid once by whichever gate runs first, so all the gates stay together in
-# one slice. The umbrella gate Parity.coverage_gate is named on its own
-# because "Parity.coverage_gate_*" does not match it: left out, it ran with
-# the scenarios and paid a second full replay there, 112 s of the 180 s the
-# scenario entry had on a coverage run that timed out (PR #425, 2026-11-02).
+# The parity census replays every scenario once in four bounded CTest jobs.
+# The original gates merge the exact current-run observations afterwards.
+# Fixture dependencies keep the census on one matrix worker and require all
+# four jobs before the gates; no timeout or coverage requirement is relaxed.
 #
-# The other parity tests run in two slices, split by the first letter of the
-# test name: Parity.a* to Parity.m* in og_test_parity_a_m, everything else
-# (Parity.n* to Parity.z* and the binary's other suites) in og_test_parity,
-# so a new test always lands in one of them. Measured 2026-11-05, three
-# ci-test runs: a-m 2.2 s and the rest 2.1 s of 4.3 s. The timed-out coverage
-# run above ran the same tests about 27 times slower, which puts each slice
-# at about 60 s there, a third of its budget. `ctest -R '^og_test_parity'`
-# selects all three entries.
+# Scenario comparisons retain complementary a-m and remaining-name filters.
+# Each filter is partitioned into four GoogleTest shards to bound the measured
+# all-O0/atomic coverage cost. Every new case enters exactly one comparison
+# shard. `ctest -R '^og_test_parity'` includes these shards, census workers and
+# aggregate gates, with their fixture setup and cleanup.
 set(OG_PARITY_GATES "Parity.coverage_gate:Parity.coverage_gate_*")
 set(OG_PARITY_A_TO_M)
 foreach(letter a b c d e f g h i j k l m)
@@ -1479,22 +1641,56 @@ foreach(letter a b c d e f g h i j k l m)
 endforeach()
 list(JOIN OG_PARITY_A_TO_M ":" OG_PARITY_A_TO_M)
 og_add_filtered_test(og_test_parity_gates og_test_parity "${OG_PARITY_GATES}")
-og_add_filtered_test(og_test_parity_a_m og_test_parity
-    "${OG_PARITY_A_TO_M}-${OG_PARITY_GATES}")
-og_add_filtered_test(og_test_parity og_test_parity
-    "-${OG_PARITY_GATES}:${OG_PARITY_A_TO_M}")
-# og_unit_modes_water: the full-water-band stationarity test (about 106 s
-# under ASan) alone, the other six tests together.
-og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
+set(OG_PARITY_CENSUS_TESTS)
+set(OG_PARITY_CENSUS_DIRECTORY "${CMAKE_BINARY_DIR}/parity-census")
+foreach(part RANGE 0 3)
+    set(name "og_test_parity_census_${part}")
+    og_add_filtered_test(${name} og_test_parity
+        "Parity.coverage_gate_every_scenario_loaded_its_level")
+    set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT
+        "OPENGLAD_PARITY_CENSUS_DIR=${OG_PARITY_CENSUS_DIRECTORY}"
+        "OPENGLAD_PARITY_CENSUS_PART=${part}")
+    list(APPEND OG_PARITY_CENSUS_TESTS ${name})
+endforeach()
+set_property(TEST og_test_parity_gates APPEND PROPERTY ENVIRONMENT
+    "OPENGLAD_PARITY_CENSUS_DIR=${OG_PARITY_CENSUS_DIRECTORY}"
+    "OPENGLAD_PARITY_CENSUS_PART=")
+og_add_sharded_group_tests(og_test_parity_a_m og_test_parity 4 "${OG_PARITY_A_TO_M}-${OG_PARITY_GATES}" OG_PARITY_A_M_TESTS)
+og_add_sharded_group_tests(og_test_parity og_test_parity 4 "-${OG_PARITY_GATES}:${OG_PARITY_A_TO_M}" OG_PARITY_OTHER_TESTS)
+# og_unit_modes_water: each long stationarity replay has its own bounded entry.
+# The full-water-band mutation takes about 106 s under ASan. On 2026-11-11 a
+# loaded coverage runner stretched the shipped-field replay to 40 s, then the
+# one-cell detector pushed their old shared entry into its 180 s ceiling.
+set(OG_MODES_WATER_BAND
     "ModesWaterRealCampaign.stationarity_detector_catches_a_full_water_band_on_each_real_field")
+set(OG_MODES_WATER_FIELDS
+    "ModesWaterRealCampaign.shipped_water_fields_have_no_near_stationary_unproductive_window")
+set(OG_MODES_WATER_DETECTOR
+    "ModesWaterRealCampaign.stationarity_detector_catches_one_water_cell_near_goal_outside_contact")
+og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
+    "${OG_MODES_WATER_BAND}")
+og_add_filtered_test(og_unit_modes_water_fields og_unit_modes_water
+    "${OG_MODES_WATER_FIELDS}")
+og_add_filtered_test(og_unit_modes_water_detector og_unit_modes_water
+    "${OG_MODES_WATER_DETECTOR}")
 og_add_filtered_test(og_unit_modes_water og_unit_modes_water
-    "-ModesWaterRealCampaign.stationarity_detector_catches_a_full_water_band_on_each_real_field")
+    "-${OG_MODES_WATER_BAND}:${OG_MODES_WATER_FIELDS}:${OG_MODES_WATER_DETECTOR}")
 # og_unit_data: Westlands' campaign suite (about 195 s under ASan) alone, the
 # other campaign suites together (about 150 s), everything else in a third.
-og_add_filtered_test(og_unit_data_westlands og_unit_data "WestlandsCampaignTest.*")
-og_add_filtered_test(og_unit_data_campaigns og_unit_data
-    "*CampaignTest.*-WestlandsCampaignTest.*")
-og_add_filtered_test(og_unit_data og_unit_data "-*CampaignTest.*")
+# The five battle smokes are nearly all of that suite's cost (148 s of 165 s
+# under coverage), so they own their entries, one battle each, and the rest
+# of the suite shares two. The filters are exact complements.
+set(OG_DATA_WESTLANDS_SMOKE_FILTER "WestlandsCampaignTest.battle_smokes_*")
+og_add_sharded_group_tests(og_unit_data_westlands_smokes og_unit_data 5
+    "${OG_DATA_WESTLANDS_SMOKE_FILTER}" OG_DATA_WESTLANDS_SMOKE_TESTS)
+og_add_sharded_group_tests(og_unit_data_westlands og_unit_data 2
+    "WestlandsCampaignTest.*-${OG_DATA_WESTLANDS_SMOKE_FILTER}" OG_DATA_WESTLANDS_REST_TESTS)
+set(OG_DATA_WESTLANDS_TESTS ${OG_DATA_WESTLANDS_REST_TESTS} ${OG_DATA_WESTLANDS_SMOKE_TESTS})
+og_add_sharded_group_tests(og_unit_data_campaigns og_unit_data 4 "*CampaignTest.*-WestlandsCampaignTest.*" OG_DATA_CAMPAIGNS_TESTS)
+og_add_sharded_group_tests(og_unit_data og_unit_data 4 "-*CampaignTest.*:CompanySlot.*" OG_DATA_TESTS)
+# The active-company A/B pair must share one process to detect fixture leaks.
+og_add_filtered_test(og_unit_data_company_slot og_unit_data "CompanySlot.*")
+list(APPEND OG_DATA_TESTS og_unit_data_company_slot)
 # og_unit_stage and og_unit_basketball: on the coverage lane each ran
 # 130-180 s against its 180 s budget (master too), passing only on a retry
 # in most runs and on none of three on 2026-10-29. og_unit_stage: the five
@@ -1516,9 +1712,12 @@ og_add_filtered_test(og_unit_basketball_a_f og_unit_basketball
     "${OG_BASKETBALL_A_TO_F}")
 og_add_filtered_test(og_unit_basketball og_unit_basketball
     "-${OG_BASKETBALL_A_TO_F}:ModesBasketballRealCampaign.*")
+set(OG_BASKETBALL_COURT_TESTS)
 foreach(court IN ITEMS 824 825 826 827 828 829)
-    og_add_filtered_test(og_unit_basketball_court_${court} og_unit_basketball
+    set(court_test og_unit_basketball_court_${court})
+    og_add_filtered_test(${court_test} og_unit_basketball
         "ModesBasketballRealCampaign.scen${court}_*")
+    list(APPEND OG_BASKETBALL_COURT_TESTS ${court_test})
 endforeach()
 # og_unit_westlands_fire: the var==0 byte-identity check (four Westlands
 # levels, 300 ticks each, run with the pack and without) took 150 s of the
@@ -1534,50 +1733,33 @@ endforeach()
 
 # Every property set on one of these binaries below names its list, so all
 # of its slices get it, never the binary's own entry alone.
-set(OG_PARITY_TESTS og_test_parity og_test_parity_a_m og_test_parity_gates)
-set(OG_MODES_WATER_TESTS og_unit_modes_water og_unit_modes_water_band)
+set(OG_PARITY_TESTS ${OG_PARITY_OTHER_TESTS} ${OG_PARITY_A_M_TESTS} og_test_parity_gates
+    ${OG_PARITY_CENSUS_TESTS})
+set(OG_MODES_WATER_TESTS
+    og_unit_modes_water
+    og_unit_modes_water_band
+    og_unit_modes_water_fields
+    og_unit_modes_water_detector)
 # The semantic test batches (docs/sim-semantics.md): one unit binary each,
 # registered in their own files so the batches never edit this one.
 foreach(og_sem_area walker ai world script families libs)
     include(${CMAKE_SOURCE_DIR}/cmake/semantics/${og_sem_area}.cmake)
 endforeach()
 
-set(OG_UNIT_DATA_TESTS og_unit_data og_unit_data_campaigns og_unit_data_westlands)
+set(OG_UNIT_DATA_TESTS ${OG_DATA_TESTS} ${OG_DATA_CAMPAIGNS_TESTS} ${OG_DATA_WESTLANDS_TESTS})
 
-# The picker and menu UI suites include the live networking menu/client
-# coverage, and the picker-network integration/unit-sim binaries both
-# initialize IXWebSocket's native net system and transports. On Linux
-# they can trip EBADF/netlink failures when CTest overlaps them in
-# separate processes, so serialize just that shared resource.
+# Native transport processes share a lock; deterministic simulation does not.
 set_tests_properties(
-    og_test_picker
-    og_test_menu_ui
-    og_test_picker_network
-    og_unit_sim
+    og_test_picker ${OG_MENU_UI_TESTS} og_test_picker_network ${OG_NETWORK_TESTS}
     PROPERTIES RESOURCE_LOCK native_network_stack
 )
 if(TARGET og_test_curses)
-    set_tests_properties(og_test_curses PROPERTIES
-        RESOURCE_LOCK native_network_stack
-    )
+    set_tests_properties(${OG_CURSES_TESTS} PROPERTIES RESOURCE_LOCK native_network_stack)
 endif()
-# og_unit_sim now bundles the live IXWebSocket/relay transport tests. Run
-# alone it finishes in ~1s (loopback handshakes are instant), but the
-# RESOURCE_LOCK above only keeps it off the OTHER network suites — CTest
-# still overlaps it with the heavy non-network integration binaries
-# (og_test_view, og_test_game_core, og_test_level). Under that CPU
-# contention the loopback websocket handshake starves and waits out the
-# transport's network_timeout, blowing past the 180s CTest budget (observed
-# at both -j6 and -j4). RUN_SERIAL takes it off the contended schedule so
-# the transports connect promptly in every lane.
-# ...and give it the same 600s budget the coverage lane uses. The bundled
-# at_12hz loopback-websocket sync test is wall-clock-bound with a 90s
-# internal network_timeout that assumes a generous ctest cap; the default
-# 180s is too tight when a sync stalls and waits that timeout out (the test
-# then blocks — main thread in the 12hz pacing sleep — rather than
-# deadlocking, so it completes given headroom). 600s keeps it green without
-# masking a genuine hang.
-set_tests_properties(og_unit_sim PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+# Retain the measured live-socket isolation until concurrent transport proof
+# warrants removing it. The deterministic sim group can run in parallel.
+set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+set_tests_properties(${OG_SIM_TESTS} PROPERTIES TIMEOUT 600)
 # og_unit_data runs ~6s in ci-test but its campaign/battle/round-trip
 # suites multiply under instrumentation: the sanitizer/validation lane
 # needed 420s (block below), and the COVERAGE lane crossed the 180s
@@ -1602,7 +1784,7 @@ set_tests_properties(og_test_picker_network PROPERTIES
 # 2026-08-13 when the seat-chip suite landed in the same schedule.
 # Same reasoning as og_unit_data above: one generous budget in every
 # lane, and a genuine hang still trips well before the job cap.
-set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
+set_tests_properties(${OG_VIEW_TESTS} PROPERTIES TIMEOUT 420)
 
 # og_test_menu_ui is the slowest integration binary. The rationale that
 # used to stand here — "its injector flows gate on fadeblack animations
@@ -1620,83 +1802,80 @@ set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
 # budget in EVERY lane, mirroring og_test_picker_network above. Do NOT
 # raise it further — the fix for a slow injector flow is to make its
 # waits conditions, not to buy more clock.
-set_tests_properties(og_test_menu_ui PROPERTIES
+set_tests_properties(${OG_MENU_UI_TESTS} PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )
-# The Base Camp group now includes the visual smoke matrix in addition
-# to the company-list flows. Both drive wall-clock fades from injector
-# threads, so isolate the combined ~80s binary and leave ample CI
-# headroom just as we do for the older menu UI group.
-set_tests_properties(og_test_basecamp PROPERTIES
-    RUN_SERIAL TRUE
-    TIMEOUT 420
-)
-# The matchup group's CTF and campaign-zone flows are injector-driven
-# picker_main runs. Their click ladders are wait-on-condition now — named
-# edges, completed menu frames and bounded retry ladders (the shared
-# tests/test_click_ladder.h) rather than flat sleeps — though the
-# campaign-zone screen settles are still partly wall-clock: test_ctf_ui.cpp
-# is on scripts/check_injector_settles.sh, test_campaign_zone_ui.cpp is not
-# yet. Either way a whole group of picker_main flows is still well past the
-# 180s group default. Same treatment as
-# og_test_menu_ui / og_test_basecamp above: isolate it and give it the
-# standard heavy-flow budget in every lane. The LINEUP flows
-# (docs/lineup-design.md §2) used to sit in this group and pushed the
-# pair to ~213s; they now live in og_test_lineup, which gets the
-# identical treatment.
-set_tests_properties(og_test_matchup PROPERTIES
-    RUN_SERIAL TRUE
-    TIMEOUT 420
-)
-set_tests_properties(og_test_lineup PROPERTIES
-    RUN_SERIAL TRUE
-    TIMEOUT 420
-)
-# The ABILITIES flows write save0 and drive picker_main like the groups
-# above: serial, with the same heavy-flow budget in every lane.
-set_tests_properties(og_test_abilities PROPERTIES
-    RUN_SERIAL TRUE
-    TIMEOUT 420
-)
-
-# The level-data suite produces and rewrites temp/scen/scen99.fss while
-# the parity bootstrap mounts the same source-tree scenario directory.
-# Preserve the serial suite's producer-before-consumer ordering and
-# keep those read/write windows from overlapping in parallel lanes.
+# These picker-flow groups use private writable assets and no shared live ports.
+# A three-process coverage run kept their isolated timings (2026-11-09:
+# basecamp144s, matchup168s, lineup143s); abilities filled the next free slot.
+# Keep each group's existing hang budget while allowing independent flows to
+# overlap. The network groups above retain their named lock and timing rules.
 set_tests_properties(
-    og_test_level
-    ${OG_PARITY_TESTS}
-    PROPERTIES RESOURCE_LOCK source_scenario_fixtures
+    ${OG_BASECAMP_TESTS} ${OG_MATCHUP_TESTS} ${OG_LINEUP_TESTS} og_test_abilities
+    PROPERTIES TIMEOUT 420
 )
-set_tests_properties(${OG_PARITY_TESTS} PROPERTIES DEPENDS og_test_level)
 
-if(ENABLE_COVERAGE)
-    # These two binaries temporarily replace config fixtures in shared
-    # source/build asset trees to exercise missing/invalid-file paths.
-    # Coverage CTest now runs concurrently, so keep those mutation
-    # windows globally isolated from sibling process startup and the
-    # nested Emscripten build.
-    set_tests_properties(
-        og_test_io
-        ${OG_UNIT_DATA_TESTS}
-        PROPERTIES RUN_SERIAL TRUE
-    )
+add_test(NAME native_workspace_selftest
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/test_isolation.py)
+set_tests_properties(native_workspace_selftest PROPERTIES
+    TIMEOUT 60 ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+
+# A selected parity slice requests its deterministic input directly. CTest
+# brings setup/cleanup into filtered runs; no unrelated level test is needed.
+add_test(NAME scenario99_setup
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/scenario99.py
+        setup ${CMAKE_SOURCE_DIR})
+add_test(NAME scenario99_cleanup
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/scenario99.py
+        cleanup ${CMAKE_SOURCE_DIR})
+set_tests_properties(scenario99_setup PROPERTIES FIXTURES_SETUP scenario99)
+set_tests_properties(scenario99_cleanup PROPERTIES FIXTURES_CLEANUP scenario99)
+set_tests_properties(scenario99_setup scenario99_cleanup ${OG_PARITY_TESTS}
+    PROPERTIES RESOURCE_LOCK source_scenario_fixtures)
+set_tests_properties(${OG_PARITY_TESTS} PROPERTIES FIXTURES_REQUIRED scenario99)
+add_test(NAME parity_census_fixture_selftest
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/test_parity_census.py)
+set_tests_properties(parity_census_fixture_selftest PROPERTIES
+    TIMEOUT 30 ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+add_test(NAME parity_census_setup
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/parity_census.py
+        setup ${OG_PARITY_CENSUS_DIRECTORY})
+add_test(NAME parity_census_cleanup
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixtures/parity_census.py
+        cleanup ${OG_PARITY_CENSUS_DIRECTORY})
+set_tests_properties(parity_census_setup PROPERTIES
+    FIXTURES_SETUP parity_census TIMEOUT 30)
+set_tests_properties(parity_census_cleanup PROPERTIES
+    FIXTURES_CLEANUP parity_census TIMEOUT 30)
+set_property(TEST ${OG_PARITY_CENSUS_TESTS} APPEND PROPERTY
+    FIXTURES_REQUIRED parity_census)
+set_property(TEST ${OG_PARITY_CENSUS_TESTS} APPEND PROPERTY
+    FIXTURES_SETUP parity_census_collected)
+set_property(TEST og_test_parity_gates APPEND PROPERTY
+    FIXTURES_REQUIRED parity_census parity_census_collected)
+
+if(ENABLE_COVERAGE AND NOT OG_COVERAGE_ONE_CPU_COUNTERS)
+    # Locked counter updates (CMakeLists.txt, "Counter updates"): a test
+    # process may spread over every core, and the reservations below keep the
+    # heavy ones from starving each other on a 4-core runner.
+    # Group binaries execute beside private copies of installed assets (see
+    # run_isolated.py), so config-error tests need no global serialization.
     # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
     # runners when CTest schedules them all at once.
     set_tests_properties(
-        og_test_game_core
-        og_test_level
-        og_test_view
+        ${OG_GAME_CORE_TESTS}
+        ${OG_LEVEL_TESTS}
+        ${OG_VIEW_TESTS}
         og_test_picker
         og_test_picker_network
-        og_test_menu_ui
+        ${OG_MENU_UI_TESTS}
         PROPERTIES PROCESSORS 3
     )
     # The game-core integration binary also needs isolation in the
     # coverage lane. Running it beside even one other process on GitHub's
     # 4-core runners can trigger flaky asset/campaign test failures.
-    set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+    set_tests_properties(${OG_GAME_CORE_TESTS} PROPERTIES PROCESSORS 4)
     # og_test_special_scenes is pure compute (no sleeps, no threads) like
     # og_test_game_core, so it takes the whole 4-core runner the same way.
     # Measured 2026-10-17 on this lane: the 21 Gameplay Fixes scenes cost
@@ -1704,24 +1883,42 @@ if(ENABLE_COVERAGE)
     # Specials scenes take 0.58 of the Gameplay Fixes time (5.2 s against
     # 8.9 s), so the binary is expected at about 115 s here (derived): 64 %
     # of the 180 s default, 27 % of 420.
-    set_tests_properties(og_test_special_scenes PROPERTIES PROCESSORS 4)
-    # The coverage-instrumented unit-sim binary now includes live
+    set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES PROCESSORS 4)
+    # The snapshot benchmark is also pure simulation compute. Its recorded
+    # coverage time is 184 s, already beyond the inherited 180 s group
+    # timeout, and a contended 4-core runner hit that ceiling while three
+    # other tests were active. Reserve the runner as the sanitizer lane does
+    # for the same binary, and retain the established 420 s hang ceiling.
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES PROCESSORS 4)
+    # These Lua-hooked deterministic simulations consume a full core budget
+    # each. Coverage shard 3 overlapped court 826, the water stationarity
+    # group and og_unit_sim on 2026-11-11; both 180-second entries timed out,
+    # although the exact pair takes 48 seconds on an otherwise idle 4-core
+    # coverage build. Reserve the runner without relaxing either hang ceiling.
+    set_tests_properties(
+        ${OG_MODES_WATER_TESTS} ${OG_BASKETBALL_COURT_TESTS}
+        PROPERTIES PROCESSORS 4
+    )
+    # The coverage-instrumented network group includes live
     # WebSocket and relay transport tests. On GitHub's 4-core runners
     # it can exceed the coverage workflow timeout budget when CTest
     # schedules it beside other heavyweight binaries, so give it full
     # runner isolation in that lane.
-    set_tests_properties(og_unit_sim PROPERTIES PROCESSORS 4)
+    set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES PROCESSORS 4)
+endif()
+if(ENABLE_COVERAGE)
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES TIMEOUT 420)
     # Menu UI coverage still runs substantially slower on GitHub's
     # 4-core runners than it does locally, so match the dedicated
     # coverage workflow budget instead of leaving CTest at 300s here.
-    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
-    set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 420)
-    set_tests_properties(og_test_level PROPERTIES TIMEOUT 420)
-    set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
-    set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_GAME_CORE_TESTS} PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_LEVEL_TESTS} PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_VIEW_TESTS} PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_MENU_UI_TESTS} PROPERTIES TIMEOUT 420)
     set_tests_properties(og_test_picker PROPERTIES TIMEOUT 420)
     set_tests_properties(og_test_picker_network PROPERTIES TIMEOUT 420)
-    set_tests_properties(og_unit_sim PROPERTIES TIMEOUT 600)
+    set_tests_properties(${OG_SIM_TESTS} PROPERTIES TIMEOUT 600)
 endif()
 
 if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
@@ -1733,7 +1930,7 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # run each. The same tree varies by about 100 s between ASan+UBSan
     # runs (312 s and 418 s with the scenes in), so up to about 300 s
     # (72 %) is normal here and not a regression.
-    set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+    set_tests_properties(${OG_GAME_CORE_TESTS} PROPERTIES TIMEOUT 420)
     # og_test_special_scenes: the New Specials and Gameplay Fixes scenes,
     # 43 scenes, 64 plays of the real game loop since each Gameplay Fixes
     # scene plays twice.
@@ -1751,14 +1948,14 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # keeps the sanitizer run at about half the budget and gives the scenes
     # room to grow. 600 is the budget og_unit_sim already has below; a
     # genuine hang still trips well before the 60-minute job cap.
-    set_tests_properties(og_test_special_scenes PROPERTIES TIMEOUT 600)
+    set_tests_properties(${OG_SPECIAL_SCENES_TESTS} PROPERTIES TIMEOUT 600)
     # og_test_level_play: five headless plays of a 104-bot level, 2400
     # ticks each, every tick validated. Measured on its first CI run
     # (2026-10-19, PR #364, 0f6b6ed7): 167 s under ASan+UBSan, 93 % of the
     # default 180 s, against 27 s on the standard lane and 2 s locally. The
     # same budget as the scenes keeps that run under a third of it.
     set_tests_properties(og_test_level_play PROPERTIES TIMEOUT 600)
-    # The simulation unit binary now includes the WebSocket, relay,
+    # The network group includes the WebSocket, relay,
     # and multiplex transport suites. Serialization validation
     # round-trips every message there too, which can push CI's
     # generic 180s budget over the edge when CTest schedules it
@@ -1771,7 +1968,7 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # stalled handshake waits that timeout out — 420s left no headroom
     # for even one stall on top of the sanitizer compute cost, so the
     # TSan lane timed out here while ci-test/coverage stayed green.
-    set_tests_properties(og_unit_sim PROPERTIES
+    set_tests_properties(${OG_NETWORK_TESTS} PROPERTIES
         PROCESSORS 2
         TIMEOUT 600
     )
@@ -1782,26 +1979,27 @@ if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
     # ran ~6s in ci-test but overran the generic 180s CTest budget in
     # the sanitizer/validation lane. Give it headroom there (the
     # standard lane stays at the 180s default, where it is comfortable).
-    set_tests_properties(${OG_UNIT_DATA_TESTS} PROPERTIES
-        PROCESSORS 2
-        TIMEOUT 420
-    )
+    # It reserved two cores as well while it was one entry of minutes; it
+    # is sixteen entries now, the longest 10 s on the ASan lane at -O1
+    # (GitHub run 43548613162, 2026-11-14), and each takes one core.
+    set_tests_properties(${OG_UNIT_DATA_TESTS} PROPERTIES TIMEOUT 420)
 endif()
 if(ENABLE_SANITIZERS)
-    # Reserve the full 4-core GitHub runner for og_test_game_core.
-    # Under ASan/UBSan it can time out only when CTest schedules it
-    # beside other heavyweight integration binaries.
-    set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
-    # og_test_special_scenes is pure compute (no sleeps, no threads): give
-    # it the runner the way og_test_game_core gets it, or the two slow each
-    # other down (its budget is in the block above).
-    set_tests_properties(og_test_special_scenes PROPERTIES PROCESSORS 4)
+    # og_test_game_core, og_test_special_scenes and og_test_snapshot_benchmark
+    # are pure compute on one thread. Each used to reserve the whole 4-core
+    # runner (three cores for the benchmark), because at -O0 they ran for
+    # minutes and timed out when CTest put them beside other heavy binaries.
+    # The CI lane compiles at -O1 now (nix/native-ci.nix): their twelve
+    # entries took 14 to 33 s each (GitHub run 43548613162, 2026-11-14),
+    # a twelfth of their ceilings, and a reservation only left three cores
+    # idle while one worked. They take the one core they use. The ceilings
+    # stay where they were, so a build at -O0 is no worse off than it was.
     # The menu UI binary now spends enough time in redraw-heavy flows
     # that ASan/UBSan can push it past the generic 180s CTest budget
     # when GitHub's 4-core runners overlap it with the rest of the
     # integration batch. Run it alone in that lane and match the
     # timeout budget already used for the slower coverage variant.
-    set_tests_properties(og_test_menu_ui PROPERTIES
+    set_tests_properties(${OG_MENU_UI_TESTS} PROPERTIES
         PROCESSORS 4
         TIMEOUT 420
     )
@@ -1827,22 +2025,19 @@ if(ENABLE_SANITIZERS)
     # down enough on GitHub's 4-core runners to trip the generic
     # 180-second test budget when scheduled alongside other heavy
     # integration binaries.
-    set_tests_properties(og_test_snapshot_benchmark PROPERTIES
-        PROCESSORS 3
-        TIMEOUT 420
-    )
+    set_tests_properties(og_test_snapshot_benchmark PROPERTIES TIMEOUT 420)
     # ASan/UBSan makes the view integration suite slow enough on
     # GitHub's shared runners to exceed CTest's generic 180s limit
     # when scheduled beside the other heavy integration binaries.
-    set_tests_properties(og_test_view PROPERTIES
+    set_tests_properties(${OG_VIEW_TESTS} PROPERTIES
         PROCESSORS 3
         TIMEOUT 420
     )
     # og_test_level hit the 180 s group default once in fifteen ASan+UBSan
     # runs (2026-10-27, a slow runner, median 143 s). It is not sliced like
-    # og_test_parity: it writes the scen99 fixture the parity rows read and
-    # its suites are order-sensitive. The coverage lane's budget, as a belt.
-    set_tests_properties(og_test_level PROPERTIES TIMEOUT 420)
+    # og_test_parity: its editor flows remain in one group. Keep the existing
+    # measured budget; scen99 now has an independent fixture producer.
+    set_tests_properties(${OG_LEVEL_TESTS} PROPERTIES TIMEOUT 420)
 endif()
 
 set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
@@ -2021,8 +2216,8 @@ set_tests_properties(parity_runner_smoke_cli PROPERTIES
 # precondition and the fixture preflight. Nothing here mutates a source file or
 # builds anything — `--plan` is exactly "say what a run would do" — but it does
 # briefly hide temp/scen/scen99.fss to prove the preflight names it, which is
-# the same source-tree fixture og_test_level produces and og_test_parity
-# consumes. So it joins that pair's lock and ordering rather than racing them.
+# the same fixture the independent setup produces and parity consumes.
+# Join the fixture lock so its temporary hide cannot race a replay.
 add_test(NAME mutation_canary_plan_cli
     COMMAND ${CMAKE_COMMAND} -E env
         bash
@@ -2033,7 +2228,7 @@ add_test(NAME mutation_canary_plan_cli
 set_tests_properties(mutation_canary_plan_cli PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     RESOURCE_LOCK source_scenario_fixtures
-    DEPENDS og_test_level
+    FIXTURES_REQUIRED scenario99
     TIMEOUT 120
 )
 
@@ -2321,47 +2516,19 @@ set_tests_properties(ability_icons_generator_selftest PROPERTIES
     TIMEOUT 60
 )
 
-# The ASan+UBSan CI job runs as three shards (.github/workflows/test.yml),
-# each selecting its tests by label: shard 1 runs label asan-shard-1, shard 2
-# runs asan-shard-2 and shard 3 runs every test carrying neither, so a new test
-# always runs somewhere. The heavy binaries that each ran alone (RUN_SERIAL or
-# PROCESSORS 2-4) are spread over shards 1 and 2 so that each shard's test step
-# takes about a third of the old one.
-#
-# This block stays at the end of the file: a test registered after it would
-# not exist yet when it is labelled. The `if(TEST ...)` guard is there because
-# some tests exist only in some builds (og_test_curses needs ncurses, the X11
-# display tests need X11); a listed test that is absent or renamed is not an
-# error, it just runs in shard 3. The lists are checked to cover the live test
-# set by `ctest -N` with the three selections (each test exactly once).
-#
-# og_test_level, the parity slices and mutation_canary_plan_cli share the
-# scen99 fixture (RESOURCE_LOCK source_scenario_fixtures, DEPENDS og_test_level)
-# and ctest only orders tests it selects, so the three must share a shard.
-set(OG_ASAN_SHARD1
-    og_test_level ${OG_PARITY_TESTS} mutation_canary_plan_cli
-    og_test_menu_ui og_test_special_scenes og_test_view og_test_curses
-    og_unit_basketball og_unit_families og_unit_modes og_unit_stage
-    og_unit_imaginations_asteroid og_unit_westlands_fire openglad_demo_restart
-)
-set(OG_ASAN_SHARD2
-    og_unit_sim ${OG_UNIT_DATA_TESTS} og_test_matchup og_test_picker_network
-    og_test_abilities og_test_level_play ${OG_MODES_WATER_TESTS}
-    og_unit_imaginations og_unit_script og_unit_soccer og_unit_tower_gen
-    openglad_demo_smoke
-)
-foreach(t IN LISTS OG_ASAN_SHARD1)
-    if(t IN_LIST OG_ASAN_SHARD2)
-        message(FATAL_ERROR "ASan shard lists overlap on ${t}: a test may sit in one shard only")
-    endif()
-endforeach()
-# APPEND, so the integration/unit/curses labels stay.
-function(og_label_asan_shard shard)
-    foreach(t IN LISTS ARGN)
-        if(TEST ${t})
-            set_property(TEST ${t} APPEND PROPERTY LABELS asan-shard-${shard})
-        endif()
-    endforeach()
-endfunction()
-og_label_asan_shard(1 ${OG_ASAN_SHARD1})
-og_label_asan_shard(2 ${OG_ASAN_SHARD2})
+# Lock-free coverage counters confine every instrumented process to ONE CPU
+# (CMakeLists.txt, "Counter updates"), children included, so an entry can
+# never use more than one core however many it reserves: the PROCESSORS
+# reservations above this point are for the lanes that are not confined.
+# Here CTest hands each running entry a core of its own (PROCESSOR_AFFINITY
+# takes it out of the pool until the entry ends), the confinement keeps the
+# process on it, and four entries on a 4-core runner neither share a core
+# nor leave one idle. RUN_SERIAL entries still run alone. This is the last
+# statement of the file on purpose: it names every test declared above.
+if(OG_COVERAGE_ONE_CPU_COUNTERS)
+    get_property(og_every_test DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY TESTS)
+    set_tests_properties(${og_every_test} PROPERTIES
+        PROCESSORS 1
+        PROCESSOR_AFFINITY ON
+    )
+endif()

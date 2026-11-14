@@ -139,19 +139,26 @@ TEST(SimEventLog, tick_tracking)
 
 TEST(SimEventLog, multiple_event_types)
 {
-    og::sim::SimEventLog log;
-    log.current_tick_ = 1;
+    const char* messages[] = {"test msg", "freeze!"};
+    for (const char* message : messages) {
+        og::sim::SimEventLog log;
+        log.current_tick_ = 1;
+        log.push_sound(10);
+        log.push_notification(message);
+        log.push(og::sim::EventKind::SetPalette, 1, 0);
+        log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
-    log.push_sound(10);
-    log.push_notification("test msg");
-    log.push(og::sim::EventKind::SetPalette, 1, 0);
-    log.push(og::sim::EventKind::RequestRedraw, 0, 0);
-
-    ASSERT_TRUE(log.size() == 4);
-    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification);
-    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::SetPalette);
-    ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
+        ASSERT_EQ(4u, log.size());
+        EXPECT_EQ(og::sim::EventKind::PlaySound, log.events()[0].kind);
+        EXPECT_EQ(og::sim::EventKind::Notification, log.events()[1].kind);
+        EXPECT_EQ(og::sim::EventKind::SetPalette, log.events()[2].kind);
+        EXPECT_EQ(og::sim::EventKind::RequestRedraw, log.events()[3].kind);
+        EXPECT_EQ(10u, log.events()[0].a);
+        EXPECT_EQ(message, log.events()[1].text);
+        EXPECT_EQ(1u, log.events()[2].a);
+        for (const auto& event : log.events())
+            EXPECT_EQ(1u, event.tick);
+    }
 }
 
 TEST(SimEventLog, platform_bridge_set_and_invoke_callbacks)

@@ -508,17 +508,7 @@ int num_joysticks()
 }
 
 #ifdef TESTING
-namespace
-{
-// Bit i = "device i enumerates but its node will not open" (the udev
-// permission case). See set_joystick_open_failure_mask.
-unsigned int g_joystick_open_failure_mask = 0;
-}
-
-void set_joystick_open_failure_mask(unsigned int mask)
-{
-    g_joystick_open_failure_mask = mask;
-}
+#include "../../../tests/coverage_internal/native_joystick_observers.inc"
 #endif
 
 JoystickHandle joystick_open(int index)
@@ -608,27 +598,7 @@ void joystick_init_subsystem()
 }
 
 #ifdef TESTING
-namespace
-{
-std::atomic<unsigned long> g_yield_count{0};
-}
-
-unsigned long yield_count()
-{
-    return g_yield_count.load(std::memory_order_relaxed);
-}
-
-namespace
-{
-// Atomic mirror of s_text_input_active for cross-thread readers (injector
-// threads). The production flag itself is untouched.
-std::atomic<bool> g_testing_text_input_active{false};
-}
-
-bool text_input_is_active()
-{
-    return g_testing_text_input_active.load(std::memory_order_acquire);
-}
+#include "../../../tests/coverage_internal/native_input_observers.inc"
 #endif
 
 void sleep_ms(int ms)
@@ -649,6 +619,12 @@ void show_cursor(bool show)
 
 namespace
 {
+#ifdef __EMSCRIPTEN__
+EM_JS(void, publish_text_input_value_js, (const char* value), {
+    globalThis.__opengladTextInputValue = value ? UTF8ToString(value) : null;
+});
+#endif
+
 // SDL3's SDL_StartTextInput/SDL_StopTextInput take an SDL_Window*. Prefer the
 // keyboard-focus window (NULL under the dummy driver), falling back to the
 // first open window. A null result makes start/stop a silent no-op — pushed
@@ -706,10 +682,7 @@ void set_mission_keyboard_grab(bool grab)
 }
 
 #ifdef TESTING
-bool testing_keyboard_grab_requested()
-{
-    return g_testing_keyboard_grab_requested.load(std::memory_order_acquire);
-}
+#include "../../../tests/coverage_internal/native_grab_observers.inc"
 #endif
 
 void start_text_input(const char* initial_value, int max_bytes,
@@ -757,8 +730,18 @@ void start_text_input(const char* initial_value, int max_bytes,
        multiline ? 1 : 0);
 #pragma clang diagnostic pop
 #endif
+    publish_text_input_value(initial_value != nullptr ? initial_value : "");
     if (SDL_Window* w = text_input_window())
         SDL_StartTextInput(w);
+}
+
+void publish_text_input_value(const char* value)
+{
+#ifdef __EMSCRIPTEN__
+    publish_text_input_value_js(value);
+#else
+    (void)value;
+#endif
 }
 
 void stop_text_input()
@@ -778,6 +761,7 @@ void stop_text_input()
                                              { detail: { active: false } }));
     });
 #endif
+    publish_text_input_value(nullptr);
     if (SDL_Window* w = text_input_window())
         SDL_StopTextInput(w);
 }

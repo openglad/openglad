@@ -1995,7 +1995,7 @@ description, `mode_levels.lua`, `scen/scen824-829.fss`,
    ci-test` (statement lint runs as an og_gameplay build dep).
 3. `OPENGLAD_LUA_COVERAGE=<dir> ctest --preset ci-test` (a PATH, never `1`) —
    line >= 95 / function = 100 on all new pack Lua; judge local numbers by
-   before/after delta (CI merges until-pass:3).
+   before/after delta (CI merges until-pass:3). **Update (2026-11-09):** the retry-based collection above is superseded: compare complete first-attempt runs with clean profiles; CI merges disjoint shards only after verifying the full test and source inventories.
 4. `cmake --build --preset ci-coverage --target check_luals api_stub_check
    check_lua_statement_lines_full` (`api_stub_check` verifies the generated
    `walker:can_approach_weapon_range` declaration against its C++ binding).

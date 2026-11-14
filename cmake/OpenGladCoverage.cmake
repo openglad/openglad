@@ -21,8 +21,8 @@
 # repository's Lua, so it does not depend on which tests ran and a source no
 # test loads counts as 0% rather than vanishing — measures it with
 # og_lua_lines, attributes the dumps' hits back to it by content hash, and in
-# an ENABLE_COVERAGE build folds in gcovr's src/ tracefile. It writes lcov
-# tracefiles (lua.info / cpp.info / combined.info) and fails below threshold.
+# an ENABLE_COVERAGE build folds in gcovr's src/ and include/openglad/
+# tracefile. It writes lcov tracefiles (lua.info / cpp.info / combined.info) and fails below threshold.
 if(BUILD_TESTING)
     # Executable-line oracle: asks Lua which lines of a source can hold a
     # breakpoint. Deliberately linked against Lua ALONE rather than
@@ -56,7 +56,7 @@ if(BUILD_TESTING)
 
     set(OG_COVERAGE_CPP_ARGS "")
     if(ENABLE_COVERAGE)
-        set(OG_COVERAGE_CPP_ARGS --cpp-build-dir ${CMAKE_BINARY_DIR})
+        set(OG_COVERAGE_CPP_ARGS --cpp-build-dir ${CMAKE_BINARY_DIR} --cpp-html)
     endif()
 
     # The coverage gate HARD-requires the interpreter: unlike the per-build
@@ -95,6 +95,16 @@ if(BUILD_TESTING)
     # or undeclared shipped-Lua candidate must fail THIS target loudly,
     # naming the repository-side path, instead of breaking every ninja build.
     add_dependencies(coverage_report check_lua_statement_lines_full)
+    if(Python3_Interpreter_FOUND)
+        add_custom_target(check_coverage_report
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/coverage/test_coverage_report.py
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Checking production coverage scope and collection contracts"
+            VERBATIM
+        )
+        add_dependencies(coverage_report check_coverage_report)
+    endif()
     # lua-language-server --check over the workspace gates the same target
     # (the check_luals comment near its
     # definition explains why it is NOT an og_gameplay build dep — per-build

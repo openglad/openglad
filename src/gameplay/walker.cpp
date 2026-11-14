@@ -1431,8 +1431,16 @@ bool walker::act()
 						// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 						// tests: SemWalker1.a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander
 						if (!special())
-							stats_->try_command(COMMAND_WALK, static_cast<std::int32_t>(current_game->world->rng_.next(30)),
-							                   static_cast<std::int32_t>(current_game->world->rng_.next(3)-1), static_cast<std::int32_t>(current_game->world->rng_.next(3)-1));
+						{
+							// Preserve the legacy GCC argument order: y, x, then duration.
+							const std::int32_t walk_y = static_cast<std::int32_t>(
+							    current_game->world->rng_.next(3)) - 1;
+							const std::int32_t walk_x = static_cast<std::int32_t>(
+							    current_game->world->rng_.next(3)) - 1;
+							const std::int32_t walk_ticks = static_cast<std::int32_t>(
+							    current_game->world->rng_.next(30));
+							stats_->try_command(COMMAND_WALK, walk_ticks, walk_x, walk_y);
+						}
 						return 1;
 					}
 					act_random(); //1 in 4 followed by 19 in 20 of doing this
@@ -2372,9 +2380,20 @@ walker::act_generate()
 	// tests: parity:generator_saturation_scen99
 	// tests: WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths
 	// tests: SemWalker2.a_failed_emission_roll_still_draws_twice_and_a_full_world_draws_none
-	if ( current_game->world->living_count < MAXOBS &&
-	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) * generator_rate_percent > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) * std::uint64_t{100} )
-	   )
+	bool emission_roll_won = false;
+	if (current_game->world->living_count < MAXOBS)
+	{
+		// Stateful RNG calls must not share an unsequenced expression. The
+		// legacy stream draws the generator level roll before the threshold.
+		const std::uint64_t level_draw = current_game->world->rng_.next(
+		    static_cast<std::uint32_t>(stats_->level() * 3));
+		const std::uint64_t threshold_draw = current_game->world->rng_.next(
+		    static_cast<std::uint32_t>(300 +
+		        (current_game->world->living_count * 8)));
+		emission_roll_won = level_draw * generator_rate_percent >
+		    threshold_draw * std::uint64_t{100};
+	}
+	if (emission_roll_won)
 	{
 		set_lastx(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
 		set_lasty(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
@@ -3025,7 +3044,14 @@ bool walker::death()
 				newob->stats()->set_level(stats_->level());
 				newob->set_ani_type(ANI_EXPLODE);
 				newob->set_floor(floor());  // burn on the generator's floor (A8)
-				newob->setxy(static_cast<std::uint32_t>(xpos())+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizex()-8, 0)))+4, static_cast<std::uint32_t>(ypos()+4)+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizey()-8, 0))) );  // sizex/sizey ride in on sprite metadata AND network snapshots; a sprite narrower than 8px made sizex()-8 negative, and IRandom::next takes uint32 -- so it wrapped to a ~4e9 scatter bound. Clamping the SPAN (never the coordinate) is a no-op at every size >= 8, where next(0) == 0 already pins the offset.
+				// setxy's arguments were evaluated right-to-left by the legacy GCC
+				// build. Draw y before x explicitly so the scatter is portable.
+				const std::uint32_t scatter_y = current_game->world->rng_.next(
+				    static_cast<std::uint32_t>(std::max<int>(sizey()-8, 0)));
+				const std::uint32_t scatter_x = current_game->world->rng_.next(
+				    static_cast<std::uint32_t>(std::max<int>(sizex()-8, 0)));
+				newob->setxy(static_cast<std::uint32_t>(xpos()) + scatter_x + 4,
+				             static_cast<std::uint32_t>(ypos() + 4) + scatter_y);  // sizex/sizey ride in on sprite metadata AND network snapshots; a sprite narrower than 8px made sizex()-8 negative, and IRandom::next takes uint32 -- so it wrapped to a ~4e9 scatter bound. Clamping the SPAN (never the coordinate) is a no-op at every size >= 8, where next(0) == 0 already pins the offset.
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_positional_sound(current_game->sim_events, this, SOUND_EXPLODE);

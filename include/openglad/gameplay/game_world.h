@@ -41,16 +41,16 @@ namespace og::script { class WorldScripts; }
 
 namespace og::sim {
 
-// Test hook, unconditional like g_test_link_loss_window_ms_override (the unit
-// groups link the production component libraries, so a TESTING-only hook would
-// leave TWO bodies of the inline SimRandom::next in one program and the draws
-// inside og_gameplay would ignore it). One body everywhere; the cost in
-// production is one thread_local read and a null branch per sim draw. Tests
-// install it through ScopedSimRandom (tests/test_sim_random_scope.h); the
-// parity runner points it at the same slot as the gameplay override.
-// set_sim_random_override returns the ref it replaced, so guards can nest.
+// The override read is unconditional: unit groups link the production
+// gameplay archive, so every SimRandom::next must use the same body and slot.
+// Production pays one thread_local read and a null branch per sim draw.
+// Test support installs the override through ScopedSimRandom; the parity
+// runner points it at the gameplay override. The setter returns the previous
+// reference so guards can nest.
 IRandom* sim_random_override();
+#ifdef TESTING
 IRandom** set_sim_random_override(IRandom** rng_ref);
+#endif
 
 // Simple LCG random number generator.
 // Given the same seed, produces the same deterministic sequence.

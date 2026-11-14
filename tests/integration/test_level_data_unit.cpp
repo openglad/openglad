@@ -866,11 +866,13 @@ TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions
 {
     // v2, grid without .pix extension path.
     {
-        std::vector<unsigned char> bytes = make_payload_v2("grid");
+        std::vector<unsigned char> bytes = make_payload_v2("v2tile");
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(1, true);
         ASSERT_TRUE(load_scenario_version(mem, &data, 2) == 1);
-        ASSERT_TRUE(data.grid_file == "grid");
+        ASSERT_EQ("v2tile", data.grid_file);
+        EXPECT_TRUE(data.world().oblist.empty());
+        EXPECT_TRUE(data.description.empty());
     }
 
     // v3, grid with .png extension path + long line width skip/discard path.
@@ -879,8 +881,10 @@ TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(2, true);
         ASSERT_TRUE(load_scenario_version(mem, &data, 3) == 1);
-        ASSERT_TRUE(data.grid_file == "ab.png");
-        ASSERT_TRUE(!data.description.empty());
+        ASSERT_EQ("ab.png", data.grid_file);
+        EXPECT_EQ((std::list<std::string>{"ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZA"}), data.description);
+        EXPECT_EQ(static_cast<std::int64_t>(bytes.size()), mem.tell())
+            << "the truncated display line still consumes its full wire width";
     }
 
     // v5 scenario type path.
@@ -889,7 +893,10 @@ TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(3, true);
         ASSERT_TRUE(load_scenario_version(mem, &data, 5) == 1);
-        ASSERT_TRUE(data.world().type == 7);
+        ASSERT_EQ(7, data.world().type);
+        EXPECT_EQ("gr5", data.grid_file);
+        EXPECT_TRUE(data.description.empty());
+        EXPECT_TRUE(data.world().oblist.empty());
     }
 
     // v9 title/par/time-limit + long line width skip path.
@@ -903,7 +910,11 @@ TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions
         ASSERT_TRUE(data.world().title == "R14 Title");
         ASSERT_TRUE(data.world().par_value == 77);
         ASSERT_TRUE(data.world().time_bonus_limit == 1234);
-        ASSERT_TRUE(data.world().type == 5);
+        ASSERT_EQ(5, data.world().type);
+        EXPECT_EQ("gr9", data.grid_file);
+        EXPECT_EQ((std::list<std::string>{"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyza"}), data.description);
+        EXPECT_EQ(static_cast<std::int64_t>(bytes.size()), mem.tell())
+            << "the parser consumes all 110 bytes of the long description";
     }
 }
 

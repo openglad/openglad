@@ -476,7 +476,9 @@ const MenuScreenSpec& seat_settings_menu_screen_spec();
 // company set, refreshed once per mainmenu() entry (never per frame —
 // list_companies() touches the filesystem). Tests pin the view.
 void refresh_main_menu_company_view();
+#ifdef TESTING
 void set_main_menu_company_view_for_tests(bool present, std::string display_name);
+#endif
 
 // §2.5 base camp (the reimagined Team Build) screen state: the display-slot
 // list (re-collected every frame so positional indices are never held

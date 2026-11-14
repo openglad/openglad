@@ -23,10 +23,13 @@ module.exports = defineConfig({
   // motion sampling.
   fullyParallel: false,
   workers: 1,
-  retries: 1,
+  retries: 0,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
-    baseURL: 'http://localhost:8089',
+    // Pin the local server to IPv4. Playwright WebKit on Ubuntu 26 can abort
+    // a localhost navigation internally before it reaches http-server when
+    // the resolver prefers ::1, even though the browser process launched.
+    baseURL: 'http://127.0.0.1:8089',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
@@ -45,8 +48,8 @@ module.exports = defineConfig({
       // DPR 3/iOS UA from the device descriptor while exercising the same
       // Pointer Events path SDL3's emscripten driver consumes on iOS Safari.
       // True WebKit runs are gated behind OG_WEBKIT below (this dev box
-      // cannot satisfy the webkit build's library deps; CI's ubuntu-24.04
-      // image can via `npx playwright install --with-deps webkit`).
+      // does not carry the managed build's host libraries; CI installs them
+      // with `npx playwright install --with-deps webkit`).
       name: 'iphone-touch',
       testMatch: /wasm-touch\.spec\.js/,
       use: {
@@ -125,7 +128,7 @@ module.exports = defineConfig({
   ],
   webServer: {
     // Serve the prebuilt WASM artifacts in dist/ during Playwright runs.
-    command: 'npx http-server dist -p 8089 -s',
+    command: 'npx http-server dist -a 127.0.0.1 -p 8089 -s',
     port: 8089,
     reuseExistingServer: !process.env.CI,
     timeout: 10_000,

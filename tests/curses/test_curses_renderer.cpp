@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/platform/curses/curses_renderer.h>
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/decordefs.h>

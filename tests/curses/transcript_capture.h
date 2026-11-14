@@ -8,7 +8,7 @@
  */
 #pragma once
 
-#include <openglad/platform/curses/headless_terminal.h>
+#include "headless_terminal.h"
 
 #include <cstdlib>
 #include <fstream>

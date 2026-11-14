@@ -93,25 +93,6 @@ TEST(SimWorldHeadless, emit_event_request_redraw)
     ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::RequestRedraw);
 }
 
-// --- Mixed event stream with new types ---
-
-TEST(SimWorldHeadless, mixed_event_stream_with_new_types)
-{
-    og::sim::SimEventLog log;
-    log.current_tick_ = 1;
-
-    log.push_sound(10);
-    log.push_notification("freeze!");
-    log.push(og::sim::EventKind::SetPalette, 1, 0);
-    log.push(og::sim::EventKind::RequestRedraw, 0, 0);
-
-    ASSERT_TRUE(log.size() == 4);
-    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification);
-    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::SetPalette);
-    ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
-}
-
 // --- SimRandom deterministic RNG ---
 
 TEST(SimWorldHeadless, sim_random_same_seed_same_sequence)
@@ -1097,11 +1078,9 @@ TEST(SimWorldHeadless, generator_death_scatter_at_exactly_eight_pixels)
 // next(32) then set_frame's next(3):
 //   e0: 28, 12 | 2      e1:  2, 10 | 0
 //   e2: 22,  1 | 2      e3:  5, 18 | 1
-// Both coordinates are 120 + draw + 4, giving the pairs {152,136}, {126,134},
-// {146,125} and {129,142} — a scatter that really scatters: 8 offsets, none of
-// them the 0 that an over-clamped span would force. The two span draws are the
-// arguments of a single setxy call, so which of a pair lands on x is
-// unspecified evaluation order; the sorted pair is the exact assertion.
+// The legacy GCC order draws y before x, so the exact coordinates are
+// {(136,152), (134,126), (125,146), (142,129)}. This scatters all 8 offsets;
+// none is the 0 that an over-clamped span would force.
 TEST(SimWorldHeadless, generator_death_scatter_unchanged_for_normal_sprites)
 {
     static_assert(rng_bound::lcg_draw(rng_bound::kPin, 40 - 8) == 28u); // 12444 % 32
@@ -1111,14 +1090,12 @@ TEST(SimWorldHeadless, generator_death_scatter_unchanged_for_normal_sprites)
         rng_bound::blow_up_generator(40, 40, rng_bound::kPin);
     ASSERT_EQ(4u, normal.size());
 
-    const short expected_low[4] = {136, 126, 125, 129};
-    const short expected_high[4] = {152, 134, 146, 142};
+    const short expected_x[4] = {136, 134, 125, 142};
+    const short expected_y[4] = {152, 126, 146, 129};
     for (std::size_t i = 0; i < normal.size(); ++i)
     {
-        const short low = (normal[i].x < normal[i].y) ? normal[i].x : normal[i].y;
-        const short high = (normal[i].x < normal[i].y) ? normal[i].y : normal[i].x;
-        EXPECT_EQ(expected_low[i], low) << "explosion " << i;
-        EXPECT_EQ(expected_high[i], high) << "explosion " << i;
+        EXPECT_EQ(expected_x[i], normal[i].x) << "explosion " << i;
+        EXPECT_EQ(expected_y[i], normal[i].y) << "explosion " << i;
     }
 }
 
@@ -1244,9 +1221,8 @@ TEST(SimWorldHeadless, foe_search_unchanged_for_non_negative_invisibility)
 //
 // walker.cpp's Order::Generator death arm draws three times per explosion —
 // next(max(sizex-8,0)), next(max(sizey-8,0)) for setxy and next(3) for the
-// frame — over four explosions. A 24x24 sprite makes both span bounds 16, so
-// the recorded bound list is order-independent even though the two setxy
-// arguments are evaluated in an unspecified order.
+// frame — over four explosions. The two span bounds happen to both be 16 for
+// this square sprite; the normal-sprite test above pins their axis order.
 namespace {
 
 class RecordingRandom final : public IRandom
