@@ -516,6 +516,7 @@ The core pack's helpers for these fixes live in one lib module,
 | `gf.take_back(self, rocks)` | Takes back `rocks` weapon costs from `self`'s magic: a cast that pre-refunded weapon costs and then could not fire. |
 | `gf.charmable(foe, fixes)` | `true` when a charm can take `foe`: never charmed (`real_team_num() == 255`) and living; when `fixes` is true, also not a hero a player drives (`foe:seat_driven()`). `fixes` is the caller's one read of the setting. |
 | `gf.nearest_charmable(self, foes, max_level)` | The nearest charmable foe in the list `foes` by `distance_to_ob` (a tie goes to the first in the list), or `nil`; `max_level` `nil` means any level, otherwise only a foe at or below it. Draws nothing. |
+| `gf.scale_summon(summon, caster)` | Scales `summon` for the difficulty at its level (`summon:set_difficulty(summon.level)`); with the setting on it first gives `summon` the team of `caster`, so a foe's summon takes the difficulty percent. The caller writes the team afterwards as before. Draws nothing. |
 
 ### Duplicate registration: last one wins
 

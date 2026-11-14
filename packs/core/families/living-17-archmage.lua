@@ -741,7 +741,7 @@ local function summon_image(self)
             placed = true
             elemental:setxy(testx, testy)
             elemental.level = (self.level + 1) // 2
-            elemental:set_difficulty(elemental.level)
+            gf.scale_summon(elemental, self)  -- the difficulty; with Gameplay Fixes on, on our team first
             elemental.team = self.team
             elemental:set_owner(self)
             elemental.lifetime = og.elemental_lifetime(self.level)
@@ -908,7 +908,7 @@ local function summon_image(self)
           placed = true
           phantom:setxy(testx, testy)
           phantom.level = (self.level + 2) // 3
-          phantom:set_difficulty(phantom.level)
+          gf.scale_summon(phantom, self)  -- the difficulty; with Gameplay Fixes on, on our team first
           phantom.team = self.team
           phantom:set_owner(self)
           phantom.lifetime = og.image_lifetime(self.level)

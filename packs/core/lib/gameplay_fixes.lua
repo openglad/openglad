@@ -128,4 +128,28 @@ function M.pad_blocked_by_terrain(self, weapon)
   return M.on() and self:fire_pad_answer(weapon) == "terrain"
 end
 
+-- Gameplay Fixes AX: a summon's difficulty scaling at its level
+-- (walker:set_difficulty). The difficulty percent skips team 0, the
+-- player's side, and a fresh summon is on team 0 until its caster's team
+-- is written. The cleric's RAISE GHOST and the archmage's elemental and
+-- phantom write it after the scaling in the classic game, so a foe's
+-- keeps 100 % on Easy and Hard (#495). With the setting on the summon
+-- takes its caster's team first. The caller still writes the team after,
+-- on both values. Draws nothing.
+function M.scale_summon(summon, caster)
+  -- rule: With Gameplay Fixes on (AX), the cleric's RAISE GHOST ghost and the archmage's elemental
+  --   and phantom take their caster's team before their difficulty scaling, so a foe's summon takes
+  --   the difficulty percent as its caster does; a summon of the player's side (team 0) never does.
+  --   Classic: scaled while still on team 0, so a foe's keeps 100 %.
+  -- tests: DifficultyScaling.a_foes_raised_ghost_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_foes_elemental_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_foes_phantom_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_players_elemental_and_phantom_never_scale
+  -- tests: DifficultyScaling.a_players_raised_skeleton_and_ghost_never_scale
+  if M.on() then
+    summon.team = caster.team
+  end
+  summon:set_difficulty(summon.level)
+end
+
 return M

@@ -108,6 +108,7 @@ usual pause.
 | AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 | AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
+| AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
 | AZ | Whose team a blow's score pays | A blow pays its team score to the colour the hitter wears, while the gate that decides a score is due, the "another team" test and the kill credit read the head of its owner chain. A bomb's, a mine's or an exploding shot's blast wears no colour (red), so a hero, or a thrower on the player's team, who is not red pays red for every blast blow; a shot or a summon whose caster changed sides (a charm, MIND CONTROL) pays the caster's old colour. | The score goes to the team the chain's head wears: the head that opened the gate and is credited with the kill. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -158,7 +159,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AV, in play:
+Fixes X to AZ, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -521,6 +522,22 @@ Fixes X to AV, in play:
   caster is gone, owns itself and pays no one). Experience is not in the
   recordings (the dump holds each walker's place, hit points, team and
   life), so no golden can move.
+- **AX.** The difficulty scales a walker by its team: on Easy or Hard every
+  walker off team 0, the player's side, takes the percent, and none on team
+  0 does (#493). A fresh summon is on team 0 until its caster's team is
+  written, and three summons are scaled before that write, in the old game
+  as here: the cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and
+  phantom. So a foe cleric's ghost and a foe archmage's elementals and
+  phantoms kept their Normal hit points, magic and damage while their
+  caster was scaled (#495). With the setting on they take the caster's team
+  before they are scaled, so a foe's takes the percent and a player's still
+  does not. Every other summon and spawn (the cleric's skeleton and its
+  RESURRECT ghost, WARBAND's grunts, LEGION's risen, a slime's child,
+  generator spawns, the bot squads) already took its team first, on both
+  settings. The druid's faerie, a faerie's WISH, the friendly RESURRECT and
+  a slime's fission are never scaled on any team, in the old game as here,
+  and stay so. Every recording plays at Normal, where the percent gives a
+  summon's whole-number values back unchanged, so no golden moves.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
   for a kill its damage plus ten times the level) only when the head of the
   hitter's owner chain is a hero or stands on the player's team, and the
@@ -1200,6 +1217,15 @@ Fix AW has no row: experience is not in the recording. `SemWalker3`
 (`tests/unit/test_sem_walker_3.cpp`) pins it with a bomb and with a bare
 owned effect, each against the hero's own melee blow of the same damage.
 
+Fix AX has no row: every recording plays at Normal (the current game's
+parity runner never sets a difficulty, which reads as 100 %, and the old
+game's capture tool keeps `current_difficulty = 1`; `ScenarioSpec` has no
+difficulty field), and at 100 % the percent multiplies a summon's
+whole-number hit points, magic and damage by 100 and divides them back
+exactly, so both settings record the same bytes. `DifficultyScaling` in
+`tests/unit/test_difficulty_scaling.cpp` pins it on both settings at Easy
+and Hard.
+
 Fix AZ's arena, `thief_bomb_colour_score_scen99` and
 `thief_bomb_colour_score_fixes_scen99`: the bomb arena of
 `effect_bomb_bystander_scen99` with other colours. The player thief stands
@@ -1601,10 +1627,12 @@ record differences kept on purpose (#484, #440, #491):
   team-0 walker with no player character took the percent with its body
   (A12a) and, from #473, with its shots, so on Hard a player's raised
   skeleton had twice the hit points and damage. Both are reverted on the
-  maintainer's ruling, and so is their port to the old game. A summon its
-  caster's team reaches only after it is scaled (the cleric's RAISE GHOST,
-  the archmage's elementals and phantoms) is still on team 0 then, so a
-  foe's keeps 100% too, as in the old game. Every other team takes the
+  maintainer's ruling, and so is their port to the old game. With the
+  setting off a summon its caster's team reaches only after it is scaled
+  (the cleric's RAISE GHOST, the archmage's elementals and phantoms) is
+  still on team 0 then, so a foe's keeps 100% too, as in the old game; with
+  it on it takes the team first and the percent with it (fix AX). Every
+  other team takes the
   percent as before, and at 100% nothing changes, so no golden moves.
 - **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
   chain's bolt strikes first the nearest foe on the archmage's own floor

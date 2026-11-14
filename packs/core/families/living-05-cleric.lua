@@ -352,7 +352,7 @@ local function raise_ghost(self)
     return false, "COULD NOT CREATE GHOST"
   end
   alive.level = og.rand0(self.level) + 1
-  alive:set_difficulty(alive.level)
+  gf.scale_summon(alive, self)  -- the difficulty; with Gameplay Fixes on, on the cleric's team first
   alive.team = self.team
   alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
   alive:setxy(sx, sy)
