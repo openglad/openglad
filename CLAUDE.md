@@ -15,8 +15,9 @@ The primary build system is **CMake 3.25+** with presets. The project targets **
 Run build and test commands inside the Nix shell. Start a build task with
 `nix develop --command bash -c 'which cmake c++ emcc'`; the command blocks below
 assume that shell. Use the full default shell for a fresh CMake configure.
-The lean `nix develop .#ci-native` shell runs imported CI bundles (the coverage
-workflow uses the smaller `.#ci-coverage`). Canary bundles
+The lean `nix develop .#ci-native` shell runs imported CI bundles (each CI lane
+uses a smaller one of its own: `.#ci-coverage`, `.#ci-sanitizer`, `.#ci-canary`,
+`.#ci-verify`). Canary bundles
 retain objects for incremental rebuilds with their cached dependency paths and
 lane options; other bundles must be rebuilt through their Nix producer.
 Do not source another SDK or install a second toolchain. See the dev-environment

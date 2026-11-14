@@ -1132,16 +1132,26 @@ restored tree into place avoids a second product copy in the Nix store. Test exe
 Each consumer depends on its own configuration's producer, so a slower build
 does not hold up unrelated lanes.
 
-Each native producer except coverage also restores an exported NAR cache keyed
-by its exact base Nix derivation hash. A hit is imported and linked as the
-already-verified product. Successful producers save that exact closure for
-reruns; there is no product restore prefix. A new commit normally changes the
-product derivation. Coverage keeps no such cache: it could only serve a
-complete rerun of an unchanged commit, and it cost a probe job at the head of
-the lane's serial path and about 2 GiB of the repository's cache budget on
-every push. Such a rerun compiles nothing either way, because the compiler
-cache below was saved under that commit's own key.
-For ASan and coverage, eight workers then partition the complete generated
+No producer keeps a cache of its exported output. One keyed by the exact
+derivation could only serve a complete rerun of an unchanged commit, and the
+ASan lane's cost a probe job at the head of its serial path (1m24s) and
+2.9 GiB of the repository's 10 GiB cache budget per entry. An ASan or coverage
+rerun compiles nothing either way, because the compiler cache below was saved
+under that commit's own key.
+
+The ASan and coverage lanes begin with a decision
+(`scripts/ci/compile_fanout.py`): it finds the newest compatible compiler
+cache without downloading it and compares this commit's tree with the tree
+of the commit that cache was saved for. When no more than 24 objects can
+have changed and nothing wide did (a header, a build description, a path
+the script does not name), the fan-out below is skipped and the producer
+compiles the difference itself, in its unwarmed mode: any number of misses,
+but every request through the cache and every miss compiled and stored
+once. Eight warmers that found every object already cached cost 1m34s
+(coverage) and 2m47s (ASan) before the producer started. The decision
+changes only how long the lane takes.
+
+Otherwise eight workers partition the complete generated
 compile-command inventory, execute exactly their assigned compiler commands,
 through CMake's captured compiler launcher, and publish only immutable
 `sccache` result deltas. Mutable preprocessor indexes stay local to each
@@ -1174,18 +1184,31 @@ producer restores a cached bundle.
 Producer summaries record measured realization/export time and closure size;
 end-to-end CI timing must be read from completed runs.
 
-The coverage jobs run in their own `ci-coverage` shell, which carries the
-producer's tools and libraries plus gcovr and LuaLS and is a third of the
-general native shell's download. Its producer exports the bundle without the
-closure members the public Nix cache signed (the toolchain: 538 MiB beside a
-1.4 GiB product): every worker's store already holds them through that shell,
-and `restore` realises any it lacks before copying the few paths the build
-itself made. Its gate job restores no compiled bundle; see
-`scripts/coverage/README.md` ("Current CI collection") for how each worker
-collects and what the gate checks. A newer push to a pull request cancels that
-pull request's coverage run in progress; runs on master are never cancelled.
+Each lane's jobs run in a shell cut to what the lane uses, because every job
+pays for its shell before its first step: `ci-coverage` (the producer's tools
+and libraries plus gcovr and LuaLS, 0.5 GiB to fetch), `ci-sanitizer` for ASan,
+TSan and the fuzzers (Clang and LLVM, 0.85 GiB), `ci-canary` (GCC and the X11
+display stack, 0.55 GiB) and `ci-verify` for the completeness jobs (an
+interpreter, 82 MiB). The general `ci-native` shell is 1.7 GiB and builds two
+packages no bundle consumer links; no workflow uses it. Every producer exports
+its bundle without the closure members the public Nix cache signed (for
+coverage, the toolchain: 538 MiB beside a 1.4 GiB product): every worker's
+store already holds them through its shell, and `restore` realises any it
+lacks before copying the few paths the build itself made. Workers fetch the
+bundle over eight byte ranges and require the digest GitHub recorded for the
+artifact (`.github/actions/fetch-bundle`), falling back to the ordinary
+download. The coverage gate job restores no compiled bundle; see
+`scripts/coverage/README.md` ("Current CI collection") for what each worker
+ships and what the gate checks. A newer push to a pull request cancels that
+pull request's run in progress in every lane; runs on master, nightly runs
+and manual runs are never cancelled.
 
 Coverage uses GCC; ASan, TSan and fuzzing use the pinned Clang toolchain.
+ASan and UBSan compile at `-O1` without sibling-call optimisation (3.4 to 8
+times faster than `-O0` on compute-bound tests, every frame still on the
+stack); coverage must stay at `-O0`, and counts with lock-free counter updates
+in processes confined to one CPU (`scripts/coverage/README.md`, "The lock
+prefix, and the one CPU that replaces it").
 The sanitizer, fuzz and canary bundles use minimal debug information, packed
 relative relocations and compressed debug sections; the coverage bundle is
 compiled without debug information, which gcov never reads. The sanitizer and
@@ -1198,12 +1221,12 @@ retain their debug line tables.
 
 | Workflow | Gates |
 |---|---|
-| `test.yml` | Eight compile-cache warmers feed one authoritative ASan build, then the full ASan + UBSan suite runs in eight test shards; focused TSan `og_unit_network`, relay typecheck/tests once, and a separate SDL-disabled server build |
-| `coverage.yml` | Eight compile-cache warmers feed one authoritative coverage build, then the full semantic and parity suite runs in eight test shards; independent >98% line / 100% function gates for C++, pack Lua, and their union |
+| `test.yml` | A fan-out decision, then (when the push is large) eight compile-cache warmers, feed one authoritative ASan build; the full ASan + UBSan suite runs in eight test shards; focused TSan over the three `og_unit_network` entries, relay typecheck/tests once, and a separate SDL-disabled server build |
+| `coverage.yml` | The same decision and warmers feed one authoritative coverage build; the full semantic and parity suite runs in eight test shards that ship raw counters; one gate scans them and applies independent >98% line / 100% function gates for C++, pack Lua, and their union |
 | `parity-canary.yml` | One normal configuration feeds three mutation workers, the real X11 display lane, and all campaign drift generators |
 | `fuzz.yml` | Instrumented libFuzzer targets; crashes retain reproducers |
 | `release.yml` | Portable optimized native packages and the reusable WASM workflow; publish only after both pass for the commit |
-| `wasm-e2e.yml` | One WASM artifact feeds four browser shards, the advisory WebKit touch lane, and deployment after required tests pass |
+| `wasm-e2e.yml` | One WASM artifact feeds four browser shards and two advisory WebKit touch jobs (one per orientation); deployment follows the required tests and does not wait for the advisory ones |
 
 `scripts/ci/test_matrix.py` reads CTest's complete inventory and groups fixture
 setup, consumers and cleanup on the same worker. Recorded test times and each
