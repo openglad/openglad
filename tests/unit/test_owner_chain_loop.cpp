@@ -127,14 +127,28 @@ const char* climb_name(Climb c)
     return "?";
 }
 
-void start_climb(Climb c, walker* from, walker* green)
+// Starts climb c from `from`, the first climb of the scene: the one that
+// meets the loop, cuts it and starts again. Its own answer must already be
+// the answer of the cut chain, whose head (and topmost living) is `head`,
+// a red walker: no friend of green, red's, and its blow on green lands.
+void expect_first_climb(Climb c, walker* from, walker* green, walker* head)
 {
     switch (c) {
-        case Climb::ChainHead: (void)from->chain_head(); break;
-        case Climb::CreditHead: (void)from->credit_head(); break;
-        case Climb::IsFriendly: (void)from->is_friendly(green); break;
-        case Climb::IsFriendlyToTeam: (void)from->is_friendly_to_team(kRed); break;
-        case Climb::Attack: (void)blow_lands(from, green); break;
+        case Climb::ChainHead:
+            EXPECT_EQ(head, from->chain_head()) << "the first climb's own answer";
+            break;
+        case Climb::CreditHead:
+            EXPECT_EQ(head, from->credit_head()) << "the first climb's own answer";
+            break;
+        case Climb::IsFriendly:
+            EXPECT_EQ(0, from->is_friendly(green)) << "the first climb's own answer";
+            break;
+        case Climb::IsFriendlyToTeam:
+            EXPECT_EQ(1, from->is_friendly_to_team(kRed)) << "the first climb's own answer";
+            break;
+        case Climb::Attack:
+            EXPECT_TRUE(blow_lands(from, green)) << "the first climb's own answer";
+            break;
     }
 }
 
@@ -146,10 +160,13 @@ constexpr Climb kClimbs[] = {Climb::ChainHead, Climb::CreditHead, Climb::IsFrien
 // A knife k thrown by a, where a owns b and b owns a (k -> a -> b -> a). On
 // both values, whichever climb meets the loop first ends: b's link back to
 // a closes the loop and is cut, so the head (and the credit) is b, red. The
-// knife is no friend of green, is red's, and its blow on green lands. One
-// log line names b and a.
+// knife is no friend of green, is red's, and its blow on green lands, and so
+// answers the first climb itself, the one that cuts the loop. One log line
+// names b and a.
 // Break: in cut_owner_loop, `w->set_owner(nullptr)` -> `up->set_owner(nullptr)`
-// (a's link is cut instead: the head becomes a).
+// (a's link is cut instead: the head becomes a). Break: in walker::climb, the
+// restart `return climb(step, top_living);` -> `return climb(step);` (the
+// first credit_head answers nobody).
 TEST(OwnerChainLoop, every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_closes_it)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -168,7 +185,7 @@ TEST(OwnerChainLoop, every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_
             b->set_owner(a);
 
             testing::internal::CaptureStderr();
-            start_climb(first, k, g);
+            expect_first_climb(first, k, g, b);
             EXPECT_EQ(nullptr, b->owner()) << "b's link back to a closes the loop";
             EXPECT_EQ(b, a->owner()) << "a's link is kept";
             EXPECT_EQ(a, k->owner()) << "the knife's link is kept";
@@ -190,10 +207,12 @@ TEST(OwnerChainLoop, every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_
 
 // a owns b, b owns c, c owns a. From a, every climb ends: c's link back to a
 // closes the loop and is cut, so the head is c, red; a is no friend of
-// green, is red's, and its blow on green lands; one log line names c and a.
-// From b the loop closes at a's link back to b: a's link is cut and the head
-// is a.
+// green, is red's, and its blow on green lands, the first climb's own answer
+// included; one log line names c and a. From b the loop closes at a's link
+// back to b: a's link is cut and the head is a.
 // Break: in cut_owner_loop, `w->set_owner(nullptr)` -> `up->set_owner(nullptr)`.
+// Break: in walker::climb, `return climb(step, top_living);` ->
+// `return climb(step);`.
 TEST(OwnerChainLoop, a_three_link_loop_is_cut_at_the_link_that_closes_it)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -212,7 +231,7 @@ TEST(OwnerChainLoop, a_three_link_loop_is_cut_at_the_link_that_closes_it)
             c->set_owner(a);
 
             testing::internal::CaptureStderr();
-            start_climb(first, a, g);
+            expect_first_climb(first, a, g, c);
             EXPECT_EQ(nullptr, c->owner()) << "c's link back to a closes the loop";
             EXPECT_EQ(b, a->owner());
             EXPECT_EQ(c, b->owner());

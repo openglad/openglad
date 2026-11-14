@@ -1046,6 +1046,13 @@ _ARENA_PROPS = ('inline constexpr SpawnSpec kArenaProps[] = {\n'
                 '};\n')
 _POTION_FACT = ("pred::WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, "
                 "kOrderTreasure, 1, 1),")
+# The potion's spawn with a block comment after it, for a fact whose label
+# string holds a comment opener: only a string-aware comment removal keeps the
+# label's `/*` from running on to this `*/` and taking the spawn with it.
+_TREASURE_SPAWNS_TRAILING_COMMENT = (
+    'inline constexpr SpawnSpec kSpawns_t[] = {\n'
+    '    {5, 0, kOrderTreasure, 100, 100, 0, 0},  /* the potion */\n'
+    '};\n')
 
 _FAKE_SRC = "int a;\nint firing_gate = 1;\nint b;\n"
 _CITE_OK = "// gate: src/gameplay/living.cpp:2 `firing_gate = 1`\n"
@@ -1451,6 +1458,44 @@ _SELF_TEST_CASES: list[
     ("alias_order_spawn_array_read_by_position_ok",
      _with_spawns(_add_pred(_POTION_FACT), _ARENA_PROPS, "kArenaProps"),
      {}, 0, _ok(1, 3), ""),
+    # An older field line, commented out above the live one, says the row
+    # keeps the level's population (its last flag false): it is no field, so
+    # the row is still asked.
+    ("alias_order_commented_out_field_line_excuses_nothing",
+     _mutate(_add_pred(_POTION_FACT),
+             "      CompareMode::SemanticParity, false,\n",
+             "      // CompareMode::SemanticParity, false, nullptr, 0, 0, false, "
+             "false,\n"
+             "      CompareMode::SemanticParity, false,\n"),
+     {}, 1, "",
+     _fail("kFacts_one[#2] (scenario row_one): family_alias_mismatch — "
+           "WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure) but "
+           "<no spawn array> has no kOrderTreasure entry with family-id == 5, "
+           "and the game makes none during a row that this fact can count "
+           "(policy P6)")),
+    # A `/*` inside a label string opens no comment: the spawn array after it
+    # is still read.
+    ("alias_order_comment_opener_in_a_string_hides_no_spawn_ok",
+     _with_spawns(_add_pred("pred::WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, "
+                            "kOrderTreasure, 1, 1, \"a label /* that opens "
+                            "nothing\"),"),
+                  _TREASURE_SPAWNS_TRAILING_COMMENT),
+     {}, 0, _ok(1, 3), ""),
+    # A row whose spawns field is nullptr has no spawn array, even when its
+    # text names another row's.
+    ("alias_order_nullptr_spawns_borrow_no_array",
+     _mutate(_mutate(_add_pred(_POTION_FACT),
+                     "      nullptr, 0, 0, false, true,\n",
+                     "      nullptr, 0, 0, false, true,  "
+                     "// kSpawns_t is another row's\n"),
+             "inline constexpr ScenarioSpec",
+             _TREASURE_SPAWNS + "inline constexpr ScenarioSpec"),
+     {}, 1, "",
+     _fail("kFacts_one[#2] (scenario row_one): family_alias_mismatch — "
+           "WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure) but "
+           "<no spawn array> has no kOrderTreasure entry with family-id == 5, "
+           "and the game makes none during a row that this fact can count "
+           "(policy P6)")),
     ("alias_order_generator_other_order",
      _with_spawns(_add_pred("pred::WalkerOfOrderFamilyAlive(FAMILY_TOWER, "
                             "kOrderGenerator, 1, 1),"), _DRUMSTICK_SPAWNS),
@@ -1540,6 +1585,16 @@ _SELF_TEST_CASES: list[
      _fail("kFacts_one[#2]: family_order_mismatch — "
            "WalkerOfOrderFamilyAlive(FAMILY_FLASH, kOrderTreasure) resolves "
            "its family in the treasure order, and FAMILY_FLASH is not a "
+           "treasure family in include/openglad/core/constants.h; name a "
+           "family of the order the fact counts in")),
+    # The other boundary of the treasure section: a generator name, declared
+    # right after the treasure block, is no treasure family either.
+    ("g_order_kind_generator_name_in_treasure_order",
+     _add_pred("pred::WalkerOfOrderFamilyAlive(FAMILY_TENT, kOrderTreasure, "
+               "1, 1),"), {}, 1, "",
+     _fail("kFacts_one[#2]: family_order_mismatch — "
+           "WalkerOfOrderFamilyAlive(FAMILY_TENT, kOrderTreasure) resolves "
+           "its family in the treasure order, and FAMILY_TENT is not a "
            "treasure family in include/openglad/core/constants.h; name a "
            "family of the order the fact counts in")),
     ("g_order_kind_unread_order",
@@ -1637,7 +1692,7 @@ _SELF_TEST_CASES: list[
     ("rc_missing_table", None, {}, 2, "", "lint: cannot read {table}\n"),
 ]
 
-_SELF_TEST_CASE_COUNT = 78
+_SELF_TEST_CASE_COUNT = 82
 
 
 def _self_test() -> int:

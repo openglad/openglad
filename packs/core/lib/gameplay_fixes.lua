@@ -146,6 +146,7 @@ function M.scale_summon(summon, caster)
   -- tests: DifficultyScaling.a_foes_phantom_takes_the_difficulty_only_with_the_setting_on
   -- tests: DifficultyScaling.a_players_elemental_and_phantom_never_scale
   -- tests: DifficultyScaling.a_players_raised_skeleton_and_ghost_never_scale
+  -- tests: parity:cleric_raise_ghost_scen99, parity:archmage_summon_elemental_scen99
   if M.on() then
     summon.team = caster.team
   end

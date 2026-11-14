@@ -1091,27 +1091,29 @@ TEST(GameplayFixesSeats, a_refused_summon_holds_the_level_open_until_it_dies)
             if (!with_faerie)
             {
                 EXPECT_EQ(1, world.ending) << "the wipe ends the level";
-                continue;
             }
-            if (fixes == 0)
+            else if (fixes == 0)
             {
                 EXPECT_EQ(faerie, server.player_control(0))
                     << "the classic game hands over the faerie";
                 EXPECT_EQ(0, faerie->user());
                 EXPECT_EQ(0, world.ending);
-                continue;
             }
-            for (int i = 0; i < 4; ++i)
-                server.step();
-            EXPECT_EQ(nullptr, server.player_control(0)) << "nobody is handed over";
-            EXPECT_EQ(-1, faerie->user());
-            EXPECT_EQ(0, world.ending)
-                << "the host waits while the faerie wears team 0's colour";
+            else
+            {
+                for (int i = 0; i < 4; ++i)
+                    server.step();
+                EXPECT_EQ(nullptr, server.player_control(0)) << "nobody is handed over";
+                EXPECT_EQ(-1, faerie->user());
+                EXPECT_EQ(0, world.ending)
+                    << "the host waits while the faerie wears team 0's colour";
 
-            faerie->set_dead(1);
-            faerie->death();
-            server.step();
-            EXPECT_EQ(1, world.ending) << "the faerie is gone: the level ends as on a wipe";
+                faerie->set_dead(1);
+                faerie->death();
+                server.step();
+                EXPECT_EQ(1, world.ending) << "the faerie is gone: the level ends as on a wipe";
+            }
+            // Every leg, the classic one and the one with no faerie included.
             EXPECT_EQ(0u, hook_failures.count()) << hook_failures.message();
         }
     }

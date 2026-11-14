@@ -1586,6 +1586,43 @@ TEST_F(SemWalker3, a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_
     }
 }
 
+// Gameplay Fixes AZ (#502), the melee arm's payment: a hitter with a
+// character record pays its blow's team score there. Only a script gives
+// such a walker an owner of another colour: a soldier with a record on team 3
+// owned by a hero mage on team 1 strikes a level-4 orc of team 2, and lands
+// 8. The mage's record opens the score gate. With the setting on the blow
+// pays team 1, the colour of the chain's head; classic, team 3, the hitter's
+// own. Such a hitter is also an owned hitter, so the arm that pays a summon's
+// blow pays the same blow again to the same team: each arm pays 8 + 4.
+// Break: the melee arm's payment `award_score(score_team(), ...)` ->
+// `award_score(team_num(), ...)`.
+TEST_F(SemWalker3, a_scripted_hitters_melee_blow_scores_for_its_heads_colour_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        walker* mage = hero_at(FAMILY_MAGE, 1, 800, 800);
+        walker* hitter = hero_at(FAMILY_SOLDIER, 3, 200, 200);
+        walker* orc = living_at(FAMILY_ORC, 2, 216, 200);
+        ASSERT_TRUE(mage && hitter && orc);
+        hitter->set_owner(mage);
+        hitter->set_damage(10.0f);
+        ASSERT_EQ(mage, hitter->chain_head()) << "the head of the hitter's chain";
+        const auto before = scores();
+
+        ASSERT_TRUE(hitter->attack(orc));
+        EXPECT_FLOAT_EQ(392.0f, orc->stats()->hitpoints()) << "the blow lands 8";
+        EXPECT_EQ(3, hitter->team_num()) << "nobody changed the hitter's colour";
+
+        auto expected = before;
+        expected[fixes != 0 ? std::size_t{1} : std::size_t{3}] += 2u * (8u + 4u);
+        EXPECT_EQ(expected, scores())
+            << (fixes != 0 ? "setting on: both arms pay team 1, the head's colour"
+                           : "setting off: both arms pay team 3, the hitter's own colour");
+    }
+}
+
 // Gameplay Fixes AW (#494): a bomb's blast is an effect, neither a living nor
 // a weapon, and takes its thief's level. The experience its blow pays the hero
 // thief is the experience of one melee blow of the same damage (both land 8 on

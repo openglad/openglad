@@ -549,12 +549,14 @@ bool walker::attack(walker  *target)
         if (myguy)
         {
             myguy->exp += static_cast<std::uint32_t>(attack_exp);
-            // rule: The victim turns on whoever is behind the blow.
+            // rule: The victim turns on whoever is behind the blow; a striking hero's scoring blow
+            //   pays the blow's score team (Gameplay Fixes AZ, above).
             // tests: StatsUnit.hit_response_guard_shields_non_living_targets
             // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
             // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
             // tests: WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage
             // tests: SemWalker3.the_victim_turns_on_whoever_is_behind_the_blow
+            // tests: SemWalker3.a_scripted_hitters_melee_blow_scores_for_its_heads_colour_with_the_setting_on
             if (getscore)
                 award_score(score_team(), static_cast<std::uint32_t>(tempdamage_i)
                                         + static_cast<std::uint32_t>(target->stats()->level()));
