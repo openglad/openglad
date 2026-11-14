@@ -493,13 +493,14 @@ short statistics::do_command()
 						// Note for NoRanged (melee-only) families: this only
 						// FACES the bump-range foe. Their swings are bumps: a
 						// step of their own that runs into a body (living::walk's
-						// probe) and, with Gameplay Fixes on, the right-hand
-						// walk's probe that finds their own foe
-						// (statistics::path_probe; off, every loud probe bumps).
-						// walk_to_foe's near-branch init_fire() lands no melee
-						// swing (measured 2026-11-01: walker::turn moves a notch
-						// even when the bot already faces the foe, so init_fire
-						// only turns back). Wiring init_fire()
+						// probe); with Gameplay Fixes on, the right-hand walk's
+						// probe that finds their own foe (statistics::path_probe;
+						// off, every loud probe bumps) and walk_to_foe's near
+						// branch when a foe's body stands on their weapon's pad
+						// (Gameplay Fixes BB; off, that branch's init_fire() only
+						// turns the bot back: measured 2026-11-01, walker::turn
+						// moves a notch even when the bot already faces the foe).
+						// Wiring init_fire()
 						// here as well was tried and rejected: it roughly
 						// doubles melee swing rate over classic and swung
 						// campaign balance hard.
@@ -1308,9 +1309,44 @@ bool statistics::walk_to_foe()
 					xdelta = near_foe->xpos - controller->xpos;
 					ydelta = near_foe->ypos - controller->ypos;
 				}
-				controller->turn(controller->facing(xdelta, ydelta));
-				controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
-				controller->init_fire();
+				// port of the current game's 4d15070b (Gameplay Fixes BB, #497): the
+				// turn and the swing agree. walker::turn never writes enddir, and
+				// init_fire() turns a walker toward enddir before anything else, so
+				// the classic notch toward the foe of a bot not yet facing it is
+				// undone at once, and a bot that already faces it is stepped off it
+				// by the classic turn (the turn fix AT removes) and turned back: no
+				// swing ever starts here. With the setting on a bot not yet facing
+				// its foe keeps the foe's direction as the facing it is turning to
+				// (enddir), so its next acts finish the turn; the turn is its act and
+				// it starts nothing in the same call. A bot that faced its foe swings
+				// or shoots along that facing (its heading set to it first, never a
+				// stale one), and only when the blow can land: a shooter asks its
+				// line check (fire_check: the foe in the weapon's reach, the magic,
+				// the facing, the ray to a body); a melee-only bot (BIT_NO_RANGED),
+				// which that check always refuses, asks whether a foe's body stands
+				// on its weapon's pad (fire_pad_answer 2, a body: quiet, no draw,
+				// no walker made), the one place its swing can land. Off, the classic
+				// turn and the unasked init_fire, in the classic order.
+				{
+					short aim = controller->facing(xdelta, ydelta);
+					bool faced = (controller->curdir == aim);
+					if (myscreen->gameplay_fixes && !faced)
+						controller->enddir = (char) aim;
+					controller->turn(aim);
+					controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
+					if (!myscreen->gameplay_fixes)
+						controller->init_fire();
+					else if (faced)
+					{
+						short ux = 0, uy = 0;
+						facing_step_delta((char) controller->curdir, ux, uy);
+						controller->face_delta(ux, uy);
+						if (query_bit_flags(BIT_NO_RANGED)
+						        ? controller->fire_pad_answer() == 2
+						        : controller->fire_check((short) xdelta, (short) ydelta))
+							controller->init_fire();
+					}
+				}
 				return 1;
 			}
 			else // our foe has moved; we need a new one
