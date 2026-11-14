@@ -180,16 +180,19 @@ let
             cp -a --reflink=auto "$sccacheSeed/cache/." "$SCCACHE_DIR/"
             chmod -R u+w "$SCCACHE_DIR"
           fi
-          cacheKeyArguments=()
-          ${lib.optionalString (lane == "coverage") ''
-            # Coverage objects embed their -o-derived .gcda destination. Keep
-            # that target path in the cache identity; ASan objects can retain
-            # the more aggressive cross-target reuse.
-            cacheKeyArguments=(
-              --cache-key-shell ${pkgs.bash}/bin/bash
-              --cache-key-wrapper ${canonicalSource}/scripts/ci/sccache_output_key.sh
-            )
-          ''}
+          # Every object keeps its target path in its cache identity.
+          # Coverage objects need it: they embed their -o-derived .gcda
+          # destination. ASan objects did without it for the sake of
+          # cross-target reuse, which saved 94 of 1,314 compilations and
+          # made a hundred test targets ask for one cache entry at once;
+          # sccache then failed to extract some of those reads, and after
+          # a cold fan-out the producer had 27 such repairs against a
+          # budget of 26 (GitHub run 43544998292, 2026-11-14). With one
+          # entry per object the coverage producer has never repaired one.
+          cacheKeyArguments=(
+            --cache-key-shell ${pkgs.bash}/bin/bash
+            --cache-key-wrapper ${canonicalSource}/scripts/ci/sccache_output_key.sh
+          )
           compilerLauncher="$(python3 scripts/ci/nix_bundle.py compiler-launcher \
             --env ${pkgs.coreutils}/bin/env \
             --cache ${pkgs.sccache}/bin/sccache --cache-dir "$SCCACHE_DIR" \
