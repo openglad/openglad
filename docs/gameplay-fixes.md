@@ -1035,9 +1035,10 @@ see" above.
 The old game's death searches (`viewscreen::input` and
 `viewscreen::continuous_input`, three passes each) ask the same question
 behind the setting since `787eb516` (#450). No parity capture runs them, so
-the port moved no golden. Fix AY's question is to be ported into the first
-two passes of the same searches, behind the setting; the third pass is
-#139's difference (see GAMEPLAY_FIXES_FROM_CLASSIC.md).
+the port moved no golden. Fix AY's question was ported into the first
+two passes of the same searches, behind the setting, as `3a21c890`, and
+moved no golden either; the third pass is #139's difference (see
+GAMEPLAY_FIXES_FROM_CLASSIC.md).
 
 ## Parity
 
@@ -1132,8 +1133,29 @@ The parity goldens are captures from the old game (branch
   `d4fa405f` (the facts the recaptures broke, worked out again from the
   new goldens, and four setting-on rows on a seed of their own; those four
   moved). Seventeen new goldens and 43 recaptured; no setting-off golden
-  moved. `d4fa405f` is the commit the goldens are captured from: 374 of
-  374 goldens `cmp` equal to a full capture there.
+  moved. The table mirrors `b518f501` and `fbea813d` carried mutation
+  pins the testing refresh moved; no golden moved. Fixes AZ, AW, AX, AY
+  and BB: `bc75c886` (AZ, a blow's team score pays the team its chain head
+  wears), `3f8080e1` (AW, an owned effect's blow pays its hero once),
+  `9532f53d` (AX, a foe's summon takes the difficulty as its caster does),
+  `3a21c890` (AY, a dead hero's seat is handed only a walker that fights
+  for its side) and `9ad29b55` (BB, a bot near its foe turns to it for good
+  and swings only when the blow can land; the 28 rows below moved), then
+  `fbcab638`, which corrects the AZ port so that with the setting on a
+  team outside the score table is paid nothing, as in this game (no
+  golden moved), and the table mirrors `ae5c6c7c` (the facts BB's
+  recaptures broke in sixteen rows, worked out again, and the archmage's
+  MIND CONTROL berserk row with the setting on back on its twin's seed;
+  that row moved), `35e5f6eb` (four rows' facts and texts corrected after
+  review; nothing moved), `e31bb4ca` (the cleric bot's RESURRECT row with
+  the setting on, on a seed of its own; that row moved), `65ef41ef` (one
+  label reworded; nothing moved) and `30ada1c5` (the new arenas of AZ and
+  BB, each with the setting off and on, captured there; two pins and two
+  citations re-pointed by line, corrected comments, and the fact kind
+  that #498 retired dropped from the old game's fact header; nothing else
+  moved). Four new goldens and 28 recaptured; no setting-off golden moved.
+  `30ada1c5` is the commit the goldens are captured from: 378 of 378
+  goldens `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1309,7 +1331,9 @@ finder's reach), `thief_bot_charm_or_taunt` (107: the bot rolled no slot 3
 in the run) and `cleric_bot_resurrect_foe_stain` (3: the cleric never cast
 near the stain). The table mirror `d4fa405f` carries the seeds; the
 capture there moves those four rows alone, and each `cmp`s equal to the
-current game's dump. One of the 44, `archer_bot_bolt_at_blows`, was also
+current game's dump. After fix BB two of them took another seed (Rulings
+(2026-11-14), entry 14): the archmage row is back on its twin's 198 and
+the cleric row is on 84. One of the 44, `archer_bot_bolt_at_blows`, was also
 re-staged for #438 (the archer one pixel lower), so its pair is captured
 anew rather than recaptured. No setting-off golden moves: every
 setting-off capture is byte-identical before and after `915a99ee`.
@@ -1317,6 +1341,8 @@ setting-off capture is byte-identical before and after `915a99ee`.
 Fix AW has no row: experience is not in the recording. `SemWalker3`
 (`tests/unit/test_sem_walker_3.cpp`) pins it with a bomb and with a bare
 owned effect, each against the hero's own melee blow of the same damage.
+The old game's capture after its port (`3f8080e1`) is byte-identical to
+the one before it.
 
 Fix AX has no row: every recording plays at Normal (the current game's
 parity runner never sets a difficulty, which reads as 100 %, and the old
@@ -1324,9 +1350,17 @@ game's capture tool keeps `current_difficulty = 1`; `ScenarioSpec` has no
 difficulty field), and at 100 % the percent multiplies a summon's
 whole-number hit points, magic and damage by 100 and divides them back
 exactly, so both settings record the same bytes. The parity entries were
-run with the fix and no row moved. `DifficultyScaling` in
+run with the fix and no row moved, and the old game's capture after its
+port (`9532f53d`) is byte-identical to the one before it. `DifficultyScaling` in
 `tests/unit/test_difficulty_scaling.cpp` pins it on both settings at Easy
 and Hard.
+
+Fix AY has no row: neither the golden capture tool nor the parity test
+driver runs the seat scans (both claim the first live walker of the
+player's team), so both settings record the same bytes, and the old
+game's capture after its port (`3a21c890`) is byte-identical to the one
+before it. `GameplayFixesSeats` in `tests/unit/test_gameplay_fixes_seats.cpp`
+pins it on both settings.
 
 Fix AZ's arena, `thief_bomb_colour_score_scen99` and
 `thief_bomb_colour_score_fixes_scen99`: the bomb arena of
@@ -1347,6 +1381,9 @@ other team. No existing row moves: every setting-on row plays a red player
 with no hero, so a blow scores only for a red head, whose blasts and shots
 are red too; the setting-on rows that change a colour (the charms and MIND
 CONTROL) turn a walker that strikes in melee or heads its own chain.
+Both rows are captured from the old game at `30ada1c5`, after the port
+(`bc75c886`) and its correction (`fbcab638`), and each `cmp`s equal to
+this game's run.
 
 Fix BB's arena, `mage_bot_far_foe_scen99` and
 `mage_bot_far_foe_fixes_scen99`: a hostile level-1 mage bot spawns facing
@@ -1375,27 +1412,34 @@ check answer yes, the setting-off row's inverts fix AT's gate so the classic
 mage keeps facing and its swing throws; either way a fireball flies by B.
 The two rows say the same thing on purpose: with fix BB the setting-on game
 does here what the classic game does.
+Both rows are captured from the old game at `30ada1c5`, after the port
+(`9ad29b55`), and each `cmp`s equal to this game's run.
 
-Fix BB moves these 28 existing rows with the setting on, as measured in the
-current game before the port (each `_fixes_scen99`; the old game's capture
-after the port is to move exactly these, and each is to be recaptured from
-the old game). The facts of 17 no longer hold: `archer_barrage_edge_pad`,
-`archer_bolt_edge_pad`, `archmage_mind_control_berserk`,
+Fix BB moved these 28 existing rows with the setting on, as measured in the
+current game before the port (each `_fixes_scen99`); the old game's capture
+after the port, `9ad29b55`, moved exactly these and no other row, and each
+was recaptured from the old game. The facts of 17 no longer held:
+`archer_barrage_edge_pad`, `archer_bolt_edge_pad`, `archmage_mind_control_berserk`,
 `archmage_summon_no_room`, `barbarian_boulder_edge_pad`,
 `cleric_bot_raise_or_turn`, `druid_tree_blocked`,
 `elemental_struck_short_pool`, `elf_rocks_blocked`, `elf_rocks_edge_pad`,
 `elf_volley_refund`, `mage_bot_heartburst`, `mage_wave_edge_pad`,
 `orc_stale_shove`, `soldier_disarm_resisted_busy`,
 `soldier_whirlwind_no_foe` and `thief_charm_nearest`. In the other 11 only
-the bytes differ: `archer_bot_bolt_at_blows`, `archmage_bot_image_one_foe`,
+the bytes differed: `archer_bot_bolt_at_blows`, `archmage_bot_image_one_foe`,
 `archmage_hit_stale_shift`, `cleric_bot_resurrect_foe_stain`,
 `mage_bot_freeze_engaged`, `orc_right_walk_potion`,
 `soldier_charge_front_foe`, `soldier_disarm_higher_foe`,
 `soldier_disarm_resisted_price`, `thief_bot_charm_or_taunt` and
-`thief_charm_tent_troop`. The 17 rows' facts are to be worked out again from
-the rules after the recapture, never read off the new run, and a row whose
-pin no longer shows takes a seed or spawns of its own while its setting-off
-twin stays as it is. `orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
+`thief_charm_tent_troop`. Sixteen of the 17 had their facts worked out
+again from the rules after the recapture, never read off the new run (the
+table mirror `ae5c6c7c` carries them, and `35e5f6eb` the review's
+corrections). The seventeenth, `archmage_mind_control_berserk`, and one of
+the 11, `cleric_bot_resurrect_foe_stain`, no longer reached the rule they
+test, so their pins changed nothing: each setting-on twin took a seed of
+its own while its setting-off twin stayed as it is (Rulings (2026-11-14),
+entry 14), and was recaptured from the old game on it.
+`orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
 does not move: the orc stands 1 px above the soldier, the pad holds the
 soldier's body and the swing starts on tick 9 as before. No setting-off row
 moves.
@@ -3128,6 +3172,29 @@ flying bot's own floor for #447) come first.
     terminal clients still do not save Game Settings to disk (filed as its
     own issue). Alternative: save them as the SDL client does, in this
     batch.
+14. **Two setting-on recordings took a seed of their own after fix BB**
+    (a bot near its foe turns to it for good and swings only when the
+    blow can land): on the old seed the row no longer reached the rule it
+    tests, and its pin changed nothing.
+    `archmage_mind_control_berserk_fixes_scen99` went back to its twin's
+    seed 198 (0xC6), where the entry of 2026-11-08 had given it 0xB0: fix
+    BB holds the orc's swing at the air that parted the stream before the
+    cast, so on 0xB0 the control roll now succeeds and fix F's rule (a
+    failed MIND CONTROL's berserk foe never takes the caster's team) is
+    never reached. `cleric_bot_resurrect_foe_stain_fixes_scen99` took seed
+    84 (0x54), where that entry gave it 0x3: on 0x3 the cleric now walks
+    off without asking for RESURRECT near the faerie's stain. Each is the
+    first seed from 0 where the row's own pin changes what its facts read;
+    the spawns, inputs, budgets and facts stay, and the setting-off twins
+    keep their seeds and recordings. Two rows' facts now read another
+    walker, because fix BB left the one they read dead:
+    `cleric_bot_raise_or_turn_fixes_scen99` reads the tower's hit points
+    and counts the faerie as gone (the faerie now falls to the cleric's
+    swing and the tower lives), and `mage_bot_heartburst_fixes_scen99`
+    reads the mage's hit points (all three towers now fall). Alternatives:
+    give the two re-seeded rows spawns of their own that reach the rule
+    on any stream, and re-stage the two re-aimed rows so that the walkers
+    they read before stay alive.
 
 ## Out of scope
 
