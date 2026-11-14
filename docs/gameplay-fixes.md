@@ -109,6 +109,7 @@ usual pause.
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 | AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
+| AY | A dead hero's seat and a walker of the other side | When the walker a seat drives dies, the seat is handed any live walker of its team, even one that fights for the other side: a faerie an enemy druid summoned while our side had the druid charmed keeps our colour when the charm runs out, but the head of its owner chain is the druid, back on its own team. Switch Character has refused such a walker since 2013. | The hand-off asks Switch Character's question of the seat's team: the head of the walker's owner chain must wear it. With no such walker left the seat asks for the end of the game, as when its team is wiped out. A seat already driving such a walker keeps it. |
 | AZ | Whose team a blow's score pays | A blow pays its team score to the colour the hitter wears, while the gate that decides a score is due, the "another team" test and the kill credit read the head of its owner chain. A bomb's, a mine's or an exploding shot's blast wears no colour (red), so a hero, or a thrower on the player's team, who is not red pays red for every blast blow; a shot or a summon whose caster changed sides (a charm, MIND CONTROL) pays the caster's old colour. | The score goes to the team the chain's head wears: the head that opened the gate and is credited with the kill. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -538,6 +539,21 @@ Fixes X to AZ, in play:
   a slime's fission are never scaled on any team, in the old game as here,
   and stay so. Every recording plays at Normal, where the percent gives a
   summon's whole-number values back unchanged, so no golden moves.
+- **AY.** When the walker a seat drives dies, the seat is handed a live
+  walker of its team (#496). Switch Character also asks whose side the
+  walker fights for: the head of its owner chain must wear the hero's
+  colour, a test Jonathan Dearborn added in 2013, and the hand-off did not
+  ask it. So a faerie an enemy druid summoned while our side had the druid
+  charmed, still on our team after the charm ran out, was handed to a seat
+  whose hero died, though the switch skips it. With the setting on the
+  hand-off asks the same question through the same function, of the seat's
+  team, since the hero is dead. With nothing left to hand over the seat
+  asks for the end of the game exactly as when its team is wiped out; the
+  host still waits while any walker wears the team's colour, so the level
+  ends when the faerie's time runs out, its druid dies or it is killed. A
+  seat already driving such a walker keeps it, as with a charm (#450). No
+  recording reaches the hand-off, and the switch, which one recording
+  drives, asks exactly what it asked before, so no golden moves.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
   for a kill its damage plus ten times the level) only when the head of the
   hitter's owner chain is a hero or stands on the player's team, and the
@@ -933,11 +949,23 @@ rules hold 5371 rolls; the caps stay at 3.
   or its body is dead, and never asks a live body's team. This is the
   maintainer's ruling: refuse a charmed walker for the hand-off, keep one
   already controlled.
+- **A seat is handed only a walker that fights for its side** (#496, fix
+  AY, both games). With the setting on the seat scans also skip a walker
+  whose owner chain heads another team, the question Switch Character asks
+  (one function in both places): a summon its caster made while our side
+  had the caster charmed, left on our team when the charm ran out. While
+  the caster's charm still runs, the summon fights for us and can be handed
+  over; a seat on it keeps it when the charm ends. As with a charmed
+  walker, a player joining mid-level whose team has no other free body is
+  given the stock soldier in a local game and follows the team in a
+  networked one.
 
 The old game's death searches (`viewscreen::input` and
 `viewscreen::continuous_input`, three passes each) ask the same question
 behind the setting since `787eb516` (#450). No parity capture runs them, so
-the port moved no golden.
+the port moved no golden. Fix AY's question is to be ported into the first
+two passes of the same searches, behind the setting; the third pass is
+#139's difference (see GAMEPLAY_FIXES_FROM_CLASSIC.md).
 
 ## Parity
 
@@ -1386,8 +1414,9 @@ Rows deliberately not added:
 - `NO ONE TO DISARM` has no row: a refusal string is not recorded and the
   cast spends nothing on either value, so an arena's two captures would be
   byte-identical; a current-game test pins it.
-- Fixes N, O and M's seat half (#354, #450): no parity row can reach them (see
-  [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
+- Fixes N, O, M's seat half (#354, #450) and AY (#496): no parity row can
+  reach them (see [Not gated](#not-gated) and [Charm and
+  seats](#charm-and-seats)).
 - Fix S: no parity row can reach it. A parity spawn has no character
   record, so its fire delay is a whole number and busy always counts down
   to exactly zero; the old game's port (`4440414c`) moves no golden. The

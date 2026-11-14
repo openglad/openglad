@@ -273,6 +273,8 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         for (auto& uptr : level.oblist)
         {
             walker* w = uptr.get();
+            // No test of the side a walker fights for here (fix AY): the arm takes the seat's
+            // own tagged hero whatever team byte the mode gave it, and a hero is no one's summon.
             // rule: In a scripted match a seat reclaims its OWN tagged fighter first, whatever team
             //   byte the mode reseated it on (FFA bands), so a team-0 prop never steals the seat.
             // tests: SimControlPolicy.scripted_owner_arm_reacquires_off_team_band_fighter
@@ -323,29 +325,33 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
     //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
     //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed walkers,
-    //   and (fixes on) walkers charmed onto the team.
+    //   and (fixes on) walkers charmed onto the team or whose owner chain heads another team (fix
+    //   AY).
     // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
         // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
         //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
         //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed
-        //   walkers, and (fixes on) walkers charmed onto the team.
+        //   walkers, and (fixes on) walkers charmed onto the team or whose owner chain heads
+        //   another team (fix AY).
         // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
         // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
             w->team_num() == my_team && allowed(w) &&
-            seat_may_claim(level, *w))
+            seat_may_claim_for_team(level, *w, my_team))
         {
             TRACE("sim_control", "found player character '%s'",
                   w->stats()->name.c_str());
@@ -357,28 +363,32 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
     //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
     //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed walkers,
-    //   and (fixes on) walkers charmed onto the team.
+    //   and (fixes on) walkers charmed onto the team or whose owner chain heads another team (fix
+    //   AY).
     // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
         // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
         //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
         //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed
-        //   walkers, and (fixes on) walkers charmed onto the team.
+        //   walkers, and (fixes on) walkers charmed onto the team or whose owner chain heads
+        //   another team (fix AY).
         // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
         // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team && allowed(w) &&
-            seat_may_claim(level, *w))
+            seat_may_claim_for_team(level, *w, my_team))
         {
             TRACE("sim_control", "found team member '%s'",
                   w->stats()->name.c_str());
@@ -402,6 +412,7 @@ SimReacquire sim_reacquire_control(GameWorld& level, short my_team,
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.net_r1_allied_claimed_teammate_shape_yields_endgame_verdict
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off
     if (control_out != nullptr)
         return SimReacquire::Claimed;
 

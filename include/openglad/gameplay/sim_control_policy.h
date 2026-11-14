@@ -35,8 +35,8 @@
 #include <span>
 #include <vector>
 
-// The two Gameplay Fixes seat predicates below are inline, so the world and
-// the walker are complete here.
+// The Gameplay Fixes seat predicates below are inline, so the world and the
+// walker are complete here.
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 
@@ -165,6 +165,42 @@ void install_control_policy(GameWorld& world,
                                          const walker& w) noexcept
 {
     return level.gameplay_fixes == 0 || !charmed_onto_team(w);
+}
+
+// The side a walker fights for is the colour the head of its owner chain
+// wears (walker::alliance_head, the head is_friendly reads): a summon fights
+// for its caster's side whatever colour it wears itself. Switch Character has
+// asked this since 2013, when Jonathan Dearborn added the friendliness test so
+// a seat never switches to "an enemy on the same team"; with the Gameplay
+// Fixes setting on the death hand-off asks it too (fix AY, #496). The two
+// forms below differ only in the side they ask about.
+[[nodiscard]] inline bool fights_for_side(const walker& w, unsigned char side) noexcept
+{
+    return w.is_friendly_to_team(side) != 0;
+}
+// Switch Character's form: the side the live hero fights for, exactly
+// walker::is_friendly(hero). A dead or missing hero has no side.
+[[nodiscard]] inline bool fights_alongside(const walker& w, const walker* hero) noexcept
+{
+    return hero != nullptr && !hero->dead() &&
+           fights_for_side(w, hero->alliance_head()->team_num());
+}
+// The form every team-filtered seat scan asks (the death hand-off, the entry
+// claim, the server's bind claim, a networked join): the seat's team, the
+// hero being dead. With the setting on a seat claims only a walker that is not
+// charmed (seat_may_claim) and fights for the seat's team, so a faerie an
+// enemy druid summoned while our side had the druid charmed, left on our team
+// when the charm ran out, is not handed over. Off, the classic scans ask
+// neither. Like seat_may_claim it is never asked of the body a seat already
+// holds. Every caller has already required w.team_num() == my_team, so the
+// cast is exact.
+[[nodiscard]] inline bool seat_may_claim_for_team(const GameWorld& level,
+                                                  const walker& w,
+                                                  short my_team) noexcept
+{
+    return seat_may_claim(level, w) &&
+           (level.gameplay_fixes == 0 ||
+            fights_for_side(w, static_cast<unsigned char>(my_team)));
 }
 
 // Death auto-switch / entry claim verdict (§4.4 enforcement site 2).

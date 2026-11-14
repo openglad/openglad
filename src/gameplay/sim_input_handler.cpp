@@ -177,16 +177,18 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         walker* w = uptr.get();
         // rule: A seat that needs a body takes first a player character (a hero with a company
         //   record) of its own team that is alive, awake, visible, unpossessed and not held by
-        //   another seat (and, with Gameplay Fixes on, not a walker our side charmed).
+        //   another seat (and, with Gameplay Fixes on, not a walker our side charmed, nor one
+        //   whose owner chain heads another team: fix AY, #496).
         // tests: SimInputHandler.sim_find_next_control_player_first
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed
+        // tests: GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
             w->team_num() == my_team &&
-            og::sim::seat_may_claim(level, *w))
+            og::sim::seat_may_claim_for_team(level, *w, my_team))
         {
             TRACE("sim_input", "found player character '%s'", w->stats()->name.c_str());
             return w;
@@ -200,16 +202,18 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     {
         walker* w = uptr.get();
         // rule: With no player character left, a seat takes any eligible member of its own team
-        //   (with Gameplay Fixes on, not a walker our side charmed: #354, #450); it never takes a
-        //   walker of another team (the 2002 'ANYONE' pass is gone).
+        //   (with Gameplay Fixes on, not a walker our side charmed: #354, #450, nor one whose owner
+        //   chain heads another team, such as a summon whose caster's charm ran out: fix AY,
+        //   #496); it never takes a walker of another team (the 2002 'ANYONE' pass is gone).
         // tests: SimInputHandler.sim_find_next_control_team_fallback, SimInputHandler.sim_find_next_control_none, SimInputHandler.sim_find_next_control_never_claims_another_team
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_on_both_settings
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_beside_a_foes_summon, GameplayFixesSeats.a_charmed_druids_faerie_is_handed_over_only_with_the_setting_off
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team &&
-            og::sim::seat_may_claim(level, *w))
+            og::sim::seat_may_claim_for_team(level, *w, my_team))
         {
             TRACE("sim_input", "found team member '%s'", w->stats()->name.c_str());
             return w;
@@ -376,16 +380,20 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // either side of a possession: a possessed body belongs to the seat
         // whose ghost rides it, and a bot's possession is the bot's.
         // rule: Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed
-        //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses.
+        //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses,
+        //   nor one whose owner chain heads another side than the live hero's (fights_alongside:
+        //   the question the death hand-off asks of the seat's team with Gameplay Fixes on, fix
+        //   AY).
         // tests: SimInputHandler.sim_input_switch_char_skips_ineligible_candidates_then_selects_valid
         // tests: SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies
         // tests: SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
         // tests: KitPossession.claim_scans_refuse_linked_walkers
         // tests: KitPossession.claim_scans_refuse_a_hidden_unlinked_walker
+        // tests: GameplayFixesSeats.the_hand_off_asks_switch_characters_question_only_with_the_setting_on, GameplayFixesSeats.fights_for_side_asks_the_head_of_the_owner_chain
         return !w->dead() && !w->dormant() && !w->hidden() &&
                w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
-               w->is_friendly(anchor) && w->team_num() == my_team &&
+               og::sim::fights_alongside(*w, anchor) && w->team_num() == my_team &&
                w->real_team_num() == 255 && w->user() == -1 &&
                og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
     };
@@ -483,8 +491,10 @@ SimInputResult sim_process_player_input(
         }
     }
     // rule: A seat looks for a new body only when it has none or its body is dead: it keeps a live
-    //   body whatever team that body now wears, so a charm running out takes the seat with it (#450).
+    //   body whatever team that body now wears or fights for, so a walker whose charm runs out keeps
+    //   its seat (#450), and so does a summon when the charm on its caster runs out (#496).
     // tests: SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate, SimInputHandler.sim_input_dead_control_reassigns_to_next_alive, GameplayFixesSeats.a_seat_keeps_its_walker_when_the_charm_runs_out
+    // tests: GameplayFixesSeats.a_seat_keeps_a_summon_when_its_casters_charm_runs_out
     if (!control || control->dead())
     {
         // Respawning players keep their exact entity assignment. The normal
@@ -512,6 +522,7 @@ SimInputResult sim_process_player_input(
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.a_refused_summon_holds_the_level_open_until_it_dies
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
         if (control->user() == -1)
