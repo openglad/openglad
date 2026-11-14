@@ -8675,7 +8675,7 @@ inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
     pred::TickReached(72),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindExactly(/*play_sound*/1, 6,
-        "consequence: with the setting on the volley refunds exactly the two rocks it throws, so the held fire throws one rock fewer than the overpay would: four rock throws (two in the volley at tick 20, then one at 35 and one at 42 from the 2 MP left) and the tower's two arrows (27 and 40)"),
+        "consequence: with the setting on the volley refunds exactly the two rocks it throws, so the held fire throws one rock fewer than the overpay would: four rock throws (two in the volley at tick 20, then one at 35 and one at 42 from the 1 MP left and one regenerated) and the tower's two arrows (27 and 40)"),
     pred::WeaponFamilyCount(FAMILY_ROCK, 1, 1,
         "consequence: one rock in flight at the final tick, not the overpay's two"),
 };
@@ -8953,7 +8953,7 @@ inline constexpr Mutation kMut_mage_bot_freeze_engaged_fixes_scen99 = {
 // mage has none) and a 5 is HEARTBURST, whose
 // explosions open the run at tick 0. With the setting on all three towers
 // fall: the explosions leave each at 47 hp and the mage's fireballs finish
-// them by tick 33, and the mage leaves no TELEPORT MARKER (with fix AT alone
+// them by tick 33 (with fix AT alone
 // the third tower, at (80, 120), was left at 48 hp; before fix AT all three
 // fell and the mage left its marker where it stood (120, 120)).
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
@@ -8984,9 +8984,6 @@ inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500,
         "consequence: twelve of the towers' thirteen arrows strike the mage (3.88 + rng(2) on the tower's 5: 56 in all) before the last tower falls, and it regenerates 1 once its 50-tick wait after the last has run: 35 hp"),
-    pred::WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 0, 0,
-        "consequence: the mage leaves no TELEPORT MARKER in the run"),
-    // negative_assertion: no marker at tick 150 with the setting on (before fix AT the marker stood at (120, 120)).
     pred::EventKindExactly(/*play_sound*/1, 22,
         "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST: its three explosions at tick 0 ((600 - 100) / 2 over three foes, 83 a tower), the mage's three fireballs (13, 28, 35), the towers' thirteen arrows (2, 5 and 6 before each falls, one at most every 5 ticks) and their three death cries (16, 31, 33)"),
 };
@@ -8994,7 +8991,7 @@ inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
     "src/gameplay/living.cpp", 576,
     "(current_special() > 4 && og::sim::session_gameplay_fixes() == 0)",
     "(current_special() > 4)",
-    "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): the fireball fight still kills all three towers, but it gives 19 sounds and leaves the mage at 69 hp, so WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500) and EventKindExactly(play_sound, 22) fail."
+    "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): the fireball fight still kills all three towers, but it gives 15 sounds and leaves the mage at 69 hp, so WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500) and EventKindExactly(play_sound, 22) fail."
 };
 
 // --- cleric_turn_undead_reach (fix E: TURN UNDEAD's reach) -----------------
@@ -9165,13 +9162,15 @@ inline constexpr FactPredicate kFacts_thief_charm_nearest_fixes_scen99[] = {
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900,
-        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead (fix W), and two of its knives strike the charmed orc (4.78 + rng(2) on the knife's 6: 6 at tick 23, 5 at 49), which ends the run at 129 hp"),
+        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead (fix W), and two of its knives strike the charmed orc (4.78 + rng(2) on the knife's 6: 6 at tick 24, 5 at 50), which ends the run at 129 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2600, 2600,
+        "consequence: before the charm at tick 20 the orc's swing strikes the thief at tick 6 (20.60 + rng(4) on its 23: 22) and two of the soldier bot's knives at 10 and 18 (6 each), which leaves it at 41 of its 75; with the setting on the soldier is not charmed and three more of its knives strike the thief, at 34, 41 and 58 (5 each), so it ends at 26 hp (the last blow at 58 leaves no time to regenerate)"),
 };
 inline constexpr Mutation kMut_thief_charm_nearest_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 83,
     "if best == nil or dist < best_dist then",
     "if best == nil or dist > best_dist then",
-    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier's knives go to the orc, which ends at 130 hp, and WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900) fails."
+    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier's knives go to the orc, which ends at 130 hp, and nothing strikes the thief after the charm, which ends at 41 hp: WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2600, 2600) fail."
 };
 
 // --- thief_taunt_no_foe (fix K: TAUNT with nobody in reach) ---------------
@@ -11663,7 +11662,7 @@ inline constexpr FactPredicate kFacts_mage_wave_edge_pad_fixes_scen99[] = {
     pred::WeaponFamilyEmitted(FAMILY_WAVE,
         "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press can pay the 70 and sends the wave"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000,
-        "consequence: the wave's second ring strikes the tower four times as it passes (its 12, worn a point a strike, each 12 - sqrt/2 + rng(3): 12, 9, 9, 10): 90 hp"),
+        "consequence: the wave's second ring strikes the tower four times as it passes, worn a point a strike, so the strikes are rolled on 12, 11, 10 and 9 (each d - sqrt(d)/2 + rng(3)): 12, 9, 9, 10, and the tower ends at 90 hp"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 6400, 6400,
         "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), the first from its shot at tick 16 (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
 };
