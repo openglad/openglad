@@ -230,7 +230,7 @@ jobs:
           test ! -e build/dev-release/builtin/concept.glad
           test -e build/dev-release/builtin/gladiator.glad
           # And the binaries must carry this checkout's version, not the "2.0"
-          # of a history-less build — the release is tagged with that number —
+          # of a history-less build (the release is tagged with that number),
           # and show it only on a master build (#508).
           grep -q "OPENGLAD_VERSION_STRING \"2.$(git rev-list --count HEAD)\"" build/dev-release/og_git_hash.h
           grep -q "OPENGLAD_VERSION_ON_MASTER ${{ github.event_name == 'pull_request' && '0' || '1' }}" build/dev-release/og_git_hash.h

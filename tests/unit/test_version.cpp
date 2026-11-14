@@ -6,14 +6,18 @@
  * the 2.<count> number (#508); any other build shows its hash alone. Both
  * kinds of text are pinned exactly through the compose_* functions, whose
  * inputs a test can choose; the live functions are pinned against the
- * build's own on_master() answer, written out by hand. Nothing here can pin
- * the VALUE, which changes with every commit; what is pinned is the exact
- * composition each surface is built from — `std::format("{}.{}", major(),
- * minor())` for the version string, "v<string> <hash>" (or "<hash>") for
- * the stamp, "openglad version <string> (<hash>)" (or "openglad commit
- * <hash>") for `-v` — plus the shape of the generated git hash. The value
- * checks are two independent opt-ins, exported by the CI lanes that run
- * og_unit_core: OG_EXPECT_VERSION_MINOR from `git rev-list --count HEAD`,
+ * build's own on_master() answer, written out by hand. Whether on_master()
+ * itself follows the stamped flag is checked outside this binary:
+ * scripts/test_curses_cli.sh (CTest openglad_curses_cli) writes the
+ * --version line from og_git_hash.h and holds the terminal client to it.
+ * Nothing here can pin the VALUE, which changes with every commit; what is
+ * pinned is the exact composition each surface is built from:
+ * `std::format("{}.{}", major(), minor())` for the version string,
+ * "v<string> <hash>" (or "<hash>") for the stamp, "openglad version <string>
+ * (<hash>)" (or "openglad commit <hash>") for `-v`, plus the shape of the
+ * generated git hash. The value checks are two independent opt-ins,
+ * exported by the CI lanes that run og_unit_core: OG_EXPECT_VERSION_MINOR
+ * from `git rev-list --count HEAD`,
  * so a build that stamped 2.0 because the checkout was shallow fails there
  * instead of shipping a lying number, and OG_EXPECT_GIT_HASH from
  * `git rev-parse --short=8 HEAD` — the same command cmake runs — so a

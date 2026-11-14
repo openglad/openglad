@@ -269,8 +269,9 @@ executables. Before upload, CI extracts the ZIP, runs both programs with the
 build tools removed from `PATH`, and verifies that removing a required DLL
 makes those launches fail. Desktop archives include the core class pack.
 
-A build without git history (a source tarball, a shallow clone) cannot tell that
-its commit is on master, so it shows only its hash (`nogit` without one).
+A build that git cannot place (a source tarball with no git, a repository with no
+commit, a checkout with no `origin/master`, a shallow clone) cannot tell that its
+commit is on master, so it shows only its hash (`nogit` without git).
 Packagers who need the number pass it, with the answer:
 
 ```bash

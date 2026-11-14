@@ -1607,10 +1607,13 @@ if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
         LABELS "curses"
     )
 
+    # The build stamp (og_git_hash.h) is the independent oracle for the
+    # exact --version line this build must print (#508).
     add_test(NAME openglad_curses_cli
         COMMAND ${CMAKE_COMMAND} -E env bash
             ${CMAKE_SOURCE_DIR}/scripts/test_curses_cli.sh
             $<TARGET_FILE:openglad_curses>
+            ${CMAKE_BINARY_DIR}/og_git_hash.h
     )
     set_tests_properties(openglad_curses_cli PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

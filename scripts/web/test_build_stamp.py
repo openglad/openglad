@@ -5,6 +5,8 @@ Run by wasm-e2e.yml's `python3 -m unittest discover -s scripts/web -p
 'test_*.py'` step, before the WASM build.
 """
 
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -85,11 +87,14 @@ class CliTests(unittest.TestCase):
                 handle.write(header(on_master=0))
             with open(out_path, "w", encoding="utf-8") as handle:
                 handle.write("earlier=kept\n")
-            code = build_stamp.main([
-                "--header", stamp_path, "--expect-on-master", "0",
-                "--rev-count", "1080", "--short-hash", "7e7f4079",
-                "--output-file", out_path])
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                code = build_stamp.main([
+                    "--header", stamp_path, "--expect-on-master", "0",
+                    "--rev-count", "1080", "--short-hash", "7e7f4079",
+                    "--output-file", out_path])
             self.assertEqual(0, code)
+            self.assertEqual("", printed.getvalue())
             with open(out_path, encoding="utf-8") as handle:
                 self.assertEqual(
                     "earlier=kept\nversion=\nminor=1080\nhash=7e7f4079\n"
@@ -101,11 +106,17 @@ class CliTests(unittest.TestCase):
             out_path = os.path.join(tmp, "out")
             with open(stamp_path, "w", encoding="utf-8") as handle:
                 handle.write("#pragma once\n")
-            code = build_stamp.main([
-                "--header", stamp_path, "--expect-on-master", "1",
-                "--rev-count", "1080", "--short-hash", "7e7f4079",
-                "--output-file", out_path])
+            # The refusal is a GitHub workflow command; captured here so a
+            # green test run prints no error annotation of its own.
+            printed = io.StringIO()
+            with contextlib.redirect_stdout(printed):
+                code = build_stamp.main([
+                    "--header", stamp_path, "--expect-on-master", "1",
+                    "--rev-count", "1080", "--short-hash", "7e7f4079",
+                    "--output-file", out_path])
             self.assertEqual(1, code)
+            self.assertEqual(f"::error::{stamp_path} has no version stamp\n",
+                             printed.getvalue())
             self.assertFalse(os.path.exists(out_path))
 
 
