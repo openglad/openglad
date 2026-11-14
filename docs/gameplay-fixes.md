@@ -536,10 +536,11 @@ Fixes X to BB, in play:
   does not. Every other summon and spawn (the cleric's skeleton and its
   RESURRECT ghost, WARBAND's grunts, LEGION's risen, a slime's child,
   generator spawns, the bot squads) already took its team first, on both
-  settings. The druid's faerie, a faerie's WISH, the friendly RESURRECT and
-  a slime's fission are never scaled on any team, in the old game as here,
-  and stay so. Every recording plays at Normal, where the percent gives a
-  summon's whole-number values back unchanged, so no golden moves.
+  settings. The druid's faerie, the friendly RESURRECT and a slime's
+  fission are never scaled on any team, in the old game as here, and
+  neither is a faerie's WISH (one of this game's New Specials); all stay
+  so. Every recording plays at Normal, where the percent gives a summon's
+  whole-number values back unchanged, so no golden moves.
 - **AY.** When the walker a seat drives dies, the seat is handed a live
   walker of its team (#496). Switch Character also asks whose side the
   walker fights for: the head of its owner chain must wear the hero's
@@ -552,9 +553,13 @@ Fixes X to BB, in play:
   asks for the end of the game exactly as when its team is wiped out; the
   host still waits while any walker wears the team's colour, so the level
   ends when the faerie's time runs out, its druid dies or it is killed. A
-  seat already driving such a walker keeps it, as with a charm (#450). No
-  recording reaches the hand-off, and the switch, which one recording
-  drives, asks exactly what it asked before, so no golden moves.
+  seat already driving such a walker keeps it, as with a charm (#450). The
+  same rule refuses our own caster's summon while an enemy has that caster
+  charmed (the head of its owner chain wears the enemy's colour), which
+  Switch Character already refused; in the current game the level waits
+  and the seat takes the caster back when the charm ends. No recording
+  reaches the hand-off, and the switch, which one recording drives, asks
+  exactly what it asked before, so no golden moves.
 - **AZ.** A blow pays team score (its damage plus the victim's level, and
   for a kill its damage plus ten times the level) only when the head of the
   hitter's owner chain is a hero or stands on the player's team, and the
@@ -1622,9 +1627,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Thirty-one changes apply whatever the setting, three from the work that
+Thirty-six changes apply whatever the setting, three from the work that
 added it (N, O and P), six from the second bugs batch, eighteen from the
-issues it filed and four from the third bugs batch; the last three entries
+issues it filed and nine from the third bugs batch; the last three entries
 record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1690,6 +1695,27 @@ record differences kept on purpose (#484, #440, #491):
   every player's game, and a joiner has no server world). A replay recorded
   while cheating plays back differently, because a cheat is not recorded
   input. This game only.
+- **Every cheat key changes the game (#432).** In local play the screen
+  the cheat keys wrote is a copy of the game that the next snapshot
+  overwrites, so after F1 was fixed (#413) the other keys still changed
+  nothing a player could keep: the hit points, the magic, the level,
+  flight, invincibility, speed, invisibility and the new shape were back a
+  tick later, the magic shield vanished, the foes F12 killed stood up
+  again, and the team hop never moved the seat. Every key now changes the
+  game itself, the way F1 does, with the game's own rules running (a kill
+  credits the hero; a hop moves the seat to the new body and drops the
+  orders its AI had queued, as in the old game), and the snapshot shows it
+  on every view. A hop that landed leaves the save on the new team when
+  the level ends, as the old game's hop does; the company's money stays
+  with the lowest team on its roster. In a networked game no key does
+  anything, for the host or a joiner (a host's cheat would change every
+  player's game, and a joiner has no game of its own to change); before, a
+  key there changed only the pressing machine's copy until the next
+  snapshot. A replay plays back without the cheats, which are not recorded
+  input: before, only F1 made a cheated level's replay play back
+  differently; now any cheat key does, from the first key pressed. Replays
+  of levels played without cheats are untouched, and a playback still
+  refuses every key. This game only.
 - **Water and lava flow again (#414).** Since June 2026 (`de9d02b2`) every
   snapshot repainted the palette and put the water and lava colour bands
   back: measured over six frames, the bands' turn read 1, 0, 0, 1, 0, 0
@@ -1782,8 +1808,8 @@ record differences kept on purpose (#484, #440, #491):
   (the cleric's RAISE GHOST, the archmage's elementals and phantoms) is
   still on team 0 then, so a foe's keeps 100% too, as in the old game; with
   it on it takes the team first and the percent with it (fix AX). Every
-  other team takes the
-  percent as before, and at 100% nothing changes, so no golden moves.
+  other team takes the percent as before, and at 100% nothing changes, so
+  no golden moves.
 - **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
   chain's bolt strikes first the nearest foe on the archmage's own floor
   and cannot arc through floors, but the cast paid its busy, a shot on a
@@ -1944,6 +1970,45 @@ record differences kept on purpose (#484, #440, #491):
   `SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor`
   pins it on both values (see GAMEPLAY_FIXES_FROM_CLASSIC.md for the
   measure).
+- **A hero of a pack class from 128 to 255 keeps its class (#500).** #443
+  made a walker's family an unsigned byte, but a company character's own
+  record kept a signed one, from the moment the hero was made. A hero of
+  class 200 read back as -56: it spawned and drew as a soldier with a
+  soldier's speed, its TRAIN panel showed a soldier's stats, the results
+  screen called it BEAST with no specials, it was worth nothing to the
+  company, and the Base Camp lobby, which refuses a class outside 0..255,
+  removed it from the company at the next menu frame, for a solo company
+  and for a host's own heroes alike; a joiner's hero reached the host,
+  which built it as a soldier. The record, the hero's snapshot and every
+  client's copy now keep the class as an unsigned byte. The save, the
+  lobby and the snapshot always carried the unsigned byte, so no save,
+  protocol, snapshot or replay version moves. No shipped pack has a hero
+  class above 20 and HIRE offers only the core classes, so a hero reaches
+  such a class only through a pack's promotion or a save that carries one.
+  A hero whose class is 128 to 255 and that no installed pack provides now
+  stays in the company and reads its class's own empty stat row, exactly
+  as classes 21 to 127 already do (a soldier's body, no class base for
+  speed, sight or damage); before, such a hero was removed from the
+  company when Base Camp opened. This game only.
+- **A new game skips the campaign list (#490).** BEGIN NEW GAME founds the
+  company on the default campaign, Gladiator, and goes from name entry to
+  Base Camp with the campaign's introduction in between, on every client,
+  as the old game did; another campaign is chosen from Base Camp through
+  SCENARIO > SET CAMPAIGN (the Scenario submenu's Set Campaign on the
+  terminals). This game only.
+- **A build off master shows its commit, not a version number (#508).**
+  The `2.<count>` version is shown only by a build of a commit on master's
+  history; a pull-request preview or a local branch build shows its commit
+  hash alone on the main menu, in `-v` / `--version` and in the help
+  footer. This game only.
+- **The terminal client's New Ability Select answer takes effect at once
+  (#398).** In the terminal client, answering `New ability select` on the
+  Game Settings page changed the setting but not the copy that the ability
+  keys, the status line and the PAUSED menu's ABILITIES and KEYS entries
+  read, so for the rest of that run they went on as before. The SDL row
+  and both terminal prompts now switch through one function,
+  `og::ui::set_ability_select_pref`, which refreshes that copy. This game
+  only (the old game has neither the setting nor a terminal client).
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it
@@ -2063,7 +2128,7 @@ its mistake:
   byte, so every id 0..255 a pack can claim is its own family on every
   machine. No shipped pack claims an id above 24 (the core pack's are
   0..21, the modes pack's 13, 14 and 21..24). A company character's own
-  record still keeps a signed byte (#500). This game only.
+  record followed in #500. This game only.
 - **A loud passability probe answers only for the prober's floor (#465).**
   `og.query_passable` and `og.query_object_passable` take an optional
   floor. Their ground half read that floor, but their bodies half can see
@@ -2961,9 +3026,13 @@ the game does today.
 
 ## Rulings (2026-11-14)
 
-The bot fixes of this batch (fix BB for #497, and the flying bot's own
-floor for #447) leave two questions open. Each entry says what the game
-does today and the default taken.
+The third bugs batch (#494 to #505 and #508, with #398, #432, #441, #447
+and #490) asked its questions in the chat. The maintainer said three
+things: take the proposed issues, leave the flaky tests for a separate
+round, and add #490. He has not answered the rest yet, so every entry
+below is a default taken: what the game does today, and the alternative.
+The two questions the bot fixes leave open (fix BB for #497, and the
+flying bot's own floor for #447) come first.
 
 1. **#447: what the count was.** The issue counted, on Westlands 7, 16 and
    22, the ticks a melee-only bot stands within 30 px of its live foe
@@ -3007,6 +3076,57 @@ does today and the default taken.
    is a change of the campaigns' difficulty, not a bug fix to slip into this
    batch. Default: not taken. The alternative: take it as fix BC, behind the
    setting, with the campaigns' levels eased in their builders.
+3. **#505: a walker that dies charmed.** Default taken: no change to the
+   game, so there is no fix BA. A walker that dies charmed keeps heading its
+   owner chain until the tick ends, as fix AP rules. Alternative: a dead
+   walker never counts as charmed.
+4. **#502 (AZ): whose team a blast pays.** Default taken: with the setting
+   on a bomb's, a mine's or an exploding shot's blast pays its thrower's
+   team, not red. Alternative: fix AZ only for shots and summons whose
+   caster changed sides, and a blast keeps paying red.
+5. **#503: owner loops.** Default taken: a script's `set_owner` refuses a
+   link that would close an owner loop, and every climb cuts a loop a
+   snapshot brings in where it closes. Alternative: `set_owner` makes any
+   link and the next climb cuts the loop.
+6. **#495 (AX): whose summons the difficulty scales.** Default taken: a
+   summon takes its caster's team before it is scaled, so a human team
+   other than team 0 gets scaled summons as its hero is (the open question
+   of #506 is untouched). Alternative: every human team's summons are
+   exempt, as team 0's are, which is #506's question.
+7. **#496 (AY): a seat with nobody to take.** Default taken: the level
+   waits for a refused summon to die, as it waits for a charmed walker
+   since #450, and every search that gives a seat a body asks the new
+   question. Alternative: the host ends the level as soon as only walkers
+   the seat may not take wear its colour.
+8. **#499: a ride whose ghost a script marks dead.** Default taken: the
+   ridden body goes home at its next act and the ghost stays out of sight;
+   a player's seat keeps steering the freed body (filed as its own issue).
+   Alternative: when a ride ends with its ghost dead, the seat moves to the
+   ghost, so the ordinary death hand-off picks the next hero.
+9. **#500: a hero of a class no installed pack provides.** Default taken:
+   the hero stays in the company, with a soldier's body and its class's own
+   empty stat row, as classes 21 to 127 already had. Alternative: one
+   function names the class a hero stands as (the soldier when no pack
+   provides it), so its body, its stats and its price agree.
+10. **#432: the cheat keys.** Default taken: all twelve keys change the
+    game; none does anything in a networked game; cheats are not recorded
+    in replays; the team hop keeps the seat's starting team for Switch
+    Character and the death hand-off. Alternatives: a host's cheats change
+    everyone's game; replays record the cheats (a new replay format); a hop
+    gives the seat the new team too.
+11. **#490: a new game.** Default taken: the campaign's story text still
+    plays once, between name entry and Base Camp, and a new company always
+    starts on Gladiator; another campaign is set from Base Camp.
+    Alternatives: drop the story text there; or a SET CAMPAIGN button on
+    the name-entry screen.
+12. **#508: the version a build shows.** Default taken: a build off master
+    shows its commit only, and a local build of a master commit with
+    changes not yet committed still shows the number (the rule is about
+    the commit). Alternative: such a build shows its commit only too.
+13. **#398: Game Settings in the terminal clients.** Default taken: the
+    terminal clients still do not save Game Settings to disk (filed as its
+    own issue). Alternative: save them as the SDL client does, in this
+    batch.
 
 ## Out of scope
 
