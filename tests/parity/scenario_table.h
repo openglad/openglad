@@ -11792,6 +11792,87 @@ inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
     "The setting-on arm pays the hitter's own colour again, so the blast's blow on the tower pays red: ScoreDelta(1, 86, 94) reads 0 and ScoreDelta(0, 0, 0) reads 86 to 94."
 };
 
+// --- mage_bot_far_foe (fix BB, #497: a bot near its foe swings only when the blow can land) ---
+// A hostile level-1 mage bot (stepsize 2) spawns facing DOWN (the spawn
+// facing) with the idle player soldier straight below it, an 86 px gap
+// between the boxes (both 16x16, a corner distance of 102): it faces its foe
+// from the start. Its only special, TELEPORT, is held while exactly one foe
+// stands within 110 px, on both settings. Its fireball, shot straight down,
+// reaches a foe whose corner is at most 64 px off: fire_check's reach is the
+// shot's whole step times its whole range, the fireball's step 6 and range 7
+// scaled for a straight shot by 362/256 and 309/256 (8.48 and 8.45, so
+// 8 x 8). Tick by tick:
+// - Tick 1, the special coin rolls TELEPORT and the gate holds it. With the
+//   setting off that roll is the act (the classic game); with it on (fix W)
+//   the act goes on and queues the hunt for the soldier. Off, the hunt is
+//   queued on tick 2, so the classic row runs one act behind from here.
+// - The mage's path_check_counter starts at 7 (its construction draw), so
+//   its first six walk_to_foe calls (ticks 3 to 8 off, 2 to 7 on) are
+//   throttled walks of 2 px straight at the soldier (y 120 -> 132), and the
+//   seventh (tick 9 off, tick 8 on) re-plans: the foe, 90 px off, is within
+//   100 px, so the near branch turns the mage to the facing it has, starts an
+//   ATTACK order and asks for a swing. Off, the turn steps a notch and
+//   init_fire only turns the mage back: no swing (the classic flaw, in both
+//   games). On (fix AT) it keeps facing, and with fix BB it asks fire_check
+//   first, which answers that the soldier, 90 px off, is beyond the
+//   fireball's 64: no swing. Before fix BB the setting-on game swung there
+//   unasked and threw a fireball at the air.
+// - The ATTACK order cannot shoot from out of reach, so it walks the mage on
+//   2 px an act: two walks by the budget off (y 136), three on (y 138). No
+//   fireball flies by then and the soldier is whole; the first real fireball
+//   leaves only once the mage stands within its fireball's reach (at least
+//   13 more walks from the re-plan, 90 px down to 64), well after the budget.
+// The budget B = 11 is the tick an unasked swing at the re-plan has put its
+// fireball in the air on both rows: started on tick 8 with the setting on,
+// the attack animation ends on tick 10, when fire() throws it; on the
+// classic row under its pin, one tick later (swing on tick 9, fireball on
+// tick 11). A fireball flies eight steps, so it is still in flight at B.
+// The pins put the unasked swing back. The setting-on row's makes the near
+// branch's line check answer yes, so the fireball flies at the air; the
+// setting-off row's inverts fix AT's gate, so the classic mage keeps facing at
+// the re-plan and its unasked init_fire throws. Either way
+// WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1. The two rows say the
+// same thing on purpose: with fix BB the setting-on game does here what the
+// classic one does.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_far_foe_scen99[] = {
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 120, 0, 0, 1, 0 },   // hostile level-1 mage bot, facing DOWN at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 222, 0, 0 },         // the idle player LAST, straight below the mage: an 86 px gap (mage box ends at 136)
+};
+inline constexpr FactPredicate kFacts_mage_bot_far_foe_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_MAGE, 120, 136,
+        "consequence: six throttled walks and, after the re-plan on tick 9, two walks of the ATTACK order take the mage 16 px down"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "the soldier is whole: no fireball has reached it"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0,
+        "consequence: the classic near-branch turn steps off the foe, init_fire only turns back, and the mage throws nothing by tick 11"),
+    // negative_assertion: no fireball flies by tick 11 on the classic run; the pin gives the classic row fix AT, so the mage keeps facing at the re-plan and its unasked init_fire throws one at the air (0 -> 1).
+};
+inline constexpr Mutation kMut_mage_bot_far_foe_scen99 = {
+    "src/gameplay/walker_movement.cpp", 629,
+    "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
+    "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
+    "The gate is inverted, so the classic row gets fix AT: the mage keeps facing the soldier at the re-plan on tick 9, the near branch's unasked init_fire swings and the fireball is in flight on tick 11, so WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1."
+};
+inline constexpr FactPredicate kFacts_mage_bot_far_foe_fixes_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_MAGE, 120, 138,
+        "consequence: six throttled walks and, after the re-plan on tick 8, three walks of the ATTACK order take the mage 18 px down"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "the soldier is whole: no fireball has reached it"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0,
+        "consequence: with the setting on the mage re-plans facing a foe beyond its fireball's reach and throws nothing"),
+    // negative_assertion: no fireball flies by tick 11 with the setting on; the pin makes the near branch's line check answer yes, so the mage throws one at the air on tick 10 (0 -> 1).
+};
+inline constexpr Mutation kMut_mage_bot_far_foe_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2576,
+    ": controller_->fire_check(xdelta, ydelta);",
+    ": (static_cast<void>(xdelta), static_cast<void>(ydelta), true);",
+    "The near branch's line check answers yes, so the mage facing the soldier 90 px off swings at the re-plan on tick 8 and throws a fireball at the air on tick 10, as the setting-on game did before fix BB: WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -14869,6 +14950,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       1, false, true, Exercises::None,
       kFacts_thief_bomb_colour_score_fixes_scen99, std::size(kFacts_thief_bomb_colour_score_fixes_scen99),
       kMut_thief_bomb_colour_score_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "mage_bot_far_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_far_foe_scen99, std::size(kFamilySpawns_mage_bot_far_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_far_foe_scen99, std::size(kFacts_mage_bot_far_foe_scen99),
+      kMut_mage_bot_far_foe_scen99 },
+    { "mage_bot_far_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_far_foe_scen99, std::size(kFamilySpawns_mage_bot_far_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_far_foe_fixes_scen99, std::size(kFacts_mage_bot_far_foe_fixes_scen99),
+      kMut_mage_bot_far_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
