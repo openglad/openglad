@@ -381,6 +381,7 @@
           ci-fuzz = (mkNativeCI pkgs).sanitizerShell;
           ci-canary = (mkNativeCI pkgs).canaryShell;
           ci-verify = (mkNativeCI pkgs).verifyShell;
+          ci-wasm = (mkNativeCI pkgs).wasmShell;
           ci-web = mkWebShell pkgs false;
           ci-browser = mkWebShell pkgs true;
         }

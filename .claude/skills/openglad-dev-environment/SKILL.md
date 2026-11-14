@@ -15,26 +15,41 @@ AGENTS.md doesn't: configuration differences, fixture isolation, and traps.
 
 The Linux native lanes produce one authoritative Nix bundle for the exact
 checkout revision, then run consumers against that bundle. ASan and coverage
-first divide the generated compile-command inventory across eight cache-warming
-workers. They execute the exact assigned compiler commands through CMake's
+compile through a cross-commit `sccache` seed. A first job
+(`scripts/ci/compile_fanout.py`) compares the commit with the one the newest
+seed was saved for: when few objects can have changed, the producer compiles
+the difference itself (`nix_bundle.py build --unwarmed`); otherwise eight
+cache-warming workers divide the generated compile-command inventory first.
+The workers execute the exact assigned compiler commands through CMake's
 captured launcher (not Ninja object edges, which carry broad target-order
 dependencies) and transport only immutable `sccache` result entries. Mutable
-preprocessor indexes remain local. The producer verifies their complete
-disjoint plan, performs the ordinary full configure/build, and refuses any
-compiler-cache miss,
+preprocessor indexes remain local. After a fan-out the producer verifies the
+workers' complete disjoint plan, performs the ordinary full configure/build,
+and refuses any compiler-cache miss,
 including every archive, link and build gate, against the merged cache. The
 cache seed is an explicit Nix input, never mutable state read through the
-sandbox. Use the lean
-`nix develop .#ci-native` shell to restore and run a downloaded bundle:
+sandbox. Each CI lane enters a shell of its own (`.#ci-coverage`,
+`.#ci-sanitizer`, `.#ci-canary`, `.#ci-wasm`, `.#ci-verify`); use the lane's
+shell, or the general
+`nix develop .#ci-native`, to restore and run a downloaded bundle:
 `python3 scripts/ci/nix_bundle.py restore --cache build/nix-cache --repo "$PWD"`.
-Restore imports the dependency closure and verifies the product NAR before
+Restore realises the dependencies the public Nix cache serves, imports the
+rest of the closure and verifies the product NAR before
 moving its build tree into place, without importing a second product copy
 into the Nix store. Canary bundles retain objects for incremental rebuilds
 using their existing CMake cache, dependency paths and lane options. Other
 bundles strip objects; rebuild them through the Nix producer, or configure
-a separate fresh build tree in the full shell. These CI shells omit custom
+a separate fresh build tree in the full shell. The lane shells omit custom
 dependency packages that consumers obtain from the bundle
 closure, so entering a consumer shell does not build those packages again.
+
+The coverage lane counts with lock-free counter updates and confines every
+instrumented process to one CPU (`scripts/coverage/README.md`, "The lock
+prefix, and the one CPU that replaces it"). A coverage test that needs two
+CPUs at once cannot have them there: a program that calls an affinity
+function ends with a message naming this rule, and threads that used to run
+beside each other take turns (the demo's worker threads, for one, get less
+done before its single frame ends).
 
 Every GitHub-hosted Nix job must install through
 `.github/actions/install-nix`. The local composite action retains the pinned

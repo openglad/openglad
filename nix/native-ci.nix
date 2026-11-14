@@ -336,6 +336,10 @@ in {
     tools ++ dependencies ++ [
       pkgs.xvfb-run pkgs.xvfb pkgs.xrandr pkgs.openbox pkgs.xprop pkgs.xdpyinfo
     ]);
+  # The web build: Emscripten, the build tools and the compiler cache its
+  # workflow reads. The default development shell it used is a 2.1 GiB
+  # download that builds two native packages first.
+  wasmShell = mkShellWith pkgs.stdenv (tools ++ [ pkgs.emscripten pkgs.ccache ]);
   # The completeness jobs read plans and results and compile nothing.
   verifyShell = pkgs.mkShellNoCC { packages = [ pkgs.python3 ]; };
 }

@@ -455,10 +455,14 @@ never ignores or clamps them.
 that update as `lock addq $1, counter(%rip)`. The prefix is what makes it
 safe across CPUs, and it is most of what an instrumented test costs: on
 2026-11-13 four compute-bound groups ran 105, 65, 111 and 31 s with it and
-16, 9, 14 and 4 s without (same machine, same `-O0`). It also varies by
-processor model, which is where CI's "slow runner" came from: on the
-machines that ran those groups 2.4 times slower, the menu and network groups
-(mostly waiting) ran 1.2 times slower and gcovr ran at full speed.
+16, 9, 14 and 4 s without (same machine, same `-O0`). Its cost also varies
+by processor model, and that was most of CI's "slow runner": the machines
+that ran those groups 2.4 times slower ran the menu and network groups
+(mostly waiting) 1.2 times slower and gcovr at full speed. Without the prefix
+the hosted runners that had been fast gained 1.3 to 3 times on those groups
+rather than six, and the spread between machines shrank without vanishing:
+in the first two runs the slowest of eight workers was 1.6 and 1.2 times off
+the pace on compute-bound entries.
 
 The prefix buys nothing on one CPU. An instruction is never interrupted
 halfway, so when every thread of a process runs on the same CPU no thread can

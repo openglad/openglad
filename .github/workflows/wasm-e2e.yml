@@ -21,21 +21,24 @@ concurrency:
   group: wasm-e2e-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every job below names the shell it needs; this is what a job that does not
+# would get, and it is the smallest one.
 defaults:
   run:
-    shell: nix develop .#ci-native --command bash -e {0}
+    shell: nix develop .#ci-web --command bash -e {0}
 
 jobs:
   build:
     name: Build WASM once
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    # Every step of this job runs in the shell the build itself needs. The
-    # workflow default is a second 1.7 GiB closure, fetched before the first
-    # step could run a 0.2 s unit test.
+    # Every step of this job runs in the one shell the build needs:
+    # Emscripten, the build tools and ccache (1.3 GiB). It used to enter two,
+    # the 1.7 GiB native CI shell for a 0.2 s unit test and then the 2.1 GiB
+    # development shell, which builds two native packages before it opens.
     defaults:
       run:
-        shell: nix develop --command bash -e {0}
+        shell: nix develop .#ci-wasm --command bash -e {0}
     outputs:
       version: ${{ steps.stamp.outputs.version }}
       hash: ${{ steps.stamp.outputs.hash }}

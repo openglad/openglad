@@ -1192,9 +1192,10 @@ Each lane's jobs run in a shell cut to what the lane uses, because every job
 pays for its shell before its first step: `ci-coverage` (the producer's tools
 and libraries plus gcovr and LuaLS, 0.5 GiB to fetch), `ci-sanitizer` for ASan,
 TSan and the fuzzers (Clang and LLVM, 0.85 GiB), `ci-canary` (GCC and the X11
-display stack, 0.55 GiB) and `ci-verify` for the completeness jobs (an
-interpreter, 82 MiB). The general `ci-native` shell is 1.7 GiB and builds two
-packages no bundle consumer links; no workflow uses it. Every producer exports
+display stack, 0.55 GiB), `ci-wasm` for the web build (Emscripten and
+ccache, 1.3 GiB) and `ci-verify` for the completeness jobs (an interpreter,
+82 MiB). The general `ci-native` shell is 1.7 GiB and builds two packages no
+bundle consumer links; no workflow uses it. Every producer exports
 its bundle without the closure members the public Nix cache signed (for
 coverage, the toolchain: 538 MiB beside a 1.4 GiB product): every worker's
 store already holds them through its shell, and `restore` realises any it
