@@ -1305,11 +1305,21 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         fire.slot = 2;  // C++ harvests spell the slot; the Lua parser derives it
         e.specials = std::vector<og::data::ClasspackSpecialEntry>{fire};
         data.living.push_back(std::move(e));
-        ASSERT_EQ(1, og::resources::install_classpack_data(std::move(data)));
+        // #500: a class a pack pins at 200, from 128 up.
+        og::data::ClasspackLivingEntry high;
+        high.id = "test:highborn";
+        high.wire_id = "200";
+        high.name = "HIGHBORN";
+        high.costs = costs;
+        high.default_weapon = "core:knife";
+        data.living.push_back(std::move(high));
+        ASSERT_EQ(2, og::resources::install_classpack_data(std::move(data)));
     }
     ASSERT_EQ(NUM_FAMILIES, og::families::resolve_family_string_id(
                                 Order::Living, "test:hexknight"))
         << "the first living mod slot is the one past the 21 core families";
+    ASSERT_EQ(200, og::families::resolve_family_string_id(
+                       Order::Living, "test:highborn"));
 
     // The mage's REAL slot-2 name, read from its registry descriptor.
     const FamilyDescriptor* mage = get_family_descriptor(FAMILY_MAGE);
@@ -1387,14 +1397,14 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
     hexer->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     auto hex_before = std::make_unique<guy>(FAMILY_SOLDIER);
     hex_before->name = "Hex";
-    hex_before->family = static_cast<char>(NUM_FAMILIES);
+    hex_before->family = static_cast<std::uint8_t>(NUM_FAMILIES);
     hex_before->level = 3;
     hex_before->exp = calculate_exp(3) + 10;
     before[3] = hex_before.get();
     before_storage.push_back(std::move(hex_before));
 
     hexer->myguy->name = "Hex";
-    hexer->myguy->family = static_cast<char>(NUM_FAMILIES);
+    hexer->myguy->family = static_cast<std::uint8_t>(NUM_FAMILIES);
     hexer->myguy->exp = calculate_exp(4) + 30;
     hexer->myguy->scen_kills = 0;
     hexer->myguy->scen_damage = 3;
@@ -1418,12 +1428,32 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         ASSERT_TRUE(beast != nullptr) << "expected walker for " << beasts[b].first;
         beast->set_owned_myguy(std::make_unique<guy>(beasts[b].second));
         beast->myguy->name = beasts[b].first;
-        beast->myguy->family = static_cast<char>(beasts[b].second);
+        beast->myguy->family = static_cast<std::uint8_t>(beasts[b].second);
         beast->myguy->exp = calculate_exp(2);
         beast->stats()->set_max_hitpoints(10);
         beast->stats()->set_hitpoints(10);
         after[static_cast<int>(4 + b)] = beast;
     }
+
+    // #500: a hero of the pack class at 200, below the scroll area too, so
+    // its class word is pinned by the per-troop class trace. Its body is a
+    // soldier (no art for 200 here); the before and after records carry 200.
+    auto* high = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(high != nullptr) << "expected walker for the class-200 troop";
+    high->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    auto high_before = std::make_unique<guy>(FAMILY_SOLDIER);
+    high_before->name = "High";
+    high_before->family = 200;
+    high_before->level = 2;
+    high_before->exp = calculate_exp(2);
+    before[7] = high_before.get();
+    before_storage.push_back(std::move(high_before));
+    high->myguy->name = "High";
+    high->myguy->family = 200;
+    high->myguy->exp = calculate_exp(2);
+    high->stats()->set_max_hitpoints(10);
+    high->stats()->set_hitpoints(10);
+    after[7] = high;
 
     results_screen_testing_set_force_full(true);
 
@@ -1489,6 +1519,8 @@ TEST(ResultsScreenFullUi, troop_rows_show_negative_xp_and_gained_specials)
         << "core family 19 reads GIANT SKEL on the results screen";
     EXPECT_EQ(troop_frames, count_result_traces("troop_class Tower the TOWER"))
         << "core family 20 reads TOWER on the results screen";
+    EXPECT_EQ(troop_frames, count_result_traces("troop_class High the HIGHBORN"))
+        << "a pack class at 200 reads its own name on the results screen";
     EXPECT_EQ(0, count_result_traces(" the BEAST"))
         << "no registered core family reads the unknown-family word BEAST";
     EXPECT_TRUE(trace_contains("results", "exit ok_click"))

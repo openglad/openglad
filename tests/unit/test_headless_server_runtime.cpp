@@ -45,7 +45,7 @@ namespace {
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
-                                      std::int8_t family,
+                                      std::int16_t family,
                                       std::int16_t team)
 {
     og::sim::LobbyCharacterData character;
@@ -70,7 +70,7 @@ og::sim::LobbyCharacterSlot make_owned_slot(
     std::uint8_t combined_slot_index,
     std::int32_t guy_id,
     const char* name,
-    std::int8_t family,
+    std::int16_t family,
     std::int16_t team,
     std::uint8_t owner_player_index,
     std::uint8_t owner_save_slot)
@@ -267,6 +267,40 @@ TEST_F(HeadlessServerRuntimeTest,
     for (const short marker_team : guest_marker_teams)
         EXPECT_EQ(1, marker_team)
             << "the authoritative guest must not borrow a red start marker";
+}
+
+// #500: the host's build of a lobby slot keeps a pack class from 128 up. A
+// joiner on a real socket sends its roster as one unsigned byte per class, so
+// the lobby kept class 200; the host's copy into the hero's record narrowed it
+// to a signed byte (-56) until #500, and the hero stood as a soldier.
+TEST_F(HeadlessServerRuntimeTest,
+       a_class_200_lobby_hero_keeps_its_class_in_the_server_save_and_world)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Highborn", 200, 0),
+    };
+
+    initialize_from_lobby(lobby_save);
+
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    EXPECT_EQ(200, static_cast<int>(active_save_.team_list[0]->family))
+        << "the server save's hero keeps its class";
+    walker* const hero = find_team_member(level_data_->world(), 100);
+    ASSERT_NE(nullptr, hero);
+    ASSERT_NE(nullptr, hero->myguy);
+    EXPECT_EQ(200, static_cast<int>(hero->myguy->family))
+        << "the world's hero keeps its class";
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        og::server::build_local_save_equivalent(active_save_);
+    ASSERT_EQ(1u, equivalent.team_list.size());
+    EXPECT_EQ(200, static_cast<int>(equivalent.team_list[0].character.family))
+        << "and the save's lobby copy carries it back";
 }
 
 // The dedicated server refuses to launch a level when neither the requested

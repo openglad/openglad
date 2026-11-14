@@ -82,7 +82,7 @@ private:
 og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
                                       std::int32_t guy_id,
                                       const char* name,
-                                      std::int8_t family,
+                                      std::int16_t family,
                                       std::int16_t team)
 {
     og::sim::LobbyCharacterData character;

@@ -116,6 +116,48 @@ TEST(BeltPersistence, apply_state_to_save_keeps_the_belt_across_ten_polls)
     picker_lobby_shutdown();
 }
 
+// #500: the same echo keeps a hero of a pack class from 128 up. The lobby
+// refuses a class outside 0..255, and until #500 the hero's record kept a
+// signed byte: class 200 reached the lobby as -56, the lobby dropped the slot
+// and the next menu frame rebuilt the company without the hero.
+TEST(CompanyClassByte, the_local_lobby_keeps_a_class_200_hero_across_ten_polls)
+{
+    picker_lobby_shutdown();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    RosterSwap swap(save);
+
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Highborn";
+    save.team_list[0]->family = 200;
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->deployed = true;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Control";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->deployed = true;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+
+    picker_lobby_sync_roster_from_save();
+    for (int poll = 0; poll < 10; ++poll)
+    {
+        picker_lobby_poll();
+        ASSERT_TRUE(save.team_list[0] != nullptr)
+            << "the class-200 hero left the company on poll " << poll;
+        ASSERT_EQ("Highborn", save.team_list[0]->name) << "poll " << poll;
+        ASSERT_EQ(200, static_cast<int>(save.team_list[0]->family))
+            << "the class-200 hero lost its class on poll " << poll;
+        ASSERT_TRUE(save.team_list[1] != nullptr) << "poll " << poll;
+        ASSERT_EQ("Control", save.team_list[1]->name) << "poll " << poll;
+        ASSERT_EQ(FAMILY_MAGE, static_cast<int>(save.team_list[1]->family))
+            << "the mage stays a mage on poll " << poll;
+    }
+
+    picker_lobby_shutdown();
+}
+
 // Base Camp's joiner rows build display guys from the lobby characters; the
 // TRAIN screen's ABILITIES door reads the belt off them.
 TEST(BeltPersistence, make_base_camp_display_guy_copies_the_belt)

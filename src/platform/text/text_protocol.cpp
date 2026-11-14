@@ -19,6 +19,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/timed_effects.h>
 #include <openglad/interface/game_context.h>
@@ -673,7 +674,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             auto g = args.team_level > 0
                 ? std::make_unique<guy>(family)
                 : std::make_unique<guy>();
-            g->family = static_cast<char>(family);
+            g->family = static_cast<std::uint8_t>(family);
             g->name = std::format("Player{}", i + 1);
             w->set_owned_myguy(std::move(g));
             if (args.team_level > 0) {
@@ -686,6 +687,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
                     w->stats()->set_level(w->myguy->level);
                 w->myguy->update_derived_stats(w);
             }
+            TRACE("text_protocol", "crew %zu class=%d body=%d", i,
+                  static_cast<int>(w->myguy->family),
+                  static_cast<int>(w->family()));
             crew.push_back(w);
         }
     }

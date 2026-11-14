@@ -399,7 +399,7 @@ static og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     og::sim::LobbyCharacterData character;
     character.guy_id = source.id;
     character.name = source.name;
-    character.family = static_cast<std::int8_t>(source.family);
+    character.family = source.family;
     character.strength = source.strength;
     character.dexterity = source.dexterity;
     character.constitution = source.constitution;

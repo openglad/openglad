@@ -820,7 +820,7 @@ TEST(WorldSnapshot, guy_linkage_treats_only_the_negative_sentinel_as_unlinked)
     og::sim::GuySnapshot zero_guy;
     zero_guy.guy_id = 0;
     zero_guy.name = "Zero";
-    zero_guy.family = static_cast<std::int8_t>(FAMILY_SOLDIER);
+    zero_guy.family = static_cast<std::uint8_t>(FAMILY_SOLDIER);
     zero_guy.level = 4;
     snapshot.guy_snapshots.push_back(zero_guy);
 
@@ -2138,6 +2138,58 @@ TEST(WorldSnapshot, guy_snapshot_round_trips_the_belt)
     ASSERT_NE(nullptr, mirror.oblist.front()->myguy);
     EXPECT_EQ(belt, mirror.oblist.front()->myguy->belt)
         << "the joiner's mirror guy must carry the belt";
+}
+
+// #500: a hero of a pack class from 128 up keeps its class through the hero
+// snapshot (capture, the wire, apply on a mirror) and in the setup message.
+// The byte on the wire was always the unsigned one (0xC8 for 200); the
+// snapshot's field and the hero's record were signed until #500, so capture
+// and decode read 200 back as -56 and the mirror's hero was class -56.
+TEST(WorldSnapshot, guy_snapshot_round_trips_a_class_200_hero)
+{
+    constexpr int kHigh = 200;
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    walker* actor = source.add_ob(Order::Living, kHigh);
+    ASSERT_NE(nullptr, actor);
+    auto hero = std::make_unique<guy>(kHigh);
+    hero->name = "Classy";
+    hero->owner_player_index = 1;
+    hero->owner_save_slot = 3;
+    actor->set_owned_myguy(std::move(hero));
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    ASSERT_EQ(1u, keyframe.guy_snapshots.size());
+    EXPECT_EQ(kHigh, static_cast<int>(keyframe.guy_snapshots.front().family))
+        << "capture reads the class off the hero's record";
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(og::sim::serialize_snapshot(keyframe));
+    ASSERT_EQ(1u, decoded.guy_snapshots.size());
+    EXPECT_EQ(kHigh, static_cast<int>(decoded.guy_snapshots.front().family))
+        << "the wire byte decodes as the class";
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    ASSERT_EQ(1u, mirror.oblist.size());
+    ASSERT_NE(nullptr, mirror.oblist.front().get());
+    ASSERT_NE(nullptr, mirror.oblist.front()->myguy);
+    EXPECT_EQ(kHigh, static_cast<int>(mirror.oblist.front()->myguy->family))
+        << "the mirror's hero is its class";
+    EXPECT_EQ(kHigh, static_cast<int>(mirror.oblist.front()->family()))
+        << "and so is its body";
+
+    const std::vector<og::sim::InitialSetupGuyData> setup =
+        og::sim::collect_initial_setup_guys(source);
+    ASSERT_EQ(1u, setup.size());
+    EXPECT_EQ(kHigh, static_cast<int>(setup.front().family))
+        << "the setup message carries the class";
 }
 
 // The per-level weather kind is world state on the wire: an authoritative

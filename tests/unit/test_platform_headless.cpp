@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -753,6 +754,31 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
             << "a missing campaign package must fail before level loading";
     }
+}
+
+// #500: a text-client crew member of a pack class from 128 up keeps its class
+// in its hero's record (--team 200). The record kept a signed byte until #500,
+// so class 200 read back as -56. No protocol output prints the record's class
+// (census prints the body's), so the session's trace reports it. No pack
+// claims class 200 here: only the class is asserted.
+TEST(PlatformHeadless, a_protocol_crew_member_of_class_200_keeps_its_class)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    trace_clear();
+    StdinRedirect input("quit\n");
+    CoutRedirect output;
+    og::ui::TextProtocolArgs args;
+    args.level = 1;
+    args.team_families = {FAMILY_SOLDIER, 200};
+    args.team_level = 0;
+    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 0 class=0 body=0"))
+        << "control: a soldier crew member is class 0";
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 1 class=200 "))
+        << "the class-200 crew member's record keeps its class";
 }
 
 TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)

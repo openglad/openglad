@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <openglad/core/constants.h>
 #include <openglad/core/text_wrap.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/statistics.h>
@@ -498,17 +499,16 @@ std::string difficulty_panel_caption()
 // computes per-row derived hitpoints through this too.
 og::ui::DerivedStats picker_compute_guy_derived_stats(const guy& g)
 {
-    // guy::family comes verbatim from the .gtl save file with no range check,
-    // so an out-of-capacity value must not index the loader stat arrays.
-    // loader::slot_for answers -1 for those; anything it accepts — including a
-    // class-pack family, whose id is >= NUM_FAMILIES and which PIX() cannot
-    // address at all — reads its OWN row, so a pack class's panel now shows its
-    // declared stats instead of the soldier's.
-    int pix = loader::slot_for(Order::Living, g.family);
-    if (pix < 0)
-    {
-        pix = loader::slot_for(Order::Living, FAMILY_SOLDIER);
-    }
+    // A hero's class is one unsigned byte (0..255) and the loader has a row
+    // for every byte (NUM_FAMILY_SLOTS is 256), so the panel always reads the
+    // hero's own row: a pack class shows its declared stats, not the
+    // soldier's. The static_assert is the range check: shrink the registries
+    // below a byte and this stops compiling until a runtime check is put
+    // back. Until #500 the record kept a signed byte, so a class from 128 up
+    // arrived negative and the panel showed the soldier's row.
+    static_assert(NUM_FAMILY_SLOTS > 255,
+                  "a hero's class byte must always index a real loader row");
+    const int pix = loader::slot_for(Order::Living, g.family);
     const auto* l = og::runtime::current_session->myscreen_->myloader;
     return og::ui::compute_derived_stats(g,
         l->hitpoints[static_cast<std::size_t>(pix)],
@@ -2310,7 +2310,7 @@ Sint32 cycle_guy(Sint32 whichway)
 	{
 		std::unique_ptr<walker> mywalker;
 		Sint32 i;
-		char newfamily;
+		int newfamily;
 
 	if (!og::runtime::current_session->current_guy_)
 		return;

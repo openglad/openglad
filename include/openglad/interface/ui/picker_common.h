@@ -380,7 +380,7 @@ DerivedStats compute_derived_stats(const guy& g,
 
 // The same derivation with the family's own combat bases resolved from the
 // family registry (a family the registry does not carry prices as a
-// soldier, the picker's rule). Headless: no loader, no session.
+// soldier). Headless: no loader, no session.
 DerivedStats compute_derived_stats(const guy& g);
 
 // The fire delay the derivation used: base fire_delay minus the guy's

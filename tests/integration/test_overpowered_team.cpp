@@ -183,7 +183,7 @@ static bool click_hire_and_wait_for_roster_growth(int timeout_ms = 5000)
 
 static bool click_next_and_wait_for_family_change(int timeout_ms = 5000)
 {
-    char family_before = 0;
+    std::uint8_t family_before = 0;
     bool had_current_guy = false;
     if (!run_on_main_thread([&family_before, &had_current_guy] {
             const guy* const current =

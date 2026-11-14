@@ -640,7 +640,7 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     og::sim::LobbyCharacterData character;
     character.guy_id = source.id;
     character.name = source.name;
-    character.family = static_cast<std::int8_t>(source.family);
+    character.family = source.family;
     character.strength = source.strength;
     character.dexterity = source.dexterity;
     character.constitution = source.constitution;
@@ -1743,6 +1743,47 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());
+
+    host_client->shutdown();
+}
+
+// #500: the host's own hero of a pack class from 128 up reaches the start
+// config as its class. The host's seat talks to its lobby inside the same
+// program, and until #500 the hero's record kept a signed byte: class 200
+// reached the lobby as -56, and the lobby dropped the slot.
+TEST(PickerNetworkClient, host_direct_flow_keeps_a_class_200_hero_in_the_start_config)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 2, "Host");
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    save.team_list[0]->family = 200;
+    // A soldier beside it, so the host can start whatever happens to the
+    // class-200 hero and the start config shows what reached the lobby.
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "Control";
+    save.team_list[1]->teamnum = 2;
+    save.team_size = 2;
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    ASSERT_NE(nullptr, active_game_session());
+    host_client->initialize_from_save();
+
+    ASSERT_TRUE(host_client->request_start_game());
+    const auto start_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(start_config.has_value());
+    ASSERT_EQ(2u, start_config->save_data.team_list.size())
+        << "the host's class-200 hero must reach the start config";
+    EXPECT_EQ("Host", start_config->save_data.team_list[0].character.name);
+    EXPECT_EQ(200, static_cast<int>(start_config->save_data.team_list[0].character.family))
+        << "as its class";
+    EXPECT_EQ("Control", start_config->save_data.team_list[1].character.name);
+    EXPECT_EQ(FAMILY_SOLDIER,
+              static_cast<int>(start_config->save_data.team_list[1].character.family));
 
     host_client->shutdown();
 }

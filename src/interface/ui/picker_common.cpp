@@ -2212,7 +2212,7 @@ std::unique_ptr<guy> make_base_camp_display_guy(
 {
     auto result = std::make_unique<guy>(character.family);
     result->name = character.name;
-    result->family = static_cast<char>(character.family);
+    result->family = static_cast<std::uint8_t>(character.family);
     result->strength = character.strength;
     result->dexterity = character.dexterity;
     result->constitution = character.constitution;
@@ -4058,9 +4058,7 @@ std::vector<std::string> format_scenario_report_lines(
 namespace {
 
 // The family combat bases a fighter would actually spawn with. A family the
-// registry does not carry (an unmounted pack class, or a .gtl family byte
-// the save carries with no range check) prices as a soldier — the picker's
-// own rule at picker_compute_guy_derived_stats.
+// registry does not carry (an unmounted pack class) prices as a soldier.
 const FamilyDescriptor* guy_family_descriptor(const guy& g)
 {
     const FamilyDescriptor* descriptor =
@@ -5748,7 +5746,7 @@ void promote_guy(guy& g, const FamilyDescriptor& fd)
     const short new_level =
         fd.promotion_new_level ? fd.promotion_new_level(g.level) : 1;
     g.upgrade_to_level(new_level);
-    g.family = static_cast<char>(static_cast<unsigned char>(fd.promotes_to));
+    g.family = static_cast<std::uint8_t>(fd.promotes_to);
     reset_belt_for_family_change(g.belt);
 }
 

@@ -47,7 +47,7 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     auto result = std::make_unique<guy>(character.family);
     result->id = character.guy_id;
     result->name = character.name;
-    result->family = static_cast<char>(character.family);
+    result->family = static_cast<std::uint8_t>(character.family);
     result->strength = character.strength;
     result->dexterity = character.dexterity;
     result->constitution = character.constitution;
