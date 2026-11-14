@@ -2016,7 +2016,8 @@ void CursesPickerClient::show_options()
 
     // The UI FX "New Ability Select" row: a per-machine preference only
     // (nothing to synchronize, no session field), so the prompt reads and
-    // writes cfg alone.
+    // writes cfg alone, through the switch every client calls, which also
+    // refreshes the copy the keys, the status line and the PAUSED menu read.
     accepted = false;
     const std::string belt_current = og::ui::ability_select_pref(cfg) ? "on" : "off";
     const std::string belt = menu.prompt("Game Settings",

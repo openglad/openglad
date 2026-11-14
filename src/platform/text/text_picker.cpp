@@ -422,7 +422,8 @@ public:
 
         // The terminal twin of the UI FX "New Ability Select" row: a
         // per-machine preference only (nothing to synchronize, no session
-        // field), so the prompt states and writes cfg alone.
+        // field), so the prompt states and writes cfg alone, through the
+        // switch every client calls (this client keeps no copy to refresh).
         std::printf("New ability select: %s. Change (on/off, blank keeps current): ",
             og::ui::ability_select_pref(cfg) ? "on" : "off");
         std::fflush(stdout);

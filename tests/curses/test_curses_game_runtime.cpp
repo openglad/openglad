@@ -12,6 +12,7 @@
 
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
+#include <openglad/platform/curses/curses_picker_client.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include "headless_terminal.h"
 #include <openglad/platform/curses/clock.h>
@@ -38,12 +39,14 @@
 #include "test_ability_select_scope.h"
 #include "test_match_seed.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <optional>
 #include <tuple>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using namespace og::curses;
@@ -1564,4 +1567,184 @@ TEST(CursesGameRuntimeLocal, escape_then_k_shows_the_keys_and_a_needs_the_settin
         if (term.text_row(row).find("SPEC 1: 1") != std::string::npos)
             saw_spec1 = true;
     EXPECT_TRUE(saw_spec1) << "the KEYS page lists SPEC 1 on the 1 key";
+}
+
+// --- The Game Settings answer and the next mission (#398) ------------------
+
+namespace {
+
+// The curses Game Settings page, answered as a player would: keep the save
+// slot, the seed, New Specials and Gameplay Fixes, then type `value` over
+// the prefilled New Ability Select answer.
+void answer_ability_select_prompt(const std::string& value)
+{
+    HeadlessTerminal term(40, 100);
+    FakeClock clock;
+    og::ui::TextPickerConfig config;
+    CursesPickerOptions options;
+    {
+        // The client lives in this block only: its destructor clears the
+        // campaign providers that borrow its save, before a mission starts.
+        CursesPickerClient client{term, clock, config, options};
+        for (int i = 0; i < 4; ++i)  // keep slot, seed, specials, fixes
+            term.push_special(KeyCode::Enter);
+        const std::string prefilled =
+            og::ui::ability_select_pref(cfg) ? "on" : "off";
+        for (std::size_t i = 0; i < prefilled.size(); ++i)
+            term.push_special(KeyCode::Backspace);
+        term.push_string(value);
+        term.push_special(KeyCode::Enter);
+        client.show_options();
+    }
+    ASSERT_TRUE(term.input_exhausted()) << term.dump();
+}
+
+bool any_row_has(const HeadlessTerminal& term, std::string_view text)
+{
+    for (int row = 0; row < term.rows(); ++row)
+        if (term.text_row(row).find(text) != std::string::npos)
+            return true;
+    return false;
+}
+
+// The mission after the answer, with one soldier at level 13 whose layout
+// is key 1 = the class default (CHARGE), key 2 = WHIRLWIND (slot 3), key 3
+// empty. With the setting `on`: the status line lists the three keys, KEYS
+// shows the SPEC rows, ABILITIES opens and edits the layout, and key 2 casts
+// WHIRLWIND. Off: the status line names the selected special, KEYS shows the
+// classic rows, ABILITIES is refused, and key 2 switches the special.
+void expect_next_mission_follows(bool on)
+{
+    namespace belt = og::sim::belt;
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list) {
+        if (member) {
+            member->upgrade_to_level(13);
+            member->belt = {0x00, belt::encode({3, false}), belt::kEmptyByte,
+                            0x00, 0x0A, 0x05};
+        }
+    }
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+    FakeClock clock;
+    CursesInput input = belt_keys_input();
+    CursesRenderer renderer;
+
+    // 1. The copy the keys, the status line and the PAUSED menu read.
+    EXPECT_EQ(on, og::input::ability_select_on());
+
+    // 2. The status line.
+    {
+        HeadlessTerminal term(30, 140);
+        LevelLoopOptions opt;
+        opt.max_frames = 3;
+        opt.no_pacing = true;
+        opt.render = true;
+        run_level_loop(session, term, clock, input, renderer, opt);
+        ASSERT_NE(0u, session.followed_entity_id()) << "the soldier is followed";
+        const std::string row = term.text_row(1);
+        if (on) {
+            EXPECT_NE(std::string::npos, row.find("1:CHARGE 2:WHIRLWIND 3:--"))
+                << "the three keys of the layout; got: " << row;
+            EXPECT_EQ(std::string::npos, row.find("Sp:")) << row;
+        } else {
+            EXPECT_NE(std::string::npos, row.find("Sp:CHARGE"))
+                << "the selected special; got: " << row;
+            EXPECT_EQ(std::string::npos, row.find("2:WHIRLWIND")) << row;
+        }
+    }
+
+    // The PAUSED menu and the keys draw on a terminal of their own, with no
+    // world frames on it, so the KEYS page is the only thing to read.
+    HeadlessTerminal term(30, 100);
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+
+    // 3. Esc, K: the KEYS page.
+    session.pause_calls.clear();
+    session.belts_sent.clear();
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'k');
+    term.push_char(U'x');  // leaves the KEYS page
+    run_level_loop(session, term, clock, input, renderer, opt);
+    EXPECT_EQ("PR", session.pause_calls);
+    if (on) {
+        EXPECT_TRUE(any_row_has(term, "SPEC 1: 1")) << term.dump();
+        EXPECT_TRUE(any_row_has(term, "SPEC 2: 2")) << term.dump();
+        EXPECT_FALSE(any_row_has(term, "SPECIAL: 1")) << term.dump();
+    } else {
+        EXPECT_TRUE(any_row_has(term, "SPECIAL: 1")) << term.dump();
+        EXPECT_TRUE(any_row_has(term, "SPEC SW: 2")) << term.dump();
+        EXPECT_FALSE(any_row_has(term, "SPEC 1:")) << term.dump();
+    }
+
+    // 4. Esc, A: the ABILITIES page, or the refusal.
+    session.pause_calls.clear();
+    session.belts_sent.clear();
+    const std::string refusal =
+        "Abilities need New Ability Select (Game Settings).";
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    if (on) {
+        term.push_char(U'c');                // empty key 1
+        term.push_special(KeyCode::Escape);  // done: back to the menu
+        term.push_char(U'r');
+    }
+    // Off: the menu resumes when the input runs out (no_pacing).
+    run_level_loop(session, term, clock, input, renderer, opt);
+    const auto& messages = renderer.log();
+    const bool refused = std::find(messages.begin(), messages.end(), refusal) !=
+                         messages.end();
+    if (on) {
+        EXPECT_EQ("PBR", session.pause_calls);
+        ASSERT_EQ(1u, session.belts_sent.size());
+        EXPECT_EQ(belt::kEmptyByte, session.belts_sent[0][0]);
+        EXPECT_EQ(belt::encode({3, false}), session.belts_sent[0][1])
+            << "the edit leaves key 2 alone";
+        EXPECT_FALSE(refused);
+    } else {
+        EXPECT_EQ("PR", session.pause_calls) << "no page, nothing sent";
+        EXPECT_TRUE(session.belts_sent.empty());
+        EXPECT_TRUE(refused) << "the log names the setting the page needs";
+    }
+
+    // 5. Key 2.
+    session.sent.clear();
+    term.push_char(U'2');
+    run_level_loop(session, term, clock, input, renderer, opt);
+    ASSERT_FALSE(session.sent.empty());
+    const PlayerInput& p = session.sent.front().players[0];
+    if (on) {
+        EXPECT_EQ(belt::encode({3, false}), p.belt_cast)
+            << "key 2 casts the layout's key-2 entry (WHIRLWIND, slot 3)";
+    } else {
+        EXPECT_TRUE(p.was_pressed(InputAction::SwitchSpecial))
+            << "key 2 switches the special";
+        EXPECT_FALSE(p.is_held(InputAction::Special));
+        EXPECT_EQ(0, p.belt_cast);
+    }
+}
+
+} // namespace
+
+// #398: the Game Settings answer reaches the keys, the status line and the
+// PAUSED menu's ABILITIES and KEYS entries in the next mission, with no
+// restart. Before the fix the answer only changed cfg, and they kept reading
+// the copy taken at start.
+TEST(CursesGameRuntimeLocal, game_settings_ability_select_off_reaches_the_next_mission_at_once)
+{
+    ScopedAbilitySelect start(true);
+    ASSERT_NO_FATAL_FAILURE(answer_ability_select_prompt("off"));
+    EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
+    ASSERT_NO_FATAL_FAILURE(expect_next_mission_follows(false));
+}
+
+TEST(CursesGameRuntimeLocal, game_settings_ability_select_on_reaches_the_next_mission_at_once)
+{
+    ScopedAbilitySelect start(false);
+    ASSERT_NO_FATAL_FAILURE(answer_ability_select_prompt("on"));
+    EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+    ASSERT_NO_FATAL_FAILURE(expect_next_mission_follows(true));
 }

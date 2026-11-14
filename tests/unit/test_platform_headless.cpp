@@ -1298,6 +1298,8 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 // page, the terminal twin of its UI FX row. The setting is per machine and
 // never on the wire, so the prompt states and writes the cfg preference
 // alone: on/off writes it, blank keeps it, anything else is refused.
+// The text client keeps no copy of the setting, so the shared switch must
+// leave the missing copy alone.
 TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
 {
     const std::string saved_pref =

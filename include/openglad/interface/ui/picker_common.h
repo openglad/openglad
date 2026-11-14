@@ -2160,7 +2160,10 @@ inline constexpr std::size_t kHireBoxRoomyLines = 8;
 // (og::sim::belt).
 
 // The per-machine preference: cfg effects/new_ability_select, the UI FX
-// row's key. The terminals' Game Settings prompts read and write it here.
+// row's key. Every client's switch writes it here (the SDL UI FX row, the
+// terminals' Game Settings prompts); the setter also refreshes
+// og::input::ability_select_on()'s cached copy, so the keys, the HUD and the
+// PAUSED menu follow at once.
 [[nodiscard]] bool ability_select_pref(cfg_store& config);
 void set_ability_select_pref(cfg_store& config, bool on);
 

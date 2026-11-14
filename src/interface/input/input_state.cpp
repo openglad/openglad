@@ -1097,6 +1097,12 @@ bool ability_select_on()
 
 void refresh_ability_select_cache()
 {
+    // The text client has no input hardware state and keeps no copy: it
+    // reads the setting from cfg where it needs it, so there is nothing to
+    // refresh.
+    if (og::runtime::current_session == nullptr ||
+        og::runtime::current_session->input_hw_ == nullptr)
+        return;
     hw().ability_select = ability_select_from_cfg(cfg);
 }
 

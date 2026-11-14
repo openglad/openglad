@@ -2596,20 +2596,11 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
 // The New Ability Select prompt, the fifth and last: the terminal twin of
 // the UI FX row. The setting is per machine and never on the wire, so the
 // prompt reads and writes the cfg preference alone; the session's settings
-// stay as they were.
+// stay as they were. The copy the keys read follows the answer at once
+// (#398).
 TEST(CursesPickerClient, show_options_ability_select_prompt)
 {
-    const std::string saved_pref =
-        cfg.get_setting("effects", "new_ability_select");
-    struct RestorePref {
-        std::string value;
-        ~RestorePref()
-        {
-            cfg.apply_setting("effects", "new_ability_select", value);
-        }
-    } restore{saved_pref};
-
-    cfg.apply_setting("effects", "new_ability_select", "on");
+    ScopedAbilitySelect on(true);
     {   // Prefilled "on"; "off" writes the preference and nothing else.
         HeadlessTerminal inner{40, 100};
         FrameLogTerminal term{inner};
@@ -2633,6 +2624,8 @@ TEST(CursesPickerClient, show_options_ability_select_prompt)
                   term.frames().find("New ability select (on/off)"))
             << inner.dump();
         EXPECT_TRUE(inner.input_exhausted());
+        EXPECT_FALSE(og::input::ability_select_on())
+            << "the keys' copy follows the answer at once";
     }
     {   // Prefilled "off" now; "on" turns it back on.
         PickerFixture f;
@@ -2645,6 +2638,8 @@ TEST(CursesPickerClient, show_options_ability_select_prompt)
         f.client.show_options();
         EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
         EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_TRUE(og::input::ability_select_on())
+            << "the keys' copy follows the answer at once";
     }
     {   // Anything but on/off is refused and changes nothing.
         PickerFixture f;
@@ -2659,6 +2654,8 @@ TEST(CursesPickerClient, show_options_ability_select_prompt)
         EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
         EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
             << f.t().dump();
+        EXPECT_TRUE(og::input::ability_select_on())
+            << "the refused answer changes nothing";
     }
 }
 

@@ -29,6 +29,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/packs.h>
 #include <openglad/interface/level_runtime_data.h>
+#include "test_ability_select_scope.h"
 #include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
@@ -8295,16 +8296,17 @@ TEST(PickerCommon, detail_page_says_also_with_the_setting_on)
                                   " Shift: Teleport Marker"));
 }
 
-// The terminals' Game Settings prompts read and write the UI FX row's cfg
-// key through this pair.
+// The UI FX row's cfg key. Every client's switch goes through this pair;
+// the setter also refreshes the copy the keys read.
 TEST(PickerCommon, ability_select_pref_is_the_ui_fx_key)
 {
-    const std::string saved = cfg.get_setting("effects", "new_ability_select");
+    ScopedAbilitySelect scope(true);
     og::ui::set_ability_select_pref(cfg, false);
     EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
     EXPECT_FALSE(og::ui::ability_select_pref(cfg));
+    EXPECT_FALSE(og::input::ability_select_on());
     og::ui::set_ability_select_pref(cfg, true);
     EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
     EXPECT_TRUE(og::ui::ability_select_pref(cfg));
-    cfg.apply_setting("effects", "new_ability_select", saved);
+    EXPECT_TRUE(og::input::ability_select_on());
 }
