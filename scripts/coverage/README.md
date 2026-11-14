@@ -567,14 +567,24 @@ records and travels in the plan.
 The gate checks every worker's `.gcno` path and SHA-256 against the producer
 manifest. It also proves that the test results cover the planned inventory
 exactly once. A missing worker, a changed object graph or a counter file
-without a note fails before scoring. The two scanned traces produce LCOV and
-text for the gate and the HTML detail in concurrent gcovr render passes; gcov
-does not reread the profiles for any output. The gate job restores no
-compiled tree: the notes and the one built tool it runs, the Lua
-executable-line oracle `og_lua_lines`, travel beside the plan and must match
-the digests the plan recorded. The notes name their sources by the producer's
-path, so the gate points that path at its own checkout for the length of the
-scan. Lua dump names gain a
+without a note fails before scoring. Each object population's partitions are
+merged once, and that pass writes its LCOV, its text summary and (for the
+complete population) the HTML detail; gcov does not reread the profiles for
+any output. The gate job restores no compiled tree: the notes and the one
+built tool it runs, the Lua executable-line oracle `og_lua_lines`, travel
+beside the plan and must match the digests the plan recorded.
+
+The notes name their sources by the paths the compiler saw, and the gate
+makes both kinds of path resolve in its own checkout for the length of the
+scan. The producer's source directory becomes a link to the checkout. And
+every link in the producer's build tree that leads back into the source tree
+is recorded in the plan and recreated: the components compile against
+per-component include roots (`component_includes/<component>/openglad/<name>`
+linked to `include/openglad/<name>`), and gcov files a header under the path
+it was included through. Without those links the first run of this pipeline
+reported 62 header functions as never executed, although their counters had
+arrived intact: their hits had been filed under a build-tree path that no
+report counts. Lua dump names gain a
 worker prefix when flattened. Same-named source sidecars must have identical
 bytes before they share the aggregate `sources/` directory, so workers cannot
 overwrite conflicting source evidence.

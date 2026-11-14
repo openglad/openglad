@@ -164,6 +164,52 @@ def cmake_home_directory(build):
     raise ValueError(f"build tree does not name its source directory: {build}")
 
 
+def source_links(build, source_root):
+    """Symlinks inside the build tree that lead back into the source tree.
+
+    The game's components compile against per-component include roots that
+    CMake lays out as links (component_includes/<component>/openglad/<name>
+    -> include/openglad/<name>), and a note names a header by the path it was
+    included through. gcov can only report such a header under its real name
+    where the link exists, so the gate recreates every one of them: without
+    them the hits of 62 header functions were filed under a build-tree path
+    no report counts (GitHub run 43544998297, 2026-11-14).
+    """
+    root = Path(source_root)
+    build = Path(os.path.abspath(build))
+    links = {}
+    for directory, directories, files in os.walk(build):
+        for name in directories + files:
+            path = Path(directory) / name
+            if not path.is_symlink():
+                continue
+            target = Path(os.path.normpath(path.parent / os.readlink(path)))
+            if target.is_relative_to(build):
+                continue  # a link within the build tree names no source
+            try:
+                relative = target.relative_to(root)
+            except ValueError:
+                continue  # neither does a link out of the source tree
+            links[str(path.relative_to(build))] = str(relative)
+    return dict(sorted(links.items()))
+
+
+def restore_source_links(tree, links, repo):
+    """Recreate the planned links in a tree that holds only notes."""
+    for link, target in links.items():
+        for name in (link, target):
+            if Path(name).is_absolute() or ".." in Path(name).parts or not Path(name).parts:
+                raise ValueError(f"planned source link leaves its tree: {link} -> {target}")
+        destination = repo / target
+        if not destination.exists():
+            raise ValueError(f"planned source link has no target in this checkout: {target}")
+        location = tree / link
+        if location.exists() or location.is_symlink():
+            raise ValueError(f"planned source link is already occupied: {location}")
+        location.parent.mkdir(parents=True, exist_ok=True)
+        location.symlink_to(destination, target_is_directory=destination.is_dir())
+
+
 def compiler_notes(build):
     notes = {str(path.relative_to(build)): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in build.rglob("*.gcno")}
@@ -244,6 +290,7 @@ def plan(args):
         # and which object directories are the TESTING variant.
         result["source_root"] = cmake_home_directory(args.build)
         result["build_relative"] = str(args.build)
+        result["source_links"] = source_links(args.build, result["source_root"])
         result["production_exclusions"] = coverage_report.production_variant_exclusions(args.build)
         # The gate needs this one built tool and nothing else from the
         # compiled tree. It travels with the plan, pinned by digest, so the
@@ -631,7 +678,12 @@ def merge_counters(shards, tree, notes):
 
 
 def scan_counters(tree, exclusions, out, workers=DEFAULT_PARALLEL):
-    """Run gcov over the complete note inventory once: cpp.json, production.json."""
+    """Run gcov over the complete note inventory once and write every report.
+
+    Both object populations leave their merged trace, the tracefile the gate
+    reads and a text summary; the complete one also leaves the HTML detail.
+    Each population is formatted in the pass that merges its partitions.
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
     import coverage_report
 
@@ -654,14 +706,18 @@ def scan_counters(tree, exclusions, out, workers=DEFAULT_PARALLEL):
         with ThreadPoolExecutor(max_workers=workers) as pool:
             traces = list(pool.map(scan, enumerate(jobs)))
         populations = [
-            (out / "cpp.json", [trace for _, trace in traces]),
+            (out / "cpp.json", [trace for _, trace in traces],
+             {"lcov_output": out / "cpp.info", "html_output": out / "coverage.html",
+              "text_output": out / "coverage-summary.txt"}),
             (out / "production.json",
-             [trace for variant, trace in traces if variant == "production"]),
+             [trace for variant, trace in traces if variant == "production"],
+             {"lcov_output": out / "production.info",
+              "text_output": out / "production-summary.txt"}),
         ]
         with ThreadPoolExecutor(max_workers=len(populations)) as pool:
             merging = [pool.submit(coverage_report.canonicalize_cpp_json, target, Path.cwd(),
-                                   sources=sources)
-                       for target, sources in populations]
+                                   sources=sources, **reports)
+                       for target, sources, reports in populations]
             for job in merging:
                 job.result()
 
@@ -747,9 +803,7 @@ def merge(args):
         # Artifact transport does not carry the executable bit.
         tool.chmod(tool.stat().st_mode | 0o111)
         unpack_notes(args.notes, tree, notes)
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
-    import coverage_report
-
+        restore_source_links(tree, manifest["source_links"], Path.cwd().resolve())
     alias = source_alias(manifest["source_root"], Path.cwd().resolve())
     try:
         merge_counters(counters, tree, notes)
@@ -758,40 +812,13 @@ def merge(args):
         if alias is not None:
             alias.unlink()
 
-    lcov_format = coverage_report.gcovr_lcov_1x_flag(["gcovr"], Path.cwd())
-    scanned = args.out / "scanned"
-    scanned.mkdir()
-    for name in ("cpp.json", "production.json"):
-        (args.out / name).rename(scanned / name)
-    # Three formatters over the two scanned traces, side by side: the gate
-    # inputs for both object populations and the HTML detail.
-    formatting = [
-        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "cpp.json"), lcov_format,
-         "--lcov", str(args.out / "cpp.info"),
-         "--json", str(args.out / "cpp.json"),
-         "--txt", str(args.out / "coverage-summary.txt")],
-        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "production.json"), lcov_format,
-         "--lcov", str(args.out / "production.info"),
-         "--json", str(args.out / "production.json"),
-         "--txt", str(args.out / "production-summary.txt")],
-        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "cpp.json"),
-         "--html-details", str(args.out / "coverage.html")],
-    ]
-    with ThreadPoolExecutor(max_workers=len(formatting)) as pool:
-        pending = [pool.submit(subprocess.run, command, check=True) for command in formatting]
-        for job in pending[:2]:
-            job.result()
-        # The gate reads only the two tracefiles; the HTML detail finishes
-        # beside it and is still required before the job reports success.
-        subprocess.run([sys.executable, "scripts/coverage/coverage_report.py", "--repo-root", ".",
-                        "--lua-raw-dir", str(raw), "--lines-tool", str(tool),
-                        "--cpp-tracefile", str(args.out / "cpp.info"),
-                        "--cpp-production-tracefile", str(args.out / "production.info"),
-                        "--output-dir", str(args.out),
-                        "--line-threshold", "98", "--function-threshold", "100", "--strict-cpp"],
-                       check=True)
-        pending[2].result()
-    shutil.rmtree(scanned)
+    subprocess.run([sys.executable, "scripts/coverage/coverage_report.py", "--repo-root", ".",
+                    "--lua-raw-dir", str(raw), "--lines-tool", str(tool),
+                    "--cpp-tracefile", str(args.out / "cpp.info"),
+                    "--cpp-production-tracefile", str(args.out / "production.info"),
+                    "--output-dir", str(args.out),
+                    "--line-threshold", "98", "--function-threshold", "100", "--strict-cpp"],
+                   check=True)
 
 
 def main():

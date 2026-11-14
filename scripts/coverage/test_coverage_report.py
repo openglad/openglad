@@ -196,6 +196,29 @@ class CppAliasTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "no C\\+\\+ coverage JSON"):
                 report.canonicalize_cpp_json(root / "empty.json", root, sources=[])
 
+            # The same pass can write the gate's tracefile and a text summary
+            # wherever the caller wants them, with or without the HTML detail.
+            reports = root / "reports"
+            reports.mkdir()
+            report.canonicalize_cpp_json(
+                reports / "production.json", root, sources=parts,
+                lcov_output=reports / "production.info",
+                text_output=reports / "production-summary.txt")
+            self.assertEqual({"production.json", "production.info", "production-summary.txt"},
+                             {path.name for path in reports.iterdir()})
+            tracefile = (reports / "production.info").read_text()
+            self.assertIn(f"SF:{root / 'include/openglad/sample.h'}\n", tracefile)
+            self.assertIn("FNDA:5,_Z6sampleIiEiv\n", tracefile)
+            self.assertIn("FNDA:0,_Z6sampleIlEiv\n", tracefile)
+            self.assertIn("include/openglad/sample.h",
+                          (reports / "production-summary.txt").read_text())
+            report.canonicalize_cpp_json(
+                reports / "cpp.json", root, sources=parts,
+                lcov_output=reports / "cpp.info", html_output=reports / "coverage.html")
+            self.assertTrue((reports / "coverage.html").is_file())
+            # Without a name of its own the summary sits beside the HTML detail.
+            self.assertTrue((reports / "coverage-summary.txt").is_file())
+
     def test_copied_component_headers_must_match_source_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

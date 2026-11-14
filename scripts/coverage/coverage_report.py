@@ -1353,22 +1353,25 @@ def canonicalize_cpp_records(files: List[FileCoverage], repo_root: Path) -> List
 def canonicalize_cpp_json(
     path: Path, repo_root: Path, *, lcov_output: Optional[Path] = None,
     html_output: Optional[Path] = None, sources: Optional[Sequence[Path]] = None,
+    text_output: Optional[Path] = None,
 ) -> None:
     """Merge component-header aliases using gcovr's mangled function IDs.
 
     This reads saved JSON, never profiles. The formatter can produce all final
     formats while merging, so HTML and the gate share exactly one inventory.
 
-    ``sources`` names several saved traces (one per object partition a worker
-    scanned) to merge into ``path`` in the same pass; without it ``path`` is
-    rewritten in place.
+    ``sources`` names several saved traces (one per object partition of a
+    scan) to merge into ``path`` in the same pass; without it ``path`` is
+    rewritten in place. The text summary is written beside the HTML detail
+    unless ``text_output`` names another place for it.
     """
     inputs = [path] if sources is None else list(sources)
     if not inputs:
         raise ValueError(f"no C++ coverage JSON to canonicalize into {path}")
     gcovr = shutil.which("gcovr")
     base = [gcovr] if gcovr else [sys.executable, "-m", "gcovr"]
-    text_output = html_output.parent / "coverage-summary.txt" if html_output is not None else None
+    if text_output is None and html_output is not None:
+        text_output = html_output.parent / "coverage-summary.txt"
     outputs = [output for output in (lcov_output, html_output, text_output) if output is not None]
     for output in outputs:
         output.unlink(missing_ok=True)
@@ -1388,7 +1391,9 @@ def canonicalize_cpp_json(
         if lcov_output is not None:
             command += [gcovr_lcov_1x_flag(base, repo_root), "--lcov", str(lcov_output)]
         if html_output is not None:
-            command += ["--html-details", str(html_output), "--txt", str(text_output)]
+            command += ["--html-details", str(html_output)]
+        if text_output is not None:
+            command += ["--txt", str(text_output)]
         result = subprocess.run(command, cwd=repo_root, check=False)
         if result.returncode != 0 or not all(output.exists() for output in [merged, *outputs]):
             raise SystemExit(f"gcovr failed to format canonical C++ coverage (exit status {result.returncode})")

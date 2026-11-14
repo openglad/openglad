@@ -555,6 +555,18 @@ class MatrixTests(unittest.TestCase):
             self.assertEqual(set(merges), {out / 'cpp.json', out / 'production.json'})
             for call in merges.values():
                 self.assertEqual(call.args[1], Path.cwd())
+            # Every report is written by the pass that merges the partitions:
+            # the gate's tracefile and a summary for both object populations,
+            # and the HTML detail for the complete one only.
+            complete = dict(merges[out / 'cpp.json'].kwargs)
+            diagnostic = dict(merges[out / 'production.json'].kwargs)
+            complete.pop('sources')
+            diagnostic.pop('sources')
+            self.assertEqual({'lcov_output': out / 'cpp.info',
+                              'html_output': out / 'coverage.html',
+                              'text_output': out / 'coverage-summary.txt'}, complete)
+            self.assertEqual({'lcov_output': out / 'production.info',
+                              'text_output': out / 'production-summary.txt'}, diagnostic)
             everything = [str(path) for path in merges[out / 'cpp.json'].kwargs['sources']]
             production = [str(path) for path in merges[out / 'production.json'].kwargs['sources']]
             self.assertEqual(sorted(everything), sorted(traces))
@@ -570,6 +582,7 @@ class MatrixTests(unittest.TestCase):
         plan['compiler_notes'] = {note: 'hash'}
         plan['source_root'] = str(Path.cwd().resolve())
         plan['build_relative'] = 'build/ci-coverage'
+        plan['source_links'] = {'component_includes/core/openglad/core': 'include/openglad/core'}
         plan['production_exclusions'] = [r'(?:.*/)?CMakeFiles/Testing\.dir(?:/|$)']
         plan['lines_tool_sha256'] = matrix.hashlib.sha256(b'oracle').hexdigest()
         plan_file = root / 'plan.json'
@@ -590,24 +603,16 @@ class MatrixTests(unittest.TestCase):
         tool.chmod(0o644)
         return plan, plan_file, results, tool
 
-    def run_gate(self, args, reporter=None, **replaced):
+    def run_gate(self, args, **replaced):
         """Run merge() with the compiler-facing stages replaced by recorders."""
-        reporter = reporter or SimpleNamespace(
-            gcovr_lcov_1x_flag=mock.Mock(return_value='--lcov-format-version=1.x'))
         stages = {name: mock.Mock(name=name)
-                  for name in ('unpack_notes', 'merge_counters', 'compiler_notes')}
+                  for name in ('unpack_notes', 'restore_source_links', 'merge_counters',
+                               'scan_counters', 'compiler_notes')}
         stages.update(replaced)
-
-        def scanned(tree, exclusions, out, workers=4):
-            for name in ('cpp.json', 'production.json'):
-                matrix.write(out / name, {'files': []})
-
-        stages.setdefault('scan_counters', mock.Mock(side_effect=scanned))
-        with mock.patch.dict('sys.modules', {'coverage_report': reporter}), \
-             mock.patch.multiple(matrix, **stages), \
+        with mock.patch.multiple(matrix, **stages), \
              mock.patch.object(matrix.subprocess, 'run') as execute:
             matrix.merge(args)
-        return reporter, stages, execute
+        return stages, execute
 
     def test_gate_sums_the_workers_scans_once_and_formats_both_object_populations(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -616,48 +621,32 @@ class MatrixTests(unittest.TestCase):
             notes_archive = root / 'notes' / matrix.NOTES_ARCHIVE
             args = SimpleNamespace(plan=plan_file, results=results, out=root / 'output',
                                    build=None, lines_tool=tool, notes=notes_archive)
-            reporter, stages, execute = self.run_gate(args)
+            stages, execute = self.run_gate(args)
             tree = Path('build/ci-coverage')
             stages['unpack_notes'].assert_called_once_with(
                 notes_archive, tree, plan['compiler_notes'])
+            stages['restore_source_links'].assert_called_once_with(
+                tree, plan['source_links'], Path.cwd().resolve())
             stages['merge_counters'].assert_called_once_with(
                 [results / 'shard-1/counters', results / 'shard-2/counters'],
                 tree, plan['compiler_notes'])
             stages['scan_counters'].assert_called_once_with(
                 tree, plan['production_exclusions'], args.out)
-            reporter.gcovr_lcov_1x_flag.assert_called_once_with(['gcovr'], Path.cwd())
-            self.assertEqual(execute.call_count, 4)
-            commands = [call.args[0] for call in execute.call_args_list]
-            self.assertTrue(all(call.kwargs == {'check': True} for call in execute.call_args_list))
-
-            def only(marker):
-                matches = [command for command in commands
-                           if command[0] == 'gcovr' and marker in command]
-                self.assertEqual(len(matches), 1, marker)
-                return matches[0]
-
-            primary = only(str(args.out / 'cpp.info'))
-            production = only(str(args.out / 'production.info'))
-            detail = only('--html-details')
-            gate = commands[-1]  # The gate starts only after both tracefiles exist.
-            self.assertIn('--cpp-production-tracefile', gate)
-            for command, filename in ((primary, 'cpp.info'), (production, 'production.info')):
-                self.assertIn('--lcov-format-version=1.x', command)
-                self.assertNotIn('--lcov-format-1.x', command)
-                self.assertIn(str(args.out / filename), command)
-                self.assertNotIn(str(tree), command)  # formatting never scans profiles
-                self.assertNotIn('--html-details', command)
-                # Each population is formatted from its one scanned trace.
-                self.assertEqual(1, command.count('--add-tracefile'))
-            self.assertEqual(primary[primary.index('--add-tracefile')+1],
-                             detail[detail.index('--add-tracefile')+1])
-            self.assertNotEqual(primary[primary.index('--add-tracefile')+1],
-                                production[production.index('--add-tracefile')+1])
+            # Nothing is formatted a second time: the scan wrote every report,
+            # and the one process the gate starts is the gate itself.
+            self.assertEqual(execute.call_count, 1)
+            self.assertEqual(execute.call_args.kwargs, {'check': True})
+            gate = execute.call_args.args[0]
+            self.assertEqual(gate[gate.index('--cpp-tracefile')+1], str(args.out / 'cpp.info'))
+            self.assertEqual(gate[gate.index('--cpp-production-tracefile')+1],
+                             str(args.out / 'production.info'))
+            self.assertEqual(gate[gate.index('--line-threshold')+1], '98')
+            self.assertEqual(gate[gate.index('--function-threshold')+1], '100')
+            self.assertIn('--strict-cpp', gate)
             self.assertEqual(gate[gate.index('--lines-tool')+1], str(tool))
             self.assertTrue(tool.stat().st_mode & 0o100)  # artifacts drop the executable bit
             self.assertEqual(sorted(path.name for path in (args.out / 'lua-raw').iterdir()),
                              ['shard-1-dump.luacov', 'shard-2-dump.luacov'])
-            self.assertFalse((args.out / 'scanned').exists())
 
     def test_gate_over_a_restored_build_uses_its_notes_in_place(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -667,8 +656,9 @@ class MatrixTests(unittest.TestCase):
             args = SimpleNamespace(plan=plan_file, results=results, out=root / 'output',
                                    build=build, lines_tool=None, notes=None)
             same = mock.Mock(return_value=plan['compiler_notes'])
-            reporter, stages, execute = self.run_gate(args, compiler_notes=same)
+            stages, execute = self.run_gate(args, compiler_notes=same)
             stages['unpack_notes'].assert_not_called()
+            stages['restore_source_links'].assert_not_called()  # a restored tree has them
             same.assert_called_once_with(build)
             self.assertEqual(build, stages['merge_counters'].call_args.args[1])
             gate = execute.call_args_list[-1].args[0]
@@ -712,6 +702,68 @@ class MatrixTests(unittest.TestCase):
                                    notes=root / matrix.NOTES_ARCHIVE)
             with self.assertRaisesRegex(ValueError, 'not inside the checkout'):
                 self.run_gate(args)
+
+    def test_source_links_are_planned_from_the_build_tree_and_recreated_for_the_gate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            producer = root / 'producer'
+            build = producer / 'build/ci-coverage'
+            (producer / 'include/openglad/core').mkdir(parents=True)
+            (producer / 'include/openglad/core/util.h').write_text('header')
+            (producer / 'docs').mkdir()
+            (producer / 'docs/notes.md').write_text('notes')
+            (build / 'component_includes/core/openglad').mkdir(parents=True)
+            (build / 'component_includes/gameplay/openglad').mkdir(parents=True)
+            (build / 'deps/library/docker').mkdir(parents=True)
+            (build / 'deps/library/docker/Dockerfile.alpine').write_text('FROM alpine')
+            # Absolute and relative links into the source tree are source paths...
+            (build / 'component_includes/core/openglad/core').symlink_to(
+                producer / 'include/openglad/core')
+            (build / 'component_includes/gameplay/openglad/core').symlink_to(
+                '../../../../../include/openglad/core')
+            (build / 'notes-link.md').symlink_to(producer / 'docs/notes.md')
+            # ...a link that stays inside the build tree, or leaves the checkout, is not.
+            (build / 'deps/library/Dockerfile').symlink_to('docker/Dockerfile.alpine')
+            (build / 'system').symlink_to('/usr/include')
+            (build / 'dangling').symlink_to(root / 'elsewhere/gone')
+            planned = matrix.source_links(build, str(producer))
+            self.assertEqual({
+                'component_includes/core/openglad/core': 'include/openglad/core',
+                'component_includes/gameplay/openglad/core': 'include/openglad/core',
+                'notes-link.md': 'docs/notes.md'}, planned)
+            # The same answer for a relative build path: what `plan` is given.
+            import os
+            previous = os.getcwd()
+            os.chdir(producer)
+            try:
+                self.assertEqual(planned, matrix.source_links(
+                    Path('build/ci-coverage'), str(producer)))
+            finally:
+                os.chdir(previous)
+
+            gate = root / 'gate'
+            (gate / 'include/openglad/core').mkdir(parents=True)
+            (gate / 'include/openglad/core/util.h').write_text('header')
+            (gate / 'docs').mkdir()
+            (gate / 'docs/notes.md').write_text('notes')
+            tree = gate / 'build/ci-coverage'
+            tree.mkdir(parents=True)
+            matrix.restore_source_links(tree, planned, gate)
+            through_link = tree / 'component_includes/gameplay/openglad/core/util.h'
+            self.assertEqual(gate / 'include/openglad/core/util.h', through_link.resolve())
+            self.assertEqual('notes', (tree / 'notes-link.md').read_text())
+            with self.assertRaisesRegex(ValueError, 'already occupied'):
+                matrix.restore_source_links(tree, planned, gate)
+            for link, target, message in (
+                    ('component_includes/x', 'include/openglad/absent', 'no target in this checkout'),
+                    ('../outside', 'include/openglad/core', 'leaves its tree'),
+                    ('component_includes/x', '../include', 'leaves its tree'),
+                    ('/tmp/absolute', 'include/openglad/core', 'leaves its tree'),
+                    ('component_includes/x', '/etc', 'leaves its tree')):
+                with self.subTest(link=link, target=target), \
+                        self.assertRaisesRegex(ValueError, message):
+                    matrix.restore_source_links(gate / 'fresh', {link: target}, gate)
+            self.assertFalse((gate / 'fresh').exists() and list((gate / 'fresh').iterdir()))
 
     def test_gate_makes_and_removes_the_producers_source_alias(self):
         with tempfile.TemporaryDirectory() as temporary:
