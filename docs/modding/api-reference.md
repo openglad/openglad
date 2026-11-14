@@ -1067,7 +1067,7 @@ All are RNG-free.
 
 | Function | Result |
 |---|---|
-| `og.possess(rider, host, ticks)` | `true`, or `false, reason`. The rider enters the host for `ticks` ticks (0 = for good, at most 32767): the rider hides and follows the host, the host fights on the rider's team, and a seat that drove the rider now drives the host. Reasons: `CANNOT POSSESS` (rider and host the same walker, either not a living, or the rider dead, hidden, dormant, already linked or charmed), `NO HOST IN REACH` (host dead, hidden or dormant), `ALREADY POSSESSED`, `UNDEAD RESIST`, `HERO RESISTS` (a seat drives the host), `HOST IS CHARMED`. |
+| `og.possess(rider, host, ticks)` | `true`, or `false, reason`. The rider enters the host for `ticks` ticks (0 = for good, at most 32767): the rider hides and follows the host, the host fights on the rider's team, and a seat that drove the rider now drives the host. Reasons: `CANNOT POSSESS` (rider and host the same walker, either not a living, or the rider dead, hidden, dormant, already linked or charmed), `NO HOST IN REACH` (host dead, hidden or dormant), `ALREADY POSSESSED`, `UNDEAD RESIST`, `HERO RESISTS` (a seat drives the host), `HOST IS CHARMED`. A rider a script marks dead without its `death()` ends the ride at the host's next act: the host goes home, the rider's body stays hidden. |
 | `og.release_possession(ent)` | Ends the possession from either side and answers the rider, or `nil` when `ent` was not in one. |
 | `og.fearless(ent) → bool` | The walker never flees: it carries `KIT_FEARLESS`, or (setting on) it stands within a friendly live weapon's `rally_radius` on its floor. |
 | `og.map_size()` | `pixmaxx, pixmaxy, floor_count` (every floor shares the pixel footprint). |

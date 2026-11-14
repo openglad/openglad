@@ -743,22 +743,50 @@ TEST(SemPossession, only_a_dying_host_casts_its_rider_out_aloud)
     }
 }
 
-// possession.cpp:244. A rider marked dead without walker::death: the host
-// just drops the link and keeps the team it has; no reveal, no burst.
-TEST(SemPossession, a_host_whose_rider_is_dead_just_drops_the_link)
+// #499. A rider marked dead without walker::death (a script's set_dead)
+// ends the ride at the host's next act as the rider's death ends it: the
+// host goes home to its own team, both sides unlink and the rider keeps no
+// team for the host. The corpse stays hidden: no burst, no collision entry.
+// A seat's tag on the host goes back to the dead ghost, as walker::death
+// hands it back to a dying one; the host's act type is restored.
+TEST(SemPossession, a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden)
 {
     for (int ns : {0, 1}) {
         SCOPED_TRACE(ns ? "new specials on" : "new specials off");
-        PossessionScene s(ns);
-        ASSERT_TRUE(og::sim::possess(s.world(), *s.ghost, *s.orc, 100).ok);
-        s.ghost->set_dead(1);
-        og::sim::possession_host_tick(s.world(), *dynamic_cast<living*>(s.orc));
-        EXPECT_EQ(0u, s.orc->possess_link()) << "rider dead: host unlinked";
-        EXPECT_EQ(0, s.orc->possess_ticks()) << "rider dead: no countdown left";
-        EXPECT_EQ(kGhostTeam, s.orc->team_num())
-            << "rider dead: the host keeps the rider's team";
-        EXPECT_TRUE(s.ghost->hidden()) << "rider dead: the corpse stays hidden";
-        EXPECT_EQ(0, count_fx(s.tw, FAMILY_GHOST_SCARE)) << "rider dead: no burst";
+        for (const bool seated : {false, true}) {
+            SCOPED_TRACE(seated ? "a seat drives the ghost" : "a bot ghost");
+            PossessionScene s(ns);
+            if (seated)
+                seat(*s.ghost, 0);
+            const auto orc_act = s.orc->act_type();
+            ASSERT_TRUE(og::sim::possess(s.world(), *s.ghost, *s.orc, 100).ok);
+            ASSERT_EQ(kGhostTeam, s.orc->team_num()) << "premise: the host wears the ghost's team";
+            ASSERT_EQ(seated ? 0 : -1, s.orc->user()) << "premise: the seat's tag is on the host";
+            ASSERT_NE(ACT_CONTROL, orc_act) << "premise: a bot orc";
+            ASSERT_EQ(seated ? ACT_CONTROL : orc_act, s.orc->act_type())
+                << "premise: a seat drives the host";
+            s.ghost->set_dead(1);
+            og::sim::possession_host_tick(s.world(), *dynamic_cast<living*>(s.orc));
+            EXPECT_EQ(0u, s.orc->possess_link()) << "rider dead: host unlinked";
+            EXPECT_EQ(0, s.orc->possess_ticks()) << "rider dead: no countdown left";
+            EXPECT_EQ(kOrcTeam, s.orc->team_num())
+                << "rider dead: the host goes home to its own team";
+            EXPECT_EQ(0u, s.ghost->possess_link()) << "rider dead: the rider unlinked";
+            EXPECT_EQ(255, s.ghost->real_team_num())
+                << "rider dead: the rider keeps no team for the host";
+            EXPECT_TRUE(s.ghost->hidden()) << "rider dead: the corpse stays hidden";
+            EXPECT_EQ(0u, s.world().myobmap->walker_to_pos.count(s.ghost))
+                << "rider dead: the corpse is not filed in the collision table";
+            EXPECT_EQ(0, count_fx(s.tw, FAMILY_GHOST_SCARE)) << "rider dead: no burst";
+            EXPECT_EQ(0, s.ghost->death_called()) << "rider dead: its death is not run";
+            EXPECT_EQ(seated ? 0 : -1, s.ghost->user())
+                << "a seat's tag goes back to the ghost; a bot moves none";
+            EXPECT_EQ(-1, s.orc->user()) << "the host wears no tag";
+            EXPECT_EQ(orc_act, s.orc->act_type()) << "the host's act type is restored";
+            if (seated) {
+                EXPECT_EQ(ACT_CONTROL, s.ghost->act_type()) << "the seat's ghost is driven again";
+            }
+        }
     }
 }
 

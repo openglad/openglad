@@ -23,9 +23,11 @@
 //   linked -> free     release_possession(), reached from: the countdown
 //                      reaching 0 (possession_host_tick), Switch Character
 //                      on the host (sim_input_handler.cpp), the host dying
-//                      (kit_on_death: the rider takes half the overkill),
-//                      the rider dying (kit_on_death), or the rider
-//                      vanishing from the world (possession_host_tick).
+//                      (kit_on_death: the rider takes half the overkill) or
+//                      the rider dying (kit_on_death); end_ride() alone,
+//                      from possession_host_tick, when the rider died
+//                      without walker::death (#499) or the link names an
+//                      id no walker holds.
 //
 // A level that ends with a possession running drops the host like any other
 // walker and saves the rider's guy record like any other hero's. A snapshot
@@ -101,6 +103,107 @@ void scare_burst_at(GameWorld& world, walker& where)
     fx->set_team_num(where.team_num());
     fx->set_floor(where.floor());
     fx->center_on(&where);
+}
+
+// The rider a host links to: a live one through the world's index, else the
+// body the tick-end sweep moved to dead_list (a rider marked dead without
+// walker::death keeps its id there, and the host's own team on its
+// real_team_num; dead_list is not indexed). Null when no walker holds the id.
+walker* linked_rider(GameWorld& world, std::uint32_t id)
+{
+    walker* const live = world.find_by_id(id);
+    // plumbing: a rider still in the live lists answers through the index
+    if (live != nullptr)
+        return live;
+    // plumbing: a walk over dead_list for the rider's id; the rule is on the match below
+    for (const auto& uptr : world.dead_list)
+    {
+        // rule: #499: a rider marked dead without walker::death that the tick-end sweep moved to
+        //   dead_list still holds the host's own team, so its host still goes home.
+        // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+        if (uptr != nullptr && uptr->entity_id() == id)
+            return uptr.get();
+    }
+    return nullptr;
+}
+
+// Every end of a ride, whichever way it ends (release_possession, or a host
+// whose rider died without walker::death in possession_host_tick): the host
+// goes home to its own team, which waits on the rider's real_team_num (into
+// the charm's record when a thief charmed the host meanwhile, so the charm's
+// own expiry brings it home), a seat's tag on the host goes back to the
+// rider, and neither side links any more. The reveal, the burst and the
+// overkill belong to release_possession alone.
+void end_ride(walker* host, walker* rider)
+{
+    // rule: When a possession ends the host goes home to its own team.
+    // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
+    // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
+    // tests: KitPossession.charmed_host_released_by_the_countdown
+    // tests: KitPossession.hidden_rider_death_releases_the_host
+    // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+    // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+    if (host != nullptr)
+    {
+        // rule: When a possession ends the host goes home to its own team.
+        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
+        // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
+        // tests: KitPossession.charmed_host_released_by_the_countdown
+        // tests: KitPossession.hidden_rider_death_releases_the_host
+        // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+        // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+        const unsigned char original =
+            rider != nullptr ? rider->real_team_num() : kNoTeam;
+        // rule: When a possession ends the host goes home to its own team.
+        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
+        // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
+        // tests: KitPossession.charmed_host_released_by_the_countdown
+        // tests: KitPossession.hidden_rider_death_releases_the_host
+        // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+        // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+        if (original != kNoTeam)
+        {
+            // Charmed while possessed: the thief's charm recorded the
+            // rider's team as the host's real team. Put the true team there
+            // and leave the charmer's team on, so the charm's own expiry
+            // (living::act) brings the host home.
+            // rule: When a possession ends the host goes home to its own team.
+            // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
+            // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
+            // tests: KitPossession.charmed_host_released_by_the_countdown
+            // tests: KitPossession.hidden_rider_death_releases_the_host
+            // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+            // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+            if (host->real_team_num() != kNoTeam)
+                host->set_real_team_num(original);
+            else
+                host->set_team_num(original);
+        }
+        // rule: When a ride ends a seat's tag on the host goes back to the rider, also to a rider
+        //   that died without walker::death, as a dying rider's death hands it back.
+        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
+        // tests: SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag
+        // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+        if (rider != nullptr && host->user() != -1)
+        {
+            rider->set_user(host->user());
+            rider->set_act_type(ACT_CONTROL);
+            host->set_user(-1);
+            host->restore_act_type();
+        }
+        host->set_possess_link(0);
+        host->set_possess_ticks(0);
+    }
+    // rule: When a ride ends neither side links any more and the rider keeps no team for the host,
+    //   so a later walker::death of the rider changes nothing.
+    // tests: KitPossession.a_ride_ends_once
+    // tests: SemPossession.a_release_with_the_rider_gone_only_unlinks_the_host
+    // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
+    if (rider != nullptr)
+    {
+        rider->set_real_team_num(kNoTeam);
+        rider->set_possess_link(0);
+    }
 }
 
 }  // namespace
@@ -214,75 +317,24 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
     walker* const rider = from_rider ? &either_side : partner;
     walker* const host = from_rider ? partner : &either_side;
 
-    // rule: When a possession ends the host goes home to its own team.
+    // rule: On release the ghost reappears at the host's centre and floor, and a seat driving the
+    //   host goes back to the ghost.
     // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-    // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
-    // tests: KitPossession.charmed_host_released_by_the_countdown
-    // tests: KitPossession.hidden_rider_death_releases_the_host
-    if (host != nullptr)
+    // tests: SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag
+    if (rider != nullptr && host != nullptr)
     {
-        // rule: When a possession ends the host goes home to its own team.
-        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-        // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
-        // tests: KitPossession.charmed_host_released_by_the_countdown
-        // tests: KitPossession.hidden_rider_death_releases_the_host
-        const unsigned char original =
-            rider != nullptr ? rider->real_team_num() : kNoTeam;
-        // rule: When a possession ends the host goes home to its own team.
-        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-        // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
-        // tests: KitPossession.charmed_host_released_by_the_countdown
-        // tests: KitPossession.hidden_rider_death_releases_the_host
-        if (original != kNoTeam)
-        {
-            // Charmed while possessed: the thief's charm recorded the
-            // rider's team as the host's real team. Put the true team there
-            // and leave the charmer's team on, so the charm's own expiry
-            // (living::act) brings the host home.
-            // rule: When a possession ends the host goes home to its own team.
-            // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-            // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
-            // tests: KitPossession.charmed_host_released_by_the_countdown
-            // tests: KitPossession.hidden_rider_death_releases_the_host
-            if (host->real_team_num() != kNoTeam)
-                host->set_real_team_num(original);
-            else
-                host->set_team_num(original);
-        }
-        host->set_possess_link(0);
-        host->set_possess_ticks(0);
+        // Still hidden here, so the move leaves the collision table alone;
+        // the reveal below registers the rider at the host's spot.
+        rider->center_on(host);
+        rider->set_floor(host->floor());
     }
+    end_ride(host, rider);
 
     // rule: If the rider has left the world, releasing the host only unlinks it (no reveal, no
     //   burst).
     // tests: SemPossession.a_release_with_the_rider_gone_only_unlinks_the_host
     if (rider == nullptr)
         return nullptr;
-
-    // rule: On release the ghost reappears at the host's centre and floor, and a seat driving the
-    //   host goes back to the ghost.
-    // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-    // tests: SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag
-    if (host != nullptr)
-    {
-        // Still hidden here, so the move leaves the collision table alone;
-        // the reveal below registers the rider at the host's spot.
-        rider->center_on(host);
-        rider->set_floor(host->floor());
-        // rule: On release the ghost reappears at the host's centre and floor, and a seat driving
-        //   the host goes back to the ghost.
-        // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-        // tests: SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag
-        if (host->user() != -1)
-        {
-            rider->set_user(host->user());
-            rider->set_act_type(ACT_CONTROL);
-            host->set_user(-1);
-            host->restore_act_type();
-        }
-    }
-    rider->set_real_team_num(kNoTeam);
-    rider->set_possess_link(0);
     rider->set_hidden(false);
     scare_burst_at(world, *rider);
 
@@ -313,26 +365,30 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
 
 void possession_host_tick(GameWorld& world, living& host)
 {
-    // rule: If the rider is gone or dead without its death releasing the host, the host just drops
-    //   the link and keeps fighting on the team it has (the seat keeps driving it).
+    // rule: #499: a rider that died without walker::death running (a script's set_dead), still in
+    //   the world or moved to dead_list by the tick-end sweep, ends the ride as a rider's death ends
+    //   it: the host goes home to its own team and colour, a seat's tag on it goes back to the
+    //   rider, and both unlink. Its body is not revealed (no burst, no collision entry). A link to
+    //   an id no walker holds only unlinks the host, which keeps the team it wears.
+    // tests: KitPossession.a_level_script_ghost_set_dead_without_its_death_gives_the_troop_back
+    // tests: KitPossession.a_ride_ends_once
     // tests: KitPossession.rider_gone_from_the_world_unlinks_the_host
     // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-    // tests: SemPossession.a_host_whose_rider_is_dead_just_drops_the_link
+    // tests: SemPossession.a_host_whose_rider_is_dead_goes_home_and_the_corpse_stays_hidden
     if (host.possess_link() == 0)
         return;
     walker* const rider = world.find_by_id(host.possess_link());
     if (rider == nullptr || rider->dead())
     {
-        // The rider left the world, or was marked dead without
-        // walker::death running (which would have released this host).
-        // release_possession is not called: it would reveal the rider, and
-        // a revealed corpse that walker::death never processed would be
-        // filed into the collision table with nothing to take it out again;
-        // it would also play the exit burst over a corpse and hand the
-        // seat's tag to a dead body. So drop the link and keep the team the
-        // host has (the seat, if any, keeps driving it).
-        host.set_possess_link(0);
-        host.set_possess_ticks(0);
+        // The rider died without walker::death running (which would have
+        // ended the ride), or left the world. release_possession is not
+        // called: it would reveal the rider, and a revealed corpse that
+        // walker::death never processed would be filed into the collision
+        // table with nothing to take it out again; it would also play the
+        // exit burst over a corpse. The rest of a rider's death (the host's
+        // team, the seat's tag, the links) is end_ride, the one
+        // implementation.
+        end_ride(&host, linked_rider(world, host.possess_link()));
         return;
     }
 

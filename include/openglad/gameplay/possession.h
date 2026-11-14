@@ -43,7 +43,9 @@ PossessResult possess(GameWorld& world, walker& rider, walker& host,
 walker* release_possession(GameWorld& world, walker& either_side,
                            int overkill = 0);
 // Once per tick on the HOST (living::act): the rider follows, the
-// countdown runs, and the possession ends at 0.
+// countdown runs, and the possession ends at 0. A rider that died without
+// walker::death ends the ride: the host goes home, the rider's body stays
+// hidden (#499).
 void possession_host_tick(GameWorld& world, living& host);
 // Called at the top of walker::death(). A dying host releases its rider; a
 // dying hidden rider releases its host; a warded walker (KIT_WARD) gets up

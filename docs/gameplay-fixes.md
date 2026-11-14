@@ -1446,9 +1446,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-nine changes apply whatever the setting, three from the work that
+Thirty changes apply whatever the setting, three from the work that
 added it (N, O and P), six from the second bugs batch, eighteen from the
-issues it filed and two from the third bugs batch; the last three entries
+issues it filed and three from the third bugs batch; the last three entries
 record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1656,6 +1656,21 @@ record differences kept on purpose (#484, #440, #491):
   the chain is what it was. Undead resist POSSESS, so the shipped bodies
   it reaches are an enemy caster's summons. No recording plays New
   Specials, and the old game has no possession.
+- **A ridden body goes home when a script kills its ghost (#499).** A ride
+  comes from POSSESS (New Specials) or from a level script's `og.possess`,
+  which rides with New Specials off too. A ghost that dies while it rides
+  frees its body, which goes back to its own side. A level script can also
+  mark the ghost dead without its death running (`set_dead`); then the body
+  only dropped the link and kept the ghost's colour for the rest of the
+  level, while since #430 it answered for its owner again: one colour, the
+  other side. The ride now ends there as the ghost's death ends it, whether
+  the ghost is still in the world or was cleared away at the end of the
+  tick: the body goes back to its own team (into a thief's charm record
+  when a charm took it meanwhile), a seat's tag goes back to the ghost, as
+  when the ghost dies, and neither is linked any more, so a later death of
+  the ghost changes nothing. The ghost's body stays hidden: no burst, and it
+  blocks nothing. No recording plays a ride, and the old game has no
+  possession.
 - **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
   On the isle a fifth of each college's spawns change sides at birth and
   are named Dreamkin. The bone tent keeps its spawns as its own: their
