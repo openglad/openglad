@@ -439,7 +439,14 @@ Fixes X to AV, in play:
   shots keep its side for the rest of that tick. A body a ghost rides stops
   every climb on both values (#430). The mutant mode's damage gate reads
   the same climb. No recording stages a charm, a death and a friendliness
-  question in one tick, so no golden moves.
+  question in one tick, so no golden moves. A walker that dies charmed
+  keeps its colour and its charm clock until it is revived (#505), so for
+  the rest of that tick its summons and shots answer for the colour it
+  wore: a caster with no owner heads their chains anyway, and with the
+  setting on a charmed troop or summon still stops the climb when it dies.
+  Taking the clock away at death would turn a dead charmed troop's knife
+  to its tent's side for the rest of the tick and back to the troop's
+  colour on the knife's next act.
 - **AQ.** When a player's step meets a wall, the walk tries to slide along
   it: it asks the half step up or down and the half step across, and takes
   each half that is free. In the classic game each half is asked with a

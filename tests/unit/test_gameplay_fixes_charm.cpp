@@ -486,6 +486,96 @@ TEST(GameplayFixesChain, a_summons_shot_scores_for_the_colour_its_head_wears_wit
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// #505: a caster that dies charmed. The green caster (charmed red, no owner)
+// dies; in the same tick its live summon (green, made before the charm)
+// strikes red, the charmer's team. The summon's chain ends at the caster
+// because the caster has no owner, so the caster's charm clock plays no part:
+// with the setting on the summon keeps the side the caster wore (red, fix
+// AP) and the blow is refused; classic friendliness stops at the dead owner,
+// the summon stands for its own colour (green) and the blow lands. Taking the
+// clock away changes neither answer.
+// Break: alliance_head's `og::sim::session_gameplay_fixes() != 0` -> `false`.
+TEST(GameplayFixesChain, a_summon_of_a_caster_that_died_charmed_answers_for_the_colour_the_caster_wore)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        DeadCasterChain c = charmed_caster_chain(s);
+        ASSERT_TRUE(c.caster && c.summon && c.knife);
+        const bool fixed = fixes != 0;
+        c.caster->set_dead(1);
+        for (const short clock : {short{30}, short{0}})
+        {
+            SCOPED_TRACE(testing::Message() << "charm clock " << clock);
+            c.caster->set_charm_left(clock);
+            EXPECT_EQ(c.caster, c.summon->chain_head()) << "the caster has no owner";
+            EXPECT_EQ(fixed ? 1 : 0, c.summon->is_friendly(s.red));
+            EXPECT_EQ(fixed ? 1 : 0, c.summon->is_friendly_to_team(kRed));
+            const Blow on_red = strike(c.summon, s.red, 40.0f);
+            EXPECT_EQ(!fixed, on_red.landed);
+            if (fixed)
+                EXPECT_EQ(0.0f, on_red.hp_lost) << "setting on: red's own side";
+            else
+                EXPECT_GT(on_red.hp_lost, 0.0f) << "setting off: the summon is green";
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #505: a tent troop that dies charmed keeps heading its chain until the
+// tick ends. The troop is charmed red by hand (the charmer's colour, its
+// tent's real team, a running clock) and owns a red knife. With the setting
+// on the troop heads the knife's chain alive and dead (fix AD), so the
+// knife's blow on green scores for red, the player's team. Classic, the
+// climb goes on to the green tent, which is not the player's team: no
+// score. On both values the credit is the troop (the topmost living) and
+// the knife is red's friend.
+// Break: charmed_head's clock arm gains `&& dead() == 0` (a dead walker is
+// never charmed: with the setting on the head becomes the tent and nothing
+// scores).
+TEST(GameplayFixesChain, a_troop_that_dies_charmed_heads_its_chain_until_the_tick_ends)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        ASSERT_NE(nullptr, s.troop);
+        const bool fixed = fixes != 0;
+        s.troop->set_real_team_num(kGreen);
+        s.troop->set_team_num(kRed);
+        s.troop->set_charm_left(30);
+        walker* k = s.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, k);
+        k->set_team_num(kRed);
+        k->set_owner(s.troop);
+        k->stats()->set_level(4);
+        k->stats()->set_hitpoints(1000.0f);
+
+        EXPECT_EQ(fixed ? s.troop : s.tent, k->chain_head()) << "alive";
+        s.troop->set_dead(1);
+        EXPECT_EQ(fixed ? s.troop : s.tent, k->chain_head()) << "dead, this tick";
+        EXPECT_EQ(s.troop, k->credit_head()) << "the topmost living";
+        EXPECT_EQ(1, k->is_friendly(s.red));
+
+        const auto L = static_cast<std::uint32_t>(s.green->stats()->level());
+        const auto before = scores(s);
+        const Blow blow = strike(k, s.green, 40.0f);
+        ASSERT_TRUE(blow.landed);
+        ASSERT_GT(blow.hp_lost, 0.0f);
+        const auto d = static_cast<std::uint32_t>(blow.hp_lost);
+        auto expected = before;
+        if (fixed)
+            expected[kRed] += d + L;
+        EXPECT_EQ(expected, scores(s))
+            << (fixed ? "setting on: red, the dead troop's colour, scores"
+                      : "setting off: the head is the green tent: no score");
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // The control: the same chain with the charmed caster alive reads one head
 // on both values (the classic friendliness climb passes a live owner, and
 // with the setting on the charmed caster is the top of the chain anyway):

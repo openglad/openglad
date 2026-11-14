@@ -764,11 +764,11 @@ bool walker::charmed_head() const
 	// tests: KitPossession.a_possessed_summon_of_an_enemy_caster_is_its_own_credit
 	if (possess_link() != 0 && !hidden())
 		return true;
-	// rule: Gameplay Fixes AD (#412): while a charm runs, a charmed walker heads its own owner
-	//   chain (credit, friendliness and alliance follow its own colour); with the setting off the
-	//   owner climbs pass through it to its tent/summoner as in the classic game.
+	// rule: Gameplay Fixes AD (#412): a charmed walker heads its own owner chain while its charm
+	//   runs, also in the tick it dies charmed (#505); off, the climbs pass through it (classic).
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
+	// tests: GameplayFixesChain.a_troop_that_dies_charmed_heads_its_chain_until_the_tick_ends
 	// tests: parity:thief_charm_tent_troop_fixes_scen99
 	return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;
 }
@@ -821,6 +821,7 @@ const walker* walker::alliance_head() const
 	//   names one on both values), while score and credit climb through a dead owner.
 	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
 	// tests: GameplayFixesChain.a_live_casters_chain_reads_one_head_on_both_values
+	// tests: GameplayFixesChain.a_summon_of_a_caster_that_died_charmed_answers_for_the_colour_the_caster_wore
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	if (og::sim::session_gameplay_fixes() != 0)
 		return chain_head();
