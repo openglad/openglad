@@ -9425,12 +9425,12 @@ inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
 // caster's own team: the classic game hands the orc to the caster and the
 // level ends. With the setting on that colour becomes 1, the orc's own, and it
 // stays a foe.
-// The setting-on twin takes seed 176 (0xB0). With the setting on fix AT parts
-// the stream before the cast, and on 198 the control roll then succeeds: the
-// orc joins the caster without going berserk, so fix F is never reached and
-// the mutation below changed nothing. 176 is the first seed from 0 where the
-// setting-on orc stays a foe and the mutation hands it to the caster (the
-// classic game hands it over on 176 as well).
+// Both twins take seed 198. With fix AT alone the setting-on twin needed seed
+// 176 (0xB0): the orc's near-branch swing at the air, 60 px off, parted the
+// stream before the cast and on 198 the control roll succeeded, so fix F was
+// never reached. Gameplay Fixes BB holds that swing (the melee-only orc asks
+// whether a body stands on its pad), and 198 is again the first seed from 0
+// where the setting-on orc stays a foe and the mutation hands it to the caster.
 inline constexpr SpawnSpec kFamilySpawns_archmage_mind_control_berserk_scen99[] = {
     { FAMILY_ORC,      1, kOrderLiving, 180, 120, 0, 0, 10, 0 },   // equal-level melee-only foe, 60 px east
     { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player
@@ -14020,7 +14020,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_archmage_mind_control_berserk_scen99, std::size(kFacts_archmage_mind_control_berserk_scen99),
       kMut_archmage_mind_control_berserk_scen99 },
 
-    { "archmage_mind_control_berserk_fixes_scen99", "scen/scen1.fss", 0x000000B0u,
+    { "archmage_mind_control_berserk_fixes_scen99", "scen/scen1.fss", 0x000000C6u,
       kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 40,
       CompareMode::SemanticParity, false,
       kFamilySpawns_archmage_mind_control_berserk_scen99, std::size(kFamilySpawns_archmage_mind_control_berserk_scen99),
