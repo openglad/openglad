@@ -1587,16 +1587,26 @@ std::vector<Scene> scenes()
 
     // ORC CAPTAIN at level 1 (a freshly promoted orc): HOWL (slot 1) and
     // EAT CORPSE (slot 2) are both open from level 1. The howl freezes the
-    // elves charging him (an elf's constitution is low, so a level-1 howl
-    // still stuns it), he steps onto the body at his feet, and EAT CORPSE
-    // heals him; the elves thaw and fight on. The scenes hold no "next
-    // special" key, so once the captain stands on the corpse the scene puts
-    // the seat's hero on slot 2, as a press of that key would. His pool is
-    // 25 and the howl spends all of it; a level-1 captain wins back one
-    // point in about seven ticks, so the scene refills his pool when he
-    // reaches the corpse (the meal costs 20). After the meal he fights the
-    // nearest elf and stands his ground once it is in reach: held on a
-    // diagonal against an elf he would slide along it (the old game's
+    // elves charging him, he steps onto the body at his feet, and EAT CORPSE
+    // heals him; the elves thaw and fight on. The howl stuns each foe for
+    // 10 + rand(10 x the captain's level) - rand(10 x the foe's constitution)
+    // ticks, and a foe with no character record has a thirtieth of its hit
+    // points, whole, for a constitution. The elves come in wounded, at 15 of
+    // their 75 hp and healing nothing, so their constitution is 0 and the
+    // howl stuns every one of them for 10 to 19 ticks (at full health, a
+    // constitution of 2, the same howl can leave an elf unfrozen). The
+    // captain faces the corpse from the start: four frames after the howl he
+    // takes his three steps of 3 px onto it, and he eats two frames after he
+    // stands on it, in the ninth tick after the howl's, inside the shortest
+    // stun. So no elf strikes him between his arrival and the meal, and the
+    // meal's 5 hp (5 a level of the fallen soldier) shows. The scenes hold
+    // no "next special" key, so once the captain stands on the corpse the
+    // scene puts the seat's hero on slot 2, as a press of that key would.
+    // His pool is 25 and the howl spends all of it; a level-1 captain wins
+    // back one point in about seven ticks, so the scene refills his pool
+    // when he reaches the corpse (the meal costs 20). After the meal he
+    // fights the nearest elf and stands his ground once it is in reach: held
+    // on a diagonal against an elf he would slide along it (the old game's
     // slide, #470), off the line of his own blows, and the elves would kill
     // him before the run ends.
     {
@@ -1609,6 +1619,7 @@ std::vector<Scene> scenes()
             walker* captain = run.hero();
             captain->stats()->set_hitpoints(0.5f * captain->stats()->max_hitpoints());
             live_game::stop_hp_regen(captain);
+            captain->face_delta(1, 0); // toward the corpse
             add_corpse(run, FAMILY_SOLDIER, 1, 10, 4);
             walker* stain = nearest_stain(run.server->world(), *captain);
             ASSERT_NE(nullptr, stain) << "the fallen soldier leaves a corpse";
@@ -1620,7 +1631,12 @@ std::vector<Scene> scenes()
             add_actor(run, "foe2", FAMILY_ELF, 1, 100, 12)->set_act_type(ACT_GUARD);
             add_actor(run, "foe3", FAMILY_ELF, 1, -80, -6)->set_act_type(ACT_GUARD);
             for (const char* n : {"foe1", "foe2", "foe3"})
+            {
+                walker* elf = run.actor(n);
+                elf->stats()->set_hitpoints(15.0f);
+                live_game::stop_hp_regen(elf);
                 mark_hp(run, n);
+            }
         };
         sc.before_tick = [](Run& run, int) {
             walker* const captain = run.hero();
@@ -2056,21 +2072,47 @@ std::vector<Scene> scenes()
     }
 
     // SKELETON: BONE WALL across the foes' path, then Shift: BONE STORM.
+    // The wall goes up on frame 10 and the storm on frame 40. The soldiers
+    // hold their posts beyond the wall, where the skeleton is out of their
+    // knives' reach, until frame 30 and then come on at it, so the storm
+    // meets them as they come up to the wall. A bone starts on its
+    // segment's centre and its first step takes it 1 px past the wall's
+    // face; a level-1 soldier steps at most 4 px a tick, so in the eleven
+    // ticks from frame 30 to the storm the nearer one, 55 px from the face,
+    // comes no nearer than 11 px, and on the storm's frame no bone has met
+    // a body. (A soldier left to walk in from the start reaches the wall
+    // and stands against two segments, and their bones that strike him on
+    // that first step are gone from the storm's frame.) The ground under
+    // the lowest segment is terrain a bone cannot cross, so that segment's
+    // three downward bones end on their first step: the storm's frame
+    // shows 3 x 8 - 3 = 21 bones, inside the tell's allowance.
     {
         Scene sc;
         sc.name = "skeleton_wall_storm";
         sc.family = FAMILY_SKELETON;
         sc.slot = 3;
-        sc.frames = 98; // the last soldier falls by frame ~76
+        sc.frames = 98; // the storm, then the skeleton's fight with the two soldiers
         sc.stage = [](Run& run) {
             walker* skel = run.hero();
             skel->set_ani_type(ANI_WALK);
             skel->set_cycle(0);
-            add_actor(run, "foe1", FAMILY_SOLDIER, 1, 90, -12)->set_act_type(ACT_GUARD);
-            add_actor(run, "foe2", FAMILY_SOLDIER, 1, 96, 16)->set_act_type(ACT_GUARD);
+            walker* const foe1 = add_actor(run, "foe1", FAMILY_SOLDIER, 1, 90, -12);
+            walker* const foe2 = add_actor(run, "foe2", FAMILY_SOLDIER, 1, 96, 16);
+            for (walker* const soldier : {foe1, foe2})
+            {
+                soldier->set_act_type(ACT_GUARD);
+                soldier->set_guard_hold_post(true);
+            }
         };
-        // The soldiers walk into the wall; the storm meets them there, and
-        // the skeleton fights on with thrown bones.
+        sc.before_tick = [](Run& run, int f) {
+            if (f != 30)
+                return;
+            for (const char* n : {"foe1", "foe2"})
+                if (walker* const soldier = run.actor(n))
+                    soldier->set_guard_hold_post(false);
+        };
+        // The soldiers walk at the wall; the storm meets them there, and the
+        // skeleton fights on with thrown bones.
         sc.keys = [](Run& run, int f) {
             Keys k;
             k.right = during(f, 4, 6);
