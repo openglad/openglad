@@ -2060,7 +2060,7 @@ bool statistics::walk_to_foe()
 				// tests: parity:walk_to_foe_adopts_near_foe_scen99
 				// tests: SemAi4.a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it
 				if (near_foe &&
-				    static_cast<Uint32>(controller_->distance_to_ob(near_foe)) < tempdistance)
+				    near_adopts(near_foe, tempdistance, flyer))
 				{
 					controller_->set_foe(near_foe);
 					xdelta = near_foe->xpos() - controller_->xpos();
@@ -2575,4 +2575,27 @@ void statistics::near_swing(bool faced, short xdelta, short ydelta)
 	        : controller_->fire_check(xdelta, ydelta);
 	if (lands)
 		controller_->init_fire();
+}
+
+// walk_to_foe's near branch: which foe the chaser keeps. Appended at the end
+// of the file so the parity pins above never shift.
+bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance, bool flyer) const
+{
+	// rule: #320: at the near branch a chaser switches to a foe strictly nearer than the one it
+	//   holds (Manhattan); an equal or farther one keeps the held foe.
+	// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+	// tests: SemAi4.a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it
+	// tests: parity:walk_to_foe_adopts_near_foe_scen99
+	if (static_cast<std::uint32_t>(controller_->distance_to_ob(near_foe)) < held_distance)
+		return true;
+	// rule: #447 (this game only, both settings; only a level with more than one floor has a
+	//   flyer here): a flyer never changes floors, so a foe on another floor is one it can only
+	//   shadow. When the quick foe search answers a foe on the flyer's own floor it takes that
+	//   one, even when it is farther than the foe it holds; the quick search looks about five
+	//   map cells (160 px) round the bot, and with no foe on its floor inside that reach the
+	//   flyer keeps the foe it has.
+	// tests: SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor
+	const walker* held = controller_->foe();
+	return flyer && held != nullptr && held->floor() != controller_->floor()
+	        && near_foe->floor() == controller_->floor();
 }

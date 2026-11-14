@@ -1201,6 +1201,84 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
     }
 }
 
+// #447 (this game only, both settings), stats.cpp statistics::near_adopts.
+// Two floors. A team-1 ghost (it flies; melee only) at (320,320) on floor 0
+// facing down, holding `above`, a team-0 soldier on floor 1; `beside`, a
+// second team-0 soldier; a SEARCH(9) queued, re-plan due. A flyer keeps the
+// floor-blind chase (it never changes floors), so the re-plan finds `above`
+// within 100 px and enters the near branch, where the quick foe search
+// (find_near_foe: floor-keyed, about five map cells round the bot, then the
+// floor-blind full scan) answers a foe; the staging asserts that answer first.
+//  * the scene: `above` at (320,340) on floor 1 (corner distance 20),
+//    `beside` at (320,400) on floor 0 (80: not nearer). The search answers
+//    `beside`, on the ghost's own floor: the ghost takes it and queues its
+//    ATTACK order;
+//  * control, no foe on the ghost's floor: `above` at (320,337) and `beside`
+//    at (320,400), both on floor 1. The search finds nobody on floor 0 and
+//    the full scan answers `above`: the ghost keeps it, and since its pad (on
+//    floor 0) is clear it starts no swing on either setting (busy 0, the walk
+//    animation): a flyer swings at no foe on another floor;
+//  * control, beyond the quick search: `beside` at (320,620) on floor 0, 300
+//    px off. The spiral never reaches it and the full scan answers `above`:
+//    the ghost keeps `above`;
+//  * control, a ground walker: an orc (it does not fly) in the ghost's place,
+//    the first scene's soldiers. A ground walker whose foe is on another
+//    floor heads for a stair and never enters the near branch: it keeps
+//    `above`.
+// The three controls assert the foe (the ground walker may step; that is not
+// this rule).
+TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor)
+{
+    enum class Scene { OwnFloorFoe, NoFoeOnItsFloor, BeyondTheSearch, GroundWalker };
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, kAny}});
+    for (short fixes : {short{0}, short{1}}) {
+        for (Scene sc : {Scene::OwnFloorFoe, Scene::NoFoeOnItsFloor, Scene::BeyondTheSearch, Scene::GroundWalker}) {
+            const char* scene = sc == Scene::OwnFloorFoe       ? "a foe on the ghost's floor"
+                                : sc == Scene::NoFoeOnItsFloor ? "control: no foe on the ghost's floor"
+                                : sc == Scene::BeyondTheSearch ? "control: the foe on its floor beyond the quick search"
+                                                               : "control: a ground walker";
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
+            fresh_world(fixes);
+            two_floors();
+            walker* bot = living_at(sc == Scene::GroundWalker ? FAMILY_ORC : FAMILY_GHOST, 1, 320, 320, 0);
+            const short above_y = sc == Scene::NoFoeOnItsFloor ? 337 : 340;
+            walker* above = living_at(FAMILY_SOLDIER, 0, 320, above_y, 1);
+            walker* beside = living_at(FAMILY_SOLDIER, 0, 320, sc == Scene::BeyondTheSearch ? 620 : 400,
+                                       sc == Scene::NoFoeOnItsFloor ? 1 : 0);
+            ASSERT_TRUE(bot && above && beside);
+            ASSERT_EQ(sc != Scene::GroundWalker, bot->stats()->query_bit_flags(BIT_FLYING) != 0)
+                << "the staging: the ghost flies, the orc does not";
+            face(bot, FACE_DOWN);
+            bot->set_foe(above);
+            if (sc != Scene::GroundWalker) {
+                walker* const answered = world().find_near_foe(bot);
+                ASSERT_EQ(sc == Scene::OwnFloorFoe ? beside : above, answered)
+                    << "the staging: the quick foe search's answer";
+            }
+            if (sc == Scene::NoFoeOnItsFloor) {
+                ASSERT_TRUE(walker::PadAnswer::Clear == bot->fire_pad_answer())
+                    << "the staging: `above` stands on floor 1, the ghost's pad on floor 0 is clear";
+            }
+            bot->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+            bot->set_path_check_counter(0);
+            world().rng_.state_ = s;
+
+            EXPECT_TRUE(bot->stats()->walk_to_foe());
+
+            if (sc == Scene::OwnFloorFoe) {
+                EXPECT_EQ(beside, bot->foe()) << "the foe on its own floor is taken, though it is farther";
+                EXPECT_EQ(COMMAND_ATTACK, front_of(bot).type) << "and attacked";
+            } else {
+                EXPECT_EQ(above, bot->foe()) << "the held foe is kept";
+            }
+            if (sc == Scene::NoFoeOnItsFloor) {
+                EXPECT_FLOAT_EQ(0.0f, bot->busy()) << "no swing at a foe on another floor";
+                EXPECT_EQ(ANI_WALK, bot->ani_type()) << "no swing at a foe on another floor";
+            }
+        }
+    }
+}
+
 // stats.cpp:1351, the crowded map. 201 team-0 soldiers stacked in the far
 // corner put the obmap past 200 objects, so the re-plan skips A* even for a
 // foe 400 px away; no foe is within 100 px, so the current order is ended

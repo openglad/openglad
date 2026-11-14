@@ -139,6 +139,12 @@ class statistics
 		// shooter asks fire_check, a melee-only bot (which fire_check always
 		// refuses) asks whether a foe's body stands on its weapon's pad.
 		void near_swing(bool faced, short xdelta, short ydelta);
+		// walk_to_foe's near branch: does the chaser take the foe find_near_foe
+		// answered in place of the one it holds? A strictly nearer one (#320);
+		// and, for a flyer whose held foe is on another floor, one on its own
+		// floor (#447: a flyer never changes floors). Defined at the end of
+		// stats.cpp.
+		bool near_adopts(const walker* near_foe, std::uint32_t held_distance, bool flyer) const;
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
 		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
 		// first, and only a free half takes the classic loud step. Off, the loud step.
