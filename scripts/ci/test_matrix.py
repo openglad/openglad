@@ -8,6 +8,7 @@ Only emscripten_build_test is delegated to the separately required WASM graph.
 from __future__ import annotations
 
 import argparse
+from array import array
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -16,14 +17,17 @@ import os
 import re
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
+import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 
 DELEGATED = {"emscripten_build_test": "Release / WASM build and browser matrix"}
 DEFAULT_PARALLEL = 4
 LINES_TOOL = "og_lua_lines"
+NOTES_ARCHIVE = "compiler-notes.tar.zst"
 
 # Existing opt-in tools and external/display capabilities are reported by name.
 # Semantic, sanitizer-budget, unarmed-version and missing-golden skips fail.
@@ -55,6 +59,18 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
+# The live-transport unit binary is cut into several CTest entries
+# (cmake/OpenGladTests.cmake, OG_NETWORK_TESTS). Every lane must carry every
+# one of them, and the focused TSan lane is exactly this set: an entry that
+# is missing is transport code no lane ran.
+NETWORK_ENTRIES = frozenset({"og_unit_network", "og_unit_network_ws_server",
+                             "og_unit_network_ws_client"})
+
+
+def is_network_entry(name):
+    return name == "og_unit_network" or name.startswith("og_unit_network_")
+
+
 def scheduling_slots(test, parallel):
     """Return how many of one runner's CTest slots this entry reserves."""
     processors = 1
@@ -82,9 +98,10 @@ def partition(inventory, timings, count, lane, parallel=DEFAULT_PARALLEL):
     by_name = {test["name"]: test for test in tests}
     selected = set(names) - DELEGATED.keys()
     if lane == "tsan":
-        selected = {"og_unit_network"}
-        if not selected <= set(names):
-            raise ValueError("focused TSan network test is absent")
+        selected = {name for name in names if is_network_entry(name)}
+        if not NETWORK_ENTRIES <= selected:
+            raise ValueError("focused TSan network test is absent: "
+                             + ", ".join(sorted(NETWORK_ENTRIES - selected)))
     parents = {name: name for name in selected}
 
     def root(name):
@@ -139,6 +156,14 @@ def partition(inventory, timings, count, lane, parallel=DEFAULT_PARALLEL):
                        for i, shard in enumerate(shards)]}
 
 
+def cmake_home_directory(build):
+    """The source directory the build was configured from, as the notes name it."""
+    for line in (build / "CMakeCache.txt").read_text().splitlines():
+        if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+            return line.split("=", 1)[1]
+    raise ValueError(f"build tree does not name its source directory: {build}")
+
+
 def compiler_notes(build):
     notes = {str(path.relative_to(build)): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in build.rglob("*.gcno")}
@@ -147,26 +172,14 @@ def compiler_notes(build):
     return notes
 
 
-def trace_grid(trace):
-    """Counts may differ between shards; the emitted grid must be identical."""
-    grid = {}
-    for file in trace["files"]:
-        name = file["file"]
-        if name in grid:
-            raise ValueError(f"duplicate source in C++ trace: {name}")
-        lines = sorted({line["line_number"] for line in file["lines"]})
-        functions = sorted((function.get("name", function.get("demangled_name", "")),
-                            function["lineno"])
-                           for function in file["functions"])
-        grid[name] = {"lines": lines, "functions": functions}
-    if not grid:
-        raise ValueError("empty C++ trace inventory")
-    return grid
-
-
 def validate_product_inventory(inventory, lane):
     names = {test["name"] for test in inventory["tests"]}
-    required = {"og_unit_network"}
+    required = set(NETWORK_ENTRIES)
+    unlisted = sorted(name for name in names
+                      if is_network_entry(name) and name not in NETWORK_ENTRIES)
+    if unlisted:
+        raise ValueError("network test entries missing from NETWORK_ENTRIES: "
+                         + ", ".join(unlisted))
     if lane != "tsan":
         required.update({"og_unit_core", "og_test_curses", "openglad_curses_link_no_sdl",
                          "openglad_server_link_no_sdl", "semantics_check",
@@ -183,7 +196,7 @@ def gtest_partitions(inventory, lane):
     """Validate the upstream shard protocol before any case runs."""
     groups = {}
     for test in inventory["tests"]:
-        if lane == "tsan" and test["name"] != "og_unit_network":
+        if lane == "tsan" and not is_network_entry(test["name"]):
             continue
         properties = {item["name"]: item["value"] for item in test.get("properties", [])}
         settings = properties.get("ENVIRONMENT", [])
@@ -222,7 +235,16 @@ def plan(args):
     result = partition(inventory, read(args.timings), args.shards, args.lane, args.parallel)
     result["gtest_partitions"] = gtest_partitions(inventory, args.lane)
     if args.lane == "coverage":
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
+        import coverage_report
+
         result["compiler_notes"] = compiler_notes(args.build)
+        # What the gate needs to scan those notes without the compiled tree:
+        # where the compiler stood (the notes name their sources from there),
+        # and which object directories are the TESTING variant.
+        result["source_root"] = cmake_home_directory(args.build)
+        result["build_relative"] = str(args.build)
+        result["production_exclusions"] = coverage_report.production_variant_exclusions(args.build)
         # The gate needs this one built tool and nothing else from the
         # compiled tree. It travels with the plan, pinned by digest, so the
         # gate job does not download the whole compiled bundle to reach it.
@@ -233,6 +255,8 @@ def plan(args):
     write(args.out / "plan.json", result)
     if args.lane == "coverage":
         shutil.copyfile(args.build / LINES_TOOL, args.out / LINES_TOOL)
+        if getattr(args, "notes_out", None) is not None:
+            pack_notes(args.build, args.notes_out / NOTES_ARCHIVE)
     for shard in result["shards"]:
         (args.out / f'tests-{shard["id"]}.txt').write_text("\n".join(shard["tests"]) + "\n")
     print(json.dumps(result, indent=2))
@@ -417,37 +441,221 @@ def object_partitions(notes, exclusions, workers):
                for job in pack(testing, testing_jobs)])
 
 
+# A GCC counter file (.gcda), as libgcov writes it and gcov-io.h describes it:
+# four header words, then records of (tag, length in bytes, payload). A
+# --coverage build writes one summary, and per function an announcement
+# followed by its arc counters; a counter record whose length is negative
+# stands for that many bytes of zero counters and has no payload.
+COUNTER_FILE_MAGIC = 0x67636461  # "gcda"
+COUNTER_TAG_FUNCTION = 0x01000000
+COUNTER_TAG_ARCS = 0x01A10000
+COUNTER_TAG_SUMMARY = 0xA1000000
+
+
+def counter_file_totals(data, name):
+    """Return (counters, their sum) for one counter file, or refuse it.
+
+    Collection rejects a negative counter here, at its source, instead of
+    reading it back out of a formatted report: a lost update shows as a
+    count below zero in the worker that lost it, and summing workers first
+    could hide it. Anything this does not recognise is refused too, so a
+    toolchain that changes the format fails loudly instead of being skipped.
+    """
+    if len(data) < 16 or struct.unpack_from("=I", data, 0)[0] != COUNTER_FILE_MAGIC:
+        raise ValueError(f"not a GCC counter file: {name}")
+    offset = 16
+    counters = 0
+    total = 0
+    summaries = 0
+    in_function = False
+    while offset < len(data):
+        if len(data) - offset == 4 and data[offset:] == b"\0\0\0\0":
+            break  # libgcov ends the file with one zero word
+        if len(data) - offset < 8:
+            raise ValueError(f"truncated counter file: {name}")
+        tag, length = struct.unpack_from("=Ii", data, offset)
+        offset += 8
+        if tag == COUNTER_TAG_ARCS:
+            if not in_function or length % 8:
+                raise ValueError(f"misplaced or misaligned arc counters: {name}")
+            if length < 0:
+                counters += -length // 8
+                continue
+            if offset + length > len(data):
+                raise ValueError(f"truncated counter file: {name}")
+            values = array("q")
+            values.frombytes(data[offset:offset + length])
+            offset += length
+            if values and min(values) < 0:
+                raise ValueError(
+                    f"negative or overflowed coverage counter ({min(values)}): {name}")
+            counters += len(values)
+            total += sum(values)
+            continue
+        if length < 0 or offset + length > len(data):
+            raise ValueError(f"truncated counter file: {name}")
+        if tag == COUNTER_TAG_FUNCTION and length in (0, 12):
+            # Length 0 announces a function another object emitted.
+            in_function = length == 12
+        elif tag == COUNTER_TAG_SUMMARY and length == 8:
+            summaries += 1
+        else:
+            raise ValueError(f"unknown record {tag:#010x} ({length} bytes) in counter file: {name}")
+        offset += length
+    if summaries != 1:
+        raise ValueError(f"counter file without exactly one summary: {name}")
+    return counters, total
+
+
+def counter_tree_totals(root, notes):
+    """Totals of every counter file under root, each beside a planned note."""
+    totals = {}
+    for path in sorted(root.rglob("*.gcda")):
+        relative = str(path.relative_to(root))
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"counter file is not a regular file: {path}")
+        if str(Path(relative).with_suffix(".gcno")) not in notes:
+            raise ValueError(f"counter file without a compiler note: {relative}")
+        totals[relative] = counter_file_totals(path.read_bytes(), relative)
+    if not totals:
+        raise ValueError(f"no coverage counter files under {root}")
+    return totals
+
+
 def collect(args):
-    # Every shard scans the complete .gcno inventory: uncovered translation
-    # units remain zero-hit data. Profiles are never copied between workers.
+    """One worker's evidence: the raw counter files its tests wrote.
+
+    Nothing is scanned or formatted here. Each of eight workers used to run
+    gcov over the complete note inventory and write two reports of it (71 to
+    108 s of every worker on 2026-11-13), and the gate then spent 82 s
+    reading those sixteen reports back in. The gate sums the counter files
+    instead and scans the inventory once.
+    """
+    notes = compiler_notes(args.build)
+    write(args.out / "compiler-notes.json", notes)
+    totals = counter_tree_totals(args.build, notes)
+    destination = args.out / "counters"
+    if destination.exists():
+        raise ValueError(f"counter output already exists: {destination}")
+    for relative in totals:
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(args.build / relative, target)
+    write(args.out / "counters.json",
+          {relative: {"counters": counters, "total": total}
+           for relative, (counters, total) in totals.items()})
+    print(f"Collected {len(totals)} counter files, "
+          f"{sum(counters for counters, _ in totals.values())} counters")
+
+
+def pack_notes(build, archive):
+    """Ship the complete compiler-note inventory to the gate."""
+    names = sorted(str(path.relative_to(build)) for path in build.rglob("*.gcno"))
+    if not names:
+        raise ValueError("coverage build has no compiler notes")
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with archive.open("wb") as output:
+        compressor = subprocess.Popen(["zstd", "-3", "-T0", "--quiet", "--stdout"],
+                                      stdin=subprocess.PIPE, stdout=output)
+        with tarfile.open(fileobj=compressor.stdin, mode="w|") as tar:
+            for name in names:
+                tar.add(build / name, arcname=name, recursive=False)
+        compressor.stdin.close()
+        if compressor.wait():
+            raise ValueError("compressing the compiler notes failed")
+
+
+def unpack_notes(archive, tree, expected):
+    """Lay the planned note inventory out where the compiler wrote it."""
+    if tree.exists():
+        raise ValueError(f"coverage tree already exists: {tree}")
+    tree.mkdir(parents=True)
+    decompressor = subprocess.Popen(["zstd", "--decompress", "--quiet", "--stdout", str(archive)],
+                                    stdout=subprocess.PIPE)
+    with tarfile.open(fileobj=decompressor.stdout, mode="r|") as tar:
+        for member in tar:
+            name = Path(member.name)
+            if (not member.isfile() or name.is_absolute() or ".." in name.parts
+                    or member.name not in expected):
+                raise ValueError(f"unplanned entry in the compiler notes: {member.name}")
+            target = tree / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tar.extractfile(member) as source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
+    if decompressor.wait():
+        raise ValueError("decompressing the compiler notes failed")
+    if compiler_notes(tree) != expected:
+        raise ValueError("shipped compiler notes are not the planned build's")
+
+
+def merge_counters(shards, tree, notes):
+    """Sum every worker's counter files into the note tree, and prove the sum.
+
+    gcov-tool is the compiler's own merge, the one libgcov applies when two
+    processes write one file. The proof does not take its word: every merged
+    file must hold the counters of its inputs, and their total must be the
+    inputs' totals added up.
+    """
+    expected = {}
+    for directory in shards:
+        for relative, (counters, total) in counter_tree_totals(directory, notes).items():
+            previous = expected.get(relative)
+            if previous is not None and previous[0] != counters:
+                raise ValueError(f"workers disagree about the counters of {relative}")
+            expected[relative] = (counters, total + (previous[1] if previous else 0))
+    with tempfile.TemporaryDirectory(prefix="counter-merge-", dir=tree.parent) as scratch:
+        current = shards[0]
+        for index, addition in enumerate(shards[1:]):
+            target = Path(scratch) / f"sum-{index}"
+            result = subprocess.run(["gcov-tool", "merge", "-o", str(target),
+                                     str(current), str(addition)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if result.returncode or result.stdout.strip():
+                raise ValueError("gcov-tool could not merge worker counters: "
+                                 + result.stdout.strip()[-2000:])
+            current = target
+        merged = counter_tree_totals(current, notes)
+        if merged != expected:
+            wrong = sorted(set(merged) ^ set(expected)) or sorted(
+                name for name in expected if merged[name] != expected[name])
+            raise ValueError("merged counters are not the sum of the workers': "
+                             + ", ".join(wrong[:5]))
+        for relative in merged:
+            if (tree / relative).exists():
+                raise ValueError(f"coverage tree already holds counters: {relative}")
+            if not (tree / relative).with_suffix(".gcno").is_file():
+                raise ValueError(f"coverage tree lacks the note of {relative}")
+        for relative in merged:
+            shutil.copyfile(current / relative, tree / relative)
+    return merged
+
+
+def scan_counters(tree, exclusions, out, workers=DEFAULT_PARALLEL):
+    """Run gcov over the complete note inventory once: cpp.json, production.json."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
     import coverage_report
 
-    # The production diagnostic separates compiler object variants, without
-    # narrowing source roots or applying another percentage floor to
-    # production alone.
-    exclusions = coverage_report.production_variant_exclusions(args.build)
-    notes = compiler_notes(args.build)
-    write(args.out / "compiler-notes.json", notes)
-    workers = getattr(args, "parallel", DEFAULT_PARALLEL)
+    # Every note is scanned, with or without a counter file: an uncovered
+    # translation unit stays in the report as zero-hit lines and functions.
+    notes = compiler_notes(tree)
     jobs = object_partitions(notes, exclusions, workers)
     base = ["gcovr", "--root", ".", "--filter", "src/", "--filter", "include/openglad/",
             "-j", "1", "--gcov-object-directory", ".",
             "--gcov-suspicious-hits-threshold", str(coverage_report.GCOVR_SUSPICIOUS_HITS_THRESHOLD)]
-    with tempfile.TemporaryDirectory(prefix="cpp-partitions-", dir=args.out) as temporary:
+    with tempfile.TemporaryDirectory(prefix="cpp-partitions-", dir=out) as temporary:
         def scan(item):
             index, job = item
             trace = Path(temporary) / f'{job["variant"]}-{index}.json'
             subprocess.run([*base, "--json", str(trace),
-                            *[str(args.build / directory) for directory in job["directories"]]],
+                            *[str(tree / directory) for directory in job["directories"]]],
                            check=True)
             return job["variant"], trace
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
             traces = list(pool.map(scan, enumerate(jobs)))
         populations = [
-            (args.out / "cpp.json", [trace for _, trace in traces]),
-            (args.out / "production.json",
+            (out / "cpp.json", [trace for _, trace in traces]),
+            (out / "production.json",
              [trace for variant, trace in traces if variant == "production"]),
         ]
         with ThreadPoolExecutor(max_workers=len(populations)) as pool:
@@ -481,71 +689,92 @@ def merge_lua_evidence(dumps, raw, shard):
         shutil.copy2(source, destination)
 
 
+def source_alias(source_root, repo):
+    """Make the producer's source directory resolve to this checkout.
+
+    The notes name every source by the path the compiler saw. A restored
+    bundle brings that alias with it; the gate, which restores no bundle,
+    makes it here and returns it so the caller can take it away again.
+    """
+    canonical = Path(source_root)
+    if canonical.resolve() == repo:
+        return None
+    if canonical.exists() or canonical.is_symlink():
+        raise ValueError(f"{canonical} is in use by another checkout")
+    canonical.parent.mkdir(parents=True, exist_ok=True)
+    canonical.symlink_to(repo, target_is_directory=True)
+    return canonical
+
+
 def merge(args):
     verify(args)  # Completeness is independent of the percentage gate.
     manifest = read(args.plan)
-    traces = []
-    production_traces = []
-    grid = None
-    production_grid = None
+    notes = manifest["compiler_notes"]
     raw = args.out / "lua-raw"
     raw.mkdir(parents=True, exist_ok=True)
+    counters = []
     for shard in manifest["shards"]:
         directory = args.results / f'shard-{shard["id"]}'
-        trace = directory / "cpp.json"
-        if not trace.is_file():
-            raise ValueError(f"missing C++ trace: {trace}")
-        if read(directory / "compiler-notes.json") != manifest["compiler_notes"]:
+        if read(directory / "compiler-notes.json") != notes:
             raise ValueError(f"compiler notes differ from built inventory: {directory}")
-        shard_grid = trace_grid(read(trace))
-        if grid is None:
-            grid = shard_grid
-        elif grid != shard_grid:
-            raise ValueError(f"C++ zero-hit inventory differs between shards: {directory}")
-        traces.extend(["--add-tracefile", str(trace)])
-        production_trace = directory / "production.json"
-        if not production_trace.is_file():
-            raise ValueError(f"missing production variant trace: {production_trace}")
-        shard_production_grid = trace_grid(read(production_trace))
-        if production_grid is None:
-            production_grid = shard_production_grid
-        elif production_grid != shard_production_grid:
-            raise ValueError(f"production zero-hit inventory differs between shards: {directory}")
-        production_traces.extend(["--add-tracefile", str(production_trace)])
+        if not (directory / "counters").is_dir():
+            raise ValueError(f"missing C++ counter files: {directory / 'counters'}")
+        counters.append(directory / "counters")
         dumps = directory / "lua-raw"
         if not dumps.is_dir() or not list(dumps.glob("*.luacov")):
             raise ValueError(f"missing Lua dumps: {dumps}")
         merge_lua_evidence(dumps, raw, shard["id"])
-    tool = getattr(args, "lines_tool", None)
-    if tool is None:
-        tool = args.build / LINES_TOOL
+    if args.build is not None:
+        # A restored bundle: its notes are already where the compiler wrote
+        # them, and they must be the planned build's.
+        tree = args.build
+        tool = tree / LINES_TOOL
+        if compiler_notes(tree) != notes:
+            raise ValueError(f"compiler notes differ from built inventory: {tree}")
     else:
-        # The oracle arrived beside the plan instead of inside a restored
-        # build tree: it defines the Lua denominator, so it must be the
-        # planned build's own binary, byte for byte.
+        # The gate job: the notes arrive in one archive beside the plan, and
+        # so does the one built tool the gate runs (the Lua executable-line
+        # oracle). Each defines a denominator, so each must be the planned
+        # build's own, byte for byte.
+        tree = Path(manifest["build_relative"])
+        tool = args.lines_tool
+        if tree.is_absolute() or ".." in tree.parts:
+            raise ValueError(f"planned build tree is not inside the checkout: {tree}")
         if not tool.is_file():
             raise ValueError(f"executable-line oracle missing: {tool}")
         if hashlib.sha256(tool.read_bytes()).hexdigest() != manifest.get("lines_tool_sha256"):
             raise ValueError(f"executable-line oracle is not the planned build's: {tool}")
         # Artifact transport does not carry the executable bit.
         tool.chmod(tool.stat().st_mode | 0o111)
+        unpack_notes(args.notes, tree, notes)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "coverage"))
     import coverage_report
 
+    alias = source_alias(manifest["source_root"], Path.cwd().resolve())
+    try:
+        merge_counters(counters, tree, notes)
+        scan_counters(tree, manifest["production_exclusions"], args.out)
+    finally:
+        if alias is not None:
+            alias.unlink()
+
     lcov_format = coverage_report.gcovr_lcov_1x_flag(["gcovr"], Path.cwd())
-    # Three formatters over the same saved traces: reading eight worker
-    # traces dominates each (79 s of 116 s on 2026-11-12) and is independent,
-    # so the gate inputs and the HTML detail are produced side by side.
+    scanned = args.out / "scanned"
+    scanned.mkdir()
+    for name in ("cpp.json", "production.json"):
+        (args.out / name).rename(scanned / name)
+    # Three formatters over the two scanned traces, side by side: the gate
+    # inputs for both object populations and the HTML detail.
     formatting = [
-        ["gcovr", "--root", ".", *traces, lcov_format,
+        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "cpp.json"), lcov_format,
          "--lcov", str(args.out / "cpp.info"),
          "--json", str(args.out / "cpp.json"),
          "--txt", str(args.out / "coverage-summary.txt")],
-        ["gcovr", "--root", ".", *production_traces, lcov_format,
+        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "production.json"), lcov_format,
          "--lcov", str(args.out / "production.info"),
          "--json", str(args.out / "production.json"),
          "--txt", str(args.out / "production-summary.txt")],
-        ["gcovr", "--root", ".", *traces,
+        ["gcovr", "--root", ".", "--add-tracefile", str(scanned / "cpp.json"),
          "--html-details", str(args.out / "coverage.html")],
     ]
     with ThreadPoolExecutor(max_workers=len(formatting)) as pool:
@@ -562,6 +791,7 @@ def merge(args):
                         "--line-threshold", "98", "--function-threshold", "100", "--strict-cpp"],
                        check=True)
         pending[2].result()
+    shutil.rmtree(scanned)
 
 
 def main():
@@ -574,6 +804,8 @@ def main():
     p.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     p.add_argument("--timings", type=Path, default=Path("scripts/ci/test_timings.json"))
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--notes-out", type=Path,
+                   help="coverage lane: also archive the compiler notes here for the gate")
     p.set_defaults(func=plan)
     p = sub.add_parser("run")
     p.add_argument("--shard", type=int, required=True)
@@ -591,11 +823,12 @@ def main():
             location = p.add_mutually_exclusive_group(required=True)
             location.add_argument("--build", type=Path)
             location.add_argument("--lines-tool", type=Path)
+            p.add_argument("--notes", type=Path,
+                           help="with --lines-tool: the planned build's compiler-note archive")
         p.set_defaults(func=function)
     p = sub.add_parser("collect-coverage")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--build", type=Path, required=True)
-    p.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL)
     p.set_defaults(func=collect)
     args = parser.parse_args()
     try:

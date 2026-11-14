@@ -8,12 +8,15 @@ untested. Everything here exists to put both languages behind one bar.
 
 ## The one gate command
 
-Run these local configure/build commands inside `nix develop`. CI's smaller
-`nix develop .#ci-native` shell runs restored bundles; their closures provide
-the lane-specific dependencies without compiling another copy in each worker.
-The coverage workflow itself runs in the still smaller `.#ci-coverage` shell
-(0.5 GiB to fetch against 1.7 GiB): the producer's tools and libraries plus
-gcovr and LuaLS, without emscripten, LLVM or the X11 display stack.
+Run these local configure/build commands inside `nix develop`. The general
+`nix develop .#ci-native` shell runs any restored bundle; their closures
+provide the lane-specific dependencies without compiling another copy in each
+worker. Each CI lane runs in a shell cut to what it uses: the coverage
+workflow in `.#ci-coverage` (0.5 GiB to fetch against 1.7 GiB: the producer's
+tools and libraries plus gcovr and LuaLS), the sanitizer and fuzz lanes in
+`.#ci-sanitizer` (Clang and LLVM), the canary in `.#ci-canary` (GCC and the
+X11 display stack), and the completeness jobs in `.#ci-verify` (an
+interpreter).
 
 ```bash
 cmake --preset ci-coverage
@@ -440,12 +443,66 @@ Measured and **not** noise: the forked `openglad_server` children in
 fixed-count curses poll loops that straddle the 250 ms stage debounce
 produced no flipped line in 5 runs of `og_test_curses`.
 
-**Counter races.** Coverage compilation now uses `-fprofile-update=atomic`
-so concurrent runtime threads cannot lose counter updates. The bundle checks
-the final optimization and counter-update flags in every instrumented
-compilation record: `-O0` and atomic updates must remain effective after all
-target-specific options. Collection rejects negative counters and counts at
-or beyond the signed 64-bit counter limit; it never ignores or clamps them.
+**Counter races.** Coverage compilation uses `-fprofile-update=atomic`, so a
+counter update is one read-modify-write instruction and concurrent threads
+cannot lose one. The bundle checks the final optimization and counter-update
+flags in every instrumented compilation record: `-O0` and atomic updates
+must remain effective after all target-specific options. Collection rejects
+negative counters and counts at or beyond the signed 64-bit counter limit; it
+never ignores or clamps them.
+
+**The lock prefix, and the one CPU that replaces it.** On x86-64 GCC emits
+that update as `lock addq $1, counter(%rip)`. The prefix is what makes it
+safe across CPUs, and it is most of what an instrumented test costs: on
+2026-11-13 four compute-bound groups ran 105, 65, 111 and 31 s with it and
+16, 9, 14 and 4 s without (same machine, same `-O0`). It also varies by
+processor model, which is where CI's "slow runner" came from: on the
+machines that ran those groups 2.4 times slower, the menu and network groups
+(mostly waiting) ran 1.2 times slower and gcovr ran at full speed.
+
+The prefix buys nothing on one CPU. An instruction is never interrupted
+halfway, so when every thread of a process runs on the same CPU no thread can
+see or overwrite a half-finished update, and the count is exact. A
+GNU/Linux x86-64 GCC coverage build therefore does three things, together
+(`og_instrument_for_coverage` in `CMakeLists.txt` is the only place any of
+them is applied):
+
+- assembles every instrumented object with `-Wa,-momit-lock-prefix=yes`, which
+  strips the prefix (from the counters and from everything else in the
+  object, `std::atomic` included, which is exact on one CPU for the same
+  reason);
+- force-includes `tests/coverage_runtime/uniprocessor_counters.h` into the
+  same objects. It plants a reference that only the one-CPU runtime defines,
+  so an executable that holds a stripped object and no confinement does not
+  link;
+- links `tests/coverage_runtime/uniprocessor_counters.cpp`, which is compiled
+  without instrumentation and with its lock prefixes. Its constructor runs
+  before every other static initializer, requires that the process still has
+  one thread, and narrows the process to one CPU. Threads and child
+  processes inherit that set. The three libc calls that could widen it are
+  replaced by definitions that end the process.
+
+`scripts/ci/nix_bundle.py` refuses a coverage bundle in which any instrumented
+compilation record strips the prefix without the header, carries the header
+without stripping, or disagrees with another record. `CoverageCounters.*`
+(`tests/unit/test_coverage_counters.cpp`, in `og_unit_core`) reads the
+allowed CPU set from the kernel in the test process and in a copy of it
+started on every CPU, and requires each affinity call to end the process; on
+every other build the same tests require that nothing confined the process.
+
+Measured with the prefix stripped and the process on one CPU: 16, 9, 14 and
+4 s for the same four groups, and counter files equal to the locked build's in
+393 of 398 `.gcda` files. The other five differ between two runs of the
+locked build as well (timing-dependent paths in the harness, the WebSocket
+server, `obmap.cpp` and `level_runtime_data.cpp`). The whole live-socket
+network group passed that way with no negative count.
+
+CTest gives each entry of such a build a core of its own
+(`PROCESSOR_AFFINITY`, last block of `cmake/OpenGladTests.cmake`), so the
+entries of a worker neither share a core nor leave one idle; the per-entry
+core reservations that the locked build needed do not apply. Any other
+toolchain (Clang, macOS, a non-x86 target, an assembler without the option)
+keeps the locked update and is not confined.
 Gcovr's default suspicious-value cutoff is only 2³². The full atomic run
 recorded 53,249,716,800 SHA-256 rotations, exactly 576 per compression, with
 matching loop counts and no negative counters. Those valid hits remain intact.
@@ -469,14 +526,33 @@ accept corrupt counters or increase the current timeout limits.
 
 **Current CI collection.** Eight workers run disjoint parts of one CTest
 inventory, once each. Fixture setup, consumers and cleanup stay on the same
-worker. Each worker scans the complete compiler-note inventory, including
-zero-hit functions and lines, and writes canonical gcovr JSON plus its raw Lua
-dumps.
+worker. A worker scans and formats nothing: it ships the raw counter files
+(`.gcda`) its tests wrote, plus its raw Lua dumps. Each counter file must sit
+beside a planned compiler note, and is parsed where it was written: a
+negative counter, an unknown record or a truncated file fails that worker.
 
-A worker scans each object directory exactly once. gcovr runs gcov under a
+The gate sums the workers' counter files with `gcov-tool merge`, the
+compiler's own merge and the one libgcov applies when two processes write one
+file, and does not take its word for it: every merged file must hold the
+counters of its inputs and their total must be the inputs' totals added up.
+The complete compiler-note inventory travels from the producer in one archive
+(1.4 GiB of notes, 71 MiB compressed), is checked note by note against the
+SHA-256 the plan recorded, and is scanned by gcov exactly once, with or
+without a counter file beside each note, so an uncovered translation unit
+stays in the report as zero-hit functions and lines.
+
+Summing counters and then scanning reports the same thing as scanning each
+worker and adding the reports. On two runs of different test binaries over
+the 61 game objects of one target (2026-11-13) the two orders agreed on
+every line, every line's count and every function's count: 23,987 lines,
+10,939 of them hit, 2,624 functions. What changed is the cost: each worker
+used to spend 71 to 108 s running gcov over the whole inventory and writing
+two reports of it, and the gate another 82 s reading those sixteen reports.
+
+The scan visits each object directory exactly once. gcovr runs gcov under a
 lock on its working directory, and without an object directory that directory
 is `--root` for every object, so one gcovr process runs one gcov at a time
-whatever `-j` says. The worker therefore splits the CMake target directories
+whatever `-j` says. The scan therefore splits the CMake target directories
 into directory-disjoint jobs, one gcovr process each, with gcov running beside
 its object (`--gcov-object-directory .`). Objects compiled with `TESTING` and
 objects compiled without it never share a job: the production trace is the
@@ -484,18 +560,21 @@ merge of the non-`TESTING` jobs, and the complete trace the merge of all of
 them, over the same roots and path identities. On identical profiles the two
 merged traces equal a single whole-tree scan and a second scan with
 `--gcov-exclude-directory`, record for record. A note outside a CMake target
-directory fails the collection rather than leaving the inventory.
+directory fails the scan rather than leaving the inventory. Which directories
+are the `TESTING` variant is decided by the producer from its compilation
+records and travels in the plan.
 
-The merge checks every worker's `.gcno` path and SHA-256 against the producer
-manifest, and requires identical C++ file/line/function grids. It also proves
-that the test results cover the planned inventory exactly once. A missing
-worker, changed object graph or omitted zero-hit record fails before scoring.
-The accepted JSON files produce merged LCOV and text for the gate and the HTML
-detail in concurrent gcovr render passes over the same saved traces; gcov does
-not reread the profiles for any output. The gate job restores no compiled
-tree: the one built tool it runs, the Lua executable-line oracle
-`og_lua_lines`, travels with the plan and must match the digest the plan
-recorded. Lua dump names gain a
+The gate checks every worker's `.gcno` path and SHA-256 against the producer
+manifest. It also proves that the test results cover the planned inventory
+exactly once. A missing worker, a changed object graph or a counter file
+without a note fails before scoring. The two scanned traces produce LCOV and
+text for the gate and the HTML detail in concurrent gcovr render passes; gcov
+does not reread the profiles for any output. The gate job restores no
+compiled tree: the notes and the one built tool it runs, the Lua
+executable-line oracle `og_lua_lines`, travel beside the plan and must match
+the digests the plan recorded. The notes name their sources by the producer's
+path, so the gate points that path at its own checkout for the length of the
+scan. Lua dump names gain a
 worker prefix when flattened. Same-named source sidecars must have identical
 bytes before they share the aggregate `sources/` directory, so workers cannot
 overwrite conflicting source evidence.
