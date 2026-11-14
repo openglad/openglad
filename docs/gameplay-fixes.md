@@ -107,6 +107,7 @@ usual pause.
 | AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
 | AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
+| AZ | Whose team a blow's score pays | A blow pays its team score to the colour the hitter wears, while the gate that decides a score is due, the "another team" test and the kill credit read the head of its owner chain. A bomb's, a mine's or an exploding shot's blast wears no colour (red), so a hero, or a thrower on the player's team, who is not red pays red for every blast blow; a shot or a summon whose caster changed sides (a charm, MIND CONTROL) pays the caster's old colour. | The score goes to the team the chain's head wears: the head that opened the gate and is credited with the kill. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -497,6 +498,20 @@ Fixes X to AV, in play:
   have flown. With the setting off a bot has no such rule, so no
   setting-off golden moves; the new pair `elf_bot_rocks_tree_pad_scen99`
   and its setting-on twin records it.
+- **AZ.** A blow pays team score (its damage plus the victim's level, and
+  for a kill its damage plus ten times the level) only when the head of the
+  hitter's owner chain is a hero or stands on the player's team, and the
+  kill is credited to that head; the classic game paid the score to the
+  hitter's own colour (#502). The two differ in play in two ways. A thief's
+  bomb or mine and an archer's or barbarian's exploding shot leave a blast
+  that wears no colour (red) in both games, so a player on any other colour
+  filled red's tally with his bomb blows, and a team's score becomes its
+  cash when the level ends. And a shot or a summon keeps the colour it was
+  made with, so after a charm or MIND CONTROL turned its caster it paid the
+  caster's old team on a gate the new team opened. With the setting on the
+  score goes to the head's team. Every setting-on recording plays a red
+  player with no hero, so no existing golden moves; the new pair
+  `thief_bomb_colour_score_scen99` and its setting-on twin records it.
 
 ## Refusals at a glance
 
@@ -1015,6 +1030,7 @@ The rows with the setting on, by fix:
 | AS | `archer_bot_barrage_pad_body_fixes_scen99`, `archer_barrage_edge_pad_fixes_scen99` and `archer_barrage_pad_body_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AT | `orc_bot_faces_foe_fixes_scen99` (a new arena, with its setting-off twin), and the 44 rows below that it moves |
 | AV | `elf_bot_rocks_tree_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AZ | `thief_bomb_colour_score_fixes_scen99` (a new arena, with its setting-off twin) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1156,6 +1172,26 @@ current game's dump. One of the 44, `archer_bot_bolt_at_blows`, was also
 re-staged for #438 (the archer one pixel lower), so its pair is captured
 anew rather than recaptured. No setting-off golden moves: every
 setting-off capture is byte-identical before and after `915a99ee`.
+
+Fix AZ's arena, `thief_bomb_colour_score_scen99` and
+`thief_bomb_colour_score_fixes_scen99`: the bomb arena of
+`effect_bomb_bystander_scen99` with other colours. The player thief stands
+on team 1 (the row's player team) and the stationary level-1 tower on team
+2. The thief's bomb leaves a blast that wears no colour, team 0. The head
+of the blast's chain is the thief, on the player's team, so the blast's
+blow on the tower scores its damage plus the tower's level: with the
+setting off red is paid it, with the setting on team 1, and the other team
+nothing. With the setting off the blow takes 90 to 92 of the tower's 130 hp
+(the bystander row's tower fact) and pays 91 to 93. With the setting on the
+tower, which faces the thief, shoots a tick sooner (fix AT), so the blast's
+damage roll is another draw of the stream, and that row's bands are every
+value the roll allows: 85 to 93 hp, 86 to 94 paid. The blast's quarter on
+the thief is a blow on its own head's team, and the tower's arrows have a
+team-2 head, so neither scores. Each row's pin moves the payment to the
+other team. No existing row moves: every setting-on row plays a red player
+with no hero, so a blow scores only for a red head, whose blasts and shots
+are red too; the setting-on rows that change a colour (the charms and MIND
+CONTROL) turn a walker that strikes in melee or heads its own chain.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`

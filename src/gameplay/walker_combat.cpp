@@ -498,6 +498,16 @@ bool walker::attack(walker  *target)
     // Base exp from this successful hit.
     short attack_exp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
 
+    // rule: Gameplay Fixes AZ (#502): a blow's team score goes to the team its chain head wears, the
+    //   head whose hero or colour opened the score gate and who is credited with the kill. Classic:
+    //   the hitter's own colour, which differs for a bomb's or an exploding shot's blast (it wears no
+    //   colour: red) and for a shot or summon whose caster changed sides.
+    // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
+    // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
+    // tests: parity:thief_bomb_colour_score_scen99, parity:thief_bomb_colour_score_fixes_scen99
+    const unsigned char score_team =
+        current_game->world->gameplay_fixes != 0 ? headguy->team_num() : team_num();
+
     // Set our target to fighting our owner
     //in the case of our weapon hit something
     // rule: The victim turns on whoever is behind the blow: a weapon's or effect's owner is made to
@@ -541,7 +551,7 @@ bool walker::attack(walker  *target)
             // tests: WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage
             // tests: SemWalker3.the_victim_turns_on_whoever_is_behind_the_blow
             if (getscore)
-                award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
+                award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
                                       + static_cast<std::uint32_t>(target->stats()->level()));
         }
     }
@@ -575,20 +585,26 @@ bool walker::attack(walker  *target)
 
     // Positive score for hurting enemies, negative for us.
     // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of another
-    //   team than its chain head scores for the hitter's team (damage + victim level, generators
-    //   included); a summoned living's blow also gives its chain head's hero the attack XP (a
-    //   projectile's XP was paid in the owner arm).
+    //   team than its chain head scores for the blow's score team (its chain head's with Gameplay
+    //   Fixes AZ, its own colour classic; damage + victim level, generators included); a summoned
+    //   living's blow also gives its chain head's hero the attack XP (a projectile's XP was paid in
+    //   the owner arm).
     // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
     // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
+    // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
+    // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
     if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())
     {
         // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of
-        //   another team than its chain head scores for the hitter's team (damage + victim level,
-        //   generators included).
+        //   another team than its chain head scores for the blow's score team (its chain head's
+        //   with Gameplay Fixes AZ, its own colour classic; damage + victim level, generators
+        //   included).
         // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
         // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
+        // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
+        // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
         if (getscore)
-            award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
+            award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
         // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of
         //   another team than its chain head scores for the hitter's team (damage + victim level,
@@ -659,13 +675,15 @@ bool walker::attack(walker  *target)
                 // rule: Killing a living of another team than the killer's chain head credits the
                 //   head's hero with kill XP (kill XP only; the hit's attack XP was paid once
                 //   already), kills+1, scen_kills+1, level_kills += victim level; a scoring kill
-                //   adds damage + 10 x victim level to the killer's team score. The old game pays
+                //   adds damage + 10 x victim level to the team its chain head wears with Gameplay
+                //   Fixes AZ, to the killer's own colour in the classic game. The old game pays
                 //   the hit's attack XP a second time here; this game pays the kill bonus alone, on
                 //   both settings, a deliberate difference since #78 (#440).
                 // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                 // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                 // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
                 // tests: SemWalker3.a_kill_adds_the_kill_bonus_alone_to_its_heros_experience
+                // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
                 if (playerteam != target->team_num())
                 {
                     // rule: Killing a living of another team than the killer's chain head credits
@@ -687,13 +705,15 @@ bool walker::attack(walker  *target)
                     //  myguy->kills++;
                     //  myguy->level_kills += target->stats()->level();
                     //}
-                    // rule: Killing a living of another team than the killer's chain head credits
-                    //   the head's hero with the kill bonus alone (#440).
+                    // rule: A scoring kill of a living of another team than the killer's chain head
+                    //   pays damage + 10 x victim level to the team its chain head wears with
+                    //   Gameplay Fixes AZ, to the killer's own colour in the classic game.
                     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                     // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
+                    // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
                     if (getscore)
-                        award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
+                        award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
                                               + static_cast<std::uint32_t>(10 * target->stats()->level()));
                     // If named, alert us of the death. This arm is selected by
                     // the KILLER's team (`playerteam`, set from headguy at the

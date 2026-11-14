@@ -1436,3 +1436,74 @@ TEST_F(SemWalker3, a_kill_adds_the_kill_bonus_alone_to_its_heros_experience)
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// walker_combat.cpp walker::attack (an owned hitter's score team, fix AZ, and
+// an owned effect's experience, fix AW)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A thief's bomb thrown at `at`: a FAMILY_BOMB owned by `thief` with
+// `damage`, on `at`'s spot. It goes off as the game sets it off (dead, then
+// death()), which spawns the blast; the blast goes off the same way. Answers
+// the blast, or nullptr when the bomb did not make exactly one.
+walker* blow_up_a_bomb(GameWorld& w, walker* thief, float damage, walker* at,
+                       const std::vector<walker*>& blasts_before)
+{
+    walker* bomb = w.add_ob(Order::FX, FAMILY_BOMB);
+    if (bomb == nullptr)
+        return nullptr;
+    bomb->set_owner(thief);
+    bomb->set_damage(damage);
+    bomb->setxy(at->xpos(), at->ypos());
+    bomb->set_dead(1);
+    bomb->death();
+    walker* blast = nullptr;
+    std::size_t made = 0;
+    for (const auto& e : w.oblist)
+        if (e && e->query_order() == Order::FX && e->family() == FAMILY_EXPLOSION
+            && std::find(blasts_before.begin(), blasts_before.end(), e.get()) == blasts_before.end()) {
+            blast = e.get();
+            ++made;
+        }
+    return made == 1 ? blast : nullptr;
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502): a bomb's blast wears no colour (team 0, red), and
+// it pays its blow's team score (damage plus the victim's level). A hero thief
+// on team 1 throws it at a team-2 soldier: the thief's record opens the score
+// gate. With the setting on the score goes to the team the chain's head
+// wears, the thief's; classic, to the blast's own colour, red.
+// Break: score_team's on arm `headguy->team_num()` -> `team_num()`.
+TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        walker* thief = hero_at(FAMILY_THIEF, 1, 100, 100);
+        walker* soldier = living_at(FAMILY_SOLDIER, 2, 500, 500);
+        ASSERT_TRUE(thief && soldier);
+        const auto blasts_before = of_family(world().oblist, Order::FX, FAMILY_EXPLOSION);
+        const auto before = scores();
+
+        walker* blast = blow_up_a_bomb(world(), thief, 10.0f, soldier, blasts_before);
+        ASSERT_NE(nullptr, blast) << "the bomb makes one blast";
+        EXPECT_EQ(thief, blast->owner());
+        EXPECT_EQ(4, blast->stats()->level()) << "the thief's level";
+        EXPECT_EQ(0, blast->team_num()) << "the blast wears no colour";
+        blast->set_dead(1);
+        blast->death();
+        EXPECT_FLOAT_EQ(392.0f, soldier->stats()->hitpoints()) << "the blast lands 8";
+
+        const std::uint32_t paid = 8u + 4u;
+        auto expected = before;
+        expected[fixes != 0 ? std::size_t{1} : std::size_t{0}] += paid;
+        EXPECT_EQ(expected, scores())
+            << (fixes != 0 ? "setting on: the thief's team is paid"
+                           : "setting off: red, the blast's colour, is paid");
+    }
+}

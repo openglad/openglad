@@ -11732,6 +11732,65 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
     "The gate is inverted, so the fixed row loses fix AT: the near branch's turn steps the orc off the soldier, init_fire only turns it back and no blow lands by tick 11, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
 };
 
+// --- thief_bomb_colour_score (fix AZ, #502: a blow's team score pays the team its chain head wears) ---
+// effect_bomb_bystander_scen99's arena, recoloured: the player thief stands on
+// team 1 (player_team 1) and the stationary level-1 TOWER1 on team 2. The
+// thief drops its bomb on tick 20. The blast it leaves wears no colour (team
+// 0, red): in both games a blast is spawned with its owner, level and damage
+// and no team. It lands its full tier on the tower and its owner's quarter on
+// the thief. A blow pays team score (its damage plus the victim's level) when
+// the head of the hitter's owner chain is a hero or stands on the player's
+// team: the head is the thief, on the player's team, so the blow on the tower
+// scores. With the setting off the tower loses 90 to 92 of its 130 hp (the
+// bystander row's tower fact) and is level 1, so the blow pays 91 to 93 (the
+// setting-on row's bands are below its facts). Classic, it pays the
+// blast's own colour, red; with the setting on, the team its chain head
+// wears, the thief's. The blast's blow on the thief is a blow on its own
+// head's team, and the tower's arrows have a team-2 head that is neither a
+// hero nor on the player's team: neither scores.
+inline constexpr SpawnSpec kFamilySpawns_thief_bomb_colour_score_scen99[] = {
+    { FAMILY_TOWER1, 2, kOrderLiving, 222, 196, 0, 0 },           // stationary team-2 level-1 bystander on effect_bomb_bystander's tile, inside the blast's reach
+    { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // the player LAST, on team 1 (player_team 1); level 5: bomb damage 90 and a blast reach of 20
+};
+inline constexpr FactPredicate kFacts_thief_bomb_colour_score_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3800, 4000,
+        "the blast lands its full tier on the tower: 90 to 92 of its 130 hp"),
+    pred::ScoreDelta(/*team*/0, 91, 93,
+        "consequence: the classic blast wears no colour, so the team-1 thief's bomb pays red its blow: the 90 to 92 hp the tower lost plus its level 1"),
+    pred::ScoreDelta(/*team*/1, 0, 0,
+        "the classic thief's own team is paid nothing for its bomb"),
+};
+inline constexpr Mutation kMut_thief_bomb_colour_score_scen99 = {
+    "src/gameplay/walker_combat.cpp", 509,
+    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
+    "gameplay_fixes != 0 ? headguy->team_num() : headguy->team_num();",
+    "The classic arm pays the chain head's team too, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
+};
+// With the setting on the tower, a stationary shooter facing the thief, no
+// longer turns off it and back before it shoots (fix AT), so its arrows fly a
+// tick sooner and the blast's damage roll is another draw of the stream: the
+// row cannot take the setting-off tower fact. The roll is the bomb's 90 as
+// 90 - sqrt(90)/2 + rng(9) = 85.26 + {0..8} against the placed tower's armour
+// 0, so the rule allows the tower to lose 85 to 93 hp (37 to 45 left) and the
+// blow to pay 86 to 94: the bands are those values.
+inline constexpr FactPredicate kFacts_thief_bomb_colour_score_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3700, 4500,
+        "the blast lands its full tier on the tower: 85 to 93 of its 130 hp"),
+    // rng_drift: with fix AT the tower shoots a tick sooner, so the blast's roll on the bomb's 90 is another draw and the band is every value 85.26 + rng(9) allows; commit 7dd61d2d
+    pred::ScoreDelta(/*team*/0, 0, 0,
+        "with the setting on red, the blast's own colour, is paid nothing"),
+    pred::ScoreDelta(/*team*/1, 86, 94,
+        "consequence: with the setting on the blow's score goes to the team its chain head wears, the thief's: the 85 to 93 hp the tower lost plus its level 1"),
+};
+inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
+    "src/gameplay/walker_combat.cpp", 509,
+    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
+    "gameplay_fixes != 0 ? team_num() : team_num();",
+    "The setting-on arm pays the hitter's own colour again, so the blast's blow on the tower pays red: ScoreDelta(1, 86, 94) reads 0 and ScoreDelta(0, 0, 0) reads 86 to 94."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -14795,6 +14854,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_bot_faces_foe_fixes_scen99, std::size(kFacts_orc_bot_faces_foe_fixes_scen99),
       kMut_orc_bot_faces_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "thief_bomb_colour_score_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_colour_score_scen99, std::size(kFamilySpawns_thief_bomb_colour_score_scen99),
+      1, false, true, Exercises::None,
+      kFacts_thief_bomb_colour_score_scen99, std::size(kFacts_thief_bomb_colour_score_scen99),
+      kMut_thief_bomb_colour_score_scen99 },
+    { "thief_bomb_colour_score_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_colour_score_scen99, std::size(kFamilySpawns_thief_bomb_colour_score_scen99),
+      1, false, true, Exercises::None,
+      kFacts_thief_bomb_colour_score_fixes_scen99, std::size(kFacts_thief_bomb_colour_score_fixes_scen99),
+      kMut_thief_bomb_colour_score_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

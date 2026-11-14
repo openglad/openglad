@@ -442,6 +442,50 @@ TEST(GameplayFixesChain, a_dead_casters_summon_keeps_its_side_for_friendliness_a
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502). The summon's knife still wears green, the colour
+// it was thrown in, while its caster has been charmed red. The head of its
+// chain is the caster (red): red opens the score gate (the player's team)
+// and is credited with the blow. With the setting on the score goes to the
+// same head's team, red; classic, it goes to the knife's own colour, green.
+// A blow pays its damage d plus the victim's level L; a kill pays that blow
+// and d plus 10 L more.
+// Break: score_team's on arm `headguy->team_num()` -> `team_num()`.
+TEST(GameplayFixesChain, a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        DeadCasterChain c = charmed_caster_chain(s);
+        ASSERT_TRUE(c.caster && c.summon && c.knife);
+        const bool fixed = fixes != 0;
+        const unsigned char paid = fixed ? kRed : kGreen;
+        const unsigned char unpaid = fixed ? kGreen : kRed;
+        const auto L = static_cast<std::uint32_t>(s.green->stats()->level());
+
+        const auto before = scores(s);
+        const Blow blow = strike(c.knife, s.green, 40.0f);
+        ASSERT_TRUE(blow.landed) << "the head is red on both values";
+        ASSERT_GT(blow.hp_lost, 0.0f);
+        const auto d = static_cast<std::uint32_t>(blow.hp_lost);
+        EXPECT_EQ(before[paid] + d + L, s.world().m_score[paid]);
+        EXPECT_EQ(before[unpaid], s.world().m_score[unpaid]);
+        EXPECT_EQ(kRed, s.green->last_attacker_team()) << "the credit is red's on both values";
+
+        // The kill: the same blow (same damage, same armour, the fixed test
+        // random source) on a victim at 1 hp.
+        s.green->stats()->set_hitpoints(1.0f);
+        c.knife->set_damage(40.0f);
+        ASSERT_TRUE(c.knife->attack(s.green));
+        ASSERT_EQ(1, s.green->dead()) << "the blow kills";
+        EXPECT_EQ(before[paid] + (d + L) + (d + L) + (d + 10 * L), s.world().m_score[paid]);
+        EXPECT_EQ(before[unpaid], s.world().m_score[unpaid]);
+        EXPECT_EQ(kRed, s.green->last_attacker_team());
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // The control: the same chain with the charmed caster alive reads one head
 // on both values (the classic friendliness climb passes a live owner, and
 // with the setting on the charmed caster is the top of the chain anyway):
