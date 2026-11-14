@@ -51,6 +51,7 @@
 #include <cstdint>
 #include <limits>
 #include <list>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -1189,6 +1190,87 @@ TEST(SemWorld, a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps)
     ASSERT_NE(nullptr, pile);
     EXPECT_EQ(std::list<walker*>({fresh}), *pile);
     EXPECT_EQ(pile, &om.pos_to_walker.at(first));
+}
+
+// #504. obmap::remove answers from walker_to_pos alone, as the old game's
+// removal does: a walker walker_to_pos does not know is a miss (0) and
+// nothing changes, even a pile entry filed behind walker_to_pos's back. The
+// pointer is a key and is never read. A standalone obmap; each soldier's box
+// is 16 x 16 at (96, 96), so it covers the one cell (3, 3).
+// - `filed` is filed the ordinary way (om.add).
+// - `stray` stands at (96, 96) in the world's own obmap and is pushed into
+//   om's pile (3, 3) by hand, so om's walker_to_pos does not know it.
+// The miss leaves both maps as they were; removing `filed` afterwards takes
+// only `filed` out, and the hand-filed `stray` stays.
+// RED before #504: the removal read the stray's position, took it out of
+// (3, 3) and answered 1. Planted: a pointer scan of every pile in the miss
+// arm (the maps change).
+TEST(SemWorld, removing_a_walker_the_index_does_not_know_changes_nothing)
+{
+    TestGameWorld tw;
+    using Cell = std::pair<short, short>;
+    const Cell cell{3, 3};
+    std::unique_ptr<walker> filed = tw.world().entity_factory(Order::Living, FAMILY_SOLDIER);
+    std::unique_ptr<walker> stray = tw.world().entity_factory(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(filed && stray);
+    for (walker* w : {filed.get(), stray.get()})
+    {
+        w->set_sizex(16);
+        w->set_sizey(16);
+    }
+    stray->setxy(96, 96);
+    obmap om;
+    ASSERT_EQ(1, om.add(filed.get(), 96, 96));
+    ASSERT_EQ(std::list<Cell>({cell}), om.walker_to_pos.at(filed.get()))
+        << "premise: a 16 x 16 box at (96, 96) is filed in (3, 3) alone";
+    om.pos_to_walker[cell].push_back(stray.get());
+    ASSERT_EQ(0u, om.walker_to_pos.count(stray.get()))
+        << "premise: om's walker_to_pos does not know the stray";
+    ASSERT_EQ(96, stray->xpos());
+    ASSERT_EQ(96, stray->ypos());
+
+    const auto piles = om.pos_to_walker;
+    const auto index = om.walker_to_pos;
+    EXPECT_EQ(0, om.remove(stray.get())) << "a walker walker_to_pos does not know is a miss";
+    EXPECT_EQ(piles, om.pos_to_walker) << "the miss changes no pile";
+    EXPECT_EQ(index, om.walker_to_pos) << "the miss changes walker_to_pos";
+
+    EXPECT_EQ(1, om.remove(filed.get())) << "a filed walker is removed";
+    EXPECT_EQ((std::map<Cell, std::list<walker*>>{{cell, {stray.get()}}}), om.pos_to_walker)
+        << "only the filed walker leaves (3, 3); the hand-filed entry stays, and no other pile";
+    EXPECT_TRUE(om.walker_to_pos.empty()) << "walker_to_pos is empty";
+}
+
+// #504. A freed walker passed to obmap::remove is only compared: the miss
+// answers 0 and changes nothing, and no byte of the freed walker is read.
+// `gone` stood at (96, 96) and was freed (its destructor took it out of the
+// world's obmap); om never filed it and holds `filed` at (3, 3).
+// Before #504 the removal read the freed walker's position, a use after
+// free that only CI's ASan lane reports; this test can pass by luck without
+// ASan. Planted locally: the miss arm answering 1.
+TEST(SemWorld, removing_a_freed_walker_only_compares_its_pointer)
+{
+    TestGameWorld tw;
+    std::unique_ptr<walker> filed = tw.world().entity_factory(Order::Living, FAMILY_SOLDIER);
+    std::unique_ptr<walker> gone = tw.world().entity_factory(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(filed && gone);
+    for (walker* w : {filed.get(), gone.get()})
+    {
+        w->set_sizex(16);
+        w->set_sizey(16);
+    }
+    gone->setxy(96, 96);
+    obmap om;
+    ASSERT_EQ(1, om.add(filed.get(), 96, 96));
+    walker* const dangling = gone.get();
+    gone.reset();
+
+    const auto piles = om.pos_to_walker;
+    const auto index = om.walker_to_pos;
+    ASSERT_EQ(1u, piles.size()) << "premise: om holds the filed walker's pile";
+    EXPECT_EQ(0, om.remove(dangling)) << "a freed walker om does not know is a miss";
+    EXPECT_EQ(piles, om.pos_to_walker) << "the miss changes no pile";
+    EXPECT_EQ(index, om.walker_to_pos) << "the miss changes walker_to_pos";
 }
 
 // game_world.cpp:1236. On equal distance the full scan keeps the walker

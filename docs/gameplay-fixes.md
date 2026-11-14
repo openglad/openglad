@@ -1446,9 +1446,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-eight changes apply whatever the setting, three from the work that
+Twenty-nine changes apply whatever the setting, three from the work that
 added it (N, O and P), six from the second bugs batch, eighteen from the
-issues it filed and one from the third bugs batch; the last three entries
+issues it filed and two from the third bugs batch; the last three entries
 record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1712,6 +1712,16 @@ record differences kept on purpose (#484, #440, #491):
   no walker the world let go is still filed (a death and every removal
   file it out), so no recording moves. This game only: the old game's
   search trusts its pile.
+- **A removal reads only the obmap's own record (#504).** `obmap::remove`
+  takes a walker out of every pile `obmap::walker_to_pos` files it under.
+  For a walker `walker_to_pos` did not know, it read the walker's position
+  and looked in the piles there, which for a freed walker reads freed
+  memory. It now answers from `walker_to_pos` alone, as the old game's
+  removal does: such a walker is a miss and nothing changes, its pointer
+  used only as a key. In play the piles and `walker_to_pos` always agree
+  (only a test files a walker by hand), so the old lookup never found
+  anything and no byte of the sim changes; no recording moves. The lookup
+  was the current game's own (`dc1a2a89`), so nothing is ported.
 - **An owner loop no longer hangs the game (#503).** Only a script's
   `set_owner`, or a forged snapshot, could make a walker owned by a walker
   it owns, over two links or more, and the first blow or side question
