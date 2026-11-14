@@ -1367,6 +1367,30 @@ facing and its swing throws; either way a fireball flies by B. The two rows
 say the same thing on purpose: with fix BB the setting-on game does here
 what the classic game does.
 
+Fix BB moves these 28 existing rows with the setting on, as measured in the
+current game before the port (each `_fixes_scen99`; the old game's capture
+after the port is to move exactly these, and each is to be recaptured from
+the old game). The facts of 17 no longer hold: `archer_barrage_edge_pad`,
+`archer_bolt_edge_pad`, `archmage_mind_control_berserk`,
+`archmage_summon_no_room`, `barbarian_boulder_edge_pad`,
+`cleric_bot_raise_or_turn`, `druid_tree_blocked`,
+`elemental_struck_short_pool`, `elf_rocks_blocked`, `elf_rocks_edge_pad`,
+`elf_volley_refund`, `mage_bot_heartburst`, `mage_wave_edge_pad`,
+`orc_stale_shove`, `soldier_disarm_resisted_busy`,
+`soldier_whirlwind_no_foe` and `thief_charm_nearest`. In the other 11 only
+the bytes differ: `archer_bot_bolt_at_blows`, `archmage_bot_image_one_foe`,
+`archmage_hit_stale_shift`, `cleric_bot_resurrect_foe_stain`,
+`mage_bot_freeze_engaged`, `orc_right_walk_potion`,
+`soldier_charge_front_foe`, `soldier_disarm_higher_foe`,
+`soldier_disarm_resisted_price`, `thief_bot_charm_or_taunt` and
+`thief_charm_tent_troop`. The 17 rows' facts are to be worked out again from
+the rules after the recapture, never read off the new run, and a row whose
+pin no longer shows takes a seed or spawns of its own while its setting-off
+twin stays as it is. `orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
+does not move: the orc stands 1 px above the soldier, the pad holds the
+soldier's body and the swing starts on tick 9 as before. No setting-off row
+moves.
+
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
 (the raise now waits for a corpse), `thief_bot_charm_hero_fixes_scen99` (with
