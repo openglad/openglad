@@ -1750,6 +1750,14 @@ enum SeatsFlowLeg {
   kSeatsLegScenarioBack,
   kSeatsLegOpenDifficulty,
   kSeatsLegDifficultyBack,
+  // A screen that came up and then never completed two frames. Each still
+  // below used to sit behind a flat delay instead (1500, 1000, 250 and 750
+  // ms, 3.5 s of every walk of this flow): a delay proves nothing about the
+  // frame the still is taken from, and a completed frame is what composed it.
+  kSeatsLegBaseCampFrames,
+  kSeatsLegViewerFrames,
+  kSeatsLegBaseCampAgainFrames,
+  kSeatsLegDifficultyFrames,
 };
 
 int many_seats_view_level_injector(void *data) {
@@ -1770,7 +1778,9 @@ int many_seats_view_level_injector(void *data) {
   };
   if (!wait_for_team_menu())
     return give_up(kSeatsLegBaseCamp, "Base Camp never came up");
-  SDL_Delay(1500);
+  if (!wait_for_menu_frames(2))
+    return give_up(kSeatsLegBaseCampFrames,
+                   "Base Camp never completed two frames");
   state->captures += capture_frame("basecamp_net_seats");
 
   // Every door below is pressed through the acknowledged ladder and proven by
@@ -1782,7 +1792,9 @@ int many_seats_view_level_injector(void *data) {
     return give_up(kSeatsLegOpenScenario, "SCENARIO never opened");
   if (!click_until_edge("view_scenario", viewer_up, nullptr, 3, 10000))
     return give_up(kSeatsLegOpenViewer, "VIEW LEVEL never opened");
-  SDL_Delay(1000);
+  if (!wait_for_menu_frames(2))
+    return give_up(kSeatsLegViewerFrames,
+                   "the VIEW LEVEL viewer never completed two frames");
   state->captures += capture_frame("view_level_seats");
 
   // Viewer back lands on the SCENARIO submenu; its back returns to Base
@@ -1809,7 +1821,9 @@ int many_seats_view_level_injector(void *data) {
 
   // The networked DIFFICULTY screen (#218): all six host rows plus the
   // re-homed CTRL row on the appended y=173 band slot.
-  SDL_Delay(250);
+  if (!wait_for_menu_frames(2))
+    return give_up(kSeatsLegBaseCampAgainFrames,
+                   "Base Camp never completed two frames after SCENARIO");
   g_click_ladder_click_retries = 0;
   g_click_ladder_click_drops = 1;
   const bool difficulty_open = click_until_edge(
@@ -1822,7 +1836,9 @@ int many_seats_view_level_injector(void *data) {
   g_click_ladder_click_drops = 0;
   if (!difficulty_open)
     return give_up(kSeatsLegOpenDifficulty, "DIFFICULTY never opened");
-  SDL_Delay(750);
+  if (!wait_for_menu_frames(2))
+    return give_up(kSeatsLegDifficultyFrames,
+                   "DIFFICULTY never completed two frames");
   state->captures += capture_frame("difficulty_networked");
   if (sabotaged(kSeatsLegDifficultyBack) ||
       !click_until_edge("difficulty_back", base_camp_up, nullptr, 3, 5000))
