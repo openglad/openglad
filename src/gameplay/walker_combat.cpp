@@ -498,15 +498,20 @@ bool walker::attack(walker  *target)
     // Base exp from this successful hit.
     short attack_exp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
 
-    // rule: Gameplay Fixes AZ (#502): a blow's team score goes to the team its chain head wears, the
-    //   head whose hero or colour opened the score gate and who is credited with the kill. Classic:
-    //   the hitter's own colour, which differs for a bomb's or an exploding shot's blast (it wears no
-    //   colour: red) and for a shot or summon whose caster changed sides.
+    // rule: Gameplay Fixes AZ (#502): a blow's team score goes to the team its chain head wears as
+    //   the blow lands (read here, before the victim answers). Classic: the hitter's own colour when
+    //   each payment is made, after the answer, which differs for a bomb's or an exploding shot's
+    //   blast (red), a shot or summon whose caster changed sides, and a hitter the answer charms.
     // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
     // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
+    // tests: SemWalker3.a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_setting_off
     // tests: parity:thief_bomb_colour_score_scen99, parity:thief_bomb_colour_score_fixes_scen99
-    const unsigned char score_team =
-        current_game->world->gameplay_fixes != 0 ? headguy->team_num() : team_num();
+    const auto team_now = [&] { return current_game->world->gameplay_fixes != 0 ? headguy->team_num() : team_num(); };
+    // With the setting on every payment uses the colour read here, as the blow lands; with it off
+    // each payment reads the hitter's colour again where the old game reads it, after the victim's
+    // answer (a struck thief's CHARM OPPONENT can take the striker onto the thief's team).
+    const unsigned char team_as_struck = team_now();
+    const auto score_team = [&] { return current_game->world->gameplay_fixes != 0 ? team_as_struck : team_now(); };
 
     // Set our target to fighting our owner
     //in the case of our weapon hit something
@@ -551,8 +556,8 @@ bool walker::attack(walker  *target)
             // tests: WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage
             // tests: SemWalker3.the_victim_turns_on_whoever_is_behind_the_blow
             if (getscore)
-                award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
-                                      + static_cast<std::uint32_t>(target->stats()->level()));
+                award_score(score_team(), static_cast<std::uint32_t>(tempdamage_i)
+                                        + static_cast<std::uint32_t>(target->stats()->level()));
         }
     }
 
@@ -605,8 +610,8 @@ bool walker::attack(walker  *target)
         // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
         // tests: SemWalker3.a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on
         if (getscore)
-            award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
-                                  + static_cast<std::uint32_t>(target->stats()->level()));
+            award_score(score_team(), static_cast<std::uint32_t>(tempdamage_i)
+                                    + static_cast<std::uint32_t>(target->stats()->level()));
         // rule: Gameplay Fixes AW (#494): here only a summoned living's blow pays its chain head's hero the
         //   attack experience; the owner arm above already paid every non-living owned hitter (a projectile,
         //   a bomb's blast, a cloud, a magic shield, an ember). Classic: everything but a projectile pays
@@ -718,8 +723,8 @@ bool walker::attack(walker  *target)
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
                     // tests: GameplayFixesChain.a_summons_shot_scores_for_the_colour_its_head_wears_with_the_setting_on
                     if (getscore)
-                        award_score(score_team, static_cast<std::uint32_t>(tempdamage_i)
-                                              + static_cast<std::uint32_t>(10 * target->stats()->level()));
+                        award_score(score_team(), static_cast<std::uint32_t>(tempdamage_i)
+                                                + static_cast<std::uint32_t>(10 * target->stats()->level()));
                     // If named, alert us of the death. This arm is selected by
                     // the KILLER's team (`playerteam`, set from headguy at the
                     // top), so an enemy killing one of the player's OWN named

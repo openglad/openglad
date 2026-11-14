@@ -26,6 +26,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/combat_math.h>
@@ -1505,6 +1506,83 @@ TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_o
         EXPECT_EQ(expected, scores())
             << (fixes != 0 ? "setting on: the thief's team is paid"
                            : "setting off: red, the blast's colour, is paid");
+    }
+}
+
+// Gameplay Fixes AZ (#502): when each setting reads a blow's colour. A struck
+// bot answers one time in three with its special (statistics::hit_response),
+// and a thief's slot 3 with Shift is CHARM OPPONENT, which takes the striker in
+// reach onto the thief's team inside the blow. The old game pays each payment
+// to the colour the hitter wears at that payment, after the answer
+// (src/walker.cpp `target->stats->hit_response(this);`, then
+// `m_score[team_num]`), and so does the setting off; with the setting on the
+// blow pays the team its chain head wore as the blow landed. One hitter for
+// each payment: a hero's wounding blow (the melee arm), a hero's killing blow
+// (the melee arm and the kill) and a summon's blow (the owned hitter's arm,
+// its caster's colour with the setting on). Every hitter is on team 1, the
+// thief on team 2.
+// The sim stream answers 3 to every draw: the Shift coin next(2) is 1, the
+// answer's rng(3) is 0 and the charm's resist draw rand(20) is 3 (the thief
+// and the hitter are both level 4, so only a 0 resists). The blow lands 8 on
+// the level-4 thief: the melee arm and the owned arm pay 8 + 4, a kill 8 + 40.
+// Break: the three payments back to the colour read before the answer
+// (`score_team()` -> `team_as_struck`).
+TEST_F(SemWalker3, a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_setting_off)
+{
+    struct Leg
+    {
+        const char* name;
+        bool summon;
+        bool kill;
+        std::uint32_t paid;
+    };
+    const Leg legs[] = {
+        {"a hero's wounding blow", false, false, 8u + 4u},
+        {"a hero's killing blow", false, true, (8u + 4u) + (8u + 40u)},
+        {"a summon's blow", true, false, 8u + 4u},
+    };
+    for (const Leg& leg : legs) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(leg.name);
+            SCOPED_TRACE(fixes);
+            fresh_world();
+            world().gameplay_fixes = fixes;
+            walker* thief = living_at(FAMILY_THIEF, 2, 200, 200);
+            walker* hitter = leg.summon ? living_at(FAMILY_SOLDIER, 1, 216, 200)
+                                        : hero_at(FAMILY_SOLDIER, 1, 216, 200);
+            walker* caster = leg.summon ? hero_at(FAMILY_MAGE, 1, 800, 800) : nullptr;
+            ASSERT_TRUE(thief && hitter);
+            ASSERT_TRUE(!leg.summon || caster);
+            if (leg.summon)
+                hitter->set_owner(caster);
+            thief->stats()->set_max_magicpoints(500.0f);
+            thief->stats()->set_magicpoints(500.0f);
+            thief->set_current_special(3);
+            if (leg.kill)
+                thief->stats()->set_hitpoints(5.0f);
+            hitter->set_damage(10.0f);
+            ASSERT_EQ(1, hitter->team_num()) << "the hitter's colour before the blow";
+            ASSERT_EQ(255, hitter->real_team_num()) << "never charmed before the blow";
+            const auto before = scores();
+
+            FixedRandom three(3);
+            ScopedSimRandom sim(&three);
+            ASSERT_TRUE(hitter->attack(thief));
+
+            ASSERT_EQ(2, hitter->team_num()) << "the answer charmed the hitter onto the thief's team";
+            ASSERT_EQ(1, hitter->real_team_num()) << "its own colour is remembered";
+            if (leg.kill)
+                EXPECT_EQ(1, thief->dead()) << "the blow kills the thief";
+            else
+                EXPECT_FLOAT_EQ(392.0f, thief->stats()->hitpoints()) << "the blow lands 8";
+
+            auto expected = before;
+            expected[fixes != 0 ? std::size_t{1} : std::size_t{2}] += leg.paid;
+            EXPECT_EQ(expected, scores())
+                << (fixes != 0
+                        ? "setting on: team 1, the colour the head wore as the blow landed"
+                        : "setting off: team 2, the colour the hitter wears at each payment");
+        }
     }
 }
 

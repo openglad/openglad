@@ -566,9 +566,13 @@ Fixes X to BB, in play:
   cash when the level ends. And a shot or a summon keeps the colour it was
   made with, so after a charm or MIND CONTROL turned its caster it paid the
   caster's old team on a gate the new team opened. With the setting on the
-  score goes to the head's team. Every setting-on recording plays a red
-  player with no hero, so no existing golden moves; the new pair
-  `thief_bomb_colour_score_scen99` and its setting-on twin records it.
+  score goes to the team the head wears as the blow lands. With it off each
+  payment reads the hitter's colour where the classic game reads it, after
+  the victim's answer, so a blow whose answer charms the striker (a struck
+  thief bot's CHARM OPPONENT) pays the thief's team, as in the old game.
+  Every setting-on recording plays a red player with no hero, so no
+  existing golden moves; the new pair `thief_bomb_colour_score_scen99` and
+  its setting-on twin records it.
 - There is no fix BA: #505 needed no change to the game. A walker that
   dies charmed keeps heading its owner chain until the tick ends, which is
   what fix AP already rules (see AP above), so no new letter was given.
