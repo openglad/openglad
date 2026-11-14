@@ -11691,7 +11691,8 @@ inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
 // facing again. Off, it steps a notch and init_fire only turns the orc back;
 // the ATTACK it queued holds the orc for 30 + rng(25) rounds that only face
 // the foe, so the first classic blow can come no sooner than tick 41. On, the
-// orc keeps facing, init_fire starts the swing on tick 9, the attack animation
+// orc keeps facing, the soldier's body stands on its pad (what Gameplay Fixes
+// BB asks), init_fire starts the swing on tick 9, the attack animation
 // (three frames) shows its second frame on tick 10 and ends on tick 11, and
 // fire() finds the soldier on the blocked pad: one blow on tick 11, the budget
 // B. Its next swing waits for the same 30-round ATTACK, far above B.
@@ -11735,7 +11736,7 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
     "src/gameplay/walker_movement.cpp", 629,
     "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
     "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
-    "The gate is inverted, so the fixed row loses fix AT: the near branch's turn steps the orc off the soldier, init_fire only turns it back and no blow lands by tick 11, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
+    "The gate is inverted, so the fixed row loses fix AT: at the re-plan the near branch's turn steps the orc a notch off the soldier although it faced him, and Gameplay Fixes BB then asks the pad along that new facing, which is clear, so no swing starts and no blow lands by tick 11: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
