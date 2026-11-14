@@ -105,12 +105,13 @@ usual pause.
 | AQ | A player's slide along a wall | Each half of the slide is a real step whether the slide takes it or not: on a half a body blocks, the probe eats a treasure it reaches before the body, bumps the body (a swing at a foe), opens a door the player holds the key to and posts "Key N needed!" at a locked one. | Each half is asked quietly first, as the right-hand walk's probes are (fix Y); only a free half takes the step, which acts as before (a treasure the slide moves onto is eaten). A blocked half eats nothing, swings at nothing and opens nothing: a keyed door beside a wall opens when the player walks into it, not when the slide brushes it. |
 | AR | The druid bot's SUMMON FAERIE rule | No rule (fix Q's off column). With the setting on before this fix the rule asked the bolt's pad alone: a bolt passes an ally, a faerie does not, so with an ally standing where the faerie appears the rule said yes and the cast refused `NO ROOM TO SUMMON`. | The rule also asks the cast's own question for the faerie where the bolt stands, quietly, with a faerie of the druid's (never the druid's own body, #423): an ally, an enemy door or tree, an enemy weapon in flight or an arrow slit there is a no. |
 | AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
-| AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
+| AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. Fix BB then makes that swing ask whether it can land. |
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 | AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
 | AY | A dead hero's seat and a walker of the other side | When the walker a seat drives dies, the seat is handed any live walker of its team, even one that fights for the other side: a faerie an enemy druid summoned while our side had the druid charmed keeps our colour when the charm runs out, but the head of its owner chain is the druid, back on its own team. Switch Character has refused such a walker since 2013. | The hand-off asks Switch Character's question of the seat's team: the head of the walker's owner chain must wear it. With no such walker left the seat asks for the end of the game, as when its team is wiped out. A seat already driving such a walker keeps it. |
 | AZ | Whose team a blow's score pays | A blow pays its team score to the colour the hitter wears, while the gate that decides a score is due, the "another team" test and the kill credit read the head of its owner chain. A bomb's, a mine's or an exploding shot's blast wears no colour (red), so a hero, or a thrower on the player's team, who is not red pays red for every blast blow; a shot or a summon whose caster changed sides (a charm, MIND CONTROL) pays the caster's old colour. | The score goes to the team the chain's head wears: the head that opened the gate and is credited with the kill. |
+| BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act. A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -160,7 +161,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AZ, in play:
+Fixes X to BB, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -568,6 +569,34 @@ Fixes X to AZ, in play:
   score goes to the head's team. Every setting-on recording plays a red
   player with no hero, so no existing golden moves; the new pair
   `thief_bomb_colour_score_scen99` and its setting-on twin records it.
+- There is no fix BA: #505 needed no change to the game. A walker that
+  dies charmed keeps heading its owner chain until the tick ends, which is
+  what fix AP already rules (see AP above), so no new letter was given.
+- **BB.** A bot that re-plans with a foe within 100 px stops pathing,
+  turns a notch toward the foe, starts an ATTACK order and calls for a
+  swing along its heading, asking nothing (#497). The turn never writes the
+  facing the bot is turning to, so that call turns a bot that did not face
+  its foe straight back to the facing it had: it never completes its aim
+  there. A bot that already faced its foe was turned off it by the classic
+  turn and the call only turned it back; with fix AT, as the setting on
+  played before this fix, it stays facing and the call swung or shot
+  whatever stood between: at the air, into a wall, at a foe out of reach.
+  With the setting on the turn and the swing agree. A bot not facing its
+  foe keeps the foe's direction as the facing it turns to, so its next acts
+  finish the turn, one notch an act, and the turn is its act. This does not
+  make the bots aim faster: before, the ATTACK order snapped such a bot
+  round on its next act, so a bot one notch off now reaches its first blow
+  an act sooner and one three or four notches off an act or two later;
+  what changes is that the turn is no longer undone. A bot facing its foe
+  swings or shoots along that facing, and only when the blow can land: a
+  bot that shoots asks its line check, and a melee-only bot, which that
+  check always refuses, asks whether a foe's body stands on its weapon's
+  pad. With the setting off the classic statements run in the classic
+  order, so no setting-off golden moves; the rows it moves with the setting
+  on are listed under [Parity](#parity), and [Bots](#bots) has the measure.
+- There is no fix BC: the one-floor part of #447, a melee-only bot
+  standing in its ATTACK order, is left for the maintainer (see
+  [Rulings (2026-11-14)](#rulings-2026-11-14)).
 
 ## Refusals at a glance
 
@@ -842,6 +871,31 @@ response can meet that no: the act rolls a special only when the bot has
 slot 1's magic, and a slot it cannot pay is folded onto slot 1 before the
 gate is asked.
 
+Near its foe (fix BB). A bot that re-plans with a foe within 100 px stops
+pathing, turns toward the foe and starts an ATTACK order. With the setting
+on a bot that does not face the foe yet keeps turning toward it on its next
+acts, one notch an act, and a bot that faces it starts a swing or a shot
+there only when it can land: a shot asks the line check the ATTACK order
+asks on every act, and a melee-only bot (the orc, the ghost, the small
+slime), which that check always refuses, asks whether a foe's body stands on
+its weapon's pad, the one place its swing can land. Measured over the
+Westlands calibration (25 levels, three seeds, 600 ticks), per 100 ticks a
+bot spends within 100 px of its foe on its floor, as swings started / blows
+landed / damage / kills: melee-only bots 1.85 / 0.94 / 22.2 / 0.027 with the
+setting off, 2.48 / 0.97 / 21.1 / 0.024 with it on before the fix and 1.67 /
+0.98 / 21.9 / 0.031 after; the level's shooters 5.42 / 5.00 / 162.9 / 0.392,
+5.48 / 4.73 / 154.0 / 0.379 and 5.21 / 4.78 / 154.8 / 0.370; the crew 8.15 /
+8.11 / 100.8 / 0.340, 8.03 / 7.88 / 99.1 / 0.360 and 7.83 / 7.95 / 100.2 /
+0.366. The swings the fix removes are the ones at the air: before it 1,559
+of the 2,025 swings melee-only bots started there on Westlands were dropped
+at a clear pad and 252 met terrain; after it they start 217 there, each with
+a foe's body on the pad, and 181 land (30 found no body on the pad when the
+blow fell, and for the other 6 the run recorded no outcome). These figures
+were counted on a build of the fix with counters added, the flying bot's
+change of #447 included; the game as shipped plays the four calibration
+suites and the level-play test below exactly as that build did, row for row
+and line for line.
+
 What the gates still do not see:
 
 - A door, a grown tree or an enemy weapon in flight on the pad, for the
@@ -917,7 +971,16 @@ rolls (5416 to 5427): BARRAGE falls from 127 casts to 87, ROCKS from 87 to
 test keeps for it. Measured again on the merged tree, with fix AT and the
 rest of this batch in: every capped count still reads 0 (the elves', the
 druid's and the rest), BARRAGE 65, ROCKS 84 and SUMMON FAERIE 23, and the
-rules hold 5371 rolls; the caps stay at 3.
+rules hold 5371 rolls; the caps stay at 3. Measured again with fix BB and
+the flying bot's change of #447 in: the bots cast 584, 514, 484, 480, 471
+and 467 times on seeds 42, 1337, 2025, 1, 2 and 3, BARRAGE 92, ROCKS 89
+and SUMMON FAERIE 15, and the rules hold 5270 rolls. Every capped count
+reads 0 but one: the druid, barbarian, mage and archer bots' `COULD NOT
+FIRE` reads 1 (cap 3). It is a druid bot's GROW TREE on seed 2, tick 154,
+whose bolt's pad held an enemy knife in flight: the gate's quiet question
+passes a weapon in flight, and `fire()` met the knife and lost the weapon
+clash roll to it, the first shape under "What the gates still do not
+see" above.
 
 ## Charm and seats
 
@@ -1502,9 +1565,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Thirty changes apply whatever the setting, three from the work that
+Thirty-one changes apply whatever the setting, three from the work that
 added it (N, O and P), six from the second bugs batch, eighteen from the
-issues it filed and three from the third bugs batch; the last three entries
+issues it filed and four from the third bugs batch; the last three entries
 record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1807,6 +1870,23 @@ record differences kept on purpose (#484, #440, #491):
   old game has no scripts, so nothing is ported. `OwnerChainLoop`
   (`tests/unit/test_owner_chain_loop.cpp`) pins it on both values, with a
   two-link loop, a three-link loop and a 40-link chain with no loop.
+- **A flying bot whose foe is on another floor takes a foe on its own
+  floor (#447).** A flyer never changes floors, so a foe on another floor
+  is one it can only hover over. On a tick it re-plans within 100 px of
+  such a foe, it now takes the foe the quick foe search answers when that
+  one stands on its own floor, even when it is farther than the foe it
+  holds; before, it kept the foe it could not reach unless the other was
+  nearer on the map. The change is partial: the quick search looks about
+  five map cells (160 px) round the bot and then falls back to the nearest
+  foe on any floor, so a foe on the flyer's floor beyond that reach is
+  still not taken (on Westlands 7, 8 and 16 most of the ticks such a ghost
+  still hovers had one). A flyer that holds a foe on its own floor keeps
+  #320's rule (a strictly nearer foe) alone. Only a level with more than
+  one floor has a flyer here, so no recording moves on either value, and
+  the old game has one floor, so nothing is ported.
+  `SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor`
+  pins it on both values (see GAMEPLAY_FIXES_FROM_CLASSIC.md for the
+  measure).
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it
@@ -2821,6 +2901,55 @@ the game does today.
    case asserted how many livings a 420-tick brawl leaves; it now asserts
    only what it needs (both heroes stand, the lead team is those two, every
    re-teamed walker is on the board).
+
+## Rulings (2026-11-14)
+
+The bot fixes of this batch (fix BB for #497, and the flying bot's own
+floor for #447) leave two questions open. Each entry says what the game
+does today and the default taken.
+
+1. **#447: what the count was.** The issue counted, on Westlands 7, 16 and
+   22, the ticks a melee-only bot stands within 30 px of its live foe
+   without a swing. Traced over all 25 levels before this batch's fixes
+   (setting off / on: 28,158 / 14,882 such ticks), 17,520 / 9,112 are ghosts
+   whose foe is on another floor of a level with several floors: a flyer
+   never changes floors and the distance does not see floors. That is all of
+   level 7 (the ghosts fly on the ground north of the wall; the crew they
+   hold stands on the wall's gallery one floor up, and the hostiles left on
+   the ground, some of the crew and the level's mages, stand beyond the
+   ghosts' quick foe search), 94 percent of level 22 (where, on every such
+   tick, no hostile stood on the ghosts' floor anywhere on the map) and 70
+   percent of level 16. It is this game's rule of floors, not a classic
+   stall, and the old game cannot show it. One part of it was a bug and is
+   fixed on both settings: a flyer that had a foe on its own floor within
+   its quick foe search (about 160 px) kept the one it could not reach.
+   Beyond that reach it still keeps it, so the change is partial (see
+   GAMEPLAY_FIXES_FROM_CLASSIC.md). The rest of the count, on one floor with
+   nothing between, is a melee-only bot standing in its ATTACK order, which
+   only faces the foe (both games); see the next entry. None of it was a
+   guard at its post, a frozen bot or a bot that did not act. The issue's
+   own figures (4587, 2464, 1492) could not be reproduced with its stated
+   definition (8914, 3548, 2921). With fix BB the "no swing started" count
+   rises with the setting on (to 25,121 over the 25 levels), because a swing
+   at the air no longer counts as fighting. The other count, "no blow landed
+   for 60 ticks", reads 15,218 on one floor after fix BB against 11,259
+   before it, and the two figures are not like for like: that count skips a
+   bot while it is busy, and every swing fix BB removes made its bot busy
+   for a few ticks, which now count. How much of the rise that accounts for
+   was not measured; blows landed and damage per 100 ticks near a foe did
+   not fall (see [Bots](#bots)).
+2. **#447: the melee-only bot's ATTACK order.** Left as it is. A melee-only
+   bot has no aimed blow: its ATTACK order only faces its foe, and its blows
+   are its bumps. Letting it swing in that order when a foe's body stands on
+   its weapon's pad, and step toward the foe otherwise, was built and
+   measured: it halves the one-floor stall (11,259 to 5,023 ticks with no
+   blow landed for 60) and doubles what these bots do, per 100 ticks near a
+   foe from 0.97 blows and 21.1 damage to 2.06 and 44.3, kills from 0.024 to
+   0.080, and the Westlands crews lose a fifth of their survivors (322 to
+   255 over 75 battles; level 19 from 18 to 4, level 23 from 16 to 3). That
+   is a change of the campaigns' difficulty, not a bug fix to slip into this
+   batch. Default: not taken. The alternative: take it as fix BC, behind the
+   setting, with the campaigns' levels eased in their builders.
 
 ## Out of scope
 
