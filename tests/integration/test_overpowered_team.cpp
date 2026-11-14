@@ -301,7 +301,7 @@ static int op_injector(void* data)
     // -- Leg 2: §2.2 accept the generated company name --
     // The founded campaign's intro plays inside the founding and dismisses
     // itself after its first frame under TESTING (#490: no campaign list on
-    // a new game) — an Escape here would BACK out of the team-build screen
+    // a new game); an Escape here would BACK out of the team-build screen
     // instead.
     if (!accept_generated_company_name())
         return escape(2, "the generated company name was never accepted");

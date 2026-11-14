@@ -1787,12 +1787,11 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
 }
 
 // Begin New Game must drop a previously selected campaign back to the
-// default — in the session config AND in the mounted package. The blank
-// answer at the forced campaign-select keeps "current", which after the
-// reset has to be the default campaign, not the stale one.
-// #490: Begin New Game founds the company on the default campaign and goes
-// straight to Team Build, with no campaign list on the way; the list is the
-// Scenario submenu's Set Campaign item, which still opens it.
+// default, in the session config AND in the mounted package. #490: it founds
+// the company on the default campaign and goes straight to Team Build, with
+// no campaign list on the way. The list is the Scenario submenu's Set
+// Campaign item, which still opens it; its blank answer keeps "current",
+// which after the reset has to be the default campaign, not the stale one.
 TEST(PlatformHeadless, text_picker_new_game_skips_the_campaign_list_and_set_campaign_opens_it)
 {
     restore_default_campaigns(); // order-independent: install the packages
@@ -1830,13 +1829,19 @@ TEST(PlatformHeadless, text_picker_new_game_skips_the_campaign_list_and_set_camp
     const std::size_t found = out.find("=== Found Your Company ===");
     ASSERT_NE(std::string::npos, found) << out;
     const std::size_t team = out.find("=== Team Build ===", found);
+    const std::string list = "--- Campaign Select ---";
+    // Checked before anything that needs the scripted input to line up: a
+    // campaign list on a new game puts every later answer one screen off, and
+    // this is the message that says why. With no Team Build at all, the whole
+    // rest of the output must hold no list either.
+    EXPECT_EQ(std::string::npos,
+              out.substr(found, team == std::string::npos
+                                    ? std::string::npos
+                                    : team - found).find(list))
+        << "#490: a new game must not open the campaign list:\n" << out;
     ASSERT_NE(std::string::npos, team) << out;
     const std::size_t scenario = out.find("=== Scenario ===", team);
     ASSERT_NE(std::string::npos, scenario) << out;
-    const std::string list = "--- Campaign Select ---";
-    EXPECT_EQ(std::string::npos,
-              out.substr(found, team - found).find(list))
-        << "#490: a new game must not open the campaign list:\n" << out;
     const std::size_t first = out.find(list);
     EXPECT_NE(std::string::npos, first)
         << "Set Campaign must still open the campaign list:\n" << out;
@@ -2286,7 +2291,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaig
 // campaign, SAYS so, and records CampaignIoError — and it answers the kept id
 // (never empty: empty is a cancel), the campaign the save still stands on.
 // The filesystem is a fresh PhysFS whose only mount is an empty directory
-// (FreshFilesystemForIoInit puts the harness back).
+// (FreshFilesystemForIoInit restores the test filesystem afterwards).
 TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
 {
     FreshFilesystemForIoInit filesystem_guard;

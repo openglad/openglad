@@ -87,28 +87,37 @@ quit
 6
 INP
 
-HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
-rc=$?
-if [ $rc -ne 0 ]; then
-    echo "FAIL: openglad_text interactive run exited with code $rc" >&2
-    exit 1
-fi
+# The exit code is kept, not left to `set -e`: a run that ends early still
+# goes through the checks below that its output can answer (the #490 check
+# names a campaign list that put the scripted input one screen off), and the
+# failure then says which code the run ended with.
+rc=0
+HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null || rc=$?
 
 export TMPOUT TMPHOME
-python3 - << 'PY'
+TEXT_RC=$rc python3 - << 'PY'
 import json, os, sys
 
 out_path = os.environ['TMPOUT']
 home = os.environ['TMPHOME']
+rc = int(os.environ['TEXT_RC'])
 lines = [l.rstrip('\n') for l in open(out_path, encoding='utf-8', errors='replace')]
-if not any('OpenGlad Main Menu' in l for l in lines):
-    print('FAIL: interactive picker banner not found', file=sys.stderr)
+
+
+def fail_early(message):
+    print('FAIL: ' + message, file=sys.stderr)
+    if rc != 0:
+        print(f'FAIL: openglad_text interactive run exited with code {rc}',
+              file=sys.stderr)
     sys.exit(1)
+
+
+if not any('OpenGlad Main Menu' in l for l in lines):
+    fail_early('interactive picker banner not found')
 
 # §2.2: Begin New Game opens the name-entry screen (generated company name).
 if not any('Found Your Company' in l for l in lines):
-    print('FAIL: expected the name-entry banner', file=sys.stderr)
-    sys.exit(1)
+    fail_early('expected the name-entry banner')
 
 # #490: Begin New Game founds the company on the default campaign and goes
 # straight to Team Build; the campaign list is Scenario > Set Campaign's.
@@ -117,8 +126,13 @@ team = next((i for i in range(found, len(lines))
              if '=== Team Build ===' in lines[i]), None)
 if team is None or any('--- Campaign Select ---' in l
                        for l in lines[found:team]):
-    print('FAIL: a new game opened the campaign list', file=sys.stderr)
+    fail_early('a new game opened the campaign list')
+
+if rc != 0:
+    print(f'FAIL: openglad_text interactive run exited with code {rc}',
+          file=sys.stderr)
     sys.exit(1)
+
 scen = next((i for i, l in enumerate(lines) if '=== Scenario ===' in l), None)
 shown = [i for i, l in enumerate(lines) if '--- Campaign Select ---' in l]
 if scen is None or len(shown) != 1 or shown[0] < scen:

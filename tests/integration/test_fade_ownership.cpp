@@ -313,7 +313,7 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     // Camp's entry fade-out is a no-op on the black window, its cold frame
     // fades in; every later Base Camp frame presents plainly.
     EXPECT_EQ(2, fades_after(traces, "help", "scroller auto-dismissed"))
-        << "leg 3 (intro -> Base Camp): the reported hard cut — the intro's "
+        << "leg 3 (intro -> Base Camp): the reported hard cut; the intro's "
            "own exit fade-out, then Base Camp's fade-in";
     // The whole door, main menu click to Base Camp: three symmetric legs.
     EXPECT_EQ(6, count_fades(traces) - state.fades_at_new_game_click)

@@ -413,7 +413,7 @@ static int name_entry_edit_injector(void* data)
     }
 
     // The intro runs un-driven under TESTING (it dismisses itself after one
-    // presented frame; #490: no campaign list on a new game) — the flow
+    // presented frame; #490: no campaign list on a new game), so the flow
     // reaches team build on its own. Unwind back to the main menu so
     // picker_main can hit its Quit gate.
     if (wait_for_team_menu()) {

@@ -339,7 +339,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
     // #237 ownership rule, applied by hand (legacy blocking browser): an
-    // entry at depth 0 is a context switch and fades — out of the previous
+    // entry at depth 0 is a context switch and fades: out of the previous
     // screen now, in on the first composed frame, and out again at
     // entry_fade.end() after the loop. Since #490 a new game opens no
     // campaign list, so only a test driving SdlPickerClient::show_campaign_select
@@ -559,7 +559,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             break;
         // The un-driven browser (every flow that passes SET CAMPAIGN or the
         // editor's campaign door without driving it) accepts the current
-        // campaign once its first frame is on the window — the real screen,
+        // campaign once its first frame is on the window: the real screen,
         // its real fades, no injector clicks. Tests that drive the browser
         // disarm this first.
         if (first_frame_presented && campaign_picker_testing_auto_accept())

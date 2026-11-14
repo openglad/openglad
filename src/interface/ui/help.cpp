@@ -480,7 +480,7 @@ short show_campaign_description(screen *scr, const std::string& campaign_id)
 short read_campaign_intro(screen *s)
 {
 	// #237 ownership: the intro is the context switch between name entry
-	// (which faded itself out) and Base Camp — it fades its first frame in
+	// (which faded itself out) and Base Camp. It fades its first frame in
 	// over black and fades itself out on dismissal, while its last frame is
 	// still the buffer. Base Camp then finds a black window.
 	TRACE("help", "campaign intro %s", s->save_data.current_campaign.c_str());
