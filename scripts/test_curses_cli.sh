@@ -79,7 +79,10 @@ check_success "version" "openglad " --version
 # print is written here from the build's own og_git_hash.h, not asked of
 # og::version, so a binary that ignores the stamped master flag fails: the CI
 # test builds are off master and hold it to "openglad commit <hash>", a master
-# build to "openglad version 2.<count> (<hash>)". Bash 3.2 and BSD sed safe.
+# build to "openglad version 2.<count> (<hash>)". Only stdout is compared:
+# the line is printed there, and a notice an instrumented build writes on
+# stderr (a sanitizer or coverage message) is not part of it. Bash 3.2 and
+# BSD sed safe.
 stamp_value() {
     sed -n "s/^#define $1 $2\$/\\1/p" "$stamp_header"
 }
@@ -98,7 +101,7 @@ else
     want_version_line="openglad commit $stamp_hash"
 fi
 version_status=0
-version_line=$("$curses_bin" --version 2>&1) || version_status=$?
+version_line=$("$curses_bin" --version 2>/dev/null) || version_status=$?
 if [[ $version_status -ne 0 || $version_line != "$want_version_line" ]]; then
     printf 'FAIL: --version (exit %d) printed:\n%s\n' "$version_status" \
         "$version_line" >&2

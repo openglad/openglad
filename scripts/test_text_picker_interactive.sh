@@ -121,12 +121,16 @@ if not any('Found Your Company' in l for l in lines):
 
 # #490: Begin New Game founds the company on the default campaign and goes
 # straight to Team Build; the campaign list is Scenario > Set Campaign's.
+# With no Team Build at all, the rest of the output must hold no list
+# either, and a run that shows none never reached Team Build.
 found = next(i for i, l in enumerate(lines) if 'Found Your Company' in l)
 team = next((i for i in range(found, len(lines))
              if '=== Team Build ===' in lines[i]), None)
-if team is None or any('--- Campaign Select ---' in l
-                       for l in lines[found:team]):
+if any('--- Campaign Select ---' in l
+       for l in lines[found:len(lines) if team is None else team]):
     fail_early('a new game opened the campaign list')
+if team is None:
+    fail_early('Team Build was never reached after the name entry')
 
 if rc != 0:
     print(f'FAIL: openglad_text interactive run exited with code {rc}',
