@@ -2012,10 +2012,10 @@ int new_game_name_accepter(void* data)
     og::runtime::ensure_thread_session();
     (void)data;
     // §2.2: picker_prepare_new_game_setup() opens the name-entry screen
-    // first; accept the generated company name. The campaign intro no
-    // longer runs here — it moved behind the campaign select (issue #186:
-    // the intro belongs to the campaign the player picks), so after the
-    // accept the flow under test runs to completion without input.
+    // first; accept the generated company name. After the accept the
+    // founded campaign's intro plays and, under TESTING, dismisses itself
+    // after its first frame (#490: no campaign list on a new game), so the
+    // flow under test runs to completion without input.
     accept_generated_company_name(10000);
     return 0;
 }

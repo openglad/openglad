@@ -3776,6 +3776,54 @@ TEST(CursesPickerClient, run_picker_team_build_action_then_quit)
            "leave the tail queued";
 }
 
+// #490: Begin New Game founds the company on the default campaign and lands
+// on Team Build with no campaign list on the way. The route walks to Team
+// Build's Difficulty door right after the name entry, so a campaign list in
+// between would eat the Down walk and the Enter, the door would never open
+// and the difficulty would not move (the list's cursor wraps, so the
+// campaign alone could land back on gladiator). Exhausted input is a cancel
+// on every curses screen, so a misrouted run ends instead of hanging.
+TEST(CursesPickerClient, run_picker_new_game_goes_straight_to_team_build)
+{
+    MountRestore mount_restore;
+    PickerFixture f;
+    f.config.campaign = "modes"; // stale campaign from a prior session
+    f.save().current_campaign = "modes";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("modes"));
+    const int before = f.client.difficulty();
+
+    const int new_idx = main_menu_item_index(PickerMenuCommand::BeginNewGame);
+    ASSERT_GE(new_idx, 0);
+    pick(f.t(), new_idx);
+    // Name entry: Enter accepts the generated company name.
+    f.t().push_special(KeyCode::Enter);
+    // Team Build at once: walk to the Difficulty door, cycle it, dismiss its
+    // notice and back out of the submenu.
+    const int diff_idx =
+        team_build_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_GE(diff_idx, 0);
+    step_to(f.t(), diff_idx);
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.t().push_special(KeyCode::Escape);
+    // Team Build q (-> Back), then Main menu Esc (-> Quit).
+    f.t().push_char(U'q');
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ(og::ui::cycle_difficulty(before), f.client.difficulty())
+        << "the first keys after the name entry reached Team Build's "
+           "Difficulty door:\n" << f.t().dump();
+    EXPECT_EQ("gladiator", f.save().current_campaign)
+        << "a new game founds the company on the default campaign";
+    EXPECT_EQ("gladiator", f.config.campaign);
+    EXPECT_EQ("gladiator", get_mounted_campaign());
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the whole route consumed its keys";
+}
+
 // An end-to-end pass that opens Team Build, enters it (GO! is not pressed),
 // and backs out to the Main menu, then quits — covering the TeamBuild screen
 // transition inside run_picker.

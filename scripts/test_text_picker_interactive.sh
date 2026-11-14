@@ -15,7 +15,8 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 # Drive sequence (1-based menu indices):
 #   Main: 1=Begin New Game; blank accepts the generated company name (§2.2
-#     name entry); blank keeps the campaign. Back, then 2=Continue returns to
+#     name entry) and the company lands on Team Build on the default
+#     campaign (#490: no campaign list). Back, then 2=Continue returns to
 #     Base Camp. The retired 1–4 player-count rows are no longer present.
 #   Base camp / Team Build (12 items, §2.5 substitution + the #206 Camp door
 #     inserted before Back; the flat CTF trio left for the SETUP wizard's
@@ -43,15 +44,15 @@ trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 #   Scenario submenu (7 items — the missions door retired into the camp;
 #     6=Replay Level, #207; amendment B5 retired the TROOPS row, which is
 #     the one row this branch REMOVED, so replay and back each moved up
-#     one): 4=Matchup (set preferred-team metadata, blank exits),
-#     3=View Scenario (blank dismisses), 7=Back.
+#     one): 1=Set Campaign (blank keeps current), 4=Matchup (set
+#     preferred-team metadata, blank exits), 3=View Scenario (blank
+#     dismisses), 7=Back.
 #   Difficulty submenu (7 items): 7=Back straight out.
 #   Protocol session after GO!: state, quit.
 #   Main: 6=Quit (the difficulty door left this menu, so every row below it
 #     moved up one).
 cat > "$TMPIN" << 'INP'
 1
-
 
 8
 2
@@ -66,6 +67,8 @@ deploy 2
 2
 7
 10
+1
+
 4
 play 1
 
@@ -105,6 +108,22 @@ if not any('OpenGlad Main Menu' in l for l in lines):
 # §2.2: Begin New Game opens the name-entry screen (generated company name).
 if not any('Found Your Company' in l for l in lines):
     print('FAIL: expected the name-entry banner', file=sys.stderr)
+    sys.exit(1)
+
+# #490: Begin New Game founds the company on the default campaign and goes
+# straight to Team Build; the campaign list is Scenario > Set Campaign's.
+found = next(i for i, l in enumerate(lines) if 'Found Your Company' in l)
+team = next((i for i in range(found, len(lines))
+             if '=== Team Build ===' in lines[i]), None)
+if team is None or any('--- Campaign Select ---' in l
+                       for l in lines[found:team]):
+    print('FAIL: a new game opened the campaign list', file=sys.stderr)
+    sys.exit(1)
+scen = next((i for i, l in enumerate(lines) if '=== Scenario ===' in l), None)
+shown = [i for i, l in enumerate(lines) if '--- Campaign Select ---' in l]
+if scen is None or len(shown) != 1 or shown[0] < scen:
+    print('FAIL: Set Campaign must open the campaign list once, from Scenario',
+          file=sys.stderr)
     sys.exit(1)
 
 json_lines = []

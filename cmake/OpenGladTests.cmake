@@ -233,6 +233,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_uxshots_probe.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_new_game_campaign.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_belt_persistence.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_abilities_flow.cpp
@@ -840,6 +841,7 @@ og_add_test_group(og_test_basecamp NO_DEFAULT_TEST FILES
     test_networking_uxshots.cpp
     test_seat_chip.cpp
     test_fade_ownership.cpp
+    test_new_game_campaign.cpp
 )
 og_add_sharded_group_tests(og_test_basecamp og_test_basecamp 4 "-CompanyLitter.*" OG_BASECAMP_TESTS)
 og_add_filtered_test(og_test_basecamp_company_litter og_test_basecamp "CompanyLitter.*")

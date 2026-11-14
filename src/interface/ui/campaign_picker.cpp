@@ -338,12 +338,13 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // it while World is active; keep the campaign icon, text and controls on
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.
-    // #237 ownership rule, applied by hand (legacy blocking browser): the
-    // new-game flow's entry (depth 0, via SdlPickerClient::show_campaign_select
-    // — the live consumer of the fade here) is a context switch and fades —
-    // out of the previous screen now, in on the first composed frame, and out
-    // again at entry_fade.end() after the loop. SET CAMPAIGN from an open Base
-    // Camp is nested and does not, and neither is the in-game editor's browser
+    // #237 ownership rule, applied by hand (legacy blocking browser): an
+    // entry at depth 0 is a context switch and fades — out of the previous
+    // screen now, in on the first composed frame, and out again at
+    // entry_fade.end() after the loop. Since #490 a new game opens no
+    // campaign list, so only a test driving SdlPickerClient::show_campaign_select
+    // directly enters at depth 0; SET CAMPAIGN from an open Base Camp is
+    // nested and does not fade, and neither does the in-game editor's browser
     // (nested inside the main menu's screen). The entry fade-out must run
     // BEFORE the UI-canvas switch below: it fades whatever canvas is actually
     // presented (the editor presents the World canvas), not the stale UI
@@ -556,10 +557,11 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         campaign_picker_testing_mark_frame();
         if (campaign_picker_testing_take_abort())
             break;
-        // The un-driven browser (every BEGIN NEW GAME flow that never
-        // touches it) accepts the current campaign once its first frame is
-        // on the window — the real screen, its real fades, no injector
-        // clicks. Tests that drive the browser disarm this first.
+        // The un-driven browser (every flow that passes SET CAMPAIGN or the
+        // editor's campaign door without driving it) accepts the current
+        // campaign once its first frame is on the window — the real screen,
+        // its real fades, no injector clicks. Tests that drive the browser
+        // disarm this first.
         if (first_frame_presented && campaign_picker_testing_auto_accept())
         {
             result = ensure_entry(cursor);

@@ -53,6 +53,12 @@ Beginning a new game opens a name-entry screen with the same editing grammar as
 character naming. A generated fantasy name is offered initially and may be
 rerolled or edited. The filename derived from that name is not shown.
 
+Accepting the name founds the company on the default campaign, Gladiator, with
+no campaign list: the campaign's introduction plays and Base Camp opens. A
+company moves to another campaign from Base Camp through SCENARIO > SET
+CAMPAIGN (the Scenario submenu's Set Campaign item on the terminal clients),
+the door every company uses.
+
 ### 2.3 Company List
 
 **Load** opens a paged list ordered by last-played time. Each row has three

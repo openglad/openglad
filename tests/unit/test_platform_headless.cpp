@@ -1790,7 +1790,10 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
 // default — in the session config AND in the mounted package. The blank
 // answer at the forced campaign-select keeps "current", which after the
 // reset has to be the default campaign, not the stale one.
-TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
+// #490: Begin New Game founds the company on the default campaign and goes
+// straight to Team Build, with no campaign list on the way; the list is the
+// Scenario submenu's Set Campaign item, which still opens it.
+TEST(PlatformHeadless, text_picker_new_game_skips_the_campaign_list_and_set_campaign_opens_it)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -1800,25 +1803,48 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
     const std::string input =
         "1\n"       // main: begin new game -> §2.2 name entry
         "\n"        //   name entry: blank accepts the generated company name
-        "\n"        //   campaign select: blank keeps current (= default reset)
+        "10\n"      // team build: Scenario
+        "1\n"       //   scenario: Set Campaign
+        "\n"        //     campaign select: blank keeps current
+        "7\n"       //   scenario: back -> team build
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
-    StdoutSilencer stdout_silencer;
+    StdoutCapture stdout_capture;
 
     og::ui::TextPickerConfig config;
     config.campaign = "modes"; // stale campaign from a prior session
     config.team_families = {FAMILY_SOLDIER};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("gladiator", config.campaign)
         << "a new game must reset the session campaign to the default";
     EXPECT_EQ("gladiator", get_mounted_campaign())
         << "a new game must remount the default campaign package";
+
+    const std::size_t found = out.find("=== Found Your Company ===");
+    ASSERT_NE(std::string::npos, found) << out;
+    const std::size_t team = out.find("=== Team Build ===", found);
+    ASSERT_NE(std::string::npos, team) << out;
+    const std::size_t scenario = out.find("=== Scenario ===", team);
+    ASSERT_NE(std::string::npos, scenario) << out;
+    const std::string list = "--- Campaign Select ---";
+    EXPECT_EQ(std::string::npos,
+              out.substr(found, team - found).find(list))
+        << "#490: a new game must not open the campaign list:\n" << out;
+    const std::size_t first = out.find(list);
+    EXPECT_NE(std::string::npos, first)
+        << "Set Campaign must still open the campaign list:\n" << out;
+    EXPECT_GT(first, scenario)
+        << "the one campaign list comes from Scenario > Set Campaign:\n"
+        << out;
+    EXPECT_EQ(std::string::npos, out.find(list, first + list.size()))
+        << "the campaign list opens exactly once:\n" << out;
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
@@ -2258,9 +2284,9 @@ TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaig
 
 // With no campaign package visible at all, Campaign Select keeps the current
 // campaign, SAYS so, and records CampaignIoError — and it answers the kept id
-// (never empty), which is what sends picker_state on to Team Build instead of
-// back to the main menu. The filesystem is a fresh PhysFS whose only mount is
-// an empty directory (FreshFilesystemForIoInit puts the harness back).
+// (never empty: empty is a cancel), the campaign the save still stands on.
+// The filesystem is a fresh PhysFS whose only mount is an empty directory
+// (FreshFilesystemForIoInit puts the harness back).
 TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
 {
     FreshFilesystemForIoInit filesystem_guard;
@@ -2290,7 +2316,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_c
               output)
         << "the kept campaign is named, and nothing else is printed";
     EXPECT_EQ("gladiator", returned)
-        << "the kept id, never empty: picker_state routes on emptiness";
+        << "the kept id, never empty: empty means the player cancelled";
     EXPECT_EQ("gladiator", config_after);
     EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::CampaignIoError),
               error_code);

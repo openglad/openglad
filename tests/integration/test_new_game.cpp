@@ -159,13 +159,11 @@ static int new_game_injector(void* data)
     fprintf(stderr, "  [test] accepting generated company name\n");
     interact("company_name_accept");
 
-    // The campaign intro no longer runs inside picker_prepare_new_game_setup
-    // (issue #186: it moved behind the campaign select). Under TESTING the
-    // browser auto-accepts the current campaign and the intro scroller
-    // dismisses itself, each after one real presented frame, so the flow
-    // proceeds to the team-build menu without further input (the per-leg
-    // fades of those two screens are pinned in test_fade_ownership.cpp).
-    SDL_Delay(500);
+    // The founded campaign's intro plays inside picker_prepare_new_game_setup
+    // (#490: a new game opens no campaign list) and, under TESTING, dismisses
+    // itself after one real presented frame, so the flow proceeds to the
+    // team-build menu without further input (the per-leg fades are pinned in
+    // test_fade_ownership.cpp). wait_for_team_menu polls for it.
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
         state->saw_networking_button = has_interactable("networking");
@@ -414,10 +412,10 @@ static int name_entry_edit_injector(void* data)
             interact("company_name_accept");
     }
 
-    // The campaign select and intro run un-driven under TESTING (auto-accept
-    // and auto-dismiss after one presented frame each) — the flow reaches
-    // team build on its own. Unwind back to the main menu so picker_main can
-    // hit its Quit gate.
+    // The intro runs un-driven under TESTING (it dismisses itself after one
+    // presented frame; #490: no campaign list on a new game) — the flow
+    // reaches team build on its own. Unwind back to the main menu so
+    // picker_main can hit its Quit gate.
     if (wait_for_team_menu()) {
         state->saw_team_menu = true;
         wait_for_menu_frames(2);
@@ -524,9 +522,9 @@ static int continue_player_count_injector(void* data)
     if (!accept_generated_company_name())
         return 0;
 
-    // picker_prepare_new_game_setup no longer blocks on the campaign intro
-    // (issue #186); the campaign select and intro run un-driven under
-    // TESTING and the flow lands on Base Camp on its own.
+    // picker_prepare_new_game_setup plays the founded campaign's intro, which
+    // dismisses itself under TESTING (#490: no campaign list on a new game),
+    // and the flow lands on Base Camp on its own.
     if (!wait_for_team_menu())
         return 0;
     state->saw_initial_base_camp = true;

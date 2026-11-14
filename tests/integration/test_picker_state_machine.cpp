@@ -114,7 +114,11 @@ public:
 
 } // namespace
 
-TEST(PickerStateMachine, picker_state_campaign_cancel_returns_to_main_menu)
+// #490: a new game founds the company on the default campaign and goes
+// straight to team build. The campaign list's answer would have steered the
+// old flow (empty = back to the main menu), so it is empty here: a flow that
+// still opened the list would land on the main menu instead of team build.
+TEST(PickerStateMachine, picker_state_new_game_goes_straight_to_team_build)
 {
     ScriptedPickerClient client;
     client.main_menu_actions = {
@@ -125,9 +129,13 @@ TEST(PickerStateMachine, picker_state_campaign_cancel_returns_to_main_menu)
 
     og::ui::run_picker(client);
 
-    ASSERT_EQ(2, client.show_main_menu_calls) << "cancelled campaign select should return to main menu";
-    ASSERT_EQ(1, client.show_campaign_select_calls) << "campaign select should run once";
-    ASSERT_EQ(0, client.show_team_build_calls) << "campaign cancel should not enter team build";
+    ASSERT_EQ(1, client.prepare_new_game_calls) << "new game should invoke preparation";
+    ASSERT_EQ(0, client.show_campaign_select_calls)
+        << "#490: a new game never opens the campaign list";
+    ASSERT_EQ(1, client.show_team_build_calls)
+        << "the founded company lands on team build";
+    ASSERT_EQ(2, client.show_main_menu_calls)
+        << "team build's back returns to the main menu, which quits";
 }
 
 TEST(PickerStateMachine,
@@ -455,6 +463,8 @@ TEST(PickerStateMachine, picker_state_new_game_cancel_stays_in_main_menu)
 
     ASSERT_EQ(1, client.prepare_new_game_calls) << "new game should invoke preparation";
     ASSERT_EQ(0, client.show_campaign_select_calls) << "failed prepare should skip campaign select";
+    EXPECT_EQ(0, client.show_team_build_calls)
+        << "a cancelled name entry founds nothing";
     ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to main menu and then quit";
 }
 
