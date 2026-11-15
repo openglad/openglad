@@ -1446,17 +1446,21 @@ Classic, the arrow in the air follows the charmed archer onto the thief's
 side and passes him, so he ends whole. With the setting on it keeps the
 colour it was shot in and strikes him once, for 6 or 7 (the fire arrow's 7
 rolled against no armour: only the difficulty gives a placed walker
-armour, and the parity runner never applies it). Both rows share the
-inputs, so the classic twin, on the same ticks, proves an arrow was in the
-air when the charm landed. The setting-off row's pin stops the charm, so
-the arrow and the later ones strike the thief; the setting-on row's makes
-friendliness climb the owner chain again.
+armour, and the parity runner never applies it). No fact can name one
+arrow among several (#552), so the classic row cannot read its own premise,
+an arrow aimed at the thief in the air when the charm lands: its pin
+carries it, and so does the setting-on twin on the same inputs and ticks,
+whose thief takes exactly that arrow's blow. The setting-off row's pin
+stops the charm, so the arrow and the later ones strike the thief; the
+setting-on row's makes friendliness climb the owner chain again.
 
 Fix AZ's charmed-thrower arena, `thief_bomb_charmed_thrower_scen99` and
 `thief_bomb_charmed_thrower_fixes_scen99`: a hostile level-3 thief bot
 drops its bomb point blank beside a level-20 player thief, on tick 1 with
-the setting on and on tick 2 classic (fix W runs the classic bot one act
-behind), and the player charms it on tick 6. Classic, the blast follows
+the setting on and on tick 2 classic (on its first act the bot has no foe
+yet, and with no foe the classic gate bombs only with three foes within
+110 px, while the setting-on gate asks for a foe inside the blast), and the
+player charms it on tick 6. Classic, the blast follows
 the charmed bot and halves on the player: 27 to 31 of his 75. With the
 setting on it wears the colour the bomb was dropped in, team 1's, and
 strikes him in full: 56 to 62. The setting-off row's pin stops the charm;
@@ -1474,9 +1478,13 @@ the arrow's blow and kill: 205 to 225, in two score changes. With the
 setting on it wears the thief's colour and pays nobody: 177 to 193, in
 one. The classic row shows its own premise: with a live thrower the head
 of the blast's chain would be the thief, whose team is not the player's,
-and the blast would pay nobody on either setting. The setting-off row's
-pin stamps the bomb with the thief's colour classic too; the setting-on
-row's leaves it red.
+and the blast would pay nobody on either setting. The setting-on row's
+score reads only the arrow, so its tower's hit points (99 to 103 of 130:
+the blast's full blow and nothing else) show that the blast went off; no
+fact reads that the thief died first (no fact reads an order of ticks,
+#552), which rests on the staging it shares with the classic row. The
+setting-off row's pin stamps the bomb with the thief's colour classic too;
+the setting-on row's leaves it red.
 
 No pair shows a summon that stays on its team when its caster is charmed:
 every summon a bot casts on a fixed seed fights with blows whose count

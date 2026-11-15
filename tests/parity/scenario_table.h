@@ -11920,9 +11920,12 @@ inline constexpr Mutation kMut_mage_bot_far_foe_fixes_scen99 = {
 // no armour (only set_difficulty gives a placed walker armour), rounded 6 or
 // 7: the thief ends at 68 or 69 hp. No other blow reaches him on either row:
 // the ring's other arrows fly away from him, the ones loosed after the charm
-// wear his colour, and the tower never comes within reach. Both rows share
-// the inputs, so the classic twin, on the same ticks, is the proof that an
-// arrow was in the air when the charm landed.
+// wear his colour, and the tower never comes within reach. No fact kind can
+// name one projectile among several (#552), so the classic row cannot read
+// its own premise, that an arrow aimed at the thief is in the air when the
+// charm lands: its pin carries it (without the charm the thief is hit), and
+// so does its setting-on twin, on the same inputs and ticks, whose thief
+// takes exactly that arrow's blow.
 inline constexpr InputEvent kInputs_archer_charmed_arrow_in_flight[] = {
     {  1, 0, K_SPECIAL_SWITCH }, {  2, 0, K_NONE },        // slot 1 -> 2
     {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },        // slot 2 -> 3 (CHARM OPPONENT is slot 3's Shift arm)
@@ -11938,7 +11941,7 @@ inline constexpr FactPredicate kFacts_archer_charmed_arrow_in_flight_scen99[] = 
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
     pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
-        "anchor: the archer looses its ring of fire arrows, the downward one before the charm"),
+        "anchor: the archer looses at least one fire arrow (its FIRE ARROWS ring)"),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
         "consequence: the charm lands: the archer wears the thief's colour to the end"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500,
@@ -11955,7 +11958,7 @@ inline constexpr FactPredicate kFacts_archer_charmed_arrow_in_flight_fixes_scen9
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
     pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
-        "anchor: the archer looses its ring of fire arrows, the downward one before the charm"),
+        "anchor: the archer looses at least one fire arrow (its FIRE ARROWS ring)"),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
         "consequence: the charm lands: the archer wears the thief's colour to the end"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6800, 6900,
@@ -11975,8 +11978,10 @@ inline constexpr Mutation kMut_archer_charmed_arrow_in_flight_fixes_scen99 = {
 // within 35 px; with the setting on, a foe is inside its blast and no ally
 // is), and a far stationary team-1 TOWER1 holds the level open. On this
 // seed the bot drops its bomb on its first act that rolls a special, tick 1
-// with the setting on and tick 2 classic (fix W runs the classic bot one act
-// behind), lands no blow first, and flees its bomb. On tick 6 the player,
+// with the setting on and tick 2 classic (on its first act the bot has no
+// foe yet: the classic gate then bombs only with three foes within 110 px,
+// while the setting-on gate asks for a foe inside the blast), lands no blow
+// first, and flees its bomb. On tick 6 the player,
 // on slot 3 since tick 3, presses CHARM OPPONENT once and the charm takes
 // the bot (a level-3 foe resists 1 time in 20; on this seed it takes on both
 // rows, as the team fact shows): it wears the player's colour to the end
@@ -12047,7 +12052,8 @@ inline constexpr Mutation kMut_thief_bomb_charmed_thrower_fixes_scen99 = {
 // inside its 19 px blast, and a level-7 player archer 100 px straight above
 // it; the tower is a foe of both. On this seed the bot drops its bomb on its
 // first act that rolls a special, tick 1 with the setting on and tick 2
-// classic (as in thief_bomb_charmed_thrower), and flees it. The player steps
+// classic (the classic gate refuses it on its first act, as in
+// thief_bomb_charmed_thrower), and flees it. The player steps
 // down once (a placed walker has no heading yet, so its first shot would only
 // turn it) and looses one arrow on tick 10, which meets the thief, on tick 14
 // with the setting on and tick 18 classic (its flight from the bomb decides
@@ -12073,7 +12079,17 @@ inline constexpr Mutation kMut_thief_bomb_charmed_thrower_fixes_scen99 = {
 // player's team and no hero stands behind the blast, so it pays nobody, one
 // score change in all. Nothing else pays team 0: the tower and the thief have
 // no record and are not on the player's team, and the arrow is the player's
-// only shot. Both rows share the inputs and the seed.
+// only shot. Both rows share the inputs and the seed. The setting-on row's
+// score facts read only the arrow, so its tower fact anchors that the blast
+// went off: on this seed the thief's flight from its bomb takes it off the
+// tower before its first blow, and the blast's full 27 to 31 is the only
+// damage the tower takes (99 to 103 of its 130). The classic row needs no
+// such anchor: its second score change is its blast's own pay. No fact of
+// the setting-on row reads that the thief dies before its blast: no fact
+// kind reads a tick order (#552), and with the setting on the blast pays
+// nobody whether its thrower is alive or dead. That order rests on the
+// pinned staging, the seed and inputs this row shares with its classic
+// twin, whose pay does read it.
 inline constexpr InputEvent kInputs_thief_bomb_dead_thrower[] = {
     {  1, 0, K_DOWN }, {  2, 0, K_NONE },     // one step down: the archer takes a heading
     { 10, 0, K_FIRE }, { 11, 0, K_NONE },     // one arrow straight down at the thief, whose bomb is down on both rows
@@ -12109,6 +12125,9 @@ inline constexpr FactPredicate kFacts_thief_bomb_dead_thrower_fixes_scen99[] = {
     pred::ScoreDelta(/*team*/0, 177, 193,
         "consequence: with the setting on the player's team is paid the arrow's blow and kill alone"),
     // rng_drift: the arrow's two payments are 2d + 11 on its roll d = 82.82 + rng(9) against no armour, so the rule allows exactly 177 to 193 and the band is those values; commit 497a97652
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9900, 10300,
+        "anchor: the dead thrower's blast goes off and strikes the tower in full, 27 to 31 of its 130, the only damage it takes"),
+    // rng_drift: the blast's blow is compute_base_damage's roll on the bomb's 30, 27.26 + rng(5) against no armour, so the rule allows exactly 27 to 31 hp lost and the tower's band is 99 to 103; commit ed456f217
 };
 inline constexpr Mutation kMut_thief_bomb_dead_thrower_fixes_scen99 = {
     "packs/core/families/living-11-thief.lua", 213,
