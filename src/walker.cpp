@@ -3257,6 +3257,9 @@ short walker::special()
 					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_WAVE);
 					alive->center_on(newob);
 					alive->owner = this;
+					// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the wave wears the mage's colour, and keeps it through WAVE2 and WAVE3
+					if (myscreen->gameplay_fixes)
+						alive->team_num = team_num;
 					alive->stats->level = stats->level;
 					alive->lastx = newob->lastx;
 					alive->lasty = newob->lasty;
@@ -3870,6 +3873,9 @@ short walker::special()
 					newob->setxy(xpos+sizex/2 - newob->sizex/2,
 					             ypos+sizey/2 - newob->sizey/2);
 					newob->owner = this;
+					// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the bomb wears the thief's colour at the drop
+					if (myscreen->gameplay_fixes)
+						newob->team_num = team_num;
 					// Run away if we're AI
 					person = 0;
 					for (i=0; i < myscreen->numviews; i++)
@@ -4359,6 +4365,9 @@ short walker::special()
 					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BOULDER);
 					alive->center_on(newob);
 					alive->owner = this;
+					// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the boulder wears the barbarian's colour
+					if (myscreen->gameplay_fixes)
+						alive->team_num = team_num;
 					alive->stats->level = stats->level;
 					alive->lastx = newob->lastx;
 					alive->lasty = newob->lasty;

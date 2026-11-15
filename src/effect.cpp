@@ -654,6 +654,9 @@ short effect::death()
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
 			newob->owner = owner;
+			// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the blast wears the bomb's colour, also when the thrower is dead and the bomb owns itself
+			if (myscreen->gameplay_fixes)
+				newob->team_num = team_num;
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner->stats->level;
 			newob->ani_type = ANI_EXPLODE;

@@ -145,6 +145,9 @@ short weap::death()
 				break;  // only soldiers get returning knives
 			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
+			// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the returning knife wears the knife's colour (its probe copies it)
+			if (myscreen->gameplay_fixes)
+				newob->team_num = team_num;
 			newob->center_on(this);
 			newob->lastx = lastx;
 			newob->lasty = lasty;
@@ -199,6 +202,9 @@ short weap::death()
 			if (on_screen())
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob->owner = owner;
+			// port of the current game's ad9e7ab3e (Gameplay Fixes AZ, #502, #533): the exploding shot's blast wears the shot's colour
+			if (myscreen->gameplay_fixes)
+				newob->team_num = team_num;
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner->stats->level;
 			newob->ani_type = ANI_EXPLODE;
