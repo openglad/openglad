@@ -193,6 +193,7 @@ function M.take_team(made, from)
   -- tests: KitElemental.a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire
   -- tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
   -- tests: parity:thief_bomb_colour_score_fixes_scen99
+  -- tests: parity:thief_bomb_dead_thrower_scen99, parity:thief_bomb_dead_thrower_fixes_scen99
   if M.on() then
     made.team = from.team
   end

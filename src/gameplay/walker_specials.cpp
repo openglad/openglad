@@ -830,6 +830,7 @@ const walker* walker::alliance_head() const
 	// tests: GameplayFixesChain.a_tent_troop_keeps_its_colour_when_a_script_recolours_its_tent
 	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
+	// tests: parity:archer_charmed_arrow_in_flight_fixes_scen99
 	if (og::sim::session_gameplay_fixes() != 0)
 		return this;
 	return climb(&walker::alliance_next_classic);

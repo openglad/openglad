@@ -629,6 +629,12 @@ OG_PARITY_TEST(thief_bomb_colour_score_scen99)
 OG_PARITY_TEST(thief_bomb_colour_score_fixes_scen99)
 OG_PARITY_TEST(mage_bot_far_foe_scen99)
 OG_PARITY_TEST(mage_bot_far_foe_fixes_scen99)
+OG_PARITY_TEST(archer_charmed_arrow_in_flight_scen99)
+OG_PARITY_TEST(archer_charmed_arrow_in_flight_fixes_scen99)
+OG_PARITY_TEST(thief_bomb_charmed_thrower_scen99)
+OG_PARITY_TEST(thief_bomb_charmed_thrower_fixes_scen99)
+OG_PARITY_TEST(thief_bomb_dead_thrower_scen99)
+OG_PARITY_TEST(thief_bomb_dead_thrower_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

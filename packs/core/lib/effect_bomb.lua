@@ -124,7 +124,7 @@ local function explosion_on_death(self)
       --   thrower's blast still softens on his side; classic, the owner's live allies and a SUPERNOVA's colour.
       -- tests: PackLuaExplosion.a_blast_softens_but_does_not_spare_its_own_side, parity:effect_explosion_ally_tier_scen99
       -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full, KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
-      -- tests: SemLibsBomb.a_blast_halves_on_the_colour_it_wears_with_the_setting_on, SemLibsBomb.a_dying_tents_blasts_halve_on_the_tents_colour_only_with_the_setting_on
+      -- tests: SemLibsBomb.a_blast_halves_on_the_colour_it_wears_with_the_setting_on, SemLibsBomb.a_dying_tents_blasts_halve_on_the_tents_colour_only_with_the_setting_on, parity:thief_bomb_charmed_thrower_fixes_scen99
       if w == self:owner() then
         local full_damage = self:damage()
         -- shim kept: damage is a C++ float: the quarter cut rounds through float.
