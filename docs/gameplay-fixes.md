@@ -2044,7 +2044,10 @@ record differences kept on purpose (#484, #440, #491):
   The `2.<count>` version is shown only by a build of a commit on master's
   history; a pull-request preview or a local branch build shows its commit
   hash alone on the main menu, in `-v` / `--version` and in the help
-  footer. This game only.
+  footer. So does a local build of a master commit with changes to tracked
+  files not yet committed: it shows the hash with its `+` (`7e7f4079+`),
+  like a branch build, because it is not the commit it counts. This game
+  only.
 - **The terminal client's New Ability Select answer takes effect at once
   (#398).** In the terminal client, answering `New ability select` on the
   Game Settings page changed the setting but not the copy that the ability

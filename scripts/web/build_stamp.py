@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Read the WASM build's version stamp for the web workflow.
 
-og_git_hash.h names the commit, its count and whether the commit is on
-master's history; only a master build has a version (#508). A pull-request
-build counts commits no one else will ever have, so its count names nothing:
-it shows its hash alone and gets no version and no v2-<count> alias.
+og_git_hash.h names the commit, its count and whether this is a master
+build; only a master build has a version (#508). The web workflow passes
+that answer from its event (OPENGLAD_ON_MASTER), and it decides alone. A
+pull-request build counts commits no one else will ever have, so its count
+names nothing: it shows its hash alone and gets no version and no v2-<count>
+alias.
 
 Both "Read the build stamp" steps of .github/workflows/wasm-e2e.yml call
 this, so the build and deploy jobs read the stamp one way. It also checks the

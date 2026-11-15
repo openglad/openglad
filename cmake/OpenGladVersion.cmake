@@ -6,8 +6,10 @@
 # packager passes -DOPENGLAD_COMMIT_COUNT. Both the configure-time
 # project(VERSION) and the build-time og_git_hash.h stamp call
 # og_version_compute(); there is no second implementation. The stamp also
-# records whether that commit is on master's history (og_version_on_master):
-# only then is the number shown to a player (#508).
+# records whether this is a master build (og_version_on_master): the
+# workflow's or packager's answer when given, else a commit on master's
+# history built from a tree with no uncommitted changes. Only then is the
+# number shown to a player (#508).
 set(OPENGLAD_VERSION_MAJOR 2)
 
 set(OPENGLAD_COMMIT_COUNT "" CACHE STRING
@@ -15,14 +17,33 @@ set(OPENGLAD_COMMIT_COUNT "" CACHE STRING
 set(OPENGLAD_GIT_HASH "" CACHE STRING
     "Override the short commit hash stamped into the build (packagers without git history)")
 set(OPENGLAD_ON_MASTER "" CACHE STRING
-    "Whether the built commit is on master's history (ON/OFF); empty asks git")
+    "Whether this is a master build (ON/OFF), deciding alone; empty asks git")
+
+# og_version_tree_dirty(<src_root> <out_var>)
+#   1 when the tree has uncommitted changes to tracked files (`git status
+#   --porcelain --untracked-files=no` prints anything), else 0; an untracked
+#   file is not a change. The one test for "uncommitted changes": the "+" on
+#   the hash and the master answer both ask it.
+function(og_version_tree_dirty src_root out_var)
+    execute_process(
+        COMMAND git status --porcelain --untracked-files=no
+        WORKING_DIRECTORY "${src_root}"
+        OUTPUT_VARIABLE status
+        ERROR_QUIET
+    )
+    if("${status}" STREQUAL "")
+        set(${out_var} 0 PARENT_SCOPE)
+    else()
+        set(${out_var} 1 PARENT_SCOPE)
+    endif()
+endfunction()
 
 # og_version_compute(<src_root> <out_minor_var> <out_hash_var>)
 #   minor: OPENGLAD_COMMIT_COUNT when non-empty; else `git rev-list --count HEAD`
 #          unless the repository is shallow or git fails; else 0.
 #   hash : OPENGLAD_GIT_HASH when non-empty; else `git rev-parse --short=8 HEAD`,
-#          suffixed "+" when `git status --porcelain --untracked-files=no` is
-#          non-empty; else "nogit".
+#          suffixed "+" when og_version_tree_dirty says the tree has
+#          uncommitted changes; else "nogit".
 #
 # The overrides arrive as EMPTY normal variables when the build passes
 # -DOPENGLAD_COMMIT_COUNT= with nothing set, so every test here is
@@ -74,16 +95,13 @@ function(og_version_compute src_root out_minor out_hash)
             OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET
         )
-        execute_process(
-            COMMAND git status --porcelain --untracked-files=no
-            WORKING_DIRECTORY "${src_root}"
-            OUTPUT_VARIABLE dirty
-            ERROR_QUIET
-        )
         if(NOT hash)
             set(hash "nogit")
-        elseif(NOT "${dirty}" STREQUAL "")
-            set(hash "${hash}+")
+        else()
+            og_version_tree_dirty("${src_root}" dirty)
+            if(dirty)
+                set(hash "${hash}+")
+            endif()
         endif()
     endif()
 
@@ -92,15 +110,18 @@ function(og_version_compute src_root out_minor out_hash)
 endfunction()
 
 # og_version_on_master(<src_root> <out_var>)
-#   1 when the built commit is on master's history, else 0. Only then is the
-#   commit count a version (#508): a pull-request or local branch build counts
-#   commits no one else will ever have, so it shows its hash alone.
-#   OPENGLAD_ON_MASTER decides when non-empty: the release and web workflows
-#   pass ON for a master push or a master dispatch and OFF for a pull request.
-#   Otherwise `git merge-base --is-ancestor HEAD origin/master` decides, and
-#   anything git cannot answer (no git, a repository with no commit, no
-#   origin/master, a shallow clone) is 0. GitHash.cmake calls it on every
-#   build, so the stamp follows HEAD and origin/master as they move.
+#   1 for a master build, else 0. Only then is the commit count a version
+#   (#508): a pull-request or local branch build counts commits no one else
+#   will ever have, and a tree with uncommitted changes is not the commit it
+#   counts, so either shows its hash alone ("7e7f4079+" for the second).
+#   OPENGLAD_ON_MASTER decides alone when non-empty: the release and web
+#   workflows pass ON for a master push or a master dispatch and OFF for a
+#   pull request, and a packager's ON or OFF is the packager's word.
+#   Otherwise git decides: 1 when `git merge-base --is-ancestor HEAD
+#   origin/master` holds and og_version_tree_dirty finds no uncommitted
+#   change; anything git cannot answer (no git, a repository with no commit,
+#   no origin/master, a shallow clone) is 0. GitHash.cmake calls it on every
+#   build, so the stamp follows HEAD, the tree and origin/master as they move.
 function(og_version_on_master src_root out_var)
     if(NOT "${OPENGLAD_ON_MASTER}" STREQUAL "")
         string(TOUPPER "${OPENGLAD_ON_MASTER}" answer)
@@ -129,11 +150,13 @@ function(og_version_on_master src_root out_var)
             ERROR_QUIET
             RESULT_VARIABLE ancestor_rc
         )
+        set(on 0)
         if(shallow_rc EQUAL 0 AND shallow STREQUAL "false"
            AND ancestor_rc EQUAL 0)
-            set(on 1)
-        else()
-            set(on 0)
+            og_version_tree_dirty("${src_root}" dirty)
+            if(NOT dirty)
+                set(on 1)
+            endif()
         endif()
     endif()
     set(${out_var} "${on}" PARENT_SCOPE)

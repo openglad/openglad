@@ -46,7 +46,8 @@ bool on_master()
 	return OPENGLAD_VERSION_ON_MASTER != 0;
 }
 
-// #508: a build off master's history has no version, only its commit.
+// #508: a build that is not a master build (a commit off master's history,
+// or a tree with uncommitted changes) has no version, only its commit.
 std::string compose_identity(bool on_master, std::string_view version,
                              std::string_view hash)
 {

@@ -1,8 +1,8 @@
 # Regenerated every build (cheap), rewritten only when the stamp changes so
 # nothing rebuilds on a no-op. Produces og_git_hash.h defining
-# OPENGLAD_GIT_HASH plus the version numbers: the version (shown only for a
-# commit on master's history) and short commit id the main menu stamps
-# bottom-centre, so a running binary can always be
+# OPENGLAD_GIT_HASH plus the version numbers: the version (shown only by a
+# master build, og_version_on_master) and short commit id the main menu
+# stamps bottom-centre, so a running binary can always be
 # matched to its commit (stale-build confusion is a solved argument, not a
 # debugging session). The numbers come from og_version_compute() in
 # OpenGladVersion.cmake; this file has no version logic of its own.

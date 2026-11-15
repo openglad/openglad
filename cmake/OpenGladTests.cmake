@@ -2256,13 +2256,14 @@ set_tests_properties(check_script_roots_selftest PROPERTIES
     TIMEOUT 60
 )
 
-# The build stamp's master rule (#508): only a build of a commit on master's
-# history shows the 2.<count> version. The script drives the real stamp
+# The build stamp's master rule (#508): only a master build (a commit on
+# master's history, built from a tree with no uncommitted changes when git
+# decides) shows the 2.<count> version. The script drives the real stamp
 # generator (cmake -P cmake/GitHash.cmake) against throwaway repositories in
 # every shape it must answer (on master, a commit on top, a branch, the
-# workflows' ON/OFF, no origin/master, a shallow clone, no git, no commit)
-# and checks that no call site outside src/core/version.cpp reads the bare
-# number.
+# workflows' ON/OFF, no origin/master, a shallow clone, no git, no commit,
+# uncommitted changes on master) and checks that no call site outside
+# src/core/version.cpp reads the bare number.
 add_test(NAME og_version_stamp_selftest
     COMMAND ${CMAKE_COMMAND} -E env
         bash

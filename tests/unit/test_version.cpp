@@ -2,8 +2,9 @@
  *
  * og::version is the only accessor for the generated numbers, and three
  * player-facing surfaces are composed from it (the main-menu stamp, the
- * help footer, `-v`). Only a build of a commit on master's history shows
- * the 2.<count> number (#508); any other build shows its hash alone. Both
+ * help footer, `-v`). Only a master build (a commit on master's history,
+ * built from a tree with no uncommitted changes when git decides) shows the
+ * 2.<count> number (#508); any other build shows its hash alone. Both
  * kinds of text are pinned exactly through the compose_* functions, whose
  * inputs a test can choose; the live functions are pinned against the
  * build's own on_master() answer, written out by hand. Whether on_master()
@@ -149,9 +150,11 @@ TEST(Version, git_hash_is_a_real_sha_when_the_tree_has_history)
         << "': a git checkout must never stamp nogit";
 }
 
-// #508: the number is shown only by a build of a commit on master's
-// history; every other build (a pull-request build, a local branch) shows
-// its commit hash alone, because its commit count names nothing.
+// #508: the number is shown only by a master build; every other build (a
+// pull-request build, a local branch, a local build of a master commit with
+// changes not yet committed) shows its commit hash alone, because its commit
+// count names nothing. The last kind keeps the "+" that says so, on every
+// surface: "7e7f4079+", never "v2.1073 7e7f4079+".
 TEST(Version, stamp_shows_the_number_only_on_master)
 {
     EXPECT_EQ("v2.1073 7e7f4079",
@@ -169,6 +172,8 @@ TEST(Version, cli_line_shows_the_number_only_on_master)
               og::version::compose_cli_line(true, "2.1073", "7e7f4079"));
     EXPECT_EQ("openglad commit 7e7f4079",
               og::version::compose_cli_line(false, "2.1073", "7e7f4079"));
+    EXPECT_EQ("openglad commit 7e7f4079+",
+              og::version::compose_cli_line(false, "2.1073", "7e7f4079+"));
 }
 
 TEST(Version, identity_shows_the_number_only_on_master)
@@ -177,6 +182,8 @@ TEST(Version, identity_shows_the_number_only_on_master)
               og::version::compose_identity(true, "2.1073", "7e7f4079"));
     EXPECT_EQ("7e7f4079",
               og::version::compose_identity(false, "2.1073", "7e7f4079"));
+    EXPECT_EQ("7e7f4079+",
+              og::version::compose_identity(false, "2.1073", "7e7f4079+"));
 }
 
 TEST(Version, stamp_is_the_menu_line)

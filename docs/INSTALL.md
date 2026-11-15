@@ -254,7 +254,9 @@ master commit. `openglad -v`, `openglad_curses --version` and the main-menu
 stamp all print the same number, next to the commit hash. Only a build of a
 commit on master's history shows the number; any other build (a pull-request
 preview, a local branch) prints only its hash, because its commit count is not
-a version.
+a version. A local build of a master commit with uncommitted changes to tracked
+files prints only its hash too, with a `+` after it (`7e7f4079+`): it is not the
+commit it counts.
 
 Every push to `master` starts `.github/workflows/release.yml`. It builds the
 three native packages and calls the web test/deploy workflow for the same
@@ -272,7 +274,8 @@ makes those launches fail. Desktop archives include the core class pack.
 A build that git cannot place (a source tarball with no git, a repository with no
 commit, a checkout with no `origin/master`, a shallow clone) cannot tell that its
 commit is on master, so it shows only its hash (`nogit` without git).
-Packagers who need the number pass it, with the answer:
+Packagers who need the number pass it, with the answer; an explicit
+`OPENGLAD_ON_MASTER` decides alone, whatever the tree holds:
 
 ```bash
 cmake --preset dev-release -DOPENGLAD_COMMIT_COUNT=1073 -DOPENGLAD_GIT_HASH=7e7f4079 -DOPENGLAD_ON_MASTER=ON

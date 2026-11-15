@@ -1361,14 +1361,18 @@ includes it; every other caller goes through `include/openglad/core/version.h`
 (`og::version::string()`, `git_hash()`, `on_master()`, `identity()`, `stamp()`,
 `cli_line()`).
 
-The number is shown only by a build of a commit on master's history (#508);
-elsewhere the stamp, `-v` / `--version` and the help footer show the hash
-alone. `og_version_on_master` in the same file decides: the `OPENGLAD_ON_MASTER`
-value the release and web workflows pass from their event, else
-`git merge-base --is-ancestor HEAD origin/master`, and "no" whenever git cannot
-tell (no git, a repository with no commit, no `origin/master`, a shallow
-clone). The stamp records the answer as `OPENGLAD_VERSION_ON_MASTER`, and
-`og::version::on_master()` reads it.
+The number is shown only by a master build (#508); elsewhere the stamp,
+`-v` / `--version` and the help footer show the hash alone. `og_version_on_master`
+in the same file decides: the `OPENGLAD_ON_MASTER` value the release and web
+workflows pass from their event (or a packager passes) decides alone; else
+git decides, and a master build is one whose commit passes
+`git merge-base --is-ancestor HEAD origin/master` and whose tree has no
+uncommitted changes to tracked files. That last test is `og_version_tree_dirty`,
+the same one that puts the `+` on the hash, so a local build of a master commit
+with uncommitted changes shows `7e7f4079+` and no number. The answer is "no"
+whenever git cannot tell (no git, a repository with no commit, no
+`origin/master`, a shallow clone). The stamp records the answer as
+`OPENGLAD_VERSION_ON_MASTER`, and `og::version::on_master()` reads it.
 
 This number is display-only — the main-menu stamp, `-v`, the help footer, the
 release tag and the web archive alias. No save, replay, snapshot or wire format

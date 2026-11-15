@@ -14,7 +14,8 @@ campaigns, seven versus modes, a browser build and a modding API in Lua.
 
 Versions are `2.<commit count>` of a master commit. The main menu shows the
 version and the commit of the build you are running; a build of a commit that is
-not on master (a pull-request preview, a local branch) shows only the commit.
+not on master (a pull-request preview, a local branch), or a local build with
+uncommitted changes, shows only the commit.
 
 <table>
 <tr>

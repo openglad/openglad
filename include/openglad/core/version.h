@@ -19,12 +19,15 @@ int minor();
 // player sees it only when on_master().
 std::string_view string();
 
-// "7e7f4079"; "7e7f4079+" for a dirty tree; "nogit" without git.
+// "7e7f4079"; "7e7f4079+" for a tree with uncommitted changes to tracked
+// files; "nogit" without git.
 std::string_view git_hash();
 
-// True when the built commit is on master's history (og_version_on_master in
-// cmake/OpenGladVersion.cmake). Only then is the commit count a version: a
-// pull-request or local branch build shows its hash alone (#508).
+// True for a master build (og_version_on_master in
+// cmake/OpenGladVersion.cmake): the built commit is on master's history and,
+// when git decides, the tree had no uncommitted changes. Only then is the
+// commit count a version: a pull-request or local branch build, or a local
+// build with changes not yet committed, shows its hash alone (#508).
 bool on_master();
 
 // What a player is told this build is: "2.1073" on master, else "7e7f4079".
@@ -32,7 +35,7 @@ bool on_master();
 std::string identity();
 
 // The main-menu build stamp: "v2.1073 7e7f4079" on master, "7e7f4079"
-// elsewhere.
+// (or "7e7f4079+") elsewhere.
 std::string stamp();
 
 // The -v / --version line: "openglad version 2.1073 (7e7f4079)" on master,

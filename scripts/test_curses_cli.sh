@@ -74,8 +74,9 @@ check_failure() {
 
 check_success "long help" "Usage: openglad_curses [options]" --help
 check_success "version" "openglad " --version
-# #508: the version number is shown only by a build of a commit on master's
-# history; any other build prints its commit alone. The line this binary must
+# #508: the version number is shown only by a master build (a commit on
+# master's history, from a tree with no uncommitted changes when git
+# decides); any other build prints its commit alone. The line this binary must
 # print is written here from the build's own og_git_hash.h, not asked of
 # og::version, so a binary that ignores the stamped master flag fails: the CI
 # test builds are off master and hold it to "openglad commit <hash>", a master

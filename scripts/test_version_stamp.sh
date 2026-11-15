@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # The build stamp's master rule, end to end (#508).
 #
-# A build shows the 2.<commit count> version only when its commit is on
-# master's history (og_version_on_master in cmake/OpenGladVersion.cmake);
-# every other build shows its hash alone. This drives the real stamp
-# generator, `cmake -P cmake/GitHash.cmake`, against throwaway repositories
-# and reads the header it writes, line by line:
+# A build shows the 2.<commit count> version only when it is a master build
+# (og_version_on_master in cmake/OpenGladVersion.cmake): its commit is on
+# master's history and, when git decides, its tree has no uncommitted
+# changes to tracked files. Every other build shows its hash alone. This
+# drives the real stamp generator, `cmake -P cmake/GitHash.cmake`, against
+# throwaway repositories and reads the header it writes, line by line:
 #
 #    1  HEAD is origin/master                   -> on master, "2.1"
 #    2  a new commit on top, the SAME stamp     -> rewritten: off master, "2.2"
@@ -18,7 +19,11 @@
 #    9  a plain directory, no git               -> off master, "nogit"
 #   10  files added, no commit, count and hash passed (the shape the CI test
 #       lanes build from)                        -> off master, "2.7", the hash
-#   11  only src/core/version.cpp reads the bare number: no other caller of
+#   11  HEAD is origin/master, but the tree has uncommitted changes to a
+#       tracked file, unstaged or staged         -> off master, the hash with
+#       its "+"; an untracked file alone changes nothing; OPENGLAD_ON_MASTER=ON
+#       still decides alone (on, "+" kept); committing makes it a master build
+#   12  only src/core/version.cpp reads the bare number: no other caller of
 #       og::version::string() or og::version::minor() under src/ or include/
 #
 # Usage: test_version_stamp.sh <cmake> <source-root>
@@ -149,20 +154,50 @@ git -C "$NOCOMMIT" add file.txt
 stamp "$NOCOMMIT" "$OUT" "" 7 abcdef01 >/dev/null || fail 10 "cmake failed"
 expect 10 "$OUT" 0 "2.7" "abcdef01"
 
-# 11: every player-facing line is composed by og::version from on_master();
+# 11: a master commit built from a tree with uncommitted changes is not a
+# master build: it shows the hash with its "+" and no number, as a branch
+# build does. The "+" and the answer come from one test, so they move
+# together: an untracked file is neither.
+DIRTY="$ROOT/dirty"
+mkdir -p "$DIRTY"
+g -C "$DIRTY" -c init.defaultBranch=master init -q
+echo one > "$DIRTY/tracked.txt"
+git -C "$DIRTY" add tracked.txt
+g -C "$DIRTY" commit -q -m one
+git -C "$DIRTY" update-ref refs/remotes/origin/master HEAD
+CLEAN_HASH="$(short "$DIRTY")"
+stamp "$DIRTY" "$OUT" >/dev/null || fail 11 "cmake failed (clean)"
+expect 11 "$OUT" 1 "2.1" "$CLEAN_HASH"
+echo new > "$DIRTY/untracked.txt"
+stamp "$DIRTY" "$OUT" >/dev/null || fail 11 "cmake failed (untracked file)"
+expect 11 "$OUT" 1 "2.1" "$CLEAN_HASH"
+echo two > "$DIRTY/tracked.txt"
+stamp "$DIRTY" "$OUT" >/dev/null || fail 11 "cmake failed (unstaged change)"
+expect 11 "$OUT" 0 "2.1" "$CLEAN_HASH+"
+git -C "$DIRTY" add tracked.txt
+stamp "$DIRTY" "$OUT" >/dev/null || fail 11 "cmake failed (staged change)"
+expect 11 "$OUT" 0 "2.1" "$CLEAN_HASH+"
+stamp "$DIRTY" "$OUT" ON >/dev/null || fail 11 "cmake failed (ON)"
+expect 11 "$OUT" 1 "2.1" "$CLEAN_HASH+"
+g -C "$DIRTY" commit -q -m two
+git -C "$DIRTY" update-ref refs/remotes/origin/master HEAD
+stamp "$DIRTY" "$OUT" >/dev/null || fail 11 "cmake failed (committed)"
+expect 11 "$OUT" 1 "2.2" "$(short "$DIRTY")"
+
+# 12: every player-facing line is composed by og::version from on_master();
 # a call site that reads the bare number would show it on any build.
 # grep answers 1 for "scanned, no match"; 0 is a caller, and anything else
 # (a missing root) means nothing was read, which must not pass as clean.
 callers="$(cd "$SOURCE_ROOT" && grep -rnE 'og::version::(string|minor)\(' src include)"
 scan_rc=$?
 if [ "$scan_rc" -eq 0 ]; then
-    fail 11 "the bare version number is read outside src/core/version.cpp: $callers"
+    fail 12 "the bare version number is read outside src/core/version.cpp: $callers"
 elif [ "$scan_rc" -ne 1 ]; then
-    fail 11 "could not scan src/ and include/ under $SOURCE_ROOT (grep rc $scan_rc)"
+    fail 12 "could not scan src/ and include/ under $SOURCE_ROOT (grep rc $scan_rc)"
 fi
 
 if [ "$failures" -ne 0 ]; then
     echo "test_version_stamp: $failures failure(s)" >&2
     exit 1
 fi
-echo "PASS: the build stamp shows the version only on master's history"
+echo "PASS: the build stamp shows the version only for a master build"
