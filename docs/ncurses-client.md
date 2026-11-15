@@ -302,7 +302,8 @@ The curses client follows the same setting as the SDL client (cfg
 keys, the status line and the PAUSED menu's ABILITIES and KEYS entries
 follow it in the next mission, with no restart). Like the page's New
 Specials and Gameplay Fixes answers, it is written to the settings file
-when the page is left, so it holds at the next start (#525). See
+when the page is left with an answer changed, so it holds at the next start
+(#525). See
 [ability-select-design.md](ability-select-design.md) for the design.
 
 - **On**: `1`, `2`, `3` cast the abilities on the followed hero's first row

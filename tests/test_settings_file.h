@@ -7,11 +7,13 @@
 // OPENGLAD_CONFIG_DIR (the unit and curses test mains set one; a predecessor
 // that tore PhysFS down may have left no write directory, and a write with
 // none falls back to the working directory). It refuses (ready() false) when
-// OPENGLAD_CONFIG_DIR is unset, so a test can never reach the player's own
-// settings. On exit it puts the global cfg's persisted settings and overrides
-// and the file on disk back exactly as they were. The cached copy of New
-// Ability Select is not its business: a test that changes that setting also
-// takes ScopedAbilitySelect.
+// OPENGLAD_CONFIG_DIR is unset, and then it neither reads nor copies any
+// file, so a test can never reach the player's own settings. On exit it puts
+// the global cfg's persisted settings and overrides and the file on disk
+// back exactly as they were. The write directory stays where the helper
+// pointed it (the private directory, the one the test mains choose). The
+// cached copy of New Ability Select is not its business: a test that changes
+// that setting also takes ScopedAbilitySelect.
 //
 //     og::test::ScopedSettingsFile settings_file;
 //     ASSERT_TRUE(settings_file.ready());
@@ -30,6 +32,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -43,8 +46,10 @@ public:
         : data_(cfg.data)
         , overrides_(cfg.overrides)
         , private_dir_(point_write_dir_at_private_config())
-        , file_(path())
     {
+        // The file is backed up only inside the private directory.
+        if (private_dir_)
+            file_.emplace(path());
     }
 
     ~ScopedSettingsFile()
@@ -56,7 +61,7 @@ public:
     ScopedSettingsFile(const ScopedSettingsFile&) = delete;
     ScopedSettingsFile& operator=(const ScopedSettingsFile&) = delete;
 
-    [[nodiscard]] bool ready() const { return private_dir_ && file_.ready(); }
+    [[nodiscard]] bool ready() const { return private_dir_ && file_ && file_->ready(); }
 
     // The settings file a page writes: cfg/openglad.yaml under the private
     // config directory.
@@ -111,7 +116,7 @@ private:
     std::map<std::string, std::map<std::string, std::string>> data_;
     std::map<std::string, std::map<std::string, std::string>> overrides_;
     bool private_dir_;
-    ScopedPhysicalFileState file_;
+    std::optional<ScopedPhysicalFileState> file_;
 };
 
 } // namespace og::test
