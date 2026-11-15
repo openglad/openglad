@@ -592,8 +592,9 @@ TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
 //   it burns the team-1 soldier and spares the other two.
 // Breaks: drop_ember's ember made with `gf.rides(og.add_ob("fx", FX_EMBER))`
 // (on: the ember goes with the elemental, spares him and burns the team-1
-// soldier); `gf.take_team(ember, marker)` put back after `ember.team =
-// owner.team` (on: the ember dropped after the charm wears team 1).
+// soldier); `gf.take_team(ember, km.find(owner, km.IMMOLATION))` after
+// `ember.team = owner.team`, the ember taking its fire's team number (on: the
+// ember dropped after the charm wears team 1).
 TEST(KitElemental, a_charmed_elementals_embers_keep_the_colour_they_were_dropped_with)
 {
     for (const short fixes : {short{0}, short{1}}) {
