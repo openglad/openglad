@@ -2204,7 +2204,7 @@ TEST_F(ModesBasketball, goaltend_awards_basket)
     }
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling C-13: a swat plays for the
+// Gameplay Fixes AZ (#502): a swat plays for the
 // colour the weapon wears. The swatting weapon is green's (stamped team 1, as
 // fire() stamps it) and green is charmed by hand onto red before the tick.
 // - The block window: with the setting on the restamp is the weapon's green;

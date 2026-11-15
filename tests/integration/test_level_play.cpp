@@ -36,8 +36,10 @@
 //   C  REVEAL is never cast by a bot;
 //   D  no cast at nobody: every special whose rule names a foe has a foe
 //      within its documented reach (+32 px of movement) before the tick it
-//      was cast in, the reach worked from the gate's own arithmetic at the
-//      crew's level and at the bots' (8 or less, which D checks too);
+//      was cast in, or after that tick for a foe that acts before the caster
+//      in the world's list (nearest_foe), the reach worked from the gate's
+//      own arithmetic at the crew's level and at the bots' (8 or less, which
+//      D checks too);
 //   E  the gates and the casts agree: no gate says yes to a cast that then
 //      refuses for the fact the gate reads (NO FOE, NO CORPSE, NO UNDEAD, NO
 //      TARGET, NO ALLY, and the elemental's QUENCH IMMOLATE FIRST: a burning
@@ -504,16 +506,47 @@ int nearer(int a, int b)
     return std::min(a, b);
 }
 
-int nearest_foe(const Cast& c, const std::vector<Living>& before)
+// The Manhattan distance from a cast to the nearest foe its gate could have
+// seen, -1 for none. Every foe is measured where it stood before the tick. A
+// foe that acts before the caster (the tick acts the world's list in order,
+// and `before` keeps that order) is also measured where it stands after the
+// tick, since its own act had already moved it when the caster's gate asked:
+// on seed 3 an archmage's TELEPORT landed it beside an elemental earlier in
+// the tick the elemental cast its ring in. A foe that acts after the caster,
+// or one that appears during the tick, counts only where it stood before the
+// tick. A caster that appeared during the tick stands after every walker of
+// `before` in the list. A foe is told by its team before the tick: by the end
+// of the tick a charmed foe is on the caster's team.
+int nearest_foe(const Cast& c, const std::vector<Living>& before,
+                const std::vector<Living>& after)
 {
-    int best = -1;
-    for (const Living& l : before)
+    std::size_t caster_at = before.size();
+    for (std::size_t i = 0; i < before.size(); ++i)
     {
-        if (l.id == c.id || l.team == c.team || l.floor != c.floor)
+        if (before[i].id == c.id)
+        {
+            caster_at = i;
+            break;
+        }
+    }
+    const auto distance = [&c](const Living& l) {
+        return std::abs(l.x - c.x) + std::abs(l.y - c.y);
+    };
+    int best = -1;
+    for (std::size_t i = 0; i < before.size(); ++i)
+    {
+        const Living& l = before[i];
+        if (l.id == c.id || l.team == c.team)
             continue;
-        const int d = std::abs(l.x - c.x) + std::abs(l.y - c.y);
-        if (best < 0 || d < best)
-            best = d;
+        if (l.floor == c.floor)
+            best = nearer(best, distance(l));
+        if (i >= caster_at)
+            continue;
+        for (const Living& moved : after)
+        {
+            if (moved.id == l.id && moved.floor == c.floor)
+                best = nearer(best, distance(moved));
+        }
     }
     return best;
 }
@@ -545,11 +578,10 @@ Play play_level(std::uint32_t seed)
     {
         // The foes as the gates saw them when they said yes: by the end of
         // the tick a charmed foe is on the caster's team and a charged one
-        // may be dead. A foe that acted earlier in the same tick than the
-        // caster was where its own act left it (an archmage's TELEPORT lands
-        // it beside the caster, a generator's troop appears), so each foe is
-        // also measured where it stands after the tick, and a cast is
-        // measured against the nearer of the two.
+        // may be dead. A foe that acts before the caster in the world's list
+        // was where its own act left it (an archmage's TELEPORT lands it
+        // beside the caster), so nearest_foe also measures such a foe where
+        // it stands after the tick.
         const std::vector<Living> before = snapshot_livings(world);
         world.tick();
         const std::vector<Living> after = snapshot_livings(world);
@@ -604,7 +636,7 @@ Play play_level(std::uint32_t seed)
                 c.key = {family_name(c.family),
                          special_label(c.family, c.slot, c.shift, world.new_specials)};
                 c.crew = crew_ids.count(c.id) != 0;
-                c.nearest_foe = nearer(nearest_foe(c, before), nearest_foe(c, after));
+                c.nearest_foe = nearest_foe(c, before, after);
                 c.level = caster_level(c, before);
                 c.channel = caster_channel(c, before);
                 c.raised = !c.crew && crew_ids.count(caster_head(c, before)) != 0;
@@ -1113,6 +1145,36 @@ TEST_F(TryxianLevelPlay, same_seed_same_casts)
     const std::size_t n = std::min(first.lines.size(), second.lines.size());
     for (std::size_t i = 0; i < n; ++i)
         ASSERT_EQ(first.lines[i], second.lines[i]) << "the replay drifted at trace line " << i;
+}
+
+// The census's own measure (nearest_foe, rule D above), on hand-made lists in
+// the world's order: a foe that acts before the caster counts where its act
+// left it, a foe that acts after the caster or appears during the tick only
+// where it stood before the tick. A team-1 caster at (0, 0); team-2 foes on
+// its row, 300 px away before the tick.
+TEST(LevelPlayCensus, a_foe_counts_where_its_act_left_it_only_when_it_acts_before_the_caster)
+{
+    Cast c;
+    c.id = 2;
+    c.team = 1;
+    const Living caster{2, 1, 0, 0, 0, 1, false, 2};
+    const auto foe = [](std::uint32_t id, int x, int floor = 0) {
+        return Living{id, 2, x, 0, floor, 1, false, id};
+    };
+
+    EXPECT_EQ(20, nearest_foe(c, {foe(1, 300), caster}, {foe(1, 20), caster}))
+        << "a foe before the caster in the list: where its act left it";
+    EXPECT_EQ(300, nearest_foe(c, {caster, foe(3, 300)}, {caster, foe(3, 20)}))
+        << "a foe after the caster: where it stood before the tick";
+    EXPECT_EQ(300, nearest_foe(c, {caster, foe(3, 300)}, {caster, foe(3, 300), foe(4, 10)}))
+        << "a foe that appears during the tick does not count";
+    EXPECT_EQ(20, nearest_foe(c, {foe(1, 20), caster}, {foe(1, 300), caster}))
+        << "a foe before the caster: the nearer of its two places";
+    EXPECT_EQ(20, nearest_foe(c, {foe(1, 300)}, {foe(1, 20), caster}))
+        << "a caster that appears during the tick acts after every walker before it";
+    EXPECT_EQ(300, nearest_foe(c, {foe(1, 300), caster}, {foe(1, 20, 1), caster}))
+        << "a foe whose act took it to another floor counts where it stood";
+    EXPECT_EQ(-1, nearest_foe(c, {caster}, {caster})) << "no foe at all";
 }
 
 } // namespace

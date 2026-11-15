@@ -2439,7 +2439,7 @@ void charm_by_hand(walker* w, unsigned char onto)
 
 }  // namespace
 
-// Gameplay Fixes AZ (#502) and the lead's rulings M1 and C-6: a kill counts
+// Gameplay Fixes AZ (#502): a kill counts
 // for the colour of the thing that struck, in Team Deathmatch too.
 // - A green archer's arrow in flight, the archer charmed onto red, kills a
 //   yellow fighter: with the setting on green frags (and is paid its point);

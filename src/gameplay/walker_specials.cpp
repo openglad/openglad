@@ -776,10 +776,10 @@ bool walker::charmed_head() const
 // Gameplay Fixes AP (#429): the one owner-chain climb. chain_next is the next
 // link up, or nullptr where every climb stops: no owner, a self-loop, or a
 // walker charmed_head names (a charmed walker with the setting on, fix AD; a
-// possessed body on both values, #430). A dead owner is climbed through: its summon and its
-// shots keep its side for the rest of the tick it died in (the tick's end
-// drops every link to the dead). chain_head is the top of the climb, the
-// person behind a blow (the score gate's hero, experience, credit);
+// possessed body on both values, #430). A dead owner is climbed through: for the
+// rest of the tick it died in it stays the person behind the blows of its summon
+// and its shots (the tick's end drops every link to the dead). chain_head is the
+// top of the climb, the person behind a blow (the score gate's hero, experience, credit);
 // alliance_head is the head friendliness reads with the setting off (with it
 // on every walker is its own, fix AZ); credit_head (walker.cpp) is the topmost
 // living on the climb. Appended at the end of the file so the parity canary

@@ -582,8 +582,9 @@ TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
 // onto team 2 (the charm's own writes); the fire burns on and drops its first
 // ember on the fourth tick. With the setting on that ember wears the fire's
 // colour, team 1; classic it wears the elemental's colour now, team 2.
-// Then the burn (the lead's ruling M3: an ember does not ride its elemental;
-// IMMOLATE's fire, which does, is the next test): the same staging charmed
+// Then the burn (only a thing that rides its owner is spared him, and an
+// ember does not ride its elemental; IMMOLATE's fire, which does, is the
+// next test): the same staging charmed
 // onto team 0, the ember's first pulse with the elemental, a team-0 and a
 // team-1 soldier standing on it. With the setting on the ember (team 1)
 // burns the team-0 soldier and the elemental (6, its 4 + level / 2) and
@@ -666,8 +667,8 @@ TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_it
     }
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling M3: IMMOLATE's fire rides the
-// elemental (KIT_RIDER, with the setting on) and searches round it for the
+// Gameplay Fixes AZ (#502): IMMOLATE's fire rides the elemental (KIT_RIDER,
+// with the setting on), so it never burns him, and searches round him for the
 // foes of its own side. A team-1 elemental lights IMMOLATE and is charmed by
 // hand onto team 0; a team-0 and a team-1 soldier touch it; the fire's first
 // tick drops no ember. With the setting on the fire (team 1) burns the team-0

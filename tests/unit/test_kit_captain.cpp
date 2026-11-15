@@ -687,8 +687,9 @@ TEST(KitCaptain, hook_reels_the_foe_to_the_captains_feet)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling M3: the hook blade rides the
-// captain who threw it (KIT_RIDER, with the setting on) and never snags him.
+// Gameplay Fixes AZ (#502): a thing that rides the walker who owns it never
+// strikes him. The hook blade rides the captain who threw it (KIT_RIDER, with
+// the setting on) and never snags him.
 // A team-1 captain throws HOOK and is charmed onto team 0 by hand; a team-0
 // soldier stands where the spiral touches it on the way back (56 px east of
 // the captain). With the setting on the blade (team 1) snags the soldier, a

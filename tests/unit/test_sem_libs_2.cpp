@@ -752,7 +752,7 @@ void charm_by_hand(walker* w, unsigned char onto)
 
 }  // namespace
 
-// Gameplay Fixes AZ (#502) and the lead's ruling M3: a boomerang rides the
+// Gameplay Fixes AZ (#502): a boomerang rides the
 // soldier who threw it (KIT_RIDER, with the setting on) and never turns on
 // him; it fights everyone else for the colour it was thrown in. A team-1
 // level-4 soldier throws BOOMERANG (its first act holds it 2 px off his
@@ -817,7 +817,7 @@ TEST(SemShield, a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling M3: the cleric's MYSTIC MACE
+// Gameplay Fixes AZ (#502): the cleric's MYSTIC MACE
 // rides him (KIT_RIDER, with the setting on). A team-1 cleric casts it (slot
 // 1 with Shift) and is charmed onto team 0 by hand; on both settings the mace
 // and he are friends. A team-0 soldier stands on the mace's orbit spot (drawcycle

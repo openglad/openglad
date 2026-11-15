@@ -314,7 +314,7 @@ TEST(KitThief, mine_detonates_under_a_foe_not_an_ally)
 // the setting on the blast halves on team 1, its colour, and strikes team 0
 // in full; classic it halves on its live owner's allies, team 0 now, and
 // strikes team 1 in full.
-// Then the trip (the lead's ruling M3: a mine does not ride its thief): a
+// Then the trip (a mine does not ride its thief, so it meets him by colour): a
 // fresh mine of the team-1 thief, the thief charmed onto team 0 and standing
 // on it, nobody else near; one act of the mine. With the setting on it finds
 // him as a foe of its colour and goes off; classic it answers for him (one

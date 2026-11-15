@@ -2067,7 +2067,7 @@ TEST_F(ModesSoccer, weapon_hit_impulses_along_the_shot_motion)
               fx.var(kSocLastKicker));
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling C-13: a shot touches the ball
+// Gameplay Fixes AZ (#502): a shot touches the ball
 // for the colour it wears. The staging above, the knife stamped with green's
 // team (as fire() stamps it) and owned by green.
 // - Green charmed by hand onto red before the tick: with the setting on the

@@ -2530,7 +2530,7 @@ TEST_F(ModesOnslaught, a_tent_skeletons_kill_reaches_its_legion)
         << "the slain orc rises for green";
 }
 
-// Gameplay Fixes AZ (#502) and the lead's rulings M1 and M4: a post struck
+// Gameplay Fixes AZ (#502): a post struck
 // down flips to the colour of the thing that struck it (the hook's fourth
 // argument), and a kill by a thing with no living behind it pays the colour
 // it wore. The red post is at 1 hp, so any landed blow is lethal and the floor

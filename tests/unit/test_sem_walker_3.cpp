@@ -1578,7 +1578,7 @@ TEST_F(SemWalker3, a_bombs_blast_pays_the_colour_the_bomb_took_from_its_thief_wi
     }
 }
 
-// Gameplay Fixes AZ (#502), the lead's ruling C-11: a walker is never credited
+// Gameplay Fixes AZ (#502): a walker is never credited
 // with his own death. A level-4 hero thief on team 1 drops a real bomb (its
 // damage set to 40 by hand, so its quarter of 10 lands 8 on armour 0), is
 // charmed onto team 0 by hand (the charm's own writes) and set to 1 hp, and

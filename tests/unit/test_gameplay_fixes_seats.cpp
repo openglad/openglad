@@ -638,8 +638,11 @@ TEST(GameplayFixesSeats, a_summon_of_our_colour_fights_for_it_with_the_setting_o
 // wears. A twin world with no faerie is a wiped-out team: the seat asks for
 // the end of the game. The legacy scan and the owner-locked one (every seat
 // on one deployed machine) answer alike.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
-// faerie fights for team 1 and nobody is handed over).
+// Break: the four seat scans (both passes of sim_find_next_control and of
+// sim_find_next_control_owned) asking the owner chain again,
+// `seat_may_claim(level, *w) && (level.gameplay_fixes == 0 ||
+// w->chain_head()->team_num() == my_team)` (on: the
+// faerie's chain heads at its team-1 druid and nobody is handed over).
 TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings)
 {
     for (const bool locked : {false, true})
@@ -693,7 +696,10 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_
 // both orders of the world's list. On both settings the seat takes the first
 // of them in the world's list: both wear and (with the setting on) fight for
 // team 0. Legacy and owner-locked alike.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on, the
+// Break: the four seat scans (both passes of sim_find_next_control and of
+// sim_find_next_control_owned) asking the owner chain again,
+// `seat_may_claim(level, *w) && (level.gameplay_fixes == 0 ||
+// w->chain_head()->team_num() == my_team)` (on, the
 // faerie first: the teammate is taken).
 TEST(GameplayFixesSeats, a_dead_heros_seat_takes_the_first_body_of_its_colour)
 {
@@ -747,8 +753,12 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_the_first_body_of_its_colour)
 // seat's colour and, with the setting on, fights for it whoever owns it. Both
 // the classic scan and the scan a seat takes through the control policy,
 // legacy and owner-locked.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
-// first pass skips the hero and the troop is taken).
+// Break: the four seat scans (both passes of sim_find_next_control and of
+// sim_find_next_control_owned) asking the owner chain again,
+// `seat_may_claim(level, *w) && (level.gameplay_fixes == 0 ||
+// w->chain_head()->team_num() == my_team)` (on: the
+// hero's chain heads at the team-1 druid, so both passes skip it and the
+// troop is taken).
 TEST(GameplayFixesSeats, the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it)
 {
     for (const bool locked : {false, true})
@@ -780,8 +790,9 @@ TEST(GameplayFixesSeats, the_first_pass_takes_a_hero_of_its_colour_whoever_owns_
 // after the faerie the next press switches to the teammate on both settings.
 // The hand-off from a dead hero takes the faerie on both settings, so the two
 // agree with the setting on.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
-// switch skips the faerie).
+// Breaks: alliance_head's `return this;` -> `return chain_head();` (on: the
+// switch skips the faerie); the four seat scans asking the owner chain again,
+// as above (on: the hand-off takes nobody).
 TEST(GameplayFixesSeats, switch_character_and_the_hand_off_agree_on_a_summon_of_our_colour_with_the_setting_on)
 {
     for (const short fixes : {short{0}, short{1}})
@@ -944,7 +955,10 @@ TEST(GameplayFixesSeats, a_seat_on_a_summon_whose_casters_charm_ran_out_switches
 // handed the faerie: classic because the hand-off asks only the colour, with
 // the setting on (#496) because the faerie stays on the charmer's team and
 // fights for it.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on:
+// Break: the four seat scans (both passes of sim_find_next_control and of
+// sim_find_next_control_owned) asking the owner chain again,
+// `seat_may_claim(level, *w) && (level.gameplay_fixes == 0 ||
+// w->chain_head()->team_num() == my_team)` (on:
 // nobody is handed over and the game ends).
 TEST(GameplayFixesSeats, a_charmed_druids_faerie_is_handed_over_on_both_settings)
 {
@@ -1032,7 +1046,10 @@ TEST(GameplayFixesSeats, a_charmed_druids_faerie_is_handed_over_on_both_settings
 // drives the faerie and the level goes on; once the faerie is killed by hand
 // the next step ends the level as a wiped-out team's does. A twin with no
 // faerie ends on the first step after the hero's death, on both settings.
-// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// Break: the four seat scans (both passes of sim_find_next_control and of
+// sim_find_next_control_owned) asking the owner chain again,
+// `seat_may_claim(level, *w) && (level.gameplay_fixes == 0 ||
+// w->chain_head()->team_num() == my_team)` (on: the
 // seat holds nobody after the hero's death).
 TEST(GameplayFixesSeats, a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings)
 {

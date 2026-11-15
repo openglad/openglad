@@ -351,7 +351,7 @@ TEST(SemLibsKnife, a_classic_orphaned_knife_returns_owned_by_itself)
 // re-owns itself on its next act). With the setting on the blade is team 1
 // all three times; classic it stays on team 0, the team it was made with.
 // The charmed leg tells the knife's number from the soldier's number now.
-// Then the flight home (the lead's ruling C-12: the blade's probe rides the
+// Then the flight home (the blade's probe rides the
 // soldier, KIT_RIDER with the setting on): the soldier charmed onto team 0,
 // the blade's next step meets a team-0 walker. With the setting on the probe
 // (team 1, copied from the blade) strikes it, stamped team 1 and credited to

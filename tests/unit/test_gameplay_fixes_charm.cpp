@@ -668,9 +668,10 @@ std::vector<walker*> live(GameWorld& w, Order order, int family)
 
 }  // namespace
 
-// Ruling 2 (a summon stays on the team it was summoned for): a green druid
-// casts SUMMON FAERIE, then is charmed red. With the setting on (Gameplay
-// Fixes AZ) the faerie fights for green, the colour it was made with: it is
+// The maintainer ruled (2026-11-15) that a summon stays on the team it was
+// summoned for. A green druid casts SUMMON FAERIE, then is charmed red. With
+// the setting on (Gameplay Fixes AZ) the faerie fights for green, the colour
+// it was made with: it is
 // the charmed druid's foe now, its blow on a green soldier is refused and
 // its blow on a red one lands. Classic, it fights for its druid's colour of
 // the moment, red: the reverse.
@@ -706,8 +707,9 @@ TEST(GameplayFixesChain, a_summon_keeps_its_colour_when_its_caster_is_charmed_af
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Ruling 3 (a tent's troop stays on the team the tent was on when it made
-// it): a script recolours the green tent red (what walker:set_team_num does).
+// The maintainer ruled (2026-11-15) that a tent's troop stays on the team the
+// tent was on when it made it. A script recolours the green tent red (what
+// walker:set_team_num does).
 // With the setting on (Gameplay Fixes AZ) the troop fights for green, the
 // colour it wears: red is its foe and its blow on red lands, and the tent,
 // red now, is its foe too (a troop is a living, never a rider). Classic, the
@@ -806,10 +808,10 @@ TEST(GameplayFixesChain, an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// The lead's ruling M3: a thing that rides the walker who owns it never
-// blocks or strikes him. A green level-6 druid casts CIRCLE OF PROTECTION
-// (slot 4) on the one green soldier within its 60 px; the ring is the
-// soldier's (owner and colour) and, with the setting on, carries KIT_RIDER.
+// A thing that rides the walker who owns it never blocks or strikes him. A
+// green level-6 druid casts CIRCLE OF PROTECTION (slot 4) on the one green
+// soldier within its 60 px; the ring is the soldier's (owner and colour)
+// and, with the setting on, carries KIT_RIDER.
 // The soldier is charmed red and steps away (the ring stays where it was, no
 // tick re-centres it). Whom the ring blocks (the obmap's weapon pass rule):
 // its own wearer never, on both settings; with the setting on a red walker,
@@ -878,7 +880,7 @@ TEST(GameplayFixesChain, a_ring_of_protection_never_turns_on_the_walker_it_rides
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502), the lead's ruling C-5: the cleric's glow is his
+// Gameplay Fixes AZ (#502): the cleric's glow is his
 // ordinary weapon (fire() stamps it with his colour); it sits where it was
 // fired and is auto-attackable, and it does not ride him. A green cleric
 // fires a glow and is then charmed red. With the setting on the glow fights

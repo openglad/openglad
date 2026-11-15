@@ -1689,7 +1689,7 @@ TEST(SemLibsGhostScare, a_scare_frightens_the_foes_of_its_own_colour_after_its_g
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502), the lead's ruling C-8: gf.foes_round asks
+// Gameplay Fixes AZ (#502), the finder's rule written once: gf.foes_round asks
 // og.find_foes_in_range of the owner classic and of the owner with the
 // effect as the side with the setting on. While the owner still wears the
 // effect's colour the two answer the same list in the same order, so a

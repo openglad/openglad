@@ -1323,8 +1323,8 @@ TEST_F(ModesFfa, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
-// Gameplay Fixes AZ (#502) and the lead's ruling M1: a kill by a thing with no
-// living behind it counts for the band it wears. Fighter a's arrow (a's band,
+// Gameplay Fixes AZ (#502): a kill by a thing with no living behind it counts
+// for the band it wears, in every mode. Fighter a's arrow (a's band,
 // as fire() stamps it) flies on after a is killed (it owns itself, as
 // weap::act makes it on its next act) and kills fighter b. With the setting
 // on the kill arrives with no killer and a's band, and a's band frags;
