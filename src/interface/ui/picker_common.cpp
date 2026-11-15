@@ -50,6 +50,7 @@
 #include <map>
 #include <set>
 #include <string_view>
+#include <type_traits>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -1047,6 +1048,18 @@ void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
     set_gameplay_fixes(save, config,
                        !config.is_on("gameplay", "gameplay_fixes"),
                        decides_session);
+}
+
+static_assert(std::is_same_v<decltype(cfg_store::data), PersistedSettings>,
+              "a page's copy must be what cfg_store::save_settings writes");
+
+SettingsFileSave save_settings_if_changed(cfg_store& config,
+                                          const PersistedSettings& opened)
+{
+    if (config.data == opened)
+        return SettingsFileSave::Unchanged;
+    return config.save_settings() ? SettingsFileSave::Saved
+                                  : SettingsFileSave::Failed;
 }
 
 void toggle_cross_control(SaveData& save)
@@ -2212,7 +2225,7 @@ std::unique_ptr<guy> make_base_camp_display_guy(
 {
     auto result = std::make_unique<guy>(character.family);
     result->name = character.name;
-    result->family = static_cast<char>(character.family);
+    result->family = static_cast<std::uint8_t>(character.family);
     result->strength = character.strength;
     result->dexterity = character.dexterity;
     result->constitution = character.constitution;
@@ -4058,9 +4071,7 @@ std::vector<std::string> format_scenario_report_lines(
 namespace {
 
 // The family combat bases a fighter would actually spawn with. A family the
-// registry does not carry (an unmounted pack class, or a .gtl family byte
-// the save carries with no range check) prices as a soldier — the picker's
-// own rule at picker_compute_guy_derived_stats.
+// registry does not carry (an unmounted pack class) prices as a soldier.
 const FamilyDescriptor* guy_family_descriptor(const guy& g)
 {
     const FamilyDescriptor* descriptor =
@@ -5538,9 +5549,16 @@ bool ability_select_pref(cfg_store& config)
     return config.is_on("effects", "new_ability_select");
 }
 
+// Every client's switch lands here: the SDL UI FX row and the text and
+// curses Game Settings prompts. The keys, the HUD and the PAUSED menu read
+// og::input::ability_select_on()'s cached copy, so the setter refreshes it
+// and they follow the answer at once (#398). The refresh re-reads the global
+// cfg, not `config`: every caller passes the global store, and a caller with
+// another store would change that store and leave the cached copy alone.
 void set_ability_select_pref(cfg_store& config, bool on)
 {
     config.apply_setting("effects", "new_ability_select", on ? "on" : "off");
+    og::input::refresh_ability_select_cache();
 }
 
 namespace {
@@ -5748,7 +5766,7 @@ void promote_guy(guy& g, const FamilyDescriptor& fd)
     const short new_level =
         fd.promotion_new_level ? fd.promotion_new_level(g.level) : 1;
     g.upgrade_to_level(new_level);
-    g.family = static_cast<char>(static_cast<unsigned char>(fd.promotes_to));
+    g.family = static_cast<std::uint8_t>(fd.promotes_to);
     reset_belt_for_family_change(g.belt);
 }
 

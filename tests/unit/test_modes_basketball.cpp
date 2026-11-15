@@ -2204,6 +2204,144 @@ TEST_F(ModesBasketball, goaltend_awards_basket)
     }
 }
 
+// Gameplay Fixes AZ (#502): a swat plays for the
+// colour the weapon wears. The swatting weapon is green's (stamped team 1, as
+// fire() stamps it) and green is charmed by hand onto red before the tick.
+// - The block window: with the setting on the restamp is the weapon's green;
+//   classic the colour of the living at the root of its owner chain, red.
+// - The goaltend window, red shooting: with the setting on the swat is green
+//   against red, defensive, and GOALTEND pays red the shot's 3; classic the
+//   root is red, the shooter's own side: an offensive tip and no award.
+// Breaks: the setting-on `swat_side = swat:team_num()` -> `swat_side =
+// root:team_num()` (both legs on red); `local swat_team = swat_side` -> the
+// old four-line root read (the goaltend leg on red, the block leg holds).
+TEST_F(ModesBasketball, a_swat_plays_for_the_colour_of_the_weapon_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const bool fixed = fixes != 0;
+        {
+            SCOPED_TRACE(testing::Message() << "the block window, setting " << fixes);
+            BballCourt fx;
+            fx.world().gameplay_fixes = fixes;
+            fx.tick(1);
+            ASSERT_TRUE(fx.basketball_active());
+            fx.thaw();
+            auto& vars = fx.world().mode.vars;
+            vars[kBbBallState] = kStateShot;
+            vars[kBbShotValue] = 2;
+            vars[kBbShotHoop1] = 2;
+            vars[kBbShotTeam1] = 1;
+            vars[kBbShotLand] = pos_pack(576, 480);
+            vars[kBbFlightTicks] = 20;
+            vars[kBbBallPx] = 320 * 256;
+            vars[kBbBallPy] = 300 * 256;
+            vars[kBbBallPz] = 20 * 256;
+            vars[kBbBallVx] = 0;
+            vars[kBbBallVy] = 0;
+            vars[kBbBallVz] = 300;
+            walker* swat = fx.spawn_weapon(fx.green, 317, 297, 3.0f, -1.0f);
+            ASSERT_NE(nullptr, swat);
+            ASSERT_EQ(1, swat->team_num());
+            swat->set_damage(5.0f);
+            fx.green->set_real_team_num(fx.green->team_num());
+            fx.green->set_team_num(0);
+            fx.green->set_charm_left(30);
+            fx.tick(1);
+            EXPECT_EQ(kStateRebound, fx.var(kBbBallState)) << "a block";
+            EXPECT_EQ(fixed ? 2 : 1, fx.var(kBbLastTouch1))
+                << (fixed ? "setting on: the weapon's colour, green"
+                          : "setting off: its root's colour now, red");
+        }
+        {
+            SCOPED_TRACE(testing::Message() << "the goaltend window, setting " << fixes);
+            BballCourt fx;
+            fx.world().gameplay_fixes = fixes;
+            fx.tick(1);
+            ASSERT_TRUE(fx.basketball_active());
+            fx.thaw();
+            auto& vars = fx.world().mode.vars;
+            vars[kBbBallState] = kStateShot;
+            vars[kBbShotValue] = 3;
+            vars[kBbShotHoop1] = 2;
+            vars[kBbShotTeam1] = 1;
+            vars[kBbShotLand] = pos_pack(576, 480);
+            vars[kBbFlightTicks] = 20;
+            vars[kBbBallPx] = 570 * 256;
+            vars[kBbBallPy] = 480 * 256;
+            vars[kBbBallPz] = 40 * 256;
+            vars[kBbBallVx] = 0;
+            vars[kBbBallVy] = 0;
+            vars[kBbBallVz] = -200;
+            walker* swat = fx.spawn_weapon(fx.green, 567, 477, 4.0f, 0.0f);
+            ASSERT_NE(nullptr, swat);
+            ASSERT_EQ(1, swat->team_num());
+            fx.green->set_real_team_num(fx.green->team_num());
+            fx.green->set_team_num(0);
+            fx.green->set_charm_left(30);
+            const std::uint32_t score_before = fx.world().m_score[0];
+            fx.tick(1);
+            if (fixed)
+            {
+                EXPECT_EQ(3, fx.team_var(kBbPoints, 0)) << "GOALTENDING pays red the shot";
+                EXPECT_EQ(score_before + 3 * kPointScore, fx.world().m_score[0]);
+                EXPECT_TRUE(has_notification(fx.events, "GOALTEND! RED +3"));
+            }
+            else
+            {
+                EXPECT_EQ(0, fx.team_var(kBbPoints, 0)) << "an offensive tip: no award";
+                EXPECT_FALSE(has_notification(fx.events, "GOALTEND! RED +3"));
+            }
+        }
+    }
+}
+
+// Gameplay Fixes AZ (#502): a thing that rides a walker swats for his colour
+// of the moment. The block window above, the swatting weapon green's
+// (stamped team 1, owned by green) and here marked KIT_RIDER with the setting
+// on (as gf.rides marks a rider), green charmed by hand onto red: on both
+// settings the restamp is red's (with the setting on the colour the weapon
+// fights for, classic the colour of the living at its root now).
+// Break: the setting-on `swat_side = swat:fights_for_team()` -> `swat_side =
+// swat:team_num()` (on: green, the colour the weapon wears).
+TEST_F(ModesBasketball, a_riders_swat_plays_for_its_walkers_colour_of_the_moment)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        BballCourt fx;
+        fx.world().gameplay_fixes = fixes;
+        fx.tick(1);
+        ASSERT_TRUE(fx.basketball_active());
+        fx.thaw();
+        auto& vars = fx.world().mode.vars;
+        vars[kBbBallState] = kStateShot;
+        vars[kBbShotValue] = 2;
+        vars[kBbShotHoop1] = 2;
+        vars[kBbShotTeam1] = 1;
+        vars[kBbShotLand] = pos_pack(576, 480);
+        vars[kBbFlightTicks] = 20;
+        vars[kBbBallPx] = 320 * 256;
+        vars[kBbBallPy] = 300 * 256;
+        vars[kBbBallPz] = 20 * 256;
+        vars[kBbBallVx] = 0;
+        vars[kBbBallVy] = 0;
+        vars[kBbBallVz] = 300;
+        walker* swat = fx.spawn_weapon(fx.green, 317, 297, 3.0f, -1.0f);
+        ASSERT_NE(nullptr, swat);
+        ASSERT_EQ(1, swat->team_num());
+        swat->set_damage(5.0f);
+        if (fixes != 0)
+            swat->set_kit_state(static_cast<std::uint8_t>(swat->kit_state() | KIT_RIDER));
+        fx.green->set_real_team_num(fx.green->team_num());
+        fx.green->set_team_num(0);
+        fx.green->set_charm_left(30);
+        fx.tick(1);
+        EXPECT_EQ(kStateRebound, fx.var(kBbBallState)) << "a block";
+        EXPECT_EQ(1, fx.var(kBbLastTouch1)) << "red, the charmed maker's colour now";
+    }
+}
+
 // ===========================================================================
 // §11.2 #16 — dead-ball reset + the revive backstop
 // ===========================================================================

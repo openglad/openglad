@@ -18,9 +18,11 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <filesystem>
 #include <functional>
 #include <fstream>
 #include <format>
+#include <iterator>
 #include <list>
 #include <set>
 #include <span>
@@ -200,6 +202,62 @@ TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
     EXPECT_EQ(static_cast<int>(expect_int),
               static_cast<int>(save_data.team_list[0]->intelligence));
 
+    save_data.reset();
+}
+
+namespace {
+
+// The class byte of the one guy record in save/<slot>.gtl: the record is
+// order, family, then the 12-byte name (save_data.cpp's writer), so it is the
+// byte just before the name. -1 when the name is not in the file.
+int saved_class_byte(const std::string& slot, const std::string& name)
+{
+    std::ifstream in(std::filesystem::path(get_user_path()) / "save" /
+                         (slot + ".gtl"),
+                     std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    const std::size_t at = bytes.find(name);
+    if (at == std::string::npos || at == 0)
+        return -1;
+    return static_cast<unsigned char>(bytes[at - 1]);
+}
+
+} // namespace
+
+// #500: a hero of a pack class from 128 up round-trips through the save file
+// as its class. The file always held the class as one unsigned byte (0xC8
+// for 200), and still does: the save format does not change. Until #500 the
+// hero's record kept a signed byte, so the class read back as -56.
+TEST(SaveLoadTeam, a_class_200_hero_round_trips_through_save) {
+    auto& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "gladiator";
+
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "HighClass";
+    hero->family = 200;
+    save_data.team_list[0] = std::move(hero);
+    save_data.team_size = 1;
+
+    ASSERT_TRUE(save_data.save("classbyte_scratch")) << "save should succeed";
+    EXPECT_EQ(0xC8, saved_class_byte("classbyte_scratch", "HighClass"))
+        << "the file carries the class as one unsigned byte";
+
+    save_data.reset();
+    ASSERT_TRUE(save_data.load("classbyte_scratch")) << "load should succeed";
+    ASSERT_EQ(1, static_cast<int>(save_data.team_size));
+    ASSERT_TRUE(save_data.team_list[0] != nullptr);
+    EXPECT_STREQ("HighClass", save_data.team_list[0]->name.c_str());
+    EXPECT_EQ(200, static_cast<int>(save_data.team_list[0]->family))
+        << "the class survives the save/load round trip";
+
+    ASSERT_TRUE(save_data.save("classbyte_scratch")) << "second save should succeed";
+    EXPECT_EQ(0xC8, saved_class_byte("classbyte_scratch", "HighClass"))
+        << "a loaded hero saves the same byte again";
+
+    EXPECT_TRUE(remove_user_file("save/classbyte_scratch.gtl"));
     save_data.reset();
 }
 

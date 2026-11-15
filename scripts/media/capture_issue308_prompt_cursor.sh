@@ -47,8 +47,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Dismiss the native intro, open Begin New Game, accept the generated company,
-# choose the highlighted Gladiator campaign, then leave its briefing for Team
-# Build. Coordinates are X11 pixels for the fixed 320x200 canvas at 2x scale.
+# then leave the campaign's briefing for Team Build. Coordinates are X11 pixels
+# for the fixed 320x200 canvas at 2x scale.
 sleep 3
 xdotool key space
 sleep 4
@@ -59,8 +59,7 @@ click_at() {
     sleep "${3:-1}"
 }
 click_at 300 130 1
-click_at 400 218 1
-click_at 390 380 2
+click_at 400 218 2
 xdotool key Escape
 sleep 3
 

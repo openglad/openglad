@@ -232,7 +232,7 @@ TEST_F(GladiatorCampaignTest, nuthram_has_no_enemy_immune_to_a_mid_campaign_part
     reference->set_team_num(0);
     reference->set_real_team_num(0);
     auto g = std::make_unique<guy>(FAMILY_SOLDIER);
-    g->family = static_cast<char>(FAMILY_SOLDIER);
+    g->family = static_cast<std::uint8_t>(FAMILY_SOLDIER);
     g->name = "Reference";
     reference->set_owned_myguy(std::move(g));
     reference->myguy->upgrade_to_level(kReferencePartyLevel);

@@ -1887,7 +1887,9 @@ bool CursesPickerClient::prepare_new_game()
     // A new game always starts on the default campaign: drop any campaign a
     // previously loaded save left in the session config (run_game copies
     // config_.campaign back over the freshly reset save) and re-point the
-    // mount so the in-picker scenario viewer stays coherent.
+    // mount so the in-picker scenario viewer stays coherent. #490:
+    // run_picker then goes straight to Team Build; the campaign list is the
+    // Scenario submenu's Set Campaign item.
     config_.campaign = save_data_.current_campaign;
     (void)og::ui::sync_campaign_mount_to_save(save_data_);
     // #162: glyph client, no pixies — refresh the loader with the mount so
@@ -1957,6 +1959,10 @@ std::string CursesPickerClient::show_campaign_select()
 
 void CursesPickerClient::show_options()
 {
+    // #525: the answers reach the settings file when the page is left,
+    // through the one rule both terminal pages call; a visit that changes
+    // nothing writes nothing.
+    const og::ui::PersistedSettings opened = cfg.data;
     Menu menu(term_, clock_);
 
     // Titled after the door that opened it (GAME SETTINGS on the main
@@ -2014,7 +2020,8 @@ void CursesPickerClient::show_options()
 
     // The UI FX "New Ability Select" row: a per-machine preference only
     // (nothing to synchronize, no session field), so the prompt reads and
-    // writes cfg alone.
+    // writes cfg alone, through the switch every client calls, which also
+    // refreshes the copy the keys, the status line and the PAUSED menu read.
     accepted = false;
     const std::string belt_current = og::ui::ability_select_pref(cfg) ? "on" : "off";
     const std::string belt = menu.prompt("Game Settings",
@@ -2025,6 +2032,10 @@ void CursesPickerClient::show_options()
         else
             menu.show_text("Game Settings", {"Invalid value; on or off."});
     }
+
+    if (og::ui::save_settings_if_changed(cfg, opened) ==
+        og::ui::SettingsFileSave::Failed)
+        menu.show_text("Game Settings", {og::ui::kSettingsNotSavedLine});
 }
 
 void CursesPickerClient::show_help()

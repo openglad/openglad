@@ -89,9 +89,9 @@ usual pause.
 | AA | Druid, barbarian, mage (ENERGY WAVE) and archer (EXPLODING BOLT) bot gates | Yes with a wall, the map edge or a foe's body on the weapon's pad; the cast refuses `COULD NOT FIRE`. | The gate asks the pad, as the elf's does (fix V); the archer asks it for the fire arrow it fires. |
 | AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE, archer EXPLODING BOLT, barbarian HURL BOULDER and EXPLODING BOULDER, mage ENERGY WAVE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the elf's and druid's casts paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing; the other four pay their shot on both values (1 MP for the archer, 2 for the barbarian, 5 for the mage). | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid: nothing drawn, nothing spent. A body on the pad keeps the paid blow. |
-| AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
+| AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It fights for the colour it wears, as everything does with the setting on (fix AZ), and heads its own owner chain while the charm lasts, so its blows' experience and credit are its own; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
-| AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team: the head of its owner chain wears the player's colour (#92). The level census reads friendliness on both settings. |
+| AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team, which with the setting on means it wears the player's colour itself (fix AZ; #92). The level census reads friendliness on both settings. |
 | AG | A forestwalker's step in the trees | Every act in the trees takes the forest penalty off the step the walker carries and adds any haste to the result. A hastened elf whose haste beats its penalty steps farther every act it stays in the trees and keeps that size until it leaves them (a level-2 speed potion with no penalty: a 204 px step after 100 acts, over walls, water and bodies); without a haste the step crawls to 1 px within a few acts. | The penalty comes off the normal step every act: in the trees the step is the normal step less the penalty, never below 1 px, plus any haste, once. A hero elf with 30 dexterity walks 3 px, not 1. |
 | AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
 | AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
@@ -101,12 +101,16 @@ usual pause.
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 | AO | CHARGE's strike on a dead body | The rush strikes a body that is already dead (in play, a door its own step opened with a key): the strike draws its damage roll and does nothing to the body, and the rush still erases the dead body's orders and forces a four-step walk on it. Nothing a player sees follows: a dead walker never acts, and every revival clears its orders. | The dead body is left as it lies: the damage roll is still drawn, its orders stay and no walk is forced. |
-| AP | Whose side a walker takes in the tick its owner dies | Friendliness climbs a walker's owner chain only up to a dead owner, while the score, the experience and the kill credit of its blows climb through it: a summon or a shot of a caster that was charmed and then killed is asked for friendliness as its own colour but credited to the caster's, until the tick ends and the dead owner is dropped. | Every climb goes through a dead owner and stops at a charmed walker (fix AD), the climb a blow's score always made: friendliness, score and credit read one head, so a dead caster's summon and its shots keep the caster's side for the rest of that tick. The mutant mode's damage gate reads the same climb, so there too a charmed summon heads its own chain. |
+| AP | Whose side a walker takes in the tick its owner dies | Friendliness climbs a walker's owner chain only up to a dead owner, while the score, the experience and the kill credit of its blows climb through it: a summon or a shot of a caster that was charmed and then killed is asked for friendliness as its own colour but credited to the caster's, until the tick ends and the dead owner is dropped. | Friendliness reads each walker's own colour (fix AZ), so an owner's death changes no side. The score gate's hero, the experience and the kill credit of a blow still climb through a dead owner and stop at a charmed walker (fix AD), so a dead caster's summon's and shots' blows are the caster's for the rest of that tick. The mutant mode's damage gate reads the same climb, so there too a charmed summon heads its own chain. |
 | AQ | A player's slide along a wall | Each half of the slide is a real step whether the slide takes it or not: on a half a body blocks, the probe eats a treasure it reaches before the body, bumps the body (a swing at a foe), opens a door the player holds the key to and posts "Key N needed!" at a locked one. | Each half is asked quietly first, as the right-hand walk's probes are (fix Y); only a free half takes the step, which acts as before (a treasure the slide moves onto is eaten). A blocked half eats nothing, swings at nothing and opens nothing: a keyed door beside a wall opens when the player walks into it, not when the slide brushes it. |
 | AR | The druid bot's SUMMON FAERIE rule | No rule (fix Q's off column). With the setting on before this fix the rule asked the bolt's pad alone: a bolt passes an ally, a faerie does not, so with an ally standing where the faerie appears the rule said yes and the cast refused `NO ROOM TO SUMMON`. | The rule also asks the cast's own question for the faerie where the bolt stands, quietly, with a faerie of the druid's (never the druid's own body, #423): an ally, an enemy door or tree, an enemy weapon in flight or an arrow slit there is a no. |
 | AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
-| AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
+| AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. Fix BB then makes that swing ask whether it can land. |
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
+| AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
+| AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
+| AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. The one exception is a thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife on its way home, the F2 cheat's shield): it goes with him and fights for whatever side he is on now. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
+| BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act. A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -156,7 +160,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AV, in play:
+Fixes X to BB, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -265,15 +269,16 @@ Fixes X to AV, in play:
   arrow (`gf.pad_blocked_by_terrain(self, weapon)`), and refuse before
   they pay. A body on the pad keeps the paid blow here as well.
 - **AD.** A tent or a bones pile owns the troops it makes, and every
-  question of whose side a walker is on climbs its owner chain to the
-  top: `is_friendly`, the blow's friend test and the score's team. A
-  thief's CHARM OPPONENT or an archmage's MIND CONTROL on such a troop,
-  or on an enemy caster's summon, changes its colour but not its owner,
-  so it wears the charmer's colour and answers for its owner's side: it
-  fights its charmer and is struck by its charmer's team. With the setting
-  on every such climb stops at a charmed walker (one whose charm clock is
-  running), so the troop fights for the colour it wears until the charm
-  ends. Its owner, its clock and the cascade when its tent falls are
+  question of whose side a walker is on climbs its owner chain to the top:
+  `is_friendly`, the blow's friend test and the score's team. A thief's
+  CHARM OPPONENT or an archmage's MIND CONTROL on such a troop, or on an
+  enemy caster's summon, changes its colour but not its owner, so it wears
+  the charmer's colour and answers for its owner's side: it fights its
+  charmer and is struck by its charmer's team. With the setting on the
+  troop fights for the colour it wears (fix AZ: every walker does), and
+  the owner-chain climb, which still names the person behind a blow, stops
+  at it while the charm runs, so its blows' experience and credit are its
+  own. Its owner, its clock and the cascade when its tent falls are
   unchanged. A body a ghost rides stops the climbs too, on both values
   (#430, under [Not gated](#not-gated)). The level-play test met the
   classic shape once: an enemy thief counted a crew-raised ghost as a foe
@@ -298,21 +303,24 @@ Fixes X to AV, in play:
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
 - **AF.** During FREEZE TIME the player's side acts and everyone else's
-  Livings and generators stand still; effects, treasures and weapons always
-  act. The old game asks whether the walker itself is on team 0, red, the
-  colour of the classic player. This game asked since #92 (`ec263a26`,
-  fixing #86) whether it is friendly to the player's team, the head of its
-  owner chain wearing the player's colour, the rule that completion and
-  respawn already read. The two answers differ for a player colour other
-  than red (Base Camp's seats, a networked team), where the old rule
-  freezes the player's own side and lets team 0 fight on, and for a walker
-  whose colour is not its chain's: a charmed troop of a living enemy tent,
-  or an enemy's summon the player charmed, wears red but answers for its
-  owner, and the player's summon that an enemy charmed is the reverse. With
-  the setting off the gate asks team 0 again, as in the old game (#461);
-  with it on it asks friendliness, as before. Only the act gate follows the
-  setting: the level census (a frozen foe still holds the level open, #231)
-  reads friendliness on both settings, as the old game's does.
+  Livings and generators stand still; effects, treasures and weapons
+  always act. The old game asks whether the walker itself is on team 0,
+  red, the colour of the classic player. This game asked since #92
+  (`ec263a26`, fixing #86) whether it is friendly to the player's team,
+  the head of its owner chain wearing the player's colour, the rule that
+  completion and respawn already read. The two answers differ for a player
+  colour other than red (Base Camp's seats, a networked team), where the
+  old rule freezes the player's own side and lets team 0 fight on, and for
+  a walker whose colour is not its chain's: a charmed troop of a living
+  enemy tent, or an enemy's summon the player charmed, wears red but
+  answers for its owner, and the player's summon that an enemy charmed is
+  the reverse. With the setting off the gate asks team 0 again, as in the
+  old game (#461); with it on it asks friendliness, as before. Fix AZ
+  makes friendliness read each walker's own colour, so with the setting on
+  a walker acts during FREEZE TIME when it wears the player's colour,
+  whatever its owner wears. Only the act gate follows the setting: the
+  level census (a frozen foe still holds the level open, #231) reads
+  friendliness on both settings, as the old game's does.
 - **AG.** In the trees a forestwalker (the elf, and any pack class with
   forest walk) steps shorter by its forest penalty: 4 - dexterity/10 for a
   hero, 4 - level/2 for a placed or bot walker, never below 0. The classic
@@ -426,18 +434,24 @@ Fixes X to AV, in play:
   every revival clears its orders, and no recording holds a dead body's
   orders, so no golden moves.
 - **AP.** A summon's or a shot's side is read by climbing its owner chain
-  to the head (a knife to its thrower, a summon to its caster). The classic
-  game climbed two ways: friendliness stopped at a dead owner, so the
-  walker then stood for itself, while a blow's score, experience and kill
-  credit climbed through it. In the tick a charmed caster dies, its summon
-  and its shots were asked for friendliness as their own colour but
-  credited to the caster's (#429). With the setting on every climb is the
-  one a blow's score always took: through a dead owner, stopping at a
-  self-loop and at a charmed walker (fix AD), so a dead caster's summon and
-  shots keep its side for the rest of that tick. A body a ghost rides stops
-  every climb on both values (#430). The mutant mode's damage gate reads
-  the same climb. No recording stages a charm, a death and a friendliness
-  question in one tick, so no golden moves.
+  to the head (a knife to its thrower, a summon to its caster). The
+  classic game climbed two ways: friendliness stopped at a dead owner, so
+  the walker then stood for itself, while a blow's score, experience and
+  kill credit climbed through it. In the tick a charmed caster dies, its
+  summon and its shots were asked for friendliness as their own colour but
+  credited to the caster's (#429). With the setting on friendliness no
+  longer climbs at all (fix AZ: every walker fights for the colour it
+  wears), so a dead owner changes no side. The climb a blow's score always
+  took stays for the person behind a blow, through a dead owner and
+  stopping at a self-loop and at a charmed walker (fix AD): the score
+  gate's hero, the experience and the kill credit of a dead caster's
+  summon's or shot's blows are the caster's for the rest of that tick. A
+  body a ghost rides stops every climb on both values (#430). The mutant
+  mode's damage gate reads the same climb. No recording stages a charm, a
+  death and a blow in one tick, so no golden moves. A walker that dies
+  charmed keeps its colour and its charm clock until it is revived (#505);
+  with the setting on that clock decides only whom its summons' blows
+  credit for the rest of that tick.
 - **AQ.** When a player's step meets a wall, the walk tries to slide along
   it: it asks the half step up or down and the half step across, and takes
   each half that is free. In the classic game each half is asked with a
@@ -497,6 +511,169 @@ Fixes X to AV, in play:
   have flown. With the setting off a bot has no such rule, so no
   setting-off golden moves; the new pair `elf_bot_rocks_tree_pad_scen99`
   and its setting-on twin records it.
+- **AW.** A blow by something a hero owns pays the hero the blow's
+  experience. `walker::attack` pays it for anything that is not a living
+  (the arm for thrown things) and again for any owned hitter that is not a
+  projectile (the arm meant for summons), so an effect, which is neither,
+  paid twice (#494). The thief's bomb is such an effect: its blast takes the
+  thief's level, so each blow it lands paid twice what the same blow struck
+  by hand pays. With the setting on the second arm pays only a summon. The
+  other owned effects that strike are POISON CLOUD and a mine's puff, a
+  magic shield and a boomerang, chain lightning's blast and an archer's or
+  barbarian's exploding shot, and with New Specials a fire elemental's
+  embers, IMMOLATE's contact burn and its meteors, and the orc captain's
+  hook blade; each now pays once (a SUPERNOVA blast goes off after its
+  caster is gone, owns itself and pays no one). Experience is not in the
+  recordings (the dump holds each walker's place, hit points, team and
+  life), so no golden can move.
+- **AX.** The difficulty scales a walker by its team: on Easy or Hard every
+  walker off team 0, the player's side, takes the percent, and none on team
+  0 does (#493). A fresh summon is on team 0 until its caster's team is
+  written, and three summons are scaled before that write, in the old game
+  as here: the cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and
+  phantom. So a foe cleric's ghost and a foe archmage's elementals and
+  phantoms kept their Normal hit points, magic and damage while their
+  caster was scaled (#495). With the setting on they take the caster's team
+  before they are scaled, so a foe's takes the percent and a player's still
+  does not. Every other summon and spawn (the cleric's skeleton and its
+  RESURRECT ghost, WARBAND's grunts, LEGION's risen, a slime's child,
+  generator spawns, the bot squads) already took its team first, on both
+  settings. The druid's faerie, the friendly RESURRECT and a slime's
+  fission are never scaled on any team, in the old game as here, and
+  neither is a faerie's WISH (one of this game's New Specials); all stay
+  so. Every recording plays at Normal, where the percent gives a summon's
+  whole-number values back unchanged, so no golden moves.
+- **AZ.** Every friend-or-foe question in the classic game asks the head
+  of each walker's owner chain (a knife to its thrower, a summon to its
+  caster, a troop to its tent), so a thing fights for whatever its maker
+  is now: when a charm, MIND CONTROL or a death changes the maker's side,
+  its shots in flight, its summons and its troops change side with it. And
+  a thief's bomb, its blast, a mine's and an exploding shot's blast,
+  ENERGY WAVE, a boulder and a returning knife are made with no colour
+  (red), so a thrower who dies before his bomb goes off leaves a blast
+  that strikes his own side in full and pays red for every blow (#533). A
+  blow's score went to the hitter's own colour while the gate that decides
+  a score is due read the chain's head (#502). With the setting on
+  everything fights for the colour it wears and nothing follows its maker
+  (the maintainer's ruling: shots "should all stay with the team they were
+  when cast"). A thing takes its maker's team when it is made and keeps
+  it: whom it may hit, whom it spares, whom a blast halves (the blast's
+  own colour, so a dead or charmed thrower's blast still softens on his
+  side), which team its blow's score pays and which team its kill counts
+  for all read that colour. A summon stays on the team it was summoned for
+  whatever happens to its caster, and a tent's troop on the team the tent
+  had when it made it. The one exception is a thing that rides the walker
+  who owns it (a ring of protection, a cleric's mace, a soldier's
+  boomerang, a captain's hook blade, a ghost's scare, IMMOLATE's fire, a
+  returning knife on its way home, the F2 cheat's magic shield): it is part
+  of that walker and goes with him (the maintainer: "obviously they should
+  go with the walker"), so it fights for whatever side he is on now, never
+  against him, and its blows score and count for that side. What belongs
+  to a person stays with the maker: experience and
+  kills on a hero's record, the hero whose record opens the score gate,
+  whom the victim turns on, and a blast's quarter on its own thrower. A
+  walker is never credited with his own death: when the person behind a
+  blow is the walker it kills, the death is announced as one by his own
+  side, with no kill on his record, no kill experience and no kill score.
+  With the setting off the classic game plays byte for byte. This rule
+  replaces fix AY: with it a seat's hand-off and Switch Character ask the
+  same colour test, so AY's extra question is gone (#496). What a player
+  sees with the setting on:
+  - An arrow, a knife or a fireball loosed before its maker was charmed
+    keeps fighting for the colour it was shot in: it hits his new friends,
+    and him too should he stand in its way, and pays its own colour.
+  - A bomb or a mine keeps the colour its thief had when he laid it, and
+    so does its blast: it halves on that colour's side, strikes everyone
+    else in full and its own thrower at a quarter. A thief charmed during
+    the fuse is struck at a quarter by his own bomb, and his new friends
+    in full.
+  - A dead thrower's blast halves on his side and pays his team (#533).
+    His team earns score only when it is the player's team: a hero on
+    another team scores through his hero record while he lives, but once
+    he is dead his shot or blast heads its own chain, the score gate is
+    closed and the same blow pays nobody. That is the one case where the
+    maker's death changes the pay; it is left for a later round (#560).
+  - A summon fights for the colour it was summoned for: it fights its own
+    caster once he is charmed, and a summon a charmed caster made for our
+    side stays ours when the charm ends, so a seat whose hero died is
+    handed it and a seat on it can Switch Character back to its heroes
+    (#496, #536). A tent's troop keeps the colour the tent had when it
+    made it, so it fights its tent if a script recolours the tent.
+  - A ring of protection, a mace, a boomerang, a hook blade, a ghost's
+    scare, IMMOLATE's fire, a returning knife on its way home and the F2
+    cheat's shield go with the walker they ride. While he is charmed they
+    fight for the charmer's side: the ring blocks his old friends and lets
+    his new friends pass, the boomerang, the mace and the hook blade strike
+    his old friends, a ghost's scare frightens them and IMMOLATE's fire
+    burns them, and none of them blocks, strikes or frightens him or his
+    new friends. A blow of one of them scores and counts for the charmer's
+    team, and a post one of them strikes down in Onslaught flips to the
+    charmer's colour. All of it turns back when the charm ends. A ring
+    whose walker has died fights for the colour it was made with again
+    (that a ring outlives its walker at all is an old fault of both games,
+    #557). An ember IMMOLATE drops while its elemental is charmed wears the
+    charmer's colour; one dropped before keeps the colour it was dropped
+    with.
+  - Everything else a walker made meets him by its colour once he is
+    charmed: his poison cloud poisons him, he trips his own mine, the
+    embers he dropped before the charm burn him while he stands on them,
+    his war banner keeps rallying and healing the side it was planted for
+    and stops rallying and healing him (and frightens him if he is weaker
+    than it), his tree or bone wall blocks him and he attacks it when he
+    bumps it, and a cleric is blocked by his own glows and swings at them.
+  - A dying tent's four blasts halve on the tent's own side. In Team
+    Deathmatch a red tent's blast that kills a red fighter is a red
+    teamkill and takes the kill away from an enemy who had wounded him a
+    moment before; one that kills a green fighter is a red frag.
+  - A blast that kills its own charmed thrower, or a summon its own
+    charmed caster, credits him no kill; the blow's own damage still
+    scores for the colour the blast or the summon wears. Team Deathmatch,
+    Onslaught and Mutant count that death as his suicide, no frag. Free
+    For All never reads the killer, only the team the blow is stamped
+    with: the blast wears the thrower's old band and he dies wearing the
+    charmer's, so his old band gains a frag for the death of its own
+    fighter (classic, the charmer's band loses one, the suicide shape).
+  - In every mode a kill by a shot or a blast whose maker has died since
+    counts for the colour it wears (in Team Deathmatch a kill of its own
+    colour is a teamkill). An Onslaught post struck down flips to the
+    colour the thing that struck it fights for, even when its maker has
+    been charmed or has died since. A shot that touches a soccer ball or
+    swats a basketball plays for its own colour, and a thing that rides a
+    walker for his.
+  The pairs `archer_charmed_arrow_in_flight_scen99`,
+  `thief_bomb_charmed_thrower_scen99` and `thief_bomb_dead_thrower_scen99`,
+  each with its setting-on twin, record it, and four setting-on rows move
+  (see [Parity](#parity)).
+- There is no fix BA: #505 needed no change to the game. A walker that
+  dies charmed keeps heading its owner chain until the tick ends, so its
+  summons' blows are credited to it for that tick (see AP above); with the
+  setting on no side reads that climb (fix AZ), so no new letter was
+  given.
+- **BB.** A bot that re-plans with a foe within 100 px stops pathing,
+  turns a notch toward the foe, starts an ATTACK order and calls for a
+  swing along its heading, asking nothing (#497). The turn never writes the
+  facing the bot is turning to, so that call turns a bot that did not face
+  its foe straight back to the facing it had: it never completes its aim
+  there. A bot that already faced its foe was turned off it by the classic
+  turn and the call only turned it back; with fix AT, as the setting on
+  played before this fix, it stays facing and the call swung or shot
+  whatever stood between: at the air, into a wall, at a foe out of reach.
+  With the setting on the turn and the swing agree. A bot not facing its
+  foe keeps the foe's direction as the facing it turns to, so its next acts
+  finish the turn, one notch an act, and the turn is its act. This does not
+  make the bots aim faster: before, the ATTACK order snapped such a bot
+  round on its next act, so a bot one notch off now reaches its first blow
+  an act sooner and one three or four notches off an act or two later;
+  what changes is that the turn is no longer undone. A bot facing its foe
+  swings or shoots along that facing, and only when the blow can land: a
+  bot that shoots asks its line check, and a melee-only bot, which that
+  check always refuses, asks whether a foe's body stands on its weapon's
+  pad. With the setting off the classic statements run in the classic
+  order, so no setting-off golden moves; the rows it moves with the setting
+  on are listed under [Parity](#parity), and [Bots](#bots) has the measure.
+- There is no fix BC: the one-floor part of #447, a melee-only bot
+  standing in its ATTACK order, is left for a later round of its own, as
+  the maintainer ruled (see [Rulings (2026-11-14)](#rulings-2026-11-14)).
 
 ## Refusals at a glance
 
@@ -771,6 +948,31 @@ response can meet that no: the act rolls a special only when the bot has
 slot 1's magic, and a slot it cannot pay is folded onto slot 1 before the
 gate is asked.
 
+Near its foe (fix BB). A bot that re-plans with a foe within 100 px stops
+pathing, turns toward the foe and starts an ATTACK order. With the setting
+on a bot that does not face the foe yet keeps turning toward it on its next
+acts, one notch an act, and a bot that faces it starts a swing or a shot
+there only when it can land: a shot asks the line check the ATTACK order
+asks on every act, and a melee-only bot (the orc, the ghost, the small
+slime), which that check always refuses, asks whether a foe's body stands on
+its weapon's pad, the one place its swing can land. Measured over the
+Westlands calibration (25 levels, three seeds, 600 ticks), per 100 ticks a
+bot spends within 100 px of its foe on its floor, as swings started / blows
+landed / damage / kills: melee-only bots 1.85 / 0.94 / 22.2 / 0.027 with the
+setting off, 2.48 / 0.97 / 21.1 / 0.024 with it on before the fix and 1.67 /
+0.98 / 21.9 / 0.031 after; the level's shooters 5.42 / 5.00 / 162.9 / 0.392,
+5.48 / 4.73 / 154.0 / 0.379 and 5.21 / 4.78 / 154.8 / 0.370; the crew 8.15 /
+8.11 / 100.8 / 0.340, 8.03 / 7.88 / 99.1 / 0.360 and 7.83 / 7.95 / 100.2 /
+0.366. The swings the fix removes are the ones at the air: before it 1,559
+of the 2,025 swings melee-only bots started there on Westlands were dropped
+at a clear pad and 252 met terrain; after it they start 217 there, each with
+a foe's body on the pad, and 181 land (30 found no body on the pad when the
+blow fell, and for the other 6 the run recorded no outcome). These figures
+were counted on a build of the fix with counters added, the flying bot's
+change of #447 included; the game as shipped plays the four calibration
+suites and the level-play test below exactly as that build did, row for row
+and line for line.
+
 What the gates still do not see:
 
 - A door, a grown tree or an enemy weapon in flight on the pad, for the
@@ -846,7 +1048,16 @@ rolls (5416 to 5427): BARRAGE falls from 127 casts to 87, ROCKS from 87 to
 test keeps for it. Measured again on the merged tree, with fix AT and the
 rest of this batch in: every capped count still reads 0 (the elves', the
 druid's and the rest), BARRAGE 65, ROCKS 84 and SUMMON FAERIE 23, and the
-rules hold 5371 rolls; the caps stay at 3.
+rules hold 5371 rolls; the caps stay at 3. Measured again with fix BB and
+the flying bot's change of #447 in: the bots cast 584, 514, 484, 480, 471
+and 467 times on seeds 42, 1337, 2025, 1, 2 and 3, BARRAGE 92, ROCKS 89
+and SUMMON FAERIE 15, and the rules hold 5270 rolls. Every capped count
+reads 0 but one: the druid, barbarian, mage and archer bots' `COULD NOT
+FIRE` reads 1 (cap 3). It is a druid bot's GROW TREE on seed 2, tick 154,
+whose bolt's pad held an enemy knife in flight: the gate's quiet question
+passes a weapon in flight, and `fire()` met the knife and lost the weapon
+clash roll to it, the first shape under "What the gates still do not
+see" above.
 
 ## Charm and seats
 
@@ -878,11 +1089,22 @@ rules hold 5371 rolls; the caps stay at 3.
   or its body is dead, and never asks a live body's team. This is the
   maintainer's ruling: refuse a charmed walker for the hand-off, keep one
   already controlled.
+- **A summon of our colour is ours** (fix AZ, #496, #536). With the
+  setting on a summon fights for the colour it wears, so a summon a
+  charmed caster made for us is handed to a seat whose hero died like any
+  walker of the team, and a seat on it can Switch Character back to its
+  heroes. With the setting off the classic scans and the switch disagree
+  about it, as before: the hand-off takes it, and Switch Character, which
+  asks the heads of both owner chains, refuses it.
 
 The old game's death searches (`viewscreen::input` and
 `viewscreen::continuous_input`, three passes each) ask the same question
 behind the setting since `787eb516` (#450). No parity capture runs them, so
-the port moved no golden.
+the port moved no golden. Fix AY's question, ported into the first two
+passes of the same searches as `3a21c890`, was taken out again when fix AZ
+made it the colour test the scans already ask (`98d05c56` reverts
+`3a21c890`); the third pass is #139's difference (see
+GAMEPLAY_FIXES_FROM_CLASSIC.md).
 
 ## Parity
 
@@ -977,8 +1199,42 @@ The parity goldens are captures from the old game (branch
   `d4fa405f` (the facts the recaptures broke, worked out again from the
   new goldens, and four setting-on rows on a seed of their own; those four
   moved). Seventeen new goldens and 43 recaptured; no setting-off golden
-  moved. `d4fa405f` is the commit the goldens are captured from: 374 of
-  374 goldens `cmp` equal to a full capture there.
+  moved. The table mirrors `b518f501` and `fbea813d` carried mutation
+  pins the testing refresh moved; no golden moved. Fixes AZ, AW, AX, AY
+  and BB: `bc75c886` (AZ, a blow's team score pays the team its chain head
+  wears), `3f8080e1` (AW, an owned effect's blow pays its hero once),
+  `9532f53d` (AX, a foe's summon takes the difficulty as its caster does),
+  `3a21c890` (AY, a dead hero's seat is handed only a walker that fights
+  for its side) and `9ad29b55` (BB, a bot near its foe turns to it for good
+  and swings only when the blow can land; the 28 rows below moved), then
+  `fbcab638`, which corrects the AZ port so that with the setting on a
+  team outside the score table is paid nothing, as in this game (no
+  golden moved), and the table mirrors `ae5c6c7c` (the facts BB's
+  recaptures broke in sixteen rows, worked out again, and the archmage's
+  MIND CONTROL berserk row with the setting on back on its twin's seed;
+  that row moved), `35e5f6eb` (four rows' facts and texts corrected after
+  review; nothing moved), `e31bb4ca` (the cleric bot's RESURRECT row with
+  the setting on, on a seed of its own; that row moved), `65ef41ef` (one
+  label reworded; nothing moved) and `30ada1c5` (the new arenas of AZ and
+  BB, each with the setting off and on, captured there; two pins and two
+  citations re-pointed by line, corrected comments, and the fact kind
+  that #498 retired dropped from the old game's fact header; nothing else
+  moved). Four new goldens and 28 recaptured; no setting-off golden moved.
+  Then fix AZ as the maintainer ruled it (everything fights for the colour
+  it wears, and a thing that rides a walker goes with him): the table
+  mirror `9df7fc3a` first (the three new arenas below, each with the
+  setting off and on, and the pins the rule moved; nothing else moved),
+  then `98d05c56` (reverts AY's port `3a21c890`; nothing moved), `ac32063a`
+  and `d4a87048` (revert the first AZ port's correction `fbcab638` and the
+  first AZ port `bc75c886`, fix AW's lines kept; the colour-score row with
+  the setting on moved, and the next commit put it back), `fbefdccc` (the
+  stamps: the four rows below and the dead thrower's arena with the
+  setting on moved) and `b1252282` (the readers and the rider mark: the
+  other two new arenas with the setting on moved). Six new goldens and four
+  recaptured; no setting-off golden moved at any step. `b1252282` is the
+  commit the goldens are captured from: 384 of 384 goldens `cmp` equal to a
+  full capture there, and every capture there `cmp`s equal to this game's
+  run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1015,6 +1271,8 @@ The rows with the setting on, by fix:
 | AS | `archer_bot_barrage_pad_body_fixes_scen99`, `archer_barrage_edge_pad_fixes_scen99` and `archer_barrage_pad_body_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AT | `orc_bot_faces_foe_fixes_scen99` (a new arena, with its setting-off twin), and the 44 rows below that it moves |
 | AV | `elf_bot_rocks_tree_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AZ | `thief_bomb_colour_score_fixes_scen99` (with its setting-off twin); `archer_charmed_arrow_in_flight_fixes_scen99`, `thief_bomb_charmed_thrower_fixes_scen99` and `thief_bomb_dead_thrower_fixes_scen99` (three new arenas, each with its setting-off twin); and the four rows below that it moves |
+| BB | `mage_bot_far_foe_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1068,14 +1326,12 @@ the strike and its damage roll stay, so an arena's two captures would be
 byte-identical. `GameplayFixesWalk` in `tests/unit/test_gameplay_fixes_walk.cpp`
 pins it, with a corpse and with a door the rush's own step opens.
 
-Fix AP has no row: a climb meets a dead owner only in the tick its owner
-dies (a shot or an effect drops a dead owner at its next act, a summon dies
-with it, and the end of every tick drops every link to the dead), and only a
-charm can give that owner another colour than its summon or shot. No arena
-stages a charm, a death and a friendliness question about the dead caster's
-summon or shot inside one tick: the bots' cadence would make it a lottery of
-seeds. The unit tests `GameplayFixesChain` (`tests/unit/test_gameplay_fixes_charm.cpp`)
-and `ModesMutant.the_damage_gate_reads_the_games_owner_climb` pin it.
+Fix AP has no row: with the setting on friendliness reads each walker's
+own colour (fix AZ), and the climb through a dead owner now decides only
+the score gate's hero, the experience and the kill credit, which no
+recording carries (a parity spawn has no character record). The unit tests
+`GameplayFixesChain` (`tests/unit/test_gameplay_fixes_charm.cpp`) and
+`ModesMutant.the_damage_gate_reads_the_games_owner_climb` pin it.
 
 Fix AQ's arena, `player_slide_potion_scen99` and
 `player_slide_potion_fixes_scen99`: the player soldier walks up-right into
@@ -1152,10 +1408,199 @@ finder's reach), `thief_bot_charm_or_taunt` (107: the bot rolled no slot 3
 in the run) and `cleric_bot_resurrect_foe_stain` (3: the cleric never cast
 near the stain). The table mirror `d4fa405f` carries the seeds; the
 capture there moves those four rows alone, and each `cmp`s equal to the
-current game's dump. One of the 44, `archer_bot_bolt_at_blows`, was also
+current game's dump. After fix BB two of them took another seed (Rulings
+(2026-11-14), entry 13): the archmage row is back on its twin's 198 and
+the cleric row is on 84. One of the 44, `archer_bot_bolt_at_blows`, was also
 re-staged for #438 (the archer one pixel lower), so its pair is captured
 anew rather than recaptured. No setting-off golden moves: every
 setting-off capture is byte-identical before and after `915a99ee`.
+
+Fix AW has no row: experience is not in the recording. `SemWalker3`
+(`tests/unit/test_sem_walker_3.cpp`) pins it with a bomb and with a bare
+owned effect, each against the hero's own melee blow of the same damage.
+The old game's capture after its port (`3f8080e1`) is byte-identical to
+the one before it.
+
+Fix AX has no row: every recording plays at Normal (the current game's
+parity runner never sets a difficulty, which reads as 100 %, and the old
+game's capture tool keeps `current_difficulty = 1`; `ScenarioSpec` has no
+difficulty field), and at 100 % the percent multiplies a summon's
+whole-number hit points, magic and damage by 100 and divides them back
+exactly, so both settings record the same bytes. The parity entries were
+run with the fix and no row moved, and the old game's capture after its
+port (`9532f53d`) is byte-identical to the one before it. `DifficultyScaling` in
+`tests/unit/test_difficulty_scaling.cpp` pins it on both settings at Easy
+and Hard.
+
+Fix AZ's arena, `thief_bomb_colour_score_scen99` and
+`thief_bomb_colour_score_fixes_scen99`: the bomb arena of
+`effect_bomb_bystander_scen99` with other colours. The player thief stands
+on team 1 (the row's player team) and the stationary level-1 tower on team
+2. Classic, the thief's bomb and the blast it leaves wear no colour, team
+0; with the setting on the bomb takes the thief's colour when it is
+dropped and the blast the bomb's. The thief stands on the player's team,
+so the score gate opens and the blast's blow on the tower scores its
+damage plus the tower's level for the colour the blast wears: with the
+setting off red is paid it, with the setting on team 1, and the other team
+nothing. With the setting off the blow takes 90 to 92 of the tower's 130
+hp (the bystander row's tower fact) and pays 91 to 93. With the setting on
+the tower, which faces the thief, shoots a tick sooner (fix AT), so the
+blast's damage roll is another draw of the stream, and that row's bands
+are every value the roll allows: 85 to 93 hp, 86 to 94 paid. The blast's
+quarter on the thief is a blow on its own side, and the tower's arrows
+have a team-2 head that is no hero, so neither scores. The setting-off
+row's pin moves the classic payment to the chain head's team; the
+setting-on row's pin leaves the blast red, so it pays nobody. Both rows
+were captured from the old game at `30ada1c5`, after the first port of AZ
+(`bc75c886`, corrected by `fbcab638`); the rule as it stands pays the same
+team on both rows, so both still `cmp` equal to this game's run. The
+rule's port kept them: taking the first port out (`d4a87048`) left the
+setting-on row's blast red for one commit, and the stamps (`fbefdccc`)
+gave it the thief's colour back, byte for byte the recording.
+
+Fix AZ's arrow arena, `archer_charmed_arrow_in_flight_scen99` and
+`archer_charmed_arrow_in_flight_fixes_scen99`: a hostile level-1 archer
+bot stands on open ground 80 px above a level-20 player thief, and a far
+tower of the archer's holds the level open. From tick 6 the archer looses
+its FIRE ARROWS ring, on the same ticks on both settings, and the arrow
+aimed straight down at the thief leaves on tick 13; with nothing in its
+way it strikes him on tick 18. On tick 15 the thief charms the archer.
+Classic, the arrow in the air follows the charmed archer onto the thief's
+side and passes him, so he ends whole. With the setting on it keeps the
+colour it was shot in and strikes him once, for 6 or 7 (the fire arrow's 7
+rolled against no armour: only the difficulty gives a placed walker
+armour, and the parity runner never applies it). No fact can name one
+arrow among several (#552), so the classic row cannot read its own premise,
+an arrow aimed at the thief in the air when the charm lands: its pin
+carries it, and so does the setting-on twin on the same inputs and ticks,
+whose thief takes exactly that arrow's blow. The setting-off row's pin
+stops the charm, so the arrow and the later ones strike the thief; the
+setting-on row's makes friendliness climb the owner chain again. Both rows
+are captures from the old game at `b1252282`: the setting-off one played
+the same before the port, and the setting-on one took this game's answer
+with the readers' port, `b1252282` (the thief ends at 69 hp).
+
+Fix AZ's charmed-thrower arena, `thief_bomb_charmed_thrower_scen99` and
+`thief_bomb_charmed_thrower_fixes_scen99`: a hostile level-3 thief bot
+drops its bomb point blank beside a level-20 player thief, on tick 1 with
+the setting on and on tick 2 classic (on its first act the bot has no foe
+yet, and with no foe the classic gate bombs only with three foes within
+110 px, while the setting-on gate asks for a foe inside the blast), and the
+player charms it on tick 6. Classic, the blast follows
+the charmed bot and halves on the player: 27 to 31 of his 75. With the
+setting on it wears the colour the bomb was dropped in, team 1's, and
+strikes him in full: 56 to 62. The setting-off row's pin stops the charm;
+the setting-on row's leaves the bomb red, so its blast halves on the
+player again. Both rows are captures from the old game at `b1252282`: the
+setting-off one played the same before the port, and the setting-on one
+took this game's answer with the readers' port, `b1252282` (the player
+ends at 13 hp).
+
+Fix AZ's dead-thrower arena (#533), `thief_bomb_dead_thrower_scen99` and
+`thief_bomb_dead_thrower_fixes_scen99`: a hostile level-1 thief bot drops
+its bomb beside a team-2 tower, and the player's level-7 archer kills the
+thief with one arrow before the bomb goes off. A dead thrower's bomb owns
+itself, so its blast reaches only 19 px (the bomb's own level) and strikes
+the tower alone, in full on both settings. Classic, the blast is red, the
+player's colour, so it pays the player's team its blow on the tower beside
+the arrow's blow and kill: 205 to 225, in two score changes. With the
+setting on it wears the thief's colour and pays nobody: 177 to 193, in
+one. The classic row shows its own premise: with a live thrower the head
+of the blast's chain would be the thief, whose team is not the player's,
+and the blast would pay nobody on either setting. The setting-on row's
+score reads only the arrow, so its tower's hit points (99 to 103 of 130:
+the blast's full blow and nothing else) show that the blast went off; no
+fact reads that the thief died first (no fact reads an order of ticks,
+#552), which rests on the staging it shares with the classic row. The
+setting-off row's pin stamps the bomb with the thief's colour classic too;
+the setting-on row's leaves it red. Both rows are captures from the old
+game at `b1252282`: the setting-off one played the same before the port,
+and the setting-on one took this game's answer with the stamps' port,
+`fbefdccc` (the score went from 218 to 187).
+
+No pair shows a summon that stays on its team when its caster is charmed:
+every summon a bot casts on a fixed seed fights with blows whose count
+after a charm is a run of bot rolls (the druid's faerie freezes with
+sprinkles of 1 damage, and the archmage's image is refused with the
+setting on unless two foes hunt the archmage), so a fact would be a number
+read off one run; the unit tests pin it. Nor can a row show a dead
+thrower's blast halving on his own side: with the setting on a living of
+the thrower's colour inside the blast stops the bot from dropping the bomb
+at all. Nor does any row play a walker that is charmed while a ring, a
+mace or a boomerang sits on him: with the old game's rider rule taken out
+all 384 captures stay byte-identical, so that part rests on the unit tests
+here and on reading there (#558 asks for such a pair). Kits, possession,
+the modes and level scripts are not in the old game.
+
+Fix AZ moves four existing rows with the setting on, as measured in the
+current game before the port (each `_fixes_scen99`). In each only the team
+of one thing a walker made changes, from 0 to 1, and with it the walkers'
+order in the dump, which follows the team: `thief_bot_bomb_ally` (the
+thief's bomb), and `soldier_bot_charge_door`,
+`soldier_bot_whirlwind_one_foe` and `cleric_turn_no_undead` (a soldier's
+returning knife). Every fact of the four holds. The old game's stamps
+(`fbefdccc`) move exactly these four the same way, and each is recaptured
+from the old game at `b1252282`, byte-identical to this game's run. No
+setting-off row moves.
+
+Fix BB's arena, `mage_bot_far_foe_scen99` and
+`mage_bot_far_foe_fixes_scen99`: a hostile level-1 mage bot spawns facing
+down at the idle player soldier straight below it, 86 px between their
+boxes. Its only special, TELEPORT, is held while one to three foes (one in
+this arena) stand within 110 px, on both settings, and its fireball, shot
+straight, reaches a foe 64 px off (the fireball's step 6 and range 7, scaled
+for a straight shot to 8 and 8). Its first act rolls TELEPORT and the rule
+holds it; with the setting off that roll is the act, with it on (fix W) the
+act goes on and starts the hunt, so the classic mage runs one act behind
+from there. Its path counter starts at 7, so six throttled walks of 2 px
+bring it to 90 px from the soldier and the seventh call re-plans, on tick 9
+with the setting off and tick 8 with it on: the foe is within 100 px, so the
+near branch turns the mage to the facing it has, starts an ATTACK order and
+asks for a swing. With the setting off the turn steps a notch and the swing
+only turns it back; with it on the mage keeps facing (fix AT) and asks its
+line check first, which answers that the soldier is beyond the fireball's
+64 px, so it throws nothing. Before the fix the setting-on game threw a
+fireball at the air there. The ATTACK order then walks the mage on, 2 px an
+act, so at the end of the recording (B = 11) the classic mage stands 16 px
+down and the fixed one 18 px, no fireball flies and the soldier is whole. B
+is the tick an unasked swing at the re-plan has put its fireball in the air
+on both rows (tick 10 with the setting on, tick 11 off). Each row's pin puts
+the unasked swing back: the setting-on row's makes the near branch's line
+check answer yes, the setting-off row's inverts fix AT's gate so the classic
+mage keeps facing and its swing throws; either way a fireball flies by B.
+The two rows say the same thing on purpose: with fix BB the setting-on game
+does here what the classic game does.
+Both rows are captured from the old game at `30ada1c5`, after the port
+(`9ad29b55`), and each `cmp`s equal to this game's run.
+
+Fix BB moved these 28 existing rows with the setting on, as measured in the
+current game before the port (each `_fixes_scen99`); the old game's capture
+after the port, `9ad29b55`, moved exactly these and no other row, and each
+was recaptured from the old game. The facts of 17 no longer held:
+`archer_barrage_edge_pad`, `archer_bolt_edge_pad`, `archmage_mind_control_berserk`,
+`archmage_summon_no_room`, `barbarian_boulder_edge_pad`,
+`cleric_bot_raise_or_turn`, `druid_tree_blocked`,
+`elemental_struck_short_pool`, `elf_rocks_blocked`, `elf_rocks_edge_pad`,
+`elf_volley_refund`, `mage_bot_heartburst`, `mage_wave_edge_pad`,
+`orc_stale_shove`, `soldier_disarm_resisted_busy`,
+`soldier_whirlwind_no_foe` and `thief_charm_nearest`. In the other 11 only
+the bytes differed: `archer_bot_bolt_at_blows`, `archmage_bot_image_one_foe`,
+`archmage_hit_stale_shift`, `cleric_bot_resurrect_foe_stain`,
+`mage_bot_freeze_engaged`, `orc_right_walk_potion`,
+`soldier_charge_front_foe`, `soldier_disarm_higher_foe`,
+`soldier_disarm_resisted_price`, `thief_bot_charm_or_taunt` and
+`thief_charm_tent_troop`. Sixteen of the 17 had their facts worked out
+again from the rules after the recapture, never read off the new run (the
+table mirror `ae5c6c7c` carries them, and `35e5f6eb` the review's
+corrections). The seventeenth, `archmage_mind_control_berserk`, and one of
+the 11, `cleric_bot_resurrect_foe_stain`, no longer reached the rule they
+test, so their pins changed nothing: each setting-on twin took another
+seed while its setting-off twin stayed as it is (Rulings (2026-11-14),
+entry 13), and was recaptured from the old game on it.
+`orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
+does not move: the orc stands 1 px above the soldier, the pad holds the
+soldier's body and the swing starts on tick 9 as before. No setting-off row
+moves.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -1296,8 +1741,8 @@ Rows deliberately not added:
 - `NO ONE TO DISARM` has no row: a refusal string is not recorded and the
   cast spends nothing on either value, so an arena's two captures would be
   byte-identical; a current-game test pins it.
-- Fixes N, O and M's seat half (#354, #450): no parity row can reach them (see
-  [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
+- Fixes N, O and M's seat half (#354, #450): no parity row can reach them
+  (see [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
 - Fix S: no parity row can reach it. A parity spawn has no character
   record, so its fire delay is a whole number and busy always counts down
   to exactly zero; the old game's port (`4440414c`) moves no golden. The
@@ -1366,6 +1811,8 @@ Rows deliberately not added:
   scenario field sets the type. A row with the setting off on a level that
   carries the free-exit bit with another one would differ from the old game
   on purpose, since the old game asks for the whole type there.
+- #503: no recording builds an owner loop, and below 16 links the walk
+  changes nothing, so every row records the same bytes.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -1381,10 +1828,10 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-seven changes apply whatever the setting, three from the work that
-added it (N, O and P), six from the second bugs batch and eighteen from the
-issues it filed; the last three entries record differences kept on purpose
-(#484, #440, #491):
+Thirty-six changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch, eighteen from the
+issues it filed and nine from the third bugs batch; the last three entries
+record differences kept on purpose (#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1424,7 +1871,9 @@ issues it filed; the last three entries record differences kept on purpose
   score and experience still go to the chain's top: a tent's troop never
   earned experience in either game, and it pays the classic team score
   when its tent is on the player's team. The record exists in this game
-  only.
+  only. With the Gameplay Fixes setting on the record's team is the colour
+  of the thing that struck (fix AZ), and a blow with no living behind it
+  records its colour with no walker.
 - **A probe no longer grows the world (#417).** Every read-only look into
   the obmap's buckets (the spawn-spot probe, the landing and wake probes,
   the path search's cost, the text client's grid and object commands)
@@ -1449,6 +1898,27 @@ issues it filed; the last three entries record differences kept on purpose
   every player's game, and a joiner has no server world). A replay recorded
   while cheating plays back differently, because a cheat is not recorded
   input. This game only.
+- **Every cheat key changes the game (#432).** In local play the screen
+  the cheat keys wrote is a copy of the game that the next snapshot
+  overwrites, so after F1 was fixed (#413) the other keys still changed
+  nothing a player could keep: the hit points, the magic, the level,
+  flight, invincibility, speed, invisibility and the new shape were back a
+  tick later, the magic shield vanished, the foes F12 killed stood up
+  again, and the team hop never moved the seat. Every key now changes the
+  game itself, the way F1 does, with the game's own rules running (a kill
+  credits the hero; a hop moves the seat to the new body and drops the
+  orders its AI had queued, as in the old game), and the snapshot shows it
+  on every view. A hop that landed leaves the save on the new team when
+  the level ends, as the old game's hop does; the company's money stays
+  with the lowest team on its roster. In a networked game no key does
+  anything, for the host or a joiner (a host's cheat would change every
+  player's game, and a joiner has no game of its own to change); before, a
+  key there changed only the pressing machine's copy until the next
+  snapshot. A replay plays back without the cheats, which are not recorded
+  input: before, only F1 made a cheated level's replay play back
+  differently; now any cheat key does, from the first key pressed. Replays
+  of levels played without cheats are untouched, and a playback still
+  refuses every key. This game only.
 - **Water and lava flow again (#414).** Since June 2026 (`de9d02b2`) every
   snapshot repainted the palette and put the water and lava colour bands
   back: measured over six frames, the bands' turn read 1, 0, 0, 1, 0, 0
@@ -1536,11 +2006,13 @@ issues it filed; the last three entries record differences kept on purpose
   team-0 walker with no player character took the percent with its body
   (A12a) and, from #473, with its shots, so on Hard a player's raised
   skeleton had twice the hit points and damage. Both are reverted on the
-  maintainer's ruling, and so is their port to the old game. A summon its
-  caster's team reaches only after it is scaled (the cleric's RAISE GHOST,
-  the archmage's elementals and phantoms) is still on team 0 then, so a
-  foe's keeps 100% too, as in the old game. Every other team takes the
-  percent as before, and at 100% nothing changes, so no golden moves.
+  maintainer's ruling, and so is their port to the old game. With the
+  setting off a summon its caster's team reaches only after it is scaled
+  (the cleric's RAISE GHOST, the archmage's elementals and phantoms) is
+  still on team 0 then, so a foe's keeps 100% too, as in the old game; with
+  it on it takes the team first and the percent with it (fix AX). Every
+  other team takes the percent as before, and at 100% nothing changes, so
+  no golden moves.
 - **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
   chain's bolt strikes first the nearest foe on the archmage's own floor
   and cannot arc through floors, but the cast paid its busy, a shot on a
@@ -1584,13 +2056,39 @@ issues it filed; the last three entries record differences kept on purpose
   owner in place, so a body a tent, a bones pile or an enemy caster owns
   still answered for its owner in every question of sides: the ghost's
   side struck it, its old side would not, and it would not strike its old
-  side. Every such question now stops at a body a ghost rides, on both
-  values of the setting, as fix AD stops it at a charmed walker. The body
-  fights, scores and is credited for the ghost's side. Its owner, its
-  lifetime and its tie to its tent are unchanged, and when the ride ends
-  the chain is what it was. Undead resist POSSESS, so the shipped bodies
-  it reaches are an enemy caster's summons. No recording plays New
-  Specials, and the old game has no possession.
+  side. The owner-chain climb now stops at a body a ghost rides, on both
+  values of the setting, as fix AD stops it at a charmed walker; with the
+  Gameplay Fixes setting on friendliness reads the body's own colour
+  anyway (fix AZ). The body fights, scores and is credited for the ghost's
+  side. Its owner, its lifetime and its tie to its tent are unchanged, and
+  when the ride ends the chain is what it was. Undead resist POSSESS, so
+  the shipped bodies it reaches are an enemy caster's summons. No
+  recording plays New Specials, and the old game has no possession.
+- **A ridden body goes home when a script kills its ghost, and the player
+  gets the next hero (#499, #535).** A ride
+  comes from POSSESS (New Specials) or from a level script's `og.possess`,
+  which rides with New Specials off too. A ghost that dies while it rides
+  frees its body, which goes back to its own side. A level script can also
+  mark the ghost dead without its death running (`set_dead`); then the body
+  only dropped the link and kept the ghost's colour for the rest of the
+  level, while since #430 it answered for its owner again: one colour, the
+  other side. The ride now ends there as the ghost's death ends it, whether
+  the ghost is still in the world or was cleared away at the end of the
+  tick: the body goes back to its own team (into a thief's charm record
+  when a charm took it meanwhile), a seat's tag goes back to the ghost, as
+  when the ghost dies, and neither is linked any more, so a later death of
+  the ghost changes nothing. The ghost's body stays hidden: no burst, and it
+  blocks nothing. Whichever way the script kills the ghost, the player whose
+  seat drove the body used to go on steering it, now a fighter for the
+  other side, until it died (#535). Now the body is left to itself and the
+  seat goes to the dead ghost, so the player is handed the next hero of the
+  team as after any hero's death, or, in a mode that brings its fighters
+  back (Mutant's decay can kill a ghost Mutant inside a body), waits for the
+  ghost to stand up and drives it again. A seat parked by a dropped
+  connection goes to the dead ghost too and waits there while it is parked,
+  as it waits on any hero that died under it: it is handed no new hero to
+  steer with the dropped player's last input. No recording plays a ride,
+  and the old game has no possession.
 - **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
   On the isle a fifth of each college's spawns change sides at birth and
   are named Dreamkin. The bone tent keeps its spawns as its own: their
@@ -1647,6 +2145,94 @@ issues it filed; the last three entries record differences kept on purpose
   no walker the world let go is still filed (a death and every removal
   file it out), so no recording moves. This game only: the old game's
   search trusts its pile.
+- **A removal reads only the obmap's own record (#504).** `obmap::remove`
+  takes a walker out of every pile `obmap::walker_to_pos` files it under.
+  For a walker `walker_to_pos` did not know, it read the walker's position
+  and looked in the piles there, which for a freed walker reads freed
+  memory. It now answers from `walker_to_pos` alone, as the old game's
+  removal does: such a walker is a miss and nothing changes, its pointer
+  used only as a key. In play the piles and `walker_to_pos` always agree
+  (only a test files a walker by hand), so the old lookup never found
+  anything and no byte of the sim changes; no recording moves. The lookup
+  was the current game's own (`dc1a2a89`), so nothing is ported.
+- **An owner loop no longer hangs the game (#503).** Only a script's
+  `set_owner`, or a forged snapshot, could make a walker owned by a walker
+  it owns, over two links or more, and the first blow or side question
+  about it looped forever. Every climb of an owner chain now ends: past 16
+  links it looks for a loop and cuts it at the link that closes it, with
+  one line in the log; the guard before a foe scan cuts a loop at the same
+  link. `set_owner` now refuses, with a script error naming both walkers, a
+  link that would close a loop; a walker that owns itself stays legal (a
+  shot whose thrower died owns itself). No recording has a loop, and the
+  old game has no scripts, so nothing is ported. `OwnerChainLoop`
+  (`tests/unit/test_owner_chain_loop.cpp`) pins it on both values, with a
+  two-link loop, a three-link loop and a 40-link chain with no loop.
+- **A flying bot whose foe is on another floor takes a foe on its own
+  floor (#447).** A flyer never changes floors, so a foe on another floor
+  is one it can only hover over. On a tick it re-plans within 100 px of
+  such a foe, it now takes the foe the quick foe search answers when that
+  one stands on its own floor, even when it is farther than the foe it
+  holds; before, it kept the foe it could not reach unless the other was
+  nearer on the map. The change is partial: the quick search looks about
+  five map cells (160 px) round the bot and then falls back to the nearest
+  foe on any floor, so a foe on the flyer's floor beyond that reach is
+  still not taken (on Westlands 7, 8 and 16 most of the ticks such a ghost
+  still hovers had one). A flyer that holds a foe on its own floor keeps
+  #320's rule (a strictly nearer foe) alone. Only a level with more than
+  one floor has a flyer here, so no recording moves on either value, and
+  the old game has one floor, so nothing is ported.
+  `SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor`
+  pins it on both values (see GAMEPLAY_FIXES_FROM_CLASSIC.md for the
+  measure).
+- **A hero of a pack class from 128 to 255 keeps its class (#500).** #443
+  made a walker's family an unsigned byte, but a company character's own
+  record kept a signed one, from the moment the hero was made. A hero of
+  class 200 read back as -56: it spawned and drew as a soldier with a
+  soldier's speed, its TRAIN panel showed a soldier's stats, the results
+  screen called it BEAST with no specials, it was worth nothing to the
+  company, and the Base Camp lobby, which refuses a class outside 0..255,
+  removed it from the company at the next menu frame, for a solo company
+  and for a host's own heroes alike; a joiner's hero reached the host,
+  which built it as a soldier. The record, the hero's snapshot and every
+  client's copy now keep the class as an unsigned byte. The save, the
+  lobby and the snapshot always carried the unsigned byte, so no save,
+  protocol, snapshot or replay version moves. No shipped pack has a hero
+  class above 20 and HIRE offers only the core classes, so a hero reaches
+  such a class only through a pack's promotion or a save that carries one.
+  A hero whose class is 128 to 255 and that no installed pack provides now
+  stays in the company and reads its class's own empty stat row, exactly
+  as classes 21 to 127 already do (a soldier's body, no class base for
+  speed, sight or damage); before, such a hero was removed from the
+  company when Base Camp opened. This game only.
+- **A new game skips the campaign list (#490).** BEGIN NEW GAME founds the
+  company on the default campaign, Gladiator, and goes from name entry to
+  Base Camp with the campaign's introduction in between, on every client,
+  as the old game did; another campaign is chosen from Base Camp through
+  SCENARIO > SET CAMPAIGN (the Scenario submenu's Set Campaign on the
+  terminals). This game only.
+- **A build off master shows its commit, not a version number (#508).**
+  The `2.<count>` version is shown only by a build of a commit on master's
+  history; a pull-request preview or a local branch build shows its commit
+  hash alone on the main menu, in `-v` / `--version` and in the help
+  footer. So does a local build of a master commit with changes to tracked
+  files not yet committed: it shows the hash with its `+` (`7e7f4079+`),
+  like a branch build, because it is not the commit it counts. This game
+  only.
+- **The terminal client's New Ability Select answer takes effect at once
+  and is saved (#398, #525).** In the terminal client, answering
+  `New ability select` on the Game Settings page changed the setting but
+  not the copy that the ability keys, the status line and the PAUSED menu's
+  ABILITIES and KEYS entries read, so for the rest of that run they went on
+  as before. The SDL row and both terminal prompts now switch through one
+  function, `og::ui::set_ability_select_pref`, which refreshes that copy.
+  Neither terminal client's Game Settings page wrote the settings file
+  either, so its New Specials, Gameplay Fixes and New Ability Select
+  answers were gone at the next start. Both pages now write the file when
+  they are left with an answer changed, as the SDL options screen does
+  when it closes, through one function, `og::ui::save_settings_if_changed`;
+  a visit that changes nothing leaves the file alone, and a write that
+  fails says so on the page in one line. This game only (the old game has
+  neither the setting nor a terminal client).
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it
@@ -1766,7 +2352,7 @@ its mistake:
   byte, so every id 0..255 a pack can claim is its own family on every
   machine. No shipped pack claims an id above 24 (the core pack's are
   0..21, the modes pack's 13, 14 and 21..24). A company character's own
-  record still keeps a signed byte (#500). This game only.
+  record followed in #500. This game only.
 - **A loud passability probe answers only for the prober's floor (#465).**
   `og.query_passable` and `og.query_object_passable` take an optional
   floor. Their ground half read that floor, but their bodies half can see
@@ -2661,6 +3247,157 @@ the game does today.
    case asserted how many livings a 420-tick brawl leaves; it now asserts
    only what it needs (both heroes stand, the lead team is those two, every
    re-teamed walker is on the board).
+
+## Rulings (2026-11-14)
+
+The third bugs batch (#494 to #505 and #508, with #398, #432, #441, #447
+and #490) asked its questions in the chat. The maintainer first said three
+things: take the proposed issues, leave the flaky tests for a separate
+round, and add #490. On 2026-11-15 he answered the rest, one question at a
+time. Each entry below is his answer and what the game does because of it;
+where an entry was only told to him, or is still open, it says so.
+
+1. **#447: what the count was.** The issue counted, on Westlands 7, 16 and
+   22, the ticks a melee-only bot stands within 30 px of its live foe
+   without a swing. Traced over all 25 levels before this batch's fixes
+   (setting off / on: 28,158 / 14,882 such ticks), 17,520 / 9,112 are ghosts
+   whose foe is on another floor of a level with several floors: a flyer
+   never changes floors and the distance does not see floors. That is all of
+   level 7 (the ghosts fly on the ground north of the wall; the crew they
+   hold stands on the wall's gallery one floor up, and the hostiles left on
+   the ground, some of the crew and the level's mages, stand beyond the
+   ghosts' quick foe search), 94 percent of level 22 (where, on every such
+   tick, no hostile stood on the ghosts' floor anywhere on the map) and 70
+   percent of level 16. It is this game's rule of floors, not a classic
+   stall, and the old game cannot show it. One part of it was a bug and is
+   fixed on both settings: a flyer that had a foe on its own floor within
+   its quick foe search (about 160 px) kept the one it could not reach.
+   Beyond that reach it still keeps it, so the change is partial (see
+   GAMEPLAY_FIXES_FROM_CLASSIC.md). The rest of the count, on one floor with
+   nothing between, is a melee-only bot standing in its ATTACK order, which
+   only faces the foe (both games); see the next entry. None of it was a
+   guard at its post, a frozen bot or a bot that did not act. The issue's
+   own figures (4587, 2464, 1492) could not be reproduced with its stated
+   definition (8914, 3548, 2921). With fix BB the "no swing started" count
+   rises with the setting on (to 25,121 over the 25 levels), because a swing
+   at the air no longer counts as fighting. The other count, "no blow landed
+   for 60 ticks", reads 15,218 on one floor after fix BB against 11,259
+   before it, and the two figures are not like for like: that count skips a
+   bot while it is busy, and every swing fix BB removes made its bot busy
+   for a few ticks, which now count. How much of the rise that accounts for
+   was not measured; blows landed and damage per 100 ticks near a foe did
+   not fall (see [Bots](#bots)).
+2. **#447: the melee-only bot's ATTACK order.** Left for a later round of
+   its own (the maintainer: "let's do A and handle that later"); #447 stays
+   open. A melee-only bot has no aimed blow: its ATTACK order only faces
+   its foe, and its blows are its bumps. Letting it swing in that order
+   when a foe's body stands on its weapon's pad, and step toward the foe
+   otherwise, was built and measured: it halves the one-floor stall (11,259
+   to 5,023 ticks with no blow landed for 60) and doubles what these bots
+   do, per 100 ticks near a foe from 0.97 blows and 21.1 damage to 2.06 and
+   44.3, kills from 0.024 to 0.080, and the Westlands crews lose a fifth of
+   their survivors (322 to 255 over 75 battles; level 19 from 18 to 4,
+   level 23 from 16 to 3). That is a change of the campaigns' difficulty,
+   so it waits for a round that eases the campaigns' levels with it.
+3. **Whose side a thing is on (#502, and with it #496 and #533).** The
+   batch first fixed #502 by making a blow's score ask its thrower's team.
+   The maintainer rejected that: "why can't the blast track its own team
+   number independently?", and "everything should just work normally as
+   expected, including arrows and other shots. They should all stay with
+   the team they were when cast. Like, they should be independent of their
+   originator, right?" He ruled the same for summons (a summon stays on the
+   team it was summoned for, whatever happens to its caster) and for tents
+   ("once a tent makes a dude, the dude should stay on the team the tent
+   was on when it was made"). The cause he pointed at was real: the bomb,
+   its blast, a mine's blast, an exploding shot's blast, ENERGY WAVE, the
+   boulder and the returning knife were never given a team number, so they
+   were red. Fix AZ is now that rule: with the setting on everything
+   fights for the colour it wears and nothing follows its maker (see fix AZ
+   under [The fixes](#the-fixes) for all a player sees). Fix AY is gone,
+   because under the rule its extra question is the plain colour test;
+   fix AP no longer decides a side; #496 and #533 close with it, and #536
+   and #537 close with the setting on. Taken from the rule without a
+   question of their own, and told to the maintainer: a kill by a shot or
+   a blast whose maker has died counts for its colour in every mode; a
+   dead thrower's blast halves on his own side; nobody is credited with
+   his own death; a shot does not spare its shooter; a returning knife
+   never cuts the hand that catches it. A thing that sits on a walker (a
+   ring of protection, a mace, a boomerang, a hook blade, a ghost's scare,
+   IMMOLATE's fire) is the one exception: asked whether it should keep the
+   colour it was cast in, the maintainer answered "obviously they should go
+   with the walker". While its walker is charmed it fights for the charmer's
+   side, and it comes back with him when the charm ends. Two more were
+   asked afterwards. In Free For All a charmed fighter killed by his own
+   bomb or his own summon gives his old band a frag (see fix AZ); the
+   maintainer: "leave it as built". And a team's score still follows the
+   maker in one case: a hero on a team other than the player's team scores
+   through his hero record, so once he is dead his shots and summons pay
+   nobody. The maintainer left that for later, in one round with #506: the
+   score test is to ask which teams people play (#560).
+4. **#505: a walker that dies charmed.** No change of its own, so there is
+   no fix BA. With the setting on no side reads the owner chain any more
+   (entry 3), so the question of who heads a dead charmed walker's chain
+   arises only for the person behind a blow: the walker keeps heading its
+   chain until the tick ends, and its summons' blows are credited to it
+   for that tick.
+5. **#503: owner loops.** A script's `set_owner` that would close an owner
+   loop fails with an error (the maintainer's answer), and every climb
+   cuts a loop a snapshot brings in where it closes.
+6. **#495 (AX): whose summons the difficulty scales.** A summon is scaled
+   as its caster is (the maintainer's answer): it takes its caster's team
+   before it is scaled, so a human team other than team 0 gets scaled
+   summons as its hero is. Which human-played teams the difficulty should
+   exempt at all stays #506.
+7. **#499: a ride whose ghost a script marks dead.** The ridden body goes
+   home at its next act and the ghost stays out of sight. The maintainer
+   ruled that the seat moves too: when a ride ends with its ghost dead,
+   the seat goes to the dead ghost, so the ordinary death hand-off gives
+   the player the next hero (#535).
+8. **#500: a hero of a class no installed pack provides.** Left as it is
+   (the maintainer's answer): the hero stays in the company, with a
+   soldier's body and its class's own empty stat row, as classes 21 to 127
+   already had. #528 stays open.
+9. **#432: the cheat keys.** All twelve keys change the game, and none
+   does anything in a networked game, for now (the maintainer: "leave an
+   issue opened to revisit this in the future"; that is #543, which also
+   covers replays, where cheats are not recorded). The team hop keeps the
+   seat's starting team for Switch Character and the death hand-off, as in
+   the old game; that was not asked.
+10. **#490: a new game.** The campaign's introduction (the opening text of
+    its `campaign.yaml`, not a level's own text) still plays once, between
+    name entry and Base Camp (the maintainer's answer), and a new company
+    always starts on Gladiator; another campaign is set from Base Camp.
+11. **#508: the version a build shows.** Only a clean build of a commit on
+    master's history shows the number. A build off master shows its commit
+    only, and so does a local build of a master commit with changes not
+    yet committed, with its `+` (the maintainer's answer).
+12. **#398: Game Settings in the terminal clients.** The text and curses
+    clients save the Game Settings answers to the settings file, as the
+    SDL game does (the maintainer's answer; #525).
+13. **Two setting-on recordings took another seed after fix BB**
+    (a bot near its foe turns to it for good and swings only when the
+    blow can land): on the old seed the row no longer reached the rule it
+    tests, and its pin changed nothing.
+    `archmage_mind_control_berserk_fixes_scen99` went back to its twin's
+    seed 198 (0xC6), where the entry of 2026-11-08 had given it 0xB0: fix
+    BB holds the orc's swing at the air that parted the stream before the
+    cast, so on 0xB0 the control roll now succeeds and fix F's rule (a
+    failed MIND CONTROL's berserk foe never takes the caster's team) is
+    never reached. `cleric_bot_resurrect_foe_stain_fixes_scen99` took seed
+    84 (0x54), where that entry gave it 0x3: on 0x3 the cleric now walks
+    off without asking for RESURRECT near the faerie's stain. Each is the
+    first seed from 0 where the row's own pin changes what its facts read;
+    the spawns, inputs, budgets and facts stay, and the setting-off twins
+    keep their seeds and recordings. The maintainer was told of this and
+    has not ruled on it. Two rows' facts now read another
+    walker, because fix BB left the one they read dead:
+    `cleric_bot_raise_or_turn_fixes_scen99` reads the tower's hit points
+    and counts the faerie as gone (the faerie now falls to the cleric's
+    swing and the tower lives), and `mage_bot_heartburst_fixes_scen99`
+    reads the mage's hit points (all three towers now fall). Alternatives:
+    give the two re-seeded rows spawns of their own that reach the rule
+    on any stream, and re-stage the two re-aimed rows so that the walkers
+    they read before stay alive.
 
 ## Out of scope
 

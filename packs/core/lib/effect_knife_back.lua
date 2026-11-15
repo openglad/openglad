@@ -1,7 +1,7 @@
 -- core:knife_back — thrown blade walks back to its owner, probing hits (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local WEAP_KNIFE = assert(og.family_id("weapon", "core:knife"))
 
 -- knife_back_on_act: walk the blade back toward its thrower one stepsize at a
@@ -38,7 +38,7 @@ local function on_act(self)
     end
     -- worldx/worldy are C++ floats: per-op rounding
     self:setworldxy(og.fadd(self:worldx(), xd), og.fadd(self:worldy(), yd))
-    local probe = og.add_ob("weapon", WEAP_KNIFE)
+    local probe = gf.rides(og.add_ob("weapon", WEAP_KNIFE))
     -- rule: A returning knife that cannot create its collision probe (world full) drops out of the
     --   air (dies) without refunding the throw.
     -- tests: SemKnifeBack.a_returning_knife_that_cannot_make_its_probe_drops_without_a_refund

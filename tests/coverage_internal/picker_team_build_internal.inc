@@ -1131,29 +1131,40 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         save.last_played_unix_s = saved_stamp;
     }
 
-    // picker_compute_guy_derived_stats: guy::family comes verbatim from the
-    // .gtl with no range check, so a byte the loader cannot address must
-    // price on the SOLDIER row instead of indexing the stat arrays out of
-    // bounds.
+    // picker_compute_guy_derived_stats: every class byte has its own loader
+    // row, so a hero of a class from 128 up reads its own row (it read the
+    // soldier's while the hero's record kept a signed byte, #500).
     {
-        // guy::family is a signed char, so a .gtl byte of 0x80..0xff arrives
-        // negative — the one value loader::slot_for refuses outright.
-        guy stranger(FAMILY_MAGE);
-        stranger.family = static_cast<char>(-1);
-        guy stranger_as_soldier(stranger);
-        stranger_as_soldier.family = FAMILY_SOLDIER;
-        check(loader::slot_for(Order::Living, stranger.family) < 0);
-        const og::ui::DerivedStats fallback =
-            picker_compute_guy_derived_stats(stranger);
-        const og::ui::DerivedStats as_soldier =
-            picker_compute_guy_derived_stats(stranger_as_soldier);
-        check(fallback.hp == as_soldier.hp && fallback.mp == as_soldier.mp &&
-              fallback.atk == as_soldier.atk &&
-              fallback.def == as_soldier.def &&
-              fallback.spd == as_soldier.spd &&
-              fallback.atk_spd == as_soldier.atk_spd);
-        // Control: a family the loader DOES address reads its own row, so
-        // the fallback is not "everybody is a soldier".
+        loader* const l = og::runtime::current_session->myscreen_->myloader;
+        const int row = loader::slot_for(Order::Living, 200);
+        check(row >= 0);
+        const std::size_t r = static_cast<std::size_t>(row >= 0 ? row : 0);
+        const float saved_hp = l->hitpoints[r];
+        const float saved_damage = l->damage[r];
+        const float saved_step = l->stepsizes[r];
+        const float saved_fire = l->fire_frequency[r];
+        // Values no core class has, so only this row can produce them.
+        l->hitpoints[r] = 777.0f;
+        l->damage[r] = 33.0f;
+        l->stepsizes[r] = 7.0f;
+        l->fire_frequency[r] = 9.0f;
+        guy high(FAMILY_MAGE);
+        high.family = 200;
+        guy high_as_soldier(high);
+        high_as_soldier.family = FAMILY_SOLDIER;
+        const og::ui::DerivedStats own = picker_compute_guy_derived_stats(high);
+        const og::ui::DerivedStats expected =
+            og::ui::compute_derived_stats(high, 777.0f, 33.0f, 7.0f, 9.0f);
+        check(own.hp == expected.hp && own.mp == expected.mp &&
+              own.atk == expected.atk && own.def == expected.def &&
+              own.spd == expected.spd && own.atk_spd == expected.atk_spd);
+        check(own.hp != picker_compute_guy_derived_stats(high_as_soldier).hp);
+        l->hitpoints[r] = saved_hp;
+        l->damage[r] = saved_damage;
+        l->stepsizes[r] = saved_step;
+        l->fire_frequency[r] = saved_fire;
+        // Control: a core family reads its own row too, so the panel is not
+        // "everybody is a soldier".
         guy mage(FAMILY_MAGE);
         guy mage_as_soldier(mage);
         mage_as_soldier.family = FAMILY_SOLDIER;

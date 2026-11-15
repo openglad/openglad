@@ -128,4 +128,100 @@ function M.pad_blocked_by_terrain(self, weapon)
   return M.on() and self:fire_pad_answer(weapon) == "terrain"
 end
 
+-- Gameplay Fixes AX: a summon's difficulty scaling at its level
+-- (walker:set_difficulty). The difficulty percent skips team 0, the
+-- player's side, and a fresh summon is on team 0 until its caster's team
+-- is written. The cleric's RAISE GHOST and the archmage's elemental and
+-- phantom write it after the scaling in the classic game, so a foe's
+-- keeps 100 % on Easy and Hard (#495). With the setting on the summon
+-- takes its caster's team first. The caller still writes the team after,
+-- on both values. Draws nothing.
+function M.scale_summon(summon, caster)
+  -- rule: With Gameplay Fixes on (AX), the cleric's RAISE GHOST ghost and the archmage's elemental
+  --   and phantom take their caster's team before their difficulty scaling, so a foe's summon takes
+  --   the difficulty percent as its caster does; a summon of the player's side (team 0) never does.
+  --   Classic: scaled while still on team 0, so a foe's keeps 100 %.
+  -- tests: DifficultyScaling.a_foes_raised_ghost_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_foes_elemental_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_foes_phantom_takes_the_difficulty_only_with_the_setting_on
+  -- tests: DifficultyScaling.a_players_elemental_and_phantom_never_scale
+  -- tests: DifficultyScaling.a_players_raised_skeleton_and_ghost_never_scale
+  -- tests: parity:cleric_raise_ghost_scen99, parity:archmage_summon_elemental_scen99
+  if M.on() then
+    summon.team = caster.team
+  end
+  summon:set_difficulty(summon.level)
+end
+
+-- Gameplay Fixes AZ (#502, #533): with the setting on everything fights for
+-- the colour it wears and nothing follows its maker. A thing one walker makes
+-- with og.add_ob (a thief's bomb, ENERGY WAVE, a boulder, a blast, a returning
+-- knife) takes `owner` as its owner, as always, and with the setting on the
+-- team number of `from` (`owner` itself unless given: a blast takes its
+-- bomb's, its mine's or its shot's, a returning knife its knife's), which it
+-- keeps whatever happens to its maker afterwards. Classic, it stays on the
+-- team it was made with (team 0) and fights for the head of its owner chain.
+-- Draws nothing.
+function M.made_by(made, owner, from)
+  made:set_owner(owner)
+  -- rule: Gameplay Fixes AZ (#502, #533): a thing made from another thing takes that thing's team
+  --   number (a blast its bomb's, its mine's or its shot's; a returning knife its knife's), and
+  --   any other thing its owner's (a thief's bomb, ENERGY WAVE, a boulder). The setting's gate is
+  --   take_team's.
+  -- tests: SemLibsBomb.a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  -- tests: SemMage.an_energy_wave_wears_the_mages_colour_through_its_promotions_only_with_the_setting_on
+  M.take_team(made, from or owner)
+end
+
+-- The team half of made_by, for a thing whose owner is set apart: a wail's
+-- fork takes the bolt it forks from, a meteor the rain it falls from. (An
+-- ember needs no call: IMMOLATE's fire rides its elemental, so an ember takes
+-- the elemental's colour at the drop on both settings.) Draws nothing.
+function M.take_team(made, from)
+  -- rule: Gameplay Fixes AZ (#502, #533): with the setting on a thing takes, when it is made, the
+  --   team number of the thing it comes from (a thief's bomb, a mage's ENERGY WAVE, a barbarian's
+  --   boulder; a blast from its bomb, mine or exploding shot; a returning knife from its knife; a
+  --   wail's fork from its bolt; a meteor from its rain) and keeps it. Classic: the team it was
+  --   made with.
+  -- tests: SemLibsBomb.a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on
+  -- tests: SemLibsProjectiles.an_exploding_shots_blast_wears_the_shots_colour_only_with_the_setting_on
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  -- tests: SemMage.an_energy_wave_wears_the_mages_colour_through_its_promotions_only_with_the_setting_on
+  -- tests: SemBarbarian.a_boulder_wears_the_barbarians_colour_only_with_the_setting_on
+  -- tests: SemWail.a_wail_fork_wears_the_colour_of_the_bolt_it_forks_from_with_the_setting_on
+  -- tests: KitElemental.a_meteor_wears_its_rains_colour_with_the_setting_on
+  -- tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
+  -- tests: parity:thief_bomb_colour_score_fixes_scen99
+  -- tests: parity:thief_bomb_dead_thrower_scen99, parity:thief_bomb_dead_thrower_fixes_scen99
+  if M.on() then
+    made.team = from.team
+  end
+end
+
+-- Gameplay Fixes AZ (#502): marks a weapon or effect that rides the walker
+-- who owns it (a circle of protection, a mace, a boomerang, a hook blade, a
+-- scare, IMMOLATE's fire, a returning knife's probe). With the setting on it
+-- is part of that walker and goes with him: while he lives it fights for
+-- whatever side he is on now (walker::alliance_head answers him for it).
+-- Unmarked, a thing keeps the colour it was made with. Answers `thing`, so it
+-- wraps the call that makes it; nil (a full world) stays nil. Draws nothing.
+function M.rides(thing)
+  -- rule: Gameplay Fixes AZ (#502): with the setting on a thing that rides its owner is marked
+  --   KIT_RIDER when it is made, so it goes with him: it fights for his side of the moment, never
+  --   against him, and turns back with him when a charm ends. Classic: no mark (one owner chain
+  --   gives it his head anyway).
+  -- tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
+  -- tests: SemShield.a_boomerang_goes_with_its_charmed_soldier_and_spares_his_new_knives
+  -- tests: SemShield.a_mace_goes_with_its_charmed_cleric
+  -- tests: KitCaptain.a_hook_blade_goes_with_its_charmed_captain
+  -- tests: SemLibsGhostScare.a_scare_frightens_its_ghosts_foes_of_the_moment
+  -- tests: KitElemental.a_charmed_elementals_fire_burns_his_foes_of_the_moment
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  if thing and M.on() then
+    thing:set_kit_state(thing:kit_state() | C.KIT_RIDER)
+  end
+  return thing
+end
+
 return M

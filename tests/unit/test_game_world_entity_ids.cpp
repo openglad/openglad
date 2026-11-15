@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <gtest/gtest.h>
 #include <iterator>
+#include <vector>
 
 namespace {
 
@@ -730,8 +731,11 @@ TEST_F(GameWorldEntityIdsFixture, damage_tile_rejects_negative_pixels_before_div
 // Owner links come back from saves and snapshots, so a corrupted or hostile
 // file can hand the world a loop (a owns b, b owns a). Every AI foe scan
 // walks that chain, so a loop there is a hang. The walk gives up after a
-// bounded number of hops and cuts the link it is standing on — and a
-// legitimate chain in the same world is left exactly as it was.
+// bounded number of hops and the loop is cut at the link that closes it
+// (#503: walker::cut_owner_loop, the cut every climb makes): from a, b's link
+// back to a. A legitimate chain in the same world is left exactly as it was.
+// Break: in cut_owner_loop, `w->set_owner(nullptr)` -> `up->set_owner(nullptr)`
+// (a's link is cut instead).
 TEST_F(GameWorldEntityIdsFixture, an_owner_loop_is_cut_and_legal_chains_survive)
 {
     GameplayContext context;
@@ -769,11 +773,58 @@ TEST_F(GameWorldEntityIdsFixture, an_owner_loop_is_cut_and_legal_chains_survive)
     // The scan still does its job: the only hostile is the answer.
     EXPECT_EQ(orc, world.find_nearest_foe(a));
 
-    EXPECT_EQ(nullptr, a->owner())
-        << "the loop must be cut at the hop the walk gave up on";
-    EXPECT_EQ(a, b->owner())
+    EXPECT_EQ(nullptr, b->owner())
+        << "the loop is cut at the link that closes it: b's link back to a";
+    EXPECT_EQ(b, a->owner())
         << "only one link is cut: the other half of the pair still points";
     EXPECT_EQ(a, pet->owner())
         << "a legal owner chain must survive the same sweep untouched";
     EXPECT_EQ(a->entity_id(), pet->owner_id());
+}
+
+// A chain with no loop that the foe scan's walk cannot finish in 16 hops is
+// cut where the walk gave up: a searcher s owned by knife k1, k1 by k2, and
+// so on up to k20. The scan walks only the object list, so only s's chain is
+// sanitized: the walk stops at k16, whose link to k17 is cut; every other link
+// stays. The scan still finds the one foe.
+// Break: the guard's `current->set_owner(nullptr);` -> `(void)current;`.
+TEST_F(GameWorldEntityIdsFixture, a_chain_longer_than_sixteen_hops_is_cut_where_the_foe_scan_gave_up)
+{
+    GameplayContext context;
+    context.world = &world;
+    ScopedGameplayContextOverride scope(context);
+
+    walker* s = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, orc);
+    s->setxy(100, 100);
+    orc->setxy(220, 100);
+    s->set_team_num(0);
+    orc->set_team_num(1);
+
+    constexpr std::size_t kKnives = 20;
+    std::vector<walker*> k(kKnives + 1, nullptr);  // k[1] .. k[20]
+    for (std::size_t i = 1; i <= kKnives; ++i)
+    {
+        k[i] = world.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, k[i]);
+        k[i]->set_team_num(0);
+    }
+    s->set_owner(k[1]);
+    for (std::size_t i = 1; i < kKnives; ++i)
+        k[i]->set_owner(k[i + 1]);
+
+    EXPECT_EQ(orc, world.find_nearest_foe(s));
+
+    EXPECT_EQ(k[1], s->owner());
+    EXPECT_EQ(nullptr, k[16]->owner()) << "the walk gave up at k16: its link is cut";
+    for (std::size_t i = 1; i < kKnives; ++i)
+    {
+        if (i != 16)
+        {
+            EXPECT_EQ(k[i + 1], k[i]->owner()) << "link k" << i << " is kept";
+        }
+    }
+    EXPECT_EQ(nullptr, k[kKnives]->owner());
 }

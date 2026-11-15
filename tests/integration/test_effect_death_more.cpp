@@ -91,6 +91,10 @@ TEST(EffectDeathMore, effect_death_ghost_scare_forces_walk_commands_on_foes)
     walker* scare = level.world().add_ob(Order::FX, FAMILY_GHOST_SCARE);
     ASSERT_NE(nullptr, scare) << "scare effect created";
     scare->set_owner(ghost);
+    // The real cast (og.summon) gives the scare its ghost's colour; with the
+    // Gameplay Fixes setting on (fix AZ) the scare frightens the foes of its
+    // own colour, so the hand-made one takes that colour too.
+    scare->set_team_num(ghost->team_num());
     scare->setxy(ghost->xpos(), ghost->ypos());
     scare->set_dead(1);
 

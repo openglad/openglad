@@ -192,7 +192,7 @@ local function protection_circle(self)
     -- tests: WalkerSpecials.druid_protection_tops_up_an_existing_circle
     -- tests: parity:druid_protection_refresh_scen99, FamilyBehaviors.druid_batch3_special_branches
     if not existing then
-      local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
+      local circle = gf.rides(og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION))
       -- plumbing: og.summon / add_ob failure for the circle: 'COULD NOT PROTECT' (returns mid-loop;
       --   earlier friends keep their circles and exp, cast reported failed).
       if not circle then

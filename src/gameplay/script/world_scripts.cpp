@@ -3793,18 +3793,26 @@ void level_entity_death(walker* self)
     // (kKillAttributionTicks); a stale or absent stamp is an environment
     // death (nil, -1). The killer handle may be a corpse (mutual kills) —
     // only a swept id resolves to nil; the stamped TEAM survives either way.
+    // With Gameplay Fixes AZ a blow with no living behind it stamps a team
+    // and no walker, which resolves to (nil, team).
     walker* killer = nullptr;
     lua_Integer killer_team = -1;
-    // rule: A death is credited to its last attacker (owner-chain root, with that attacker's team)
+    // rule: A death is credited to its last attacker (the walker and the team the blow stamped)
     //   only if the hit was within 48 ticks; older or absent stamps are environment deaths (killer
-    //   nil, team -1). A killer whose id was swept passes nil but keeps the stamped team.
+    //   nil, team -1). A killer whose id was swept passes nil but keeps the stamped team; with
+    //   Gameplay Fixes AZ a blow with no living behind it stamps its colour and no walker, which
+    //   passes nil and that team.
     // tests: ModeTick.weapon_kill_attributes_to_owner_chain_root
     // tests: ModeTick.environment_death_passes_nil_killer
     // tests: ModeTick.stale_attacker_stamp_reads_as_environment
     // tests: ModeTick.per_entity_death_hook_receives_killer_args
     // tests: SemScript3.a_swept_killer_passes_nil_but_keeps_the_stamped_team
     // tests: SemScript3.a_stamp_exactly_at_the_attribution_window_still_credits_the_killer
-    if (world != nullptr && self->last_attacker_id() != 0 &&
+    // tests: ModeTick.a_kill_with_no_living_behind_it_passes_its_colour_with_the_setting_on
+    const bool stamped = self->last_attacker_id() != 0 ||
+                         (world != nullptr && world->gameplay_fixes != 0 &&
+                          self->last_attacker_team() >= 0);
+    if (world != nullptr && stamped &&
         world->tick_count_ - self->last_attacker_tick() <=
             og::sim::kKillAttributionTicks) {
         killer = world->find_by_id(self->last_attacker_id());
@@ -3839,8 +3847,10 @@ void level_entity_death(walker* self)
                 lua_remove(L, -2);   // entity_hooks root
                 const std::uint64_t gen = push_dispatch_gen(L);
                 push_walker_handle(L, self, gen);
-                // rule: A death is credited to its last attacker (owner-chain root, with that
-                //   attacker's team) only if the hit was within 48 ticks.
+                // rule: A death is credited to its last attacker (the walker and the team the blow
+                //   stamped; with Gameplay Fixes AZ a team and no walker when no living was behind
+                //   it) only if the hit was within 48 ticks.
+                // tests: ModeTick.a_kill_with_no_living_behind_it_passes_its_colour_with_the_setting_on
                 // tests: ModeTick.weapon_kill_attributes_to_owner_chain_root
                 // tests: ModeTick.environment_death_passes_nil_killer
                 // tests: ModeTick.stale_attacker_stamp_reads_as_environment
@@ -3883,8 +3893,10 @@ void level_entity_death(walker* self)
         return;
     const std::uint64_t gen = push_dispatch_gen(L);
     push_walker_handle(L, self, gen);
-    // rule: A death is credited to its last attacker (owner-chain root, with that attacker's team)
-    //   only if the hit was within 48 ticks.
+    // rule: A death is credited to its last attacker (the walker and the team the blow stamped; with
+    //   Gameplay Fixes AZ a team and no walker when no living was behind it) only if the hit was
+    //   within 48 ticks.
+    // tests: ModeTick.a_kill_with_no_living_behind_it_passes_its_colour_with_the_setting_on
     // tests: ModeTick.weapon_kill_attributes_to_owner_chain_root
     // tests: ModeTick.environment_death_passes_nil_killer
     // tests: ModeTick.stale_attacker_stamp_reads_as_environment
@@ -4038,7 +4050,7 @@ bool level_lineup_stage(GameWorld* world)
     return true;
 }
 
-short level_damage_gate(walker* target, walker* attacker, short amount)
+short level_damage_gate(walker* target, walker* attacker, short amount, walker* striker)
 {
     VmState* st =
         level_vm_state(1u << static_cast<unsigned>(LevelHook::Damage));
@@ -4068,6 +4080,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     push_walker_handle(L, target, gen);
     push_walker_handle(L, attacker, gen);  // nil for an unattributed hit
     lua_pushinteger(L, static_cast<lua_Integer>(amount));
+    push_walker_handle(L, striker, gen);  // the thing that struck (Gameplay Fixes AZ reads its colour)
     short result = amount;
     // A hook ERROR keeps the authored amount (R9: the hook counts as absent
     // for this dispatch; deterministic on every peer since only the
@@ -4092,7 +4105,8 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     // tests: ModeTick.damage_gate_huge_replacement_clamps_to_short_max
     // tests: ModeTick.damage_gate_zero_still_kills_a_zero_hp_target
     // tests: ModeTick.damage_gate_granting_a_ward_mid_hit_lands_no_damage
-    if (impl.protected_call("level:on_damage", 3, 1)) {
+    // tests: ModeTick.the_damage_hook_is_handed_the_thing_that_struck
+    if (impl.protected_call("level:on_damage", 4, 1)) {
         // rule: The level's on_damage answer decides the hit.
         // tests: ModeTick.damage_gate_error_keeps_authored_amount
         // tests: ModeTick.damage_gate_false_cancels_the_hit

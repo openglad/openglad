@@ -654,7 +654,7 @@ void serialize_guy_snapshot(std::vector<std::uint8_t>& buffer,
 {
     append_i32(buffer, snapshot.guy_id);
     append_string(buffer, snapshot.name);
-    append_u8(buffer, static_cast<std::uint8_t>(snapshot.family));
+    append_u8(buffer, snapshot.family);
     append_i16(buffer, snapshot.strength);
     append_i16(buffer, snapshot.dexterity);
     append_i16(buffer, snapshot.constitution);
@@ -685,7 +685,7 @@ og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
     og::sim::GuySnapshot snapshot;
     snapshot.guy_id = reader.read_i32("guy.guy_id");
     snapshot.name = reader.read_string("guy.name");
-    snapshot.family = static_cast<std::int8_t>(reader.read_u8("guy.family"));
+    snapshot.family = reader.read_u8("guy.family");
     snapshot.strength = reader.read_i16("guy.strength");
     snapshot.dexterity = reader.read_i16("guy.dexterity");
     snapshot.constitution = reader.read_i16("guy.constitution");

@@ -117,10 +117,12 @@ end
 
 -- The post changes hands; the troops it spawned do not. A tent's or a bones
 -- generator's spawn keeps the generator as its owner for life (clear_owner
--- false), and the engine's alliance follows the owner chain (walker.cpp,
--- is_friendly), so a captured post would drag its old troops onto the
--- captor's side in everything but colour: unhittable by the captor, shoving
--- through its squad, struck by their own. Released, each is the head of its
+-- false), and with the Gameplay Fixes setting off the engine's alliance
+-- follows the owner chain (walker::is_friendly), so a captured post would
+-- drag its old troops onto the captor's side in everything but colour:
+-- unhittable by the captor, shoving through its squad, struck by their own.
+-- (With the setting on every walker fights for the colour it wears, so the
+-- troops keep their side either way.) Released, each is the head of its
 -- own chain: a remnant that fights on, earns its kills, and can take the post
 -- back (the flip guard still applies). A timed living with no owner dies on
 -- its next turn (living.cpp, "our owner gone?"), so a released troop drops
@@ -181,9 +183,12 @@ end
 
 -- The D5 flip: a generator never dies. A lethal hit from a living on an
 -- active score team re-teams the intact generator (team + real team, full
--- HP) and cancels the damage; any other lethal source — environment,
--- weapons without a living owner, non-score attackers, the generator's
--- own team (no free self-heal) — is floored at 1 hp instead. A generator
+-- HP) and cancels the damage. With the Gameplay Fixes setting on the hit's
+-- colour is the one the striking thing fights for (the shot's, the blast's
+-- or the spell's own, whatever became of its maker; a rider's, its walker's
+-- now), so a dead maker's shot can take a post too. Any other lethal source (environment, weapons without a living owner
+-- (classic), non-score attackers, the generator's own team: no free
+-- self-heal) is floored at 1 hp instead. A generator
 -- that flipped within the last flip_guard_ticks shares that floor arm
 -- (no re-flip, no notification: the B6 ping-pong killer). At 1 hp or
 -- below the floor arm cancels outright: a floor verdict of 0 is a
@@ -192,7 +197,7 @@ end
 -- (the INVESTIGATION-3 explode-instead-of-flip chain). The flip is
 -- the only ownership transition, so the unproven death-path resurrect
 -- never runs.
-local function on_damage(target, attacker, amount)
+local function on_damage(target, attacker, amount, striker)
   if not ons_active() then
     return nil
   end
@@ -204,7 +209,16 @@ local function on_damage(target, attacker, amount)
     return nil
   end
   local team = -1
-  if attacker ~= nil then
+  if og.match_setting("gameplay_fixes") ~= 0 then
+    -- Gameplay Fixes AZ (#502): with the setting on a post struck down flips
+    -- to the colour the thing that struck it fights for (the shot, the
+    -- blast, the spell, or the living itself in melee: the colour it was made
+    -- with, also when its maker has been charmed or killed since, a dead
+    -- maker's shot owning itself; a thing that rides a walker, a boomerang or
+    -- a mace, fights for his colour now). Classic: the colour of the living
+    -- behind the blow, and no flip without one.
+    team = striker:fights_for_team()
+  elseif attacker ~= nil then
     if attacker:order() == C.ORDER_LIVING then
       team = attacker:team_num()
     end
@@ -320,9 +334,16 @@ local function on_entity_death(ent, killer, killer_team)
     core.scrub_corpse(ent)
   end
   -- No-pay arms: environment and suicide, killers off the active mask, and
-  -- teamkills (the shared no-reward-for-friendly-fire rule).
+  -- teamkills (the shared no-reward-for-friendly-fire rule). Gameplay Fixes
+  -- AZ (#502): with the setting on a kill by a thing with no living behind it
+  -- (a dead archer's arrow, a dead thief's bomb), or by a walker swept from
+  -- the world since its blow, arrives with no killer and the team the blow
+  -- wore, and pays that team like any other kill; classic, no killer is no
+  -- pay.
   if killer == nil then
-    return
+    if og.match_setting("gameplay_fixes") == 0 then
+      return
+    end
   end
   if killer == ent then
     return

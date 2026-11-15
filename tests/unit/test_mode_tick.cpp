@@ -843,6 +843,84 @@ TEST(ModeTick, per_entity_death_hook_receives_killer_args)
     EXPECT_TRUE(fx.logged(expected));
 }
 
+// Gameplay Fixes AZ (#502): the level's on_damage hook is handed, as its
+// fourth argument, the walker the blow comes from: the shot itself for a
+// thrown knife (its attacker is the soldier behind it), the soldier for his
+// own melee blow. Both settings.
+// Break: world_scripts.cpp's `push_walker_handle(L, striker, gen)` ->
+// `push_walker_handle(L, attacker, gen)` (the knife leg names the soldier).
+TEST(ModeTick, the_damage_hook_is_handed_the_thing_that_struck)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        ModeWorld fx;
+        fx.world().gameplay_fixes = fixes;
+        fx.register_script(
+            "og.register_level_hooks(42, {\n"
+            "  on_damage = function(target, attacker, amount, striker)\n"
+            "    og.log('hit', og.entity_id(attacker), og.entity_id(striker))\n"
+            "  end,\n"
+            "})\n");
+        walker* soldier = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+        walker* victim = fx.spawn_living(FAMILY_ORC, 1, 176, 160);
+        ASSERT_NE(nullptr, soldier);
+        ASSERT_NE(nullptr, victim);
+        victim->stats()->set_hitpoints(1000);
+        walker* knife = fx.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(0);
+        knife->set_owner(soldier);
+        knife->stats()->set_hitpoints(1000.0f);
+        ASSERT_TRUE(knife->attack(victim));
+        EXPECT_TRUE(fx.logged("hit\t" + std::to_string(soldier->entity_id()) + "\t" +
+                              std::to_string(knife->entity_id())))
+            << "a thrown knife: the soldier behind it, the knife that struck";
+        ASSERT_TRUE(soldier->attack(victim));
+        EXPECT_TRUE(fx.logged("hit\t" + std::to_string(soldier->entity_id()) + "\t" +
+                              std::to_string(soldier->entity_id())))
+            << "a melee blow: the soldier both times";
+    }
+}
+
+// Gameplay Fixes AZ (#502), the death dispatch: a kill by a thing with no
+// living behind it (an ownerless team-1 knife) is stamped with its colour and
+// no walker with the setting on, so the per-entity hook is handed (nil, 1);
+// classic it stamps nothing and the death reads as an environment death
+// (nil, -1).
+// Break: the dispatch's `stamped` back to `last_attacker_id() != 0` (on: an
+// environment death).
+TEST(ModeTick, a_kill_with_no_living_behind_it_passes_its_colour_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        ModeWorld fx;
+        fx.world().gameplay_fixes = fixes;
+        fx.register_script(
+            "og.register_level_hooks(42, {\n"
+            "  on_entity_spawn = function(ent)\n"
+            "    og.set_entity_hooks(ent, { on_death = function(e, killer, team)\n"
+            "      og.log('custom', killer and og.entity_id(killer) or -1, team)\n"
+            "    end })\n"
+            "  end,\n"
+            "})\n");
+        walker* primer = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+        ASSERT_NE(nullptr, primer);
+        walker* victim = fx.spawn_living(FAMILY_ORC, 0, 176, 160);
+        ASSERT_NE(nullptr, victim);
+        victim->stats()->set_hitpoints(1);
+        walker* knife = fx.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(1);
+        knife->set_owner(nullptr);
+        knife->stats()->set_hitpoints(1000.0f);
+        ASSERT_TRUE(knife->attack(victim));
+        EXPECT_TRUE(victim->dead());
+        EXPECT_TRUE(fx.logged(fixes != 0 ? "custom\t-1\t1" : "custom\t-1\t-1"))
+            << (fixes != 0 ? "setting on: no killer, the knife's colour"
+                           : "setting off: an environment death");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // on_act_override
 // ---------------------------------------------------------------------------

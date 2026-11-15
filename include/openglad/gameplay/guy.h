@@ -53,7 +53,10 @@ class guy
 		void update_derived_stats(walker* w);
 
 		std::string name;
-		char family;  // our family
+		// The class (family id), 0..255. Unsigned, so a pack class from 128 up
+		// reads back as itself, not as a negative id: the save, the lobby and
+		// the hero snapshot all carry this one byte as is.
+		std::uint8_t family;  // our family
 		short strength;
 		short dexterity;
 		short constitution;

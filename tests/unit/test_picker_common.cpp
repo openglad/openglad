@@ -29,6 +29,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/packs.h>
 #include <openglad/interface/level_runtime_data.h>
+#include "test_ability_select_scope.h"
 #include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
@@ -2606,6 +2607,21 @@ TEST(PickerCommon, collect_team_families)
     ASSERT_TRUE(families[0] == FAMILY_SOLDIER);
     ASSERT_TRUE(families[1] == FAMILY_MAGE);
     ASSERT_TRUE(families[2] == FAMILY_ARCHER);
+}
+
+// #500: the text and terminal pickers read a hero of a pack class from 128 up
+// as its class. The hero's record kept a signed byte until #500, so class 200
+// came back as -56.
+TEST(PickerCommon, collect_team_families_reads_a_class_200_hero_as_200)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->family = 200;
+    save.team_size = 2;
+
+    EXPECT_EQ((std::vector<int>{FAMILY_SOLDIER, 200}),
+              og::ui::collect_team_families(save));
 }
 
 // --- initialize_starting_team ---
@@ -6222,6 +6238,22 @@ TEST(BaseCampMpDisplay, display_guy_maps_the_wire_fields)
     EXPECT_EQ(2, display->teamnum);
 }
 
+// #500: Base Camp's joiner rows show a joiner's hero of a pack class from 128
+// up as its class (the lobby carries it as 200; the display guy's record kept
+// a signed byte until #500 and read -56).
+TEST(BaseCampMpDisplay, a_display_guy_of_class_200_keeps_it)
+{
+    og::sim::LobbyCharacterData character;
+    character.name = "Highborn";
+    character.family = 200;
+    character.level = 4;
+
+    const std::unique_ptr<guy> display =
+        og::ui::make_base_camp_display_guy(character);
+    ASSERT_NE(nullptr, display);
+    EXPECT_EQ(200, static_cast<int>(display->family));
+}
+
 TEST(BaseCampMpDisplay, display_slots_page_defensively_past_24)
 {
     // Two well-stocked machines: 20 own + 20 replicated = 40 display slots
@@ -8085,6 +8117,22 @@ TEST(PickerCommon, promotion_resets_the_belt)
     EXPECT_EQ(belt::default_bytes(), orc.belt);
 }
 
+// #500: a pack's promotion into a class from 128 up gives the hero that
+// class. promote_guy stored the class in the hero's signed byte until #500, so
+// a promotion into 200 made a class -56 hero.
+TEST(PickerCommon, promotion_into_a_class_200_keeps_the_class)
+{
+    init_family_registry();
+    FamilyDescriptor fd = core_family(FAMILY_MAGE);
+    fd.promotes_to = 200;
+    fd.promotion_new_level = nullptr;  // level 1
+    guy mage(FAMILY_MAGE);
+    mage.upgrade_to_level(10);
+    og::ui::promote_guy(mage, fd);
+    EXPECT_EQ(200, static_cast<int>(mage.family));
+    EXPECT_EQ(1, mage.level);
+}
+
 // The guy-taking page reads the guy's own name, class, level and belt: the
 // same page as the explicit call. Proof it can fail: pass the default belt
 // instead of g.belt and the cleared key 2 reads WARP SPACE again.
@@ -8248,16 +8296,17 @@ TEST(PickerCommon, detail_page_says_also_with_the_setting_on)
                                   " Shift: Teleport Marker"));
 }
 
-// The terminals' Game Settings prompts read and write the UI FX row's cfg
-// key through this pair.
+// The UI FX row's cfg key. Every client's switch goes through this pair;
+// the setter also refreshes the copy the keys read.
 TEST(PickerCommon, ability_select_pref_is_the_ui_fx_key)
 {
-    const std::string saved = cfg.get_setting("effects", "new_ability_select");
+    ScopedAbilitySelect scope(true);
     og::ui::set_ability_select_pref(cfg, false);
     EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
     EXPECT_FALSE(og::ui::ability_select_pref(cfg));
+    EXPECT_FALSE(og::input::ability_select_on());
     og::ui::set_ability_select_pref(cfg, true);
     EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
     EXPECT_TRUE(og::ui::ability_select_pref(cfg));
-    cfg.apply_setting("effects", "new_ability_select", saved);
+    EXPECT_TRUE(og::input::ability_select_on());
 }

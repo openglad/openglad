@@ -173,7 +173,7 @@ struct EntitySnapshot {
 struct GuySnapshot {
     std::int32_t guy_id = 0;
     std::string name;
-    std::int8_t family = 0;
+    std::uint8_t family = 0;  // the hero's class, 0..255, one byte on the wire
     std::int16_t strength = 0;
     std::int16_t dexterity = 0;
     std::int16_t constitution = 0;

@@ -99,6 +99,7 @@
 ---@field drawcycle fun(self: og.Walker): integer
 ---@field facing fun(self: og.Walker, x: integer, y: integer): integer
 ---@field family fun(self: og.Walker): integer
+---@field fights_for_team fun(self: og.Walker): integer # walker:fights_for_team() → the colour this walker fights for (walker::fights_for_team).
 ---@field find_teleport_target fun(self: og.Walker): og.Walker?
 ---@field fire fun(self: og.Walker): og.Walker?
 ---@field fire_frequency fun(self: og.Walker): number
@@ -245,7 +246,7 @@
 ---@field set_leader fun(self: og.Walker, value: og.Walker?)
 ---@field set_lifetime fun(self: og.Walker, value: integer)
 ---@field set_lineofsight fun(self: og.Walker, value: integer)
----@field set_owner fun(self: og.Walker, value: og.Walker?)
+---@field set_owner fun(self: og.Walker, owner: og.Walker?) # walker:set_owner(w): make w this walker's owner; nil clears it, and the call is refused when this walker is already on w's owner chain.
 ---@field set_real_team_num fun(self: og.Walker, value: integer)
 ---@field set_save_all_protected fun(self: og.Walker, value: any)
 ---@field set_shifter_down fun(self: og.Walker, value: integer)
@@ -262,6 +263,7 @@
 ---@field setworldxy fun(self: og.Walker, arg2: number, arg3: number)
 ---@field setxy fun(self: og.Walker, x: number, y: number): boolean
 ---@field shifter_down fun(self: og.Walker): integer
+---@field sides_friendly fun(self: og.Walker, other: og.Walker): boolean # walker:sides_friendly(w) is walker:is_friendly(w) without its dead test.
 ---@field sizex fun(self: og.Walker): integer
 ---@field sizey fun(self: og.Walker): integer
 ---@field sizez fun(self: og.Walker): integer
@@ -362,7 +364,7 @@
 
 -- Hook table for og.register_level_hooks.
 ---@class og.LevelHooks
----@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer)
+---@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer, striker: og.Walker)
 ---@field on_entity_death? fun(ent: og.Walker, killer: og.Walker?, killer_team: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
 ---@field on_lineup_stage? fun(level: integer)
@@ -606,6 +608,7 @@
 ---@field KIT_HIDDEN integer
 ---@field KIT_NOVA integer
 ---@field KIT_QUARTER_FREEZE integer
+---@field KIT_RIDER integer
 ---@field KIT_WARD integer
 ---@field MACE_LIFE_CAP integer
 ---@field MARKER_BURROW integer
@@ -747,7 +750,7 @@
 ---@field fdiv fun(a: number, b: number): number
 ---@field fearless fun(entity: og.Walker): boolean # og.fearless(ent) -> boolean (og::sim::fearless: the kit mark, or a friendly banner's rally aura with the setting on)
 ---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
----@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
+---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap"; allegiance is walker:is_friendly's.
 ---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
 ---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 ---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer

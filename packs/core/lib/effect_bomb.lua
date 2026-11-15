@@ -1,7 +1,7 @@
 -- core:bomb + core:explosion — the thief's bomb and its blast (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
 -- Ported from the former effect.cpp compute_explosion_range(level, skip_exit); this is the only copy now.
@@ -30,10 +30,10 @@ end
 -- EXPLOSION effect centred on itself, inheriting owner/level/damage.
 local function bomb_on_death(self)
   -- rule: A bomb (or blast) whose thrower is gone or dead becomes its own owner: it still blows,
-  --   with its own level for the blast's reach and shove, and no one counts as the owner's ally
-  --   (its own team gets full damage).
+  --   with its own level for the blast's reach and shove; classic, no one counts as the owner's
+  --   ally (its own team gets full damage), and with Gameplay Fixes AZ its own colour is halved.
   -- tests: EffectMorePaths.effect_batch3_bomb_owner_dead_fallback_path
-  -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full
+  -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full, SemLibsBomb.a_blast_halves_on_the_colour_it_wears_with_the_setting_on
   -- tests: parity:effect_explosion_ally_tier_scen99, parity:effect_explosion_range_scen99
   if not self:owner() or self:owner():dead() ~= 0 then
     self:set_owner(self)
@@ -51,7 +51,7 @@ local function bomb_on_death(self)
   if not blast then
     return true
   end
-  blast:set_owner(self:owner())
+  gf.made_by(blast, self:owner(), self)  -- with the setting on the blast wears the bomb's or the mine's colour (Gameplay Fixes AZ)
   blast.hp = 0
   blast.level = self:owner().level
   blast.ani_type = C.ANI_EXPLODE
@@ -119,24 +119,24 @@ local function explosion_on_death(self)
       local shove = og.min(2 + self:owner().level // 15, 8)
       w:s_force_command(C.COMMAND_WALK, shove, dx, dy)
       -- Damage (attack) the object
-      -- rule: A blast strikes its owner at a quarter of its damage, the owner's living allies at
-      --   half, and everyone else in full; a SUPERNOVA blast (New Specials, caster already dead)
-      --   spares its own team colour half instead.
-      -- tests: PackLuaExplosion.a_blast_softens_but_does_not_spare_its_own_side
-      -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full
-      -- tests: KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
-      -- tests: parity:effect_explosion_ally_tier_scen99
+      -- rule: A blast strikes its owner at a quarter (known by who he is). With Gameplay Fixes AZ (#502, #533)
+      --   it halves on its own side (walker:sides_friendly: what wears its colour), so a dead or charmed
+      --   thrower's blast still softens on his side; classic, the owner's live allies and a SUPERNOVA's colour.
+      -- tests: PackLuaExplosion.a_blast_softens_but_does_not_spare_its_own_side, parity:effect_explosion_ally_tier_scen99
+      -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full, KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
+      -- tests: SemLibsBomb.a_blast_halves_on_the_colour_it_wears_with_the_setting_on, SemLibsBomb.a_dying_tents_blasts_halve_on_the_tents_colour_only_with_the_setting_on, parity:thief_bomb_charmed_thrower_fixes_scen99
       if w == self:owner() then
         local full_damage = self:damage()
         -- shim kept: damage is a C++ float: the quarter cut rounds through float.
         self.damage = og.fdiv(full_damage, 4.0)
         self:attack(w)
         self.damage = full_damage
-      elseif (self:owner():dead() == 0 and self:owner():is_friendly(w))
-          or ((self:kit_state() & C.KIT_NOVA) ~= 0
-              and w:team_num() == self:team_num()) then
-        -- A SUPERNOVA blast's caster is gone when it goes off, so the blast
-        -- spares its own team half by team colour (New Specials).
+      elseif gf.on() and self:sides_friendly(w)
+          or not gf.on()
+             and (self:owner():dead() == 0
+                  and self:owner():is_friendly(w)
+                  or (self:kit_state() & C.KIT_NOVA) ~= 0
+                     and w:team_num() == self:team_num()) then
         local full_damage = self:damage()
         -- shim kept: damage is a C++ float: the half cut rounds through float.
         self.damage = og.fdiv(full_damage, 2.0)

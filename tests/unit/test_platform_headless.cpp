@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -34,6 +35,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_settings_file.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -67,7 +70,6 @@ int toInt(const std::string& s);
 void input_state_from_sdl(InputState& out);
 void emit_headless_unsupported_warnings_probe();
 std::string get_asset_path();
-bool save_settings();
 bool load_settings();
 void io_init(int argc, char* argv[]);
 void io_exit();
@@ -418,7 +420,6 @@ TEST(PlatformHeadless, io_init_installs_callable_headless_platform_bridge)
     EXPECT_TRUE(bridge.list_relay_rooms("http://relay", "campaign").empty());
 
     (void)load_settings();
-    (void)save_settings();
 
     std::filesystem::remove_all(config_dir, ec);
 }
@@ -753,6 +754,31 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
         EXPECT_EQ(1, og::ui::run_text_protocol_session(args))
             << "a missing campaign package must fail before level loading";
     }
+}
+
+// #500: a text-client crew member of a pack class from 128 up keeps its class
+// in its hero's record (--team 200). The record kept a signed byte until #500,
+// so class 200 read back as -56. No protocol output prints the record's class
+// (census prints the body's), so the session's trace reports it. No pack
+// claims class 200 here: only the class is asserted.
+TEST(PlatformHeadless, a_protocol_crew_member_of_class_200_keeps_its_class)
+{
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("gladiator"));
+
+    trace_clear();
+    StdinRedirect input("quit\n");
+    CoutRedirect output;
+    og::ui::TextProtocolArgs args;
+    args.level = 1;
+    args.team_families = {FAMILY_SOLDIER, 200};
+    args.team_level = 0;
+    EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 0 class=0 body=0"))
+        << "control: a soldier crew member is class 0";
+    EXPECT_TRUE(trace_contains("text_protocol", "crew 1 class=200 "))
+        << "the class-200 crew member's record keeps its class";
 }
 
 TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
@@ -1147,6 +1173,10 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 // session value is what the next visit's prompt states.
 TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
 {
+    // The page saves the settings file now (#525); this test's file is put
+    // back with the rest.
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
     struct RestorePref {
         std::string value;
@@ -1205,6 +1235,8 @@ TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
 // setting; blank keeps both; anything else is refused.
 TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_specials = cfg.get_setting("gameplay", "new_specials");
     const std::string saved_pref = cfg.get_setting("gameplay", "gameplay_fixes");
     struct RestorePrefs {
@@ -1272,8 +1304,12 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 // page, the terminal twin of its UI FX row. The setting is per machine and
 // never on the wire, so the prompt states and writes the cfg preference
 // alone: on/off writes it, blank keeps it, anything else is refused.
+// The text client keeps no copy of the setting, so the shared switch must
+// leave the missing copy alone.
 TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref =
         cfg.get_setting("effects", "new_ability_select");
     struct RestorePref {
@@ -1321,6 +1357,130 @@ TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
     ASSERT_NE(std::string::npos, at) << printed;
     EXPECT_NE(std::string::npos, printed.find("New ability select: on. ", at));
     EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+}
+
+namespace {
+
+// One run of the text picker over `input`, printing captured.
+std::string drive_text_picker(const std::string& input)
+{
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    return stdout_capture.restore();
+}
+
+// The three Game Settings answers, all on, in memory and in the file.
+constexpr const char* kAllOnSettingsFile =
+    "# kept by hand: a rewrite drops this line\n"
+    "gameplay:\n"
+    "  new_specials: on\n"
+    "  gameplay_fixes: on\n"
+    "effects:\n"
+    "  new_ability_select: on\n";
+
+void set_all_three_on()
+{
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+    cfg.apply_setting("effects", "new_ability_select", "on");
+}
+
+} // namespace
+
+// #525: the Game Settings page writes the settings file when it is left
+// with an answer changed, as the SDL options screen writes it when it
+// closes, so the answer is there at the next start. Each setting changes on
+// a visit of its own, and after each visit the file is loaded fresh, into a
+// store of its own, never read back from the running game's memory.
+TEST(PlatformHeadless, text_picker_game_settings_answers_reach_the_settings_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+    const auto saved = [](const char* category, const char* setting) {
+        return og::test::ScopedSettingsFile::load_fresh().get_setting(
+            category, setting);
+    };
+    ASSERT_EQ("on", saved("gameplay", "new_specials"))
+        << "a fresh load reads the file this test wrote";
+
+    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, New
+    // Specials, Gameplay Fixes and New Ability Select.
+    (void)drive_text_picker("4\n\n\noff\n\n\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("on", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved("effects", "new_ability_select"));
+
+    (void)drive_text_picker("4\n\n\n\noff\n\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved("effects", "new_ability_select"));
+
+    (void)drive_text_picker("4\n\n\n\n\noff\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("off", saved("effects", "new_ability_select"));
+
+    // The input ends inside the page, right after an answer: the page is
+    // left there, and the answer is saved all the same.
+    (void)drive_text_picker("4\n\n\non\n");
+    EXPECT_EQ("on", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+}
+
+// #525: a visit that changes nothing leaves the settings file as it was,
+// byte for byte (a rewrite would drop the file's comment line): blank
+// answers, then answers that name the value each setting already has.
+TEST(PlatformHeadless, text_picker_game_settings_visit_without_a_change_leaves_the_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+
+    const std::string printed = drive_text_picker(
+        "4\n\n\n\n\n\n"
+        "4\n\n\non\non\non\n"
+        "6\n");
+    ASSERT_NE(std::string::npos,
+              printed.find("New ability select: on. Change (on/off, blank "
+                           "keeps current): "))
+        << "the page was visited:\n" << printed;
+    EXPECT_EQ(kAllOnSettingsFile, settings_file.bytes());
+}
+
+// #525: when the file cannot be written, the page says so in one plain line
+// (the SDL game only logs it), and the answer still holds for this run. A
+// value libyaml refuses to write (a Latin-1 sprite sheet name, see
+// gparser_save_settings_reports_a_value_libyaml_cannot_emit) makes the
+// write fail. A visit that changes nothing tries no write and says nothing.
+TEST(PlatformHeadless, text_picker_game_settings_failed_save_says_so)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+    cfg.apply_setting("graphics", "sprite_sheet", "caf\xE9");
+
+    const std::string kLine =
+        "Could not write the settings file; the answers last until you quit.\n";
+    std::string printed = drive_text_picker("4\n\n\noff\n\n\n6\n");
+    const std::size_t at = printed.find(
+        "New ability select: on. Change (on/off, blank keeps current): ");
+    ASSERT_NE(std::string::npos, at) << printed;
+    EXPECT_NE(std::string::npos, printed.find(kLine, at)) << printed;
+    EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+        << "the answer holds for this run";
+
+    printed = drive_text_picker("4\n\n\n\n\n\n6\n");
+    EXPECT_EQ(std::string::npos, printed.find(kLine)) << printed;
 }
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
@@ -1429,7 +1589,10 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     og::runtime::current_session->current_difficulty_ = 1;  // Battle
 
     // The options visits write the New Specials and Gameplay Fixes
-    // preferences; put them back.
+    // preferences, and the page saves them to the settings file (#525); put
+    // both back.
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
     struct RestorePref {
         std::string value;
@@ -1761,10 +1924,12 @@ TEST(PlatformHeadless, text_picker_reports_protocol_start_failure)
 }
 
 // Begin New Game must drop a previously selected campaign back to the
-// default — in the session config AND in the mounted package. The blank
-// answer at the forced campaign-select keeps "current", which after the
-// reset has to be the default campaign, not the stale one.
-TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
+// default, in the session config AND in the mounted package. #490: it founds
+// the company on the default campaign and goes straight to Team Build, with
+// no campaign list on the way. The list is the Scenario submenu's Set
+// Campaign item, which still opens it; its blank answer keeps "current",
+// which after the reset has to be the default campaign, not the stale one.
+TEST(PlatformHeadless, text_picker_new_game_skips_the_campaign_list_and_set_campaign_opens_it)
 {
     restore_default_campaigns(); // order-independent: install the packages
     ASSERT_EQ(CampaignPackageIoError::None,
@@ -1774,25 +1939,54 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
     const std::string input =
         "1\n"       // main: begin new game -> §2.2 name entry
         "\n"        //   name entry: blank accepts the generated company name
-        "\n"        //   campaign select: blank keeps current (= default reset)
+        "10\n"      // team build: Scenario
+        "1\n"       //   scenario: Set Campaign
+        "\n"        //     campaign select: blank keeps current
+        "7\n"       //   scenario: back -> team build
         "8\n"       // team build: back -> main
         "6\n";      // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
-    StdoutSilencer stdout_silencer;
+    StdoutCapture stdout_capture;
 
     og::ui::TextPickerConfig config;
     config.campaign = "modes"; // stale campaign from a prior session
     config.team_families = {FAMILY_SOLDIER};
     og::ui::TextPickerError error;
     og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
 
     EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
     EXPECT_EQ("gladiator", config.campaign)
         << "a new game must reset the session campaign to the default";
     EXPECT_EQ("gladiator", get_mounted_campaign())
         << "a new game must remount the default campaign package";
+
+    const std::size_t found = out.find("=== Found Your Company ===");
+    ASSERT_NE(std::string::npos, found) << out;
+    const std::size_t team = out.find("=== Team Build ===", found);
+    const std::string list = "--- Campaign Select ---";
+    // Checked before anything that needs the scripted input to line up: a
+    // campaign list on a new game puts every later answer one screen off, and
+    // this is the message that says why. With no Team Build at all, the whole
+    // rest of the output must hold no list either.
+    EXPECT_EQ(std::string::npos,
+              out.substr(found, team == std::string::npos
+                                    ? std::string::npos
+                                    : team - found).find(list))
+        << "#490: a new game must not open the campaign list:\n" << out;
+    ASSERT_NE(std::string::npos, team) << out;
+    const std::size_t scenario = out.find("=== Scenario ===", team);
+    ASSERT_NE(std::string::npos, scenario) << out;
+    const std::size_t first = out.find(list);
+    EXPECT_NE(std::string::npos, first)
+        << "Set Campaign must still open the campaign list:\n" << out;
+    EXPECT_GT(first, scenario)
+        << "the one campaign list comes from Scenario > Set Campaign:\n"
+        << out;
+    EXPECT_EQ(std::string::npos, out.find(list, first + list.size()))
+        << "the campaign list opens exactly once:\n" << out;
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("gladiator"));
@@ -2232,9 +2426,9 @@ TEST(PlatformHeadless, text_picker_campaign_select_eof_keeps_the_current_campaig
 
 // With no campaign package visible at all, Campaign Select keeps the current
 // campaign, SAYS so, and records CampaignIoError — and it answers the kept id
-// (never empty), which is what sends picker_state on to Team Build instead of
-// back to the main menu. The filesystem is a fresh PhysFS whose only mount is
-// an empty directory (FreshFilesystemForIoInit puts the harness back).
+// (never empty: empty is a cancel), the campaign the save still stands on.
+// The filesystem is a fresh PhysFS whose only mount is an empty directory
+// (FreshFilesystemForIoInit restores the test filesystem afterwards).
 TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_current_one)
 {
     FreshFilesystemForIoInit filesystem_guard;
@@ -2264,7 +2458,7 @@ TEST(PlatformHeadless, text_picker_campaign_select_with_no_campaigns_keeps_the_c
               output)
         << "the kept campaign is named, and nothing else is printed";
     EXPECT_EQ("gladiator", returned)
-        << "the kept id, never empty: picker_state routes on emptiness";
+        << "the kept id, never empty: empty means the player cancelled";
     EXPECT_EQ("gladiator", config_after);
     EXPECT_EQ(static_cast<int>(og::ui::TextPickerErrorCode::CampaignIoError),
               error_code);

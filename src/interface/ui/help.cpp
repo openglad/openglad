@@ -479,10 +479,11 @@ short show_campaign_description(screen *scr, const std::string& campaign_id)
 
 short read_campaign_intro(screen *s)
 {
-	// #237 ownership: the intro is the context switch between campaign
-	// select (which faded itself out) and Base Camp — it fades its first
-	// frame in over black and fades itself out on dismissal, while its last
-	// frame is still the buffer. Base Camp then finds a black window.
+	// #237 ownership: the intro is the context switch between name entry
+	// (which faded itself out) and Base Camp. It fades its first frame in
+	// over black and fades itself out on dismissal, while its last frame is
+	// still the buffer. Base Camp then finds a black window.
+	TRACE("help", "campaign intro %s", s->save_data.current_campaign.c_str());
 	og::ui::LegacyMenuFade entry_fade("campaign intro");
 	return scroll_campaign_description(s, s->save_data.current_campaign,
 	                                   &entry_fade);
@@ -1040,7 +1041,7 @@ void help_engine_draw_content(void* /*screen_state*/)
 	                                           : "1/2/3:Tab  ESC:Exit",
 	                static_cast<unsigned char>(RED), 1);
 	const std::string version =
-	    std::format("OPENGLAD {}", og::version::string());
+	    std::format("OPENGLAD {}", og::version::identity());
 	mytext.write_xy(kHelpFooterTextX, kHelpFooterVersionY, version.c_str(),
 	                static_cast<unsigned char>(RED), 1);
 	if (state->pager.multi_page())

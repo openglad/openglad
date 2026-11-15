@@ -116,6 +116,8 @@ CONVERTED_FILES=(
     # The CHANGELOG! and KEYMAP flows, the same.
     tests/integration/test_changelog_flow.cpp
     tests/integration/test_keymap_screen.cpp
+    # The new-game campaign flow (#490), the same.
+    tests/integration/test_new_game_campaign.cpp
 )
 
 status=0

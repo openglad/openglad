@@ -275,7 +275,11 @@ guy::guy()
 guy::guy(int whatfamily)
 {
 
-	family = static_cast<char>(whatfamily);
+	// rule: A hero keeps its class as one unsigned byte, so a pack class from 128 to 255 is its own
+	//   class wherever the record goes (the save, the lobby, the snapshot, every client).
+	// tests: ClasspackInstall.a_company_hero_of_class_200_is_built_and_drawn_as_itself
+	// tests: SaveLoadTeam.a_class_200_hero_round_trips_through_save
+	family = static_cast<std::uint8_t>(whatfamily);
 	kills = 0;
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;

@@ -343,6 +343,148 @@ TEST(SemLibsKnife, a_classic_orphaned_knife_returns_owned_by_itself)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// weapon_knife.lua on_death, Gameplay Fixes AZ (#502): with the setting on
+// the returning blade a soldier's knife makes when it dies takes the KNIFE's
+// team number, not its thrower's now. A team-1 soldier's knife (team 1, as
+// fire() stamps it) dies while the soldier is as he was, after he is charmed
+// by hand onto team 2 (the charm's own writes), or after he died (the knife
+// re-owns itself on its next act). With the setting on the blade is team 1
+// all three times; classic it stays on team 0, the team it was made with.
+// The charmed leg tells the knife's number from the soldier's number now.
+// Then the flight home: the blade's probe rides the soldier (KIT_RIDER with
+// the setting on) and goes with him, so it fights for his side of the moment
+// (team 1, copied from the blade, is only the colour it wears). The soldier
+// is charmed onto team 0 (my_team), and the blade's next step meets a team-1
+// walker, his old side: on both settings the probe cuts it, credited to the
+// soldier, stamped team 0, and pays team 0 the cut and its level; a team-0
+// walker there, his side now, is passed. Then the blade flies into the
+// soldier himself: the probe passes him and he catches it (weapons_left + 1).
+// Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
+// (every setting-on colour leg red); made_by's `from or owner` -> `owner`
+// (the charmed leg red: team 2); the knife's `gf.made_by(blade, self:owner(),
+// self)` -> `blade:set_owner(self:owner())` (every setting-on colour leg
+// red); alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the probe keeps team 1: it passes his old side, cuts his new side and
+// him); kill_stamp_team's `fights_for_team()` -> `team_num()` (on: stamped
+// team 1); walker::attack's `playerteam = ... fights_for_team() ...` ->
+// `team_num()` (on: the side is team 1, not the player's: nobody is paid);
+// the probe's `gf.rides(...)` wrapper removed at effect_knife_back.lua (on:
+// the probe keeps team 1).
+TEST(SemLibsKnife, a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    enum class Then { Nothing, Charmed, Died };
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const Then then : {Then::Nothing, Then::Charmed, Then::Died}) {
+            SCOPED_TRACE(testing::Message()
+                         << "setting " << fixes << ", the soldier "
+                         << (then == Then::Nothing   ? "as he was"
+                             : then == Then::Charmed ? "charmed onto team 2"
+                                                     : "dead"));
+            TestGameWorld tw;
+            open_field(tw);
+            tw.world().gameplay_fixes = fixes;
+            walker* soldier = add_living(tw, FAMILY_SOLDIER, 1, 100, 100);
+            ASSERT_NE(nullptr, soldier);
+            walker* knife = tw.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+            ASSERT_NE(nullptr, knife);
+            knife->set_team_num(1);
+            knife->set_owner(soldier);
+            knife->setxy(200, 200);
+            knife->set_lastx(3);
+            knife->set_lasty(-2);
+            knife->set_stepsize(4);
+            knife->set_damage(9.0f);
+            if (then == Then::Charmed) {
+                soldier->set_real_team_num(soldier->team_num());
+                soldier->set_team_num(2);
+                soldier->set_charm_left(30);
+            } else if (then == Then::Died) {
+                soldier->set_dead(1);
+                knife->act();
+                ASSERT_EQ(knife, knife->owner()) << "weap::act re-owns an orphaned knife to itself";
+            }
+
+            knife->set_dead(1);
+            const auto before = live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK);
+            ASSERT_TRUE(knife->death());
+            const auto after = live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK);
+            walker* blade = only_new(before, after);
+            ASSERT_NE(nullptr, blade) << "the knife makes one returning blade";
+            EXPECT_EQ(then == Then::Died ? knife : soldier, blade->owner());
+            EXPECT_EQ(fixes != 0 ? 1 : 0, blade->team_num())
+                << "the blade: the knife's team with the setting on, team 0 classic";
+        }
+    }
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "the flight home, setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().gameplay_fixes = fixes;
+        walker* soldier = add_living(tw, FAMILY_SOLDIER, 1, 100, 100);
+        ASSERT_NE(nullptr, soldier);
+        walker* knife = tw.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(1);
+        knife->set_owner(soldier);
+        knife->setxy(300, 300);
+        knife->set_stepsize(4);
+        knife->set_damage(9.0f);
+        knife->set_dead(1);
+        const auto before = live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK);
+        ASSERT_TRUE(knife->death());
+        walker* blade = only_new(before, live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK));
+        ASSERT_NE(nullptr, blade);
+        soldier->set_real_team_num(soldier->team_num());
+        soldier->set_team_num(0);
+        soldier->set_charm_left(30);
+        ASSERT_EQ(0, tw.world().my_team);
+
+        // The blade 30 px east of the soldier's box; its first step takes it
+        // 4 px west and its probe looks one more step on, where a team-1
+        // walker, his old side, stands; then a team-0 walker, his side now.
+        const int bx = soldier->xpos() + soldier->sizex() + 30;
+        blade->setxy(static_cast<short>(bx), soldier->ypos());
+        walker* green = add_living(tw, FAMILY_SOLDIER, 1, static_cast<short>(bx - 8),
+                                   static_cast<short>(soldier->ypos()));
+        ASSERT_NE(nullptr, green);
+        const float green_hp = green->stats()->hitpoints();
+        const std::uint32_t paid_before = tw.world().m_score[0];
+        blade->act();
+        const float cut = green_hp - green->stats()->hitpoints();
+        EXPECT_GT(cut, 0.0f) << "the probe cuts his old side, his foe now";
+        EXPECT_EQ(0, green->last_attacker_team()) << "stamped with his side now";
+        EXPECT_EQ(soldier->entity_id(), green->last_attacker_id()) << "credited to the soldier";
+        EXPECT_EQ(paid_before + static_cast<std::uint32_t>(cut)
+                      + static_cast<std::uint32_t>(green->stats()->level()),
+                  tw.world().m_score[0])
+            << "his side now is paid the cut";
+        green->setxy(500, 500);
+
+        blade->setxy(static_cast<short>(bx), soldier->ypos());
+        walker* red = add_living(tw, FAMILY_SOLDIER, 0, static_cast<short>(bx - 8),
+                                 static_cast<short>(soldier->ypos()));
+        ASSERT_NE(nullptr, red);
+        const float red_hp = red->stats()->hitpoints();
+        blade->act();
+        EXPECT_FLOAT_EQ(red_hp, red->stats()->hitpoints()) << "his side now is passed";
+
+        red->setxy(500, 500);
+        const float soldier_hp = soldier->stats()->hitpoints();
+        const int weapons = soldier->weapons_left();
+        int acts = 1;
+        while (blade->dead() == 0 && acts < 40) {
+            blade->act();
+            ++acts;
+        }
+        EXPECT_EQ(1, blade->dead());
+        EXPECT_EQ(weapons + 1, soldier->weapons_left()) << "he catches it";
+        EXPECT_FLOAT_EQ(soldier_hp, soldier->stats()->hitpoints()) << "it never cuts the hand that catches it";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // -------------------------------------------------- weapon_projectiles.lua
 
 // weapon_projectiles.lua:12 (old game: `if (!owner || owner->dead) owner =
@@ -381,6 +523,75 @@ TEST(SemLibsProjectiles, an_explosion_whose_shooter_is_dead_or_gone_is_credited_
         EXPECT_FLOAT_EQ(14.0f, boom->damage());
         EXPECT_EQ(0u, guard.count()) << guard.message();
     }
+}
+
+// weapon_projectiles.lua explode_on_death, Gameplay Fixes AZ (#502, #533):
+// with the setting on the blast of an exploding shot takes the SHOT's team
+// number. A team-1 archer's armed fire arrow and a team-1 barbarian's armed
+// boulder (each team 1, as fire() and HURL BOULDER stamp them) go off while
+// the shooter is as he was, after he is charmed by hand onto team 2 (the
+// charm's own writes), or after he died (the shot then owns its blast). With
+// the setting on the blast is team 1 every time; classic it stays on team 0,
+// the team it was made with. The charmed legs tell the shot's number from the
+// shooter's number now.
+// Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
+// (every setting-on leg red); made_by's `from or owner` -> `owner` (the
+// charmed legs red: team 2); the projectile's `gf.made_by(explosion,
+// self:owner(), self)` -> `explosion:set_owner(self:owner())` (every
+// setting-on leg red).
+TEST(SemLibsProjectiles, an_exploding_shots_blast_wears_the_shots_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    enum class Then { Nothing, Charmed, Died };
+    const struct {
+        const char* what;
+        int shooter;
+        int shot;
+    } shots[] = {{"a fire arrow", FAMILY_ARCHER, FAMILY_FIRE_ARROW},
+                 {"a boulder", FAMILY_BARBARIAN, FAMILY_BOULDER}};
+    for (const auto& s : shots) {
+        for (const short fixes : {short{0}, short{1}}) {
+            for (const Then then : {Then::Nothing, Then::Charmed, Then::Died}) {
+                SCOPED_TRACE(testing::Message()
+                             << s.what << ", setting " << fixes << ", the shooter "
+                             << (then == Then::Nothing   ? "as he was"
+                                 : then == Then::Charmed ? "charmed onto team 2"
+                                                         : "dead"));
+                TestGameWorld tw;
+                open_field(tw);
+                tw.world().gameplay_fixes = fixes;
+                walker* shooter = add_living(tw, s.shooter, 1, 100, 100, 7);
+                ASSERT_NE(nullptr, shooter);
+                walker* shot = tw.world().add_ob(Order::Weapon, s.shot);
+                ASSERT_NE(nullptr, shot);
+                shot->setxy(200, 200);
+                shot->set_team_num(1);
+                shot->set_owner(shooter);
+                shot->set_skip_exit(1);
+                shot->set_damage(7.0f);
+                shot->stats()->set_level(2);
+                if (then == Then::Charmed) {
+                    shooter->set_real_team_num(shooter->team_num());
+                    shooter->set_team_num(2);
+                    shooter->set_charm_left(30);
+                } else if (then == Then::Died) {
+                    shooter->set_dead(1);
+                }
+                shot->set_dead(1);
+
+                const auto before = live_of(tw.world(), Order::FX, FAMILY_EXPLOSION);
+                ASSERT_TRUE(shot->death());
+                const auto after = live_of(tw.world(), Order::FX, FAMILY_EXPLOSION);
+                walker* boom = only_new(before, after);
+                ASSERT_NE(nullptr, boom) << "the shot makes one blast";
+                EXPECT_EQ(then == Then::Died ? shot : shooter, boom->owner());
+                EXPECT_EQ(fixes != 0 ? 1 : 0, boom->team_num())
+                    << "the blast: the shot's team with the setting on, team 0 classic";
+            }
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // --------------------------------------------------------- weapon_rock.lua

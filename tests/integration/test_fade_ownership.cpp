@@ -1,9 +1,9 @@
 // #237 fade ownership, the end-to-end pin: BEGIN NEW GAME -> name entry
-// ACCEPT -> campaign select ACCEPT -> intro dismiss -> Base Camp, every leg
-// counted separately. Two of those legs (campaign select -> intro, intro ->
-// Base Camp) are the ones that shipped as hard cuts twice: a screen::clear()
-// between the outgoing screen's last present and its fade-out turned the
-// fade black-to-black. Under the ownership rule (docs/menu-engine.md,
+// ACCEPT -> intro dismiss -> Base Camp, every leg counted separately (#490:
+// a new game opens no campaign list, so the intro follows name entry). The
+// legs into and out of the intro are the ones that shipped as hard cuts
+// twice: a screen::clear() between the outgoing screen's last present and
+// its fade-out turned the fade black-to-black. Under the ownership rule (docs/menu-engine.md,
 // "Drawing and transitions") every screen fades itself out at its own exit,
 // and the video layer's TESTING invariants flag any fade that reads a frame
 // the window never showed — integration_main's listener turns those into a
@@ -139,7 +139,7 @@ struct FlowState {
     std::atomic<bool> main_left{false};
     // Leg 1, measured live: main menu -> name entry.
     int fades_added_by_name_entry = -1;
-    // The trace buffer as of Base Camp settled, before BACK: legs 2-4 are
+    // The trace buffer as of Base Camp settled, before BACK: legs 2-3 are
     // read off this copy by marker on the main thread.
     std::vector<TraceEntry> traces_at_base_camp;
     int fades_at_new_game_click = -1;
@@ -236,8 +236,8 @@ int new_game_full_flow_injector(void* data)
         count_fade_between_traces() - state->fades_at_new_game_click;
     interact("company_name_accept");
 
-    // Campaign select auto-accepts and the intro auto-dismisses, each one
-    // presented frame in; Base Camp follows with no further input.
+    // The intro auto-dismisses one presented frame in; Base Camp follows
+    // with no further input.
     if (!wait_for_team_menu(20000))
         return abort_flow(state, 3);
     state->saw_base_camp = true;
@@ -285,17 +285,16 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_name_entry);
     ASSERT_TRUE(state.saw_base_camp)
-        << "the flow must reach Base Camp through the real campaign select "
-           "and intro";
+        << "the flow must reach Base Camp through the real intro";
 
     const std::vector<TraceEntry>& traces = state.traces_at_base_camp;
 
     // The legs ran for real: their markers are in the buffer.
     ASSERT_TRUE(trace_contains("name_entry", "accept"));
-    ASSERT_TRUE(trace_contains("campaign_picker", "first frame presented"))
-        << "campaign select must present a real frame under TESTING";
-    ASSERT_TRUE(trace_contains("campaign_picker", "auto-accept gladiator"))
-        << "the un-driven browser accepts the current campaign";
+    EXPECT_FALSE(trace_contains("campaign_picker", "first frame presented"))
+        << "a new game must not open the campaign list";
+    ASSERT_TRUE(trace_contains("help", "campaign intro gladiator"))
+        << "the intro is the founded (default) campaign's";
     ASSERT_TRUE(trace_contains("help", "scroller presented"))
         << "the campaign intro must present a real frame under TESTING";
     ASSERT_TRUE(trace_contains("help", "scroller auto-dismissed"));
@@ -304,27 +303,21 @@ TEST(FadeOwnership, new_game_flow_fades_every_leg_symmetrically)
     // entry fades in.
     EXPECT_EQ(2, state.fades_added_by_name_entry)
         << "leg 1 (main menu -> name entry): one fade-out + one fade-in";
-    // Leg 2: name entry ACCEPT -> campaign select's first frame. Name entry's
-    // exit fades out; the browser's entry fade-out is a no-op on the black
-    // window, its first frame fades in.
+    // Leg 2: name entry ACCEPT -> the intro's first frame. Name entry's exit
+    // fades out; the intro fades in over black.
     EXPECT_EQ(2, fades_between(traces, "name_entry", "accept",
-                               "campaign_picker", "first frame presented"))
-        << "leg 2 (name entry -> campaign select): one fade-out + one fade-in";
-    // Leg 3: campaign select ACCEPT -> the intro's first frame. The browser
-    // fades itself out; the intro fades in over black.
-    EXPECT_EQ(2, fades_between(traces, "campaign_picker", "auto-accept",
                                "help", "scroller presented"))
-        << "leg 3 (campaign select -> intro): the reported hard cut — the "
-           "browser's own exit fade-out, then the intro's fade-in";
-    // Leg 4: intro dismiss -> Base Camp. The intro fades itself out; Base
+        << "leg 2 (name entry -> intro): name entry's own exit fade-out, "
+           "then the intro's fade-in";
+    // Leg 3: intro dismiss -> Base Camp. The intro fades itself out; Base
     // Camp's entry fade-out is a no-op on the black window, its cold frame
     // fades in; every later Base Camp frame presents plainly.
     EXPECT_EQ(2, fades_after(traces, "help", "scroller auto-dismissed"))
-        << "leg 4 (intro -> Base Camp): the reported hard cut — the intro's "
+        << "leg 3 (intro -> Base Camp): the reported hard cut; the intro's "
            "own exit fade-out, then Base Camp's fade-in";
-    // The whole door, main menu click to Base Camp: four symmetric legs.
-    EXPECT_EQ(8, count_fades(traces) - state.fades_at_new_game_click)
-        << "four legs, two fades each";
+    // The whole door, main menu click to Base Camp: three symmetric legs.
+    EXPECT_EQ(6, count_fades(traces) - state.fades_at_new_game_click)
+        << "three legs, two fades each";
 
     // No door in this flow is the NETWORKING shape, so no exit scope may
     // have skipped its fade-out for a pending Instant note.

@@ -47,6 +47,13 @@ class obmap
 		// blocks, as the loud probe's lost roll blocks (a bot gate's strict
 		// pad question, Gameplay Fixes AV). Still no draw; loud ignores it.
 		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false);
+		// Takes `ob` out of every pile walker_to_pos files it under and out of
+		// walker_to_pos: 1. A walker walker_to_pos does not know is a miss: 0,
+		// and nothing changes (#504). `ob` is only a key and is never read, so a
+		// freed pointer is safe. In play the piles and walker_to_pos agree; a
+		// pile entry filed by hand (tests) stays until the level is torn down,
+		// unless the world no longer holds its walker: then a foe search forgets
+		// it (forget_untracked forgets only such entries).
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
@@ -58,7 +65,7 @@ class obmap
 		const std::list<walker*>* find_list(short x, short y, int floor = 0);
 		// #427: forget every walker in the pile at (x, y) on `floor` that
 		// `world` no longer holds: out of every pile walker_to_pos files it
-		// under and out of walker_to_pos (remove()'s fast path), or, when
+		// under and out of walker_to_pos (remove()), or, when
 		// walker_to_pos does not know it, out of this pile alone; the pile,
 		// left empty, goes with its index entry. A forgotten pointer is never
 		// dereferenced (it may be freed).

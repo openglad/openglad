@@ -399,7 +399,7 @@ static og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     og::sim::LobbyCharacterData character;
     character.guy_id = source.id;
     character.name = source.name;
-    character.family = static_cast<std::int8_t>(source.family);
+    character.family = source.family;
     character.strength = source.strength;
     character.dexterity = source.dexterity;
     character.constitution = source.constitution;
@@ -1075,9 +1075,10 @@ void dump_band_strip(const char* scene,
     std::fclose(fp);
 }
 
-// Press F5+F1 on view 0's seat the way viewscreen::input hands the key to
-// the cheat handler.
-void press_freeze_time_cheat(screen& display)
+// Press the cheat key and `key` on view 0's seat the way viewscreen::input
+// hands them to the cheat handler, with Switch Character pressed this frame
+// or not (Cheat+Switch is the team hop).
+void press_cheat(screen& display, SDL_Keycode key, bool switch_pressed = false)
 {
     viewscreen* const view = display.viewob[0].get();
     ASSERT_NE(nullptr, view);
@@ -1085,10 +1086,17 @@ void press_freeze_time_cheat(screen& display)
     ASSERT_NE(nullptr, control);
     SDL_Event ev{};
     ev.type = SDL_EVENT_KEY_DOWN;
-    ev.key.key = SDLK_F1;
+    ev.key.key = key;
     PlayerInput pi;
     pi.held[static_cast<int>(InputAction::Cheat)] = true;
+    pi.pressed[static_cast<int>(InputAction::SwitchChar)] = switch_pressed;
     handle_cheat_keys(control, 0, ev, pi, &display);
+}
+
+// Press F5+F1 on view 0's seat.
+void press_freeze_time_cheat(screen& display)
+{
+    press_cheat(display, SDLK_F1);
 }
 
 // Puts the colour cycle setting back on the way out.
@@ -1226,6 +1234,834 @@ TEST(GameLoop, the_freeze_time_cheat_does_nothing_while_networked)
 
     og::runtime::clear_local_transport_shadow(session);
     display->world().delete_objects();
+}
+
+namespace {
+// The other cheat keys (#432), through the real loop as F1 above. "Now" is
+// right after the press, with no tick run, so any change is the cheat's;
+// "shown" is the display's walker with the same entity id after one frame,
+// that is after the next snapshot.
+
+// A local game of one soldier, four frames in: the display is a copy of the
+// server world that each frame's snapshot overwrites.
+struct CheatGame
+{
+    screen* display = nullptr;
+    og::runtime::GameSession* session = nullptr;
+    screen* server = nullptr;
+    og::sim::GameServer* game_server = nullptr;
+    GameLoopFrameState st;
+    GameLoopDeps deps = headless_frame_deps();
+    short saved_save_team = 0;
+    short saved_world_team = 0;
+
+    CheatGame() = default;
+    CheatGame(const CheatGame&) = delete;
+    CheatGame& operator=(const CheatGame&) = delete;
+
+    void start()
+    {
+        display = og::runtime::current_session->myscreen_;
+        ASSERT_NE(nullptr, display);
+        saved_save_team = display->save_data.my_team;
+        saved_world_team = display->world().my_team;
+        write_one_soldier_company(*display);
+        ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+        glad_init();
+        ASSERT_NE(nullptr, og::runtime::current_game_session);
+        session = og::runtime::current_game_session;
+        ASSERT_TRUE(og::runtime::local_transport_active(*session));
+        server = og::runtime::local_transport_shadow_testing_server_screen(*session);
+        ASSERT_NE(nullptr, server);
+        game_server = og::runtime::local_transport_shadow_testing_server(*session);
+        ASSERT_NE(nullptr, game_server);
+        for (int i = 0; i < 4; ++i)
+            ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                      static_cast<int>(frame()));
+        ASSERT_NE(nullptr, hero()) << "the seat plays a hero on the server";
+        ASSERT_FALSE(hero()->dead());
+        ASSERT_NE(nullptr, shown(hero())) << "the display shows the hero";
+        ASSERT_EQ(display->viewob[0]->control, shown(hero()))
+            << "view 0 follows the seat's hero";
+    }
+
+    GameFrameResult frame() { return game_frame_with_result(*display, st, deps); }
+    walker* hero() const { return game_server->player_control(0); }
+    walker* shown(const walker* w) const
+    {
+        return w != nullptr ? display->world().find_by_id(w->entity_id()) : nullptr;
+    }
+
+    ~CheatGame()
+    {
+        if (display == nullptr)
+            return;
+        display->save_data.my_team = saved_save_team;
+        display->world().my_team = saved_world_team;
+        if (session == nullptr)
+            return;
+        display->world().end = 0;
+        og::runtime::clear_local_transport_shadow(*session);
+        display->world().delete_objects();
+    }
+};
+
+// What the cheat keys change, read off one world through its copy of the
+// seat's hero.
+struct CheatMarks
+{
+    float hp = 0.0f;
+    float mp = 0.0f;
+    std::int32_t level = 0;
+    std::int32_t bit_flags = 0;
+    std::int32_t speed_bonus_left = 0;
+    short invisibility_left = 0;
+    int family = 0;
+    signed char user = 0;
+    int act_type = 0;
+    std::size_t walkers = 0;
+    int living_foes = 0;
+    short my_team = 0;
+    std::int32_t enemy_freeze = 0;
+    int palette_id = 0;
+    float control_hp = 0.0f;
+};
+
+CheatMarks read_cheat_marks(GameWorld& world, const walker& hero)
+{
+    CheatMarks marks;
+    marks.hp = hero.stats()->hitpoints();
+    marks.mp = hero.stats()->magicpoints();
+    marks.level = hero.stats()->level();
+    marks.bit_flags = hero.stats()->bit_flags();
+    marks.speed_bonus_left = hero.speed_bonus_left();
+    marks.invisibility_left = hero.invisibility_left();
+    marks.family = static_cast<int>(hero.family());
+    marks.user = hero.user();
+    marks.act_type = static_cast<int>(hero.act_type());
+    marks.walkers = world.oblist.size();
+    for (auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            !hero.is_friendly(w))
+            ++marks.living_foes;
+    }
+    marks.my_team = world.my_team;
+    marks.enemy_freeze = world.enemy_freeze;
+    marks.palette_id = static_cast<int>(world.current_palette_id);
+    marks.control_hp = world.control_hp;
+    return marks;
+}
+
+void expect_cheat_marks_unchanged(const CheatMarks& before, const CheatMarks& now,
+                                  const std::string& where)
+{
+    EXPECT_FLOAT_EQ(before.hp, now.hp) << where;
+    EXPECT_FLOAT_EQ(before.mp, now.mp) << where;
+    EXPECT_EQ(before.level, now.level) << where;
+    EXPECT_EQ(before.bit_flags, now.bit_flags) << where;
+    EXPECT_EQ(before.speed_bonus_left, now.speed_bonus_left) << where;
+    EXPECT_EQ(before.invisibility_left, now.invisibility_left) << where;
+    EXPECT_EQ(before.family, now.family) << where;
+    EXPECT_EQ(static_cast<int>(before.user), static_cast<int>(now.user)) << where;
+    EXPECT_EQ(before.act_type, now.act_type) << where;
+    EXPECT_EQ(before.walkers, now.walkers) << where;
+    EXPECT_EQ(before.living_foes, now.living_foes) << where;
+    EXPECT_EQ(before.my_team, now.my_team) << where;
+    EXPECT_EQ(before.enemy_freeze, now.enemy_freeze) << where;
+    EXPECT_EQ(before.palette_id, now.palette_id) << where;
+    EXPECT_FLOAT_EQ(before.control_hp, now.control_hp) << where;
+}
+
+int view_lines_reading(const viewscreen& view, std::string_view text)
+{
+    int count = 0;
+    for (const std::string& line : view.textlist)
+        if (line == text)
+            ++count;
+    return count;
+}
+
+// Sets a flag for one block and puts it back however the block ends.
+template <typename T>
+struct ScopedValue
+{
+    T& ref;
+    T saved;
+    ScopedValue(T& r, T value) : ref(r), saved(r) { ref = value; }
+    ~ScopedValue() { ref = saved; }
+    ScopedValue(const ScopedValue&) = delete;
+    ScopedValue& operator=(const ScopedValue&) = delete;
+};
+} // namespace
+
+// Cheat+H: 100 hit points, kept in the game. Heroes start whole and
+// regeneration only fills a meter below its max, so the tick after the press
+// leaves the 100 alone.
+TEST(GameLoop, the_hit_point_cheat_adds_100_hit_points)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const float hp = hero->stats()->hitpoints();
+    ASSERT_GE(hp, hero->stats()->max_hitpoints()) << "the hero starts whole";
+    const float control_hp = game.server->world().control_hp;
+
+    press_cheat(*game.display, SDLK_H);
+    EXPECT_FLOAT_EQ(hp + 100.0f, hero->stats()->hitpoints())
+        << "the cheat adds 100 hit points to the hero in the game";
+    EXPECT_FLOAT_EQ(control_hp + 100.0f, game.server->world().control_hp);
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_FLOAT_EQ(hp + 100.0f, hero->stats()->hitpoints())
+        << "the 100 hit points outlast the tick";
+    walker* const shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_FLOAT_EQ(hp + 100.0f, shown->stats()->hitpoints())
+        << "the display shows them after the next snapshot";
+    EXPECT_FLOAT_EQ(control_hp + 100.0f, game.display->world().control_hp);
+}
+
+// Cheat+M: 150 magic points, kept in the game.
+TEST(GameLoop, the_magic_point_cheat_adds_150_magic_points)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const float mp = hero->stats()->magicpoints();
+    ASSERT_GE(mp, hero->stats()->max_magicpoints()) << "the hero starts whole";
+
+    press_cheat(*game.display, SDLK_M);
+    EXPECT_FLOAT_EQ(mp + 150.0f, hero->stats()->magicpoints())
+        << "the cheat adds 150 magic points to the hero in the game";
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_FLOAT_EQ(mp + 150.0f, hero->stats()->magicpoints())
+        << "the 150 magic points outlast the tick";
+    walker* const shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_FLOAT_EQ(mp + 150.0f, shown->stats()->magicpoints())
+        << "the display shows them after the next snapshot";
+}
+
+// Cheat+] raises the hero's level by one and Cheat+[ lowers it by one.
+TEST(GameLoop, the_level_cheats_raise_and_lower_the_heros_level)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const std::int32_t level = hero->stats()->level();
+
+    press_cheat(*game.display, SDLK_RIGHTBRACKET);
+    EXPECT_EQ(level + 1, hero->stats()->level())
+        << "] raises the hero's level in the game";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(level + 1, hero->stats()->level()) << "the level outlasts the tick";
+    walker* shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(level + 1, shown->stats()->level())
+        << "the display shows it after the next snapshot";
+
+    press_cheat(*game.display, SDLK_LEFTBRACKET);
+    EXPECT_EQ(level, hero->stats()->level())
+        << "[ lowers the hero's level in the game";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(level, shown->stats()->level())
+        << "the display shows it after the next snapshot";
+}
+
+// Cheat+F toggles flight on the hero in the game.
+TEST(GameLoop, the_flight_cheat_toggles_flight)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const bool flying = hero->stats()->query_bit_flags(BIT_FLYING) != 0;
+
+    press_cheat(*game.display, SDLK_F);
+    EXPECT_EQ(!flying, hero->stats()->query_bit_flags(BIT_FLYING) != 0)
+        << "F flips flight on the hero in the game";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(!flying, hero->stats()->query_bit_flags(BIT_FLYING) != 0)
+        << "flight outlasts the tick";
+    walker* shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(!flying, shown->stats()->query_bit_flags(BIT_FLYING) != 0)
+        << "the display shows it after the next snapshot";
+
+    press_cheat(*game.display, SDLK_F);
+    EXPECT_EQ(flying, hero->stats()->query_bit_flags(BIT_FLYING) != 0)
+        << "a second F flips it back";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(flying, shown->stats()->query_bit_flags(BIT_FLYING) != 0);
+}
+
+// Cheat+I toggles invincibility on the hero in the game.
+TEST(GameLoop, the_invincibility_cheat_toggles_invincibility)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const bool invincible = hero->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
+
+    press_cheat(*game.display, SDLK_I);
+    EXPECT_EQ(!invincible, hero->stats()->query_bit_flags(BIT_INVINCIBLE) != 0)
+        << "I flips invincibility on the hero in the game";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(!invincible, hero->stats()->query_bit_flags(BIT_INVINCIBLE) != 0)
+        << "invincibility outlasts the tick";
+    walker* shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(!invincible, shown->stats()->query_bit_flags(BIT_INVINCIBLE) != 0)
+        << "the display shows it after the next snapshot";
+
+    press_cheat(*game.display, SDLK_I);
+    EXPECT_EQ(invincible, hero->stats()->query_bit_flags(BIT_INVINCIBLE) != 0)
+        << "a second I flips it back";
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(invincible, shown->stats()->query_bit_flags(BIT_INVINCIBLE) != 0);
+}
+
+// Cheat+S: 20 ticks of the hero's own step on top of its step. One act spends
+// one tick of it (LivingUnit.speed_bonus_counts_down_to_zero_and_rides_every_tick).
+TEST(GameLoop, the_speed_cheat_adds_20_ticks_of_speed)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const std::int32_t left = hero->speed_bonus_left();
+
+    press_cheat(*game.display, SDLK_S);
+    EXPECT_EQ(left + 20, hero->speed_bonus_left())
+        << "S adds 20 ticks of speed to the hero in the game";
+    EXPECT_FLOAT_EQ(hero->normal_stepsize(), hero->speed_bonus());
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(left + 19, hero->speed_bonus_left())
+        << "the tick spends one of them and keeps the rest";
+    walker* const shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(left + 19, shown->speed_bonus_left())
+        << "the display shows them after the next snapshot";
+    EXPECT_FLOAT_EQ(hero->speed_bonus(), shown->speed_bonus());
+}
+
+// Cheat+V: 100 ticks of invisibility below the 3000 cap. One act spends one
+// (LivingCombat.living_act_timers_charm_and_recoil_clamps).
+TEST(GameLoop, the_invisibility_cheat_adds_100_ticks_of_invisibility)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const short left = hero->invisibility_left();
+    ASSERT_LT(left, 3000) << "the hero starts below the cap";
+
+    press_cheat(*game.display, SDLK_V);
+    EXPECT_EQ(left + 100, hero->invisibility_left())
+        << "V adds 100 ticks of invisibility to the hero in the game";
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(left + 99, hero->invisibility_left())
+        << "the tick spends one of them and keeps the rest";
+    walker* const shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(left + 99, shown->invisibility_left())
+        << "the display shows them after the next snapshot";
+}
+
+// Cheat+T turns the hero into the next family, a living walker still.
+TEST(GameLoop, the_shape_change_cheat_turns_the_hero_into_the_next_family)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    ASSERT_EQ(FAMILY_SOLDIER, static_cast<int>(hero->family()));
+    constexpr int kNext = (FAMILY_SOLDIER + 1) % NUM_FAMILIES;
+
+    press_cheat(*game.display, SDLK_T);
+    EXPECT_EQ(kNext, static_cast<int>(hero->family()))
+        << "T turns the hero in the game into the next family";
+    EXPECT_EQ(Order::Living, hero->query_order());
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(kNext, static_cast<int>(hero->family())) << "the shape outlasts the tick";
+    walker* const shown = game.shown(hero);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_EQ(kNext, static_cast<int>(shown->family()))
+        << "the display shows it after the next snapshot";
+    EXPECT_EQ(Order::Living, shown->query_order());
+}
+
+// Cheat+F2: one magic shield in the game, the hero's, on its team, for 200
+// ticks. With the Gameplay Fixes setting on (the integration game's) it rides
+// the hero (KIT_RIDER, fix AZ), as the cleric's mace does, and the mark
+// reaches the display with the snapshot. It goes with him: charmed by hand
+// onto another team, the hero and his shield are friends and the shield
+// fights for his new colour.
+// Breaks: the cheat's `set_kit_state(... | KIT_RIDER)` line removed (both mark
+// checks and the charm leg fail); alliance_head's rider line `return ridden;`
+// -> `return this;` (the charm leg fails: the shield keeps his old colour).
+TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    GameWorld& world = game.server->world();
+    for (auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        ASSERT_FALSE(w != nullptr && w->family() == FAMILY_MAGIC_SHIELD &&
+                     w->owner() == hero)
+            << "the hero starts with no shield";
+    }
+    const std::size_t walkers = world.oblist.size();
+
+    press_cheat(*game.display, SDLK_F2);
+    ASSERT_EQ(walkers + 1, world.oblist.size())
+        << "F2 adds exactly one walker to the game";
+    walker* const shield = world.oblist.back().get();
+    ASSERT_NE(nullptr, shield);
+    EXPECT_EQ(FAMILY_MAGIC_SHIELD, static_cast<int>(shield->family()));
+    EXPECT_EQ(hero, shield->owner());
+    EXPECT_EQ(static_cast<int>(hero->team_num()), static_cast<int>(shield->team_num()));
+    EXPECT_EQ(200, static_cast<int>(shield->lifetime()));
+    ASSERT_NE(0, world.gameplay_fixes) << "the integration game plays with the setting on";
+    EXPECT_NE(0, shield->kit_state() & KIT_RIDER)
+        << "with the setting on the shield rides the hero (Gameplay Fixes AZ)";
+    const std::uint32_t shield_id = shield->entity_id();
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    const walker* const kept = world.find_by_id(shield_id);
+    ASSERT_NE(nullptr, kept) << "the shield outlasts the tick";
+    EXPECT_EQ(FAMILY_MAGIC_SHIELD, static_cast<int>(kept->family()));
+    const walker* const shown = game.display->world().find_by_id(shield_id);
+    ASSERT_NE(nullptr, shown) << "the display shows it after the next snapshot";
+    EXPECT_EQ(FAMILY_MAGIC_SHIELD, static_cast<int>(shown->family()));
+    EXPECT_NE(0, shown->kit_state() & KIT_RIDER) << "the mark reaches the display with the snapshot";
+    ASSERT_EQ(hero, game.hero());
+    EXPECT_EQ(game.shown(hero), shown->owner());
+
+    walker* const shield_now = world.find_by_id(shield_id);
+    ASSERT_NE(nullptr, shield_now);
+    const unsigned char colour = hero->team_num();
+    const unsigned char charmer = static_cast<unsigned char>(colour == 1 ? 2 : 1);
+    hero->set_real_team_num(colour);
+    hero->set_team_num(charmer);
+    hero->set_charm_left(30);
+    EXPECT_EQ(charmer, shield_now->fights_for_team()) << "the shield goes with its charmed hero";
+    EXPECT_EQ(1, shield_now->is_friendly(hero));
+    EXPECT_EQ(1, hero->is_friendly(shield_now));
+    hero->set_charm_left(0);
+    hero->set_team_num(colour);
+    hero->set_real_team_num(255);
+}
+
+// Cheat+F12 kills every living foe of the hero in the game, each by the
+// hero's own blow, so every one is a kill on the hero's record (the cheat
+// also calls the foe's death() itself, so only the record tells the blow
+// happened). Level 1 keeps its exit pad (g_test_remove_exits stays false),
+// so a level with no foe left waits for the walk to the exit and the frame
+// after the kill goes on.
+TEST(GameLoop, the_kill_cheat_kills_every_living_foe)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    ASSERT_FALSE(g_test_remove_exits);
+    int exits = 0;
+    for (auto& uptr : game.server->world().fxlist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_EXIT)
+            ++exits;
+    }
+    ASSERT_GT(exits, 0) << "level 1 has an exit pad";
+
+    walker* const hero = game.hero();
+    const std::uint32_t hero_id = hero->entity_id();
+    ASSERT_NE(nullptr, hero->myguy) << "the seat's hero has a company record";
+    // Every walker the cheat strikes (its own test: living and no friend of
+    // the hero, dormant ones included) is one the blow can kill: alive, open
+    // to attack, not warded, on another team than the hero. So each one is
+    // a kill credited to the hero, the rule
+    // WalkerCombat.attack_rewards_single_credit_melee_kill pins.
+    int struck = 0;
+    for (auto& uptr : game.server->world().oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w == nullptr || w->query_order() != Order::Living || hero->is_friendly(w))
+            continue;
+        ASSERT_FALSE(w->dead());
+        ASSERT_FALSE(w->hidden());
+        ASSERT_FALSE(w->stats()->query_bit_flags(BIT_INVINCIBLE));
+        ASSERT_EQ(0, static_cast<int>(w->invulnerable_left()));
+        ASSERT_EQ(0, static_cast<int>(w->kit_state() & KIT_WARD));
+        ASSERT_NE(static_cast<int>(hero->team_num()), static_cast<int>(w->team_num()));
+        ++struck;
+    }
+    const int kills_before = hero->myguy->kills;
+    // A dormant walker is left out of the snapshot, so only the awake foes
+    // can be read on the display.
+    std::vector<std::uint32_t> foes;
+    for (auto& uptr : game.server->world().oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() && !w->dormant() &&
+            w->query_order() == Order::Living && !hero->is_friendly(w))
+            foes.push_back(w->entity_id());
+    }
+    ASSERT_FALSE(foes.empty()) << "level 1 has foes to kill";
+    for (const std::uint32_t id : foes)
+    {
+        const walker* const shown = game.display->world().find_by_id(id);
+        ASSERT_NE(nullptr, shown) << "foe " << id << " is on the display";
+        ASSERT_FALSE(shown->dead());
+    }
+
+    press_cheat(*game.display, SDLK_F12);
+    for (const std::uint32_t id : foes)
+    {
+        const walker* const w = game.server->world().find_by_id(id);
+        ASSERT_NE(nullptr, w);
+        EXPECT_NE(0, static_cast<int>(w->death_called()))
+            << "foe " << id << " dies in the game";
+        EXPECT_LE(w->stats()->hitpoints(), 0.0f) << "foe " << id;
+    }
+    EXPECT_EQ(kills_before + struck, static_cast<int>(hero->myguy->kills))
+        << "each foe the cheat kills is a kill on the hero's record";
+    EXPECT_FALSE(hero->dead());
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    for (const std::uint32_t id : foes)
+    {
+        const walker* const on_server = game.server->world().find_by_id(id);
+        EXPECT_TRUE(on_server == nullptr || on_server->dead())
+            << "foe " << id << " stays dead in the game";
+        const walker* const on_display = game.display->world().find_by_id(id);
+        EXPECT_TRUE(on_display == nullptr || on_display->dead())
+            << "foe " << id << " is dead on the display after the next snapshot";
+    }
+    const walker* const kept = game.server->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, kept);
+    EXPECT_FALSE(kept->dead());
+    const walker* const shown = game.display->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, shown);
+    EXPECT_FALSE(shown->dead());
+}
+
+// Cheat+Switch moves the seat to a body of the next team that has one, in
+// the game: the old hero goes back to its AI, the new body drops the orders
+// its AI queued (as the old game does after a hop), and the view follows.
+TEST(GameLoop, the_team_hop_cheat_moves_the_seat_to_another_team)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    const std::uint32_t hero_id = hero->entity_id();
+    const short start_team = game.server->save_data.my_team;
+    short team = start_team;
+    walker* const target = cheat_cycle_next_team(game.server->world(), team);
+    ASSERT_NE(nullptr, target) << "level 1 has another team";
+    ASSERT_NE(hero, target);
+    ASSERT_EQ(static_cast<int>(team), static_cast<int>(target->team_num()));
+    ASSERT_NE(start_team, team);
+    const std::uint32_t target_id = target->entity_id();
+    target->stats()->add_command(COMMAND_WALK, 20, 1, 0);
+    ASSERT_TRUE(target->stats()->has_commands());
+
+    // A frame with Switch released first frees the hop's debounce.
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    press_cheat(*game.display, SDLK_UNKNOWN, true);
+    EXPECT_EQ(target, game.hero()) << "the seat plays the new body in the game";
+    EXPECT_EQ(0, static_cast<int>(target->user()));
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(target->act_type()));
+    EXPECT_FALSE(target->stats()->has_commands())
+        << "the new body drops the orders its AI queued";
+    EXPECT_EQ(-1, static_cast<int>(hero->user()));
+    EXPECT_EQ(ACT_RANDOM, static_cast<int>(hero->act_type()));
+    EXPECT_EQ(team, game.server->save_data.my_team);
+    EXPECT_EQ(team, game.server->world().my_team);
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game.frame()));
+    ASSERT_NE(nullptr, game.hero());
+    EXPECT_EQ(target_id, game.hero()->entity_id())
+        << "the seat keeps the new body (the old hero is not claimed back)";
+    const walker* const old_hero = game.server->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, old_hero);
+    EXPECT_EQ(-1, static_cast<int>(old_hero->user()));
+    ASSERT_NE(nullptr, game.display->viewob[0]->control);
+    EXPECT_EQ(target_id, game.display->viewob[0]->control->entity_id())
+        << "view 0 follows the seat to the new body";
+    EXPECT_EQ(team, game.display->world().my_team);
+
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+}
+
+// In a networked game no cheat key does anything, for the host or a joiner:
+// a host's cheat would change every player's game and a joiner has no game of
+// its own to change. A replay playback refuses every key too. Each of the
+// three alone refuses all of them, on the game and on the display.
+TEST(GameLoop, the_cheat_keys_change_nothing_while_networked_or_in_a_replay)
+{
+    FreezePaletteGuard palette_guard;
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    og::runtime::GameSession& session = *game.session;
+    walker* const hero = game.hero();
+    walker* const shown = game.shown(hero);
+    viewscreen* const view = game.display->viewob[0].get();
+    view->clear_text();
+    const CheatMarks server_before = read_cheat_marks(game.server->world(), *hero);
+    const CheatMarks display_before = read_cheat_marks(game.display->world(), *shown);
+    const short save_team = game.server->save_data.my_team;
+
+    const auto press_every_key = [&game] {
+        // Switch released then pressed (the hop), then every other key but
+        // [, which would undo ].
+        press_cheat(*game.display, SDLK_UNKNOWN, false);
+        press_cheat(*game.display, SDLK_UNKNOWN, true);
+        for (const SDL_Keycode key :
+             {SDLK_F12, SDLK_RIGHTBRACKET, SDLK_F1, SDLK_F2, SDLK_F, SDLK_H,
+              SDLK_I, SDLK_M, SDLK_S, SDLK_T, SDLK_V})
+            press_cheat(*game.display, key);
+        press_cheat(*game.display, SDLK_UNKNOWN, false);
+    };
+    const auto expect_nothing_changed = [&](const std::string& where) {
+        EXPECT_EQ(hero, game.hero()) << where;
+        expect_cheat_marks_unchanged(server_before,
+                                     read_cheat_marks(game.server->world(), *hero),
+                                     where + ", in the game");
+        expect_cheat_marks_unchanged(display_before,
+                                     read_cheat_marks(game.display->world(), *shown),
+                                     where + ", on the display");
+        EXPECT_EQ(save_team, game.server->save_data.my_team) << where;
+        EXPECT_EQ(0, view_lines_reading(*view, "NO OTHER TEAM")) << where;
+    };
+
+    {
+        ScopedValue<bool> networked(session.networked_session_, true);
+        press_every_key();
+    }
+    expect_nothing_changed("a session the lobby marked networked");
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_set_runtime_networked(
+        session, true));
+    press_every_key();
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_set_runtime_networked(
+        session, false));
+    expect_nothing_changed("a runtime installed for a networked game");
+
+    {
+        ScopedValue<bool> replay(session.replay_playback_active_, true);
+        press_every_key();
+    }
+    expect_nothing_changed("a replay playback");
+}
+
+// A hop that finds no body to take keeps the hero, its team and its orders,
+// and says so on the pressing seat's view: the notice is decided in the game
+// and shown on the display. The lap visits every team 0..MAX_TEAM-1, the
+// hero's own last, so with every other walker dead it lands on the hero
+// itself (silently); only a hero outside the lap, a Free For All team
+// number, leaves it with nobody.
+TEST(GameLoop, the_team_hop_cheat_with_no_other_team_says_so_and_keeps_the_hero)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    GameWorld& world = game.server->world();
+    int killed = 0;
+    for (auto& uptr : world.oblist)
+    {
+        walker* const w = uptr.get();
+        if (w != nullptr && w != hero && !w->dead() &&
+            w->query_order() == Order::Living)
+        {
+            w->set_dead(1);
+            ++killed;
+        }
+    }
+    ASSERT_GT(killed, 0) << "level 1 has other living walkers";
+    hero->stats()->add_command(COMMAND_WALK, 20, 1, 0);
+    ASSERT_TRUE(hero->stats()->has_commands());
+    const short save_team = game.server->save_data.my_team;
+    const short world_team = world.my_team;
+    viewscreen* const view = game.display->viewob[0].get();
+    view->clear_text();
+
+    // The hero alone in the lap: the hop lands on the hero itself.
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    press_cheat(*game.display, SDLK_UNKNOWN, true);
+    EXPECT_EQ(hero, game.hero());
+    EXPECT_EQ(0, static_cast<int>(hero->user()));
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(hero->act_type()));
+    EXPECT_TRUE(hero->stats()->has_commands())
+        << "a hop that keeps the body keeps its orders";
+    EXPECT_EQ(save_team, game.server->save_data.my_team);
+    EXPECT_EQ(world_team, world.my_team);
+    EXPECT_EQ(0, view_lines_reading(*view, "NO OTHER TEAM"))
+        << "a hop that landed says nothing";
+
+    // The hero on a Free For All team, out of the lap: nobody to take.
+    const unsigned char hero_team = hero->team_num();
+    hero->set_team_num(20);
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    press_cheat(*game.display, SDLK_UNKNOWN, true);
+    EXPECT_EQ(hero, game.hero()) << "the seat keeps its hero";
+    EXPECT_EQ(0, static_cast<int>(hero->user()));
+    EXPECT_EQ(ACT_CONTROL, static_cast<int>(hero->act_type()));
+    EXPECT_TRUE(hero->stats()->has_commands())
+        << "a hop that found nobody keeps the hero's orders";
+    EXPECT_EQ(save_team, game.server->save_data.my_team);
+    EXPECT_EQ(world_team, world.my_team);
+    EXPECT_EQ(1, view_lines_reading(*view, "NO OTHER TEAM"))
+        << "the pressing seat's view says the hop found nobody, once";
+
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    hero->set_team_num(hero_team);
+    view->clear_text();
+}
+
+// A cheat changes the live hero the server says the seat plays. The key path
+// never reaches the cheat from a seat with no live hero on the display
+// (viewscreen::input), but the game can have the hero dead a tick before the
+// display does: then no key changes anything.
+TEST(GameLoop, a_cheat_on_a_seat_with_no_live_hero_changes_nothing)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    walker* const hero = game.hero();
+    viewscreen* const view = game.display->viewob[0].get();
+    view->clear_text();
+    hero->set_dead(1);
+    const CheatMarks before = read_cheat_marks(game.server->world(), *hero);
+    const short save_team = game.server->save_data.my_team;
+
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    press_cheat(*game.display, SDLK_UNKNOWN, true);
+    press_cheat(*game.display, SDLK_UNKNOWN, false);
+    press_cheat(*game.display, SDLK_H);
+
+    EXPECT_EQ(hero, game.hero()) << "the hop does not move a seat with a dead hero";
+    expect_cheat_marks_unchanged(
+        before, read_cheat_marks(game.server->world(), *hero),
+        "a seat whose hero is dead in the game");
+    EXPECT_EQ(save_team, game.server->save_data.my_team);
+    EXPECT_EQ(0, view_lines_reading(*view, "NO OTHER TEAM"));
+    hero->set_dead(0);
+}
+
+// The seam itself: a cheat runs once, on the server's screen, with the
+// server's world, object map and random numbers active, on the live hero the
+// server says the seat plays, and the display's context comes back after.
+TEST(GameLoop, a_cheat_runs_inside_the_game_it_changes)
+{
+    CheatGame game;
+    game.start();
+    ASSERT_FALSE(HasFatalFailure());
+    og::runtime::GameSession& session = *game.session;
+    walker* const hero = game.hero();
+    ASSERT_NE(nullptr, current_game);
+    ASSERT_EQ(&game.display->world(), current_game->world)
+        << "the keys arrive in the display's context";
+
+    struct Seen
+    {
+        int runs = 0;
+        screen* game = nullptr;
+        GameWorld* world = nullptr;
+        bool rng_active = false;
+        walker* hero = nullptr;
+    };
+    Seen seen;
+    const og::runtime::CheatBody record = [&seen](screen& g, walker* h) -> walker* {
+        ++seen.runs;
+        seen.game = &g;
+        seen.world = current_game != nullptr ? current_game->world : nullptr;
+        seen.rng_active = gameplay_world_rng_active();
+        seen.hero = h;
+        return h;
+    };
+
+    EXPECT_TRUE(og::runtime::run_cheat_on_game(session, 0, record));
+    EXPECT_EQ(1, seen.runs);
+    EXPECT_EQ(game.server, seen.game) << "the cheat gets the server's screen";
+    EXPECT_EQ(&game.server->world(), seen.world)
+        << "the server's game context is active while it runs";
+    EXPECT_TRUE(seen.rng_active)
+        << "a walker it makes draws from the server world's random numbers";
+    EXPECT_EQ(hero, seen.hero) << "it gets the hero the server says seat 0 plays";
+    ASSERT_NE(nullptr, current_game);
+    EXPECT_EQ(&game.display->world(), current_game->world)
+        << "the display's context comes back after the cheat";
+
+    // A seat whose hero is dead gets none.
+    seen = Seen{};
+    hero->set_dead(1);
+    EXPECT_TRUE(og::runtime::run_cheat_on_game(session, 0, record));
+    hero->set_dead(0);
+    EXPECT_EQ(1, seen.runs);
+    EXPECT_EQ(nullptr, seen.hero);
+    EXPECT_EQ(hero, game.hero());
+
+    // A seat with no body (-1) runs the cheat with no hero.
+    seen = Seen{};
+    EXPECT_TRUE(og::runtime::run_cheat_on_game(session, -1, record));
+    EXPECT_EQ(1, seen.runs);
+    EXPECT_EQ(game.server, seen.game);
+    EXPECT_EQ(nullptr, seen.hero);
+
+    // An empty cheat runs nothing.
+    const CheatMarks before = read_cheat_marks(game.server->world(), *hero);
+    EXPECT_FALSE(og::runtime::run_cheat_on_game(session, 0, og::runtime::CheatBody{}));
+    expect_cheat_marks_unchanged(before,
+                                 read_cheat_marks(game.server->world(), *hero),
+                                 "an empty cheat");
+    EXPECT_EQ(hero, game.hero());
 }
 
 // The water and lava bands turn one step every third tick (do_cycle, after

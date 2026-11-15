@@ -324,10 +324,13 @@ TEST_F(SemWalker1, a_thawing_walker_reads_as_unfrozen_in_the_snapshot)
 
 // A hit is credited to the topmost living on the attacker's owner chain: the
 // thrower's id, team and the world tick. A weapon with no living on its chain
-// stamps nothing (the hit still lands), and a null credit leaves an earlier
-// stamp as it was.
+// stamps nothing (the hit still lands), and a null credit with no team leaves
+// an earlier stamp as it was. With Gameplay Fixes AZ (#502) such a weapon
+// stamps its own colour and the tick, with no walker (id 0).
 // RED (planted): credit_head returning `top ? top : this` (the knife itself
-// is credited); attack() stamping tick_count_ + 1.
+// is credited); attack() stamping tick_count_ + 1; kill_stamp_team's
+// setting-on arm back to the classic one (the setting-on orphan stamps
+// nothing).
 TEST_F(SemWalker1, a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain)
 {
     walker* thrower = living_at(FAMILY_SOLDIER, 0, 100, 100);
@@ -363,10 +366,28 @@ TEST_F(SemWalker1, a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain
     EXPECT_EQ(-1, victim2->last_attacker_team()) << "no living on the chain: no team";
     EXPECT_EQ(0u, victim2->last_attacker_tick()) << "no living on the chain: no tick";
 
-    victim->note_attacker(nullptr, 9);
+    victim->note_attacker(nullptr, -1, 9);
     EXPECT_EQ(thrower->entity_id(), victim->last_attacker_id()) << "a null credit keeps the stamp";
     EXPECT_EQ(0, victim->last_attacker_team());
     EXPECT_EQ(5u, victim->last_attacker_tick());
+
+    // The orphan's hit with the setting on: its colour, no walker.
+    walker* victim3 = living_at(FAMILY_ORC, 1, 700, 300);
+    ASSERT_NE(nullptr, victim3);
+    victim3->stats()->set_armor(0.0f);
+    walker* orphan_on = world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    ASSERT_NE(nullptr, orphan_on);
+    orphan_on->set_team_num(2);
+    orphan_on->set_owner(nullptr);
+    orphan_on->set_damage(10.0f);
+    world().gameplay_fixes = 1;
+    const bool landed = orphan_on->attack(victim3);
+    world().gameplay_fixes = 0;
+    ASSERT_TRUE(landed);
+    EXPECT_FLOAT_EQ(392.0f, victim3->stats()->hitpoints()) << "setting on: the hit lands";
+    EXPECT_EQ(0u, victim3->last_attacker_id()) << "setting on: no walker";
+    EXPECT_EQ(2, victim3->last_attacker_team()) << "setting on: the knife's own colour";
+    EXPECT_EQ(5u, victim3->last_attacker_tick()) << "setting on: the world tick";
 }
 
 // ---------------------------------------------------------------------------

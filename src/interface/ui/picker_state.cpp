@@ -100,8 +100,11 @@ void run_picker(IPickerClient& client, PickerScreen initial_screen)
                 transition.next_screen = PickerScreen::Playing;
                 break;
             case MainMenuAction::NewGame:
+                // #490: a new game founds the company on the default
+                // campaign and goes straight to team build; the campaign
+                // list is the Scenario submenu's Set Campaign door alone.
                 transition.next_screen = client.prepare_new_game()
-                    ? PickerScreen::CampaignSelect
+                    ? PickerScreen::TeamBuild
                     : PickerScreen::MainMenu;
                 break;
             case MainMenuAction::Networking:
@@ -154,11 +157,6 @@ void run_picker(IPickerClient& client, PickerScreen initial_screen)
                 (client.show_team_build() == TeamBuildAction::PlayGame)
                     ? PickerScreen::Playing
                     : PickerScreen::MainMenu;
-            break;
-        case PickerScreen::CampaignSelect:
-            transition.next_screen = client.show_campaign_select().empty()
-                ? PickerScreen::MainMenu
-                : PickerScreen::TeamBuild;
             break;
         case PickerScreen::Options:
             client.show_options();

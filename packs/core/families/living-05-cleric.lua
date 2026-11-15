@@ -255,7 +255,7 @@ local function heal_or_mace(self)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
   end
   -- All okay, let's summon!
-  local mace = og.summon(self, "fx", FX_MAGIC_SHIELD)
+  local mace = gf.rides(og.summon(self, "fx", FX_MAGIC_SHIELD))
   -- plumbing: og.summon MAGIC_SHIELD nil (object cap): 'COULD NOT CREATE MACE'.
   if not mace then
     return false, "COULD NOT CREATE MACE"
@@ -352,7 +352,7 @@ local function raise_ghost(self)
     return false, "COULD NOT CREATE GHOST"
   end
   alive.level = og.rand0(self.level) + 1
-  alive:set_difficulty(alive.level)
+  gf.scale_summon(alive, self)  -- the difficulty; with Gameplay Fixes on, on the cleric's team first
   alive.team = self.team
   alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
   alive:setxy(sx, sy)

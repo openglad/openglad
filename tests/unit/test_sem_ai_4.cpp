@@ -903,6 +903,446 @@ TEST_F(SemAi4, a_chaser_facing_its_foe_within_100_px_swings_only_with_the_settin
     }
 }
 
+// Gameplay Fixes BB (#497), stats.cpp statistics::near_swing, the melee-only
+// arm; both settings. A team-1 orc (melee only) at (320,320) facing down; its
+// foe a team-0 soldier due south; a SEARCH(9) queued, re-plan due. On both
+// settings the short circuit wipes the order, queues ATTACK(30 + rng(25), 1,
+// 1) (the draws: rng(300), the cadence rng(10), the duration pinned to 7:
+// 37), the orc keeps its foe, does not move and ends facing down. Three
+// scenes, the staging asked first (fire_pad_answer: quiet, no draw):
+//  * on the pad: the soldier at (320,337), a 1 px gap: the pad of a 16x16
+//    body facing down starts at y 337, so the soldier's body is on it;
+//  * a wall on the pad: tile (20,21) walled (x 320-335, y 336-351), the
+//    soldier at (320,352) beyond it;
+//  * two tiles off: the soldier at (320,368) (the issue's own case).
+// Setting off: the classic turn steps the orc a notch to DOWN_RIGHT and
+// init_fire only turns it back: no swing in any scene. Setting on: the orc
+// already faces its foe, asks its pad and swings (busy charged the orc's fire
+// delay, the attack animation runs) only with a body on it; the pad question
+// draws nothing, so the stream is the same three draws in every case.
+TEST_F(SemAi4, a_melee_only_chaser_swings_from_the_near_branch_only_at_a_body_on_its_pad)
+{
+    enum class Scene { OnPad, WallOnPad, TwoTilesOff };
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, 7}});
+    for (short fixes : {short{0}, short{1}}) {
+        for (Scene sc : {Scene::OnPad, Scene::WallOnPad, Scene::TwoTilesOff}) {
+            const char* scene = sc == Scene::OnPad       ? "on the pad"
+                                : sc == Scene::WallOnPad ? "a wall on the pad"
+                                                         : "two tiles off";
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
+            fresh_world(fixes);
+            if (sc == Scene::WallOnPad)
+                tile(20, 21, PIX_H_WALL1);
+            const short soldier_y = sc == Scene::OnPad ? 337 : sc == Scene::WallOnPad ? 352 : 368;
+            walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+            walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, soldier_y);
+            ASSERT_TRUE(orc && soldier);
+            ASSERT_FLOAT_EQ(7.0f, orc->fire_frequency()) << "the orc's fire delay (living-14-orc.lua fire_delay 7)";
+            face(orc, FACE_DOWN);
+            const walker::PadAnswer staged = sc == Scene::OnPad       ? walker::PadAnswer::Body
+                                             : sc == Scene::WallOnPad ? walker::PadAnswer::Terrain
+                                                                      : walker::PadAnswer::Clear;
+            ASSERT_TRUE(staged == orc->fire_pad_answer()) << "the staging: what stands on the orc's pad";
+            orc->set_foe(soldier);
+            orc->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+            orc->set_path_check_counter(0);
+            world().rng_.state_ = s;
+
+            EXPECT_TRUE(orc->stats()->walk_to_foe());
+
+            const Cmd f = front_of(orc);
+            EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+            EXPECT_EQ(COMMAND_ATTACK, f.type);
+            EXPECT_EQ(37, f.count) << "30 + rng(25), the draw pinned to 7";
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(1, f.com2);
+            EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_) << "the pad question draws nothing";
+            EXPECT_EQ(soldier, orc->foe());
+            EXPECT_EQ(320, orc->xpos());
+            EXPECT_EQ(320, orc->ypos());
+            EXPECT_EQ(FACE_DOWN, orc->curdir()) << "facing its foe at the end of the call";
+            EXPECT_EQ(FACE_DOWN, orc->enddir());
+            if (fixes && sc == Scene::OnPad) {
+                EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "a body on the pad: the swing started";
+                EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "a body on the pad: the attack animation runs";
+            } else {
+                EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "no swing";
+                EXPECT_EQ(ANI_WALK, orc->ani_type()) << "no swing";
+            }
+        }
+    }
+}
+
+// Gameplay Fixes BB (#497), stats.cpp statistics::near_swing, the shooter's
+// arm; both settings. A team-0 soldier (a knife thrower) at (320,320) facing
+// down; its foe a team-1 orc due south; a SEARCH(9) queued, re-plan due. On
+// both settings the short circuit queues ATTACK(37), the soldier keeps its
+// foe, does not move and ends facing down. Three scenes:
+//  (a) the line is clear: the orc at (320,337), on the pad, so the ray meets
+//      it on its first step whatever the waver;
+//  (b) a wall on the pad: tile (20,21) walled, the orc at (320,352);
+//  (c) out of reach: open field, the orc at (320,416) (corner distance 96:
+//      inside the branch's 100, past a level-4 knife).
+// fire_check builds the soldier's weapon and draws its waver once,
+// next(h + 1) with h the weapon's stepsize / 2 clamped to 0..127
+// (walker::set_weapon_heading); kWaver is that bound, read from a weapon the
+// soldier builds in a throwaway world. Setting off: no line check, no swing,
+// three draws. Setting on: the line check is asked in every scene (four
+// draws) and the shot starts (busy charged its fire delay, the attack
+// animation runs) only in (a). Each setting-on scene is also asked directly
+// in a twin world built the same way, so the staging cannot rot.
+TEST_F(SemAi4, a_shooter_fires_from_the_near_branch_only_when_its_line_check_passes)
+{
+    enum class Scene { Clear, WallOnPad, OutOfReach };
+    std::uint32_t waver_bound = 0;
+    {
+        fresh_world();
+        walker* w = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        ASSERT_NE(nullptr, w);
+        walker* k = w->create_weapon();
+        ASSERT_NE(nullptr, k);
+        const auto h = static_cast<signed char>(std::clamp(k->stepsize() / 2, 0.0f, 127.0f));
+        waver_bound = static_cast<std::uint32_t>(h + 1);
+        k->set_dead(1);
+    }
+    const std::uint32_t kWaver = waver_bound;
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, 7}});
+    const auto stage = [this](Scene sc, short fixes, walker*& w, walker*& orc) {
+        fresh_world(fixes);
+        if (sc == Scene::WallOnPad)
+            tile(20, 21, PIX_H_WALL1);
+        const short orc_y = sc == Scene::Clear ? 337 : sc == Scene::WallOnPad ? 352 : 416;
+        w = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        orc = living_at(FAMILY_ORC, 1, 320, orc_y);
+        if (w == nullptr || orc == nullptr)
+            return;
+        face(w, FACE_DOWN);
+        w->set_foe(orc);
+        w->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        w->set_path_check_counter(0);
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        for (Scene sc : {Scene::Clear, Scene::WallOnPad, Scene::OutOfReach}) {
+            const char* scene = sc == Scene::Clear       ? "(a) the line is clear"
+                                : sc == Scene::WallOnPad ? "(b) a wall on the pad"
+                                                         : "(c) out of reach";
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
+            walker* w = nullptr;
+            walker* orc = nullptr;
+            if (fixes) {
+                stage(sc, fixes, w, orc);
+                ASSERT_TRUE(w && orc);
+                walker::FireCheckDenial d = walker::FireCheckDenial::None;
+                const bool passes = w->fire_check(0, 1, &d);
+                if (sc == Scene::Clear) {
+                    ASSERT_TRUE(passes) << "the twin: the line check passes";
+                } else {
+                    ASSERT_FALSE(passes) << "the twin: the line check refuses";
+                    ASSERT_TRUE(d == (sc == Scene::WallOnPad ? walker::FireCheckDenial::WallBlocked
+                                                             : walker::FireCheckDenial::OutOfRange))
+                        << "the twin: refused for the staged reason";
+                }
+            }
+            stage(sc, fixes, w, orc);
+            ASSERT_TRUE(w && orc);
+            world().rng_.state_ = s;
+
+            EXPECT_TRUE(w->stats()->walk_to_foe());
+
+            const Cmd f = front_of(w);
+            EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+            EXPECT_EQ(COMMAND_ATTACK, f.type);
+            EXPECT_EQ(37, f.count) << "30 + rng(25), the draw pinned to 7";
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(1, f.com2);
+            EXPECT_EQ(orc, w->foe());
+            EXPECT_EQ(320, w->xpos());
+            EXPECT_EQ(320, w->ypos());
+            EXPECT_EQ(FACE_DOWN, w->curdir()) << "facing its foe at the end of the call";
+            if (fixes) {
+                EXPECT_EQ(state_after(s, {300, 10, 25, kWaver}), world().rng_.state_)
+                    << "the line check is asked: its waver is drawn";
+            } else {
+                EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_) << "no line check with the setting off";
+            }
+            if (fixes && sc == Scene::Clear) {
+                EXPECT_FLOAT_EQ(w->fire_frequency(), w->busy()) << "the line check passed: the shot started";
+                EXPECT_EQ(ANI_ATTACK, w->ani_type()) << "the line check passed: the attack animation runs";
+            } else {
+                EXPECT_FLOAT_EQ(0.0f, w->busy()) << "no shot";
+                EXPECT_EQ(ANI_WALK, w->ani_type()) << "no shot";
+            }
+        }
+    }
+}
+
+// Gameplay Fixes BB (#497), stats.cpp statistics::near_turn; both settings.
+// A team-0 soldier at (320,320), its foe a team-1 orc at (337,320) (due east:
+// the aim is RIGHT); a SEARCH(9) queued, re-plan due. Two starts: facing UP
+// (two notches off) and UP_RIGHT (one notch off). On both settings the short
+// circuit queues ATTACK(37) and draws only its three draws (a bot that does
+// not face its foe asks nothing).
+//  * Setting off: the turn moves a notch toward RIGHT and points the heading
+//    along it, enddir is left as it was, and init_fire, finding the heading
+//    on its facing but enddir unmet, turns the soldier back: it ends where it
+//    started, enddir unchanged, nothing fired.
+//  * Setting on: enddir becomes RIGHT and the notch stays: UP to UP_RIGHT,
+//    UP_RIGHT to RIGHT. The turn is the act: nothing starts, even from
+//    UP_RIGHT, where the orc now stands on the soldier's pad.
+// Then, from UP, one more act (living::act): with the setting on the soldier
+// is still turning (curdir != enddir), so the act is one notch to RIGHT and
+// the ATTACK order does not run (count 37); with it off the soldier faces its
+// enddir, so the order runs: the line check refuses (Facing), the order
+// snap-faces it RIGHT, and do_command spends one round of it (count 36).
+TEST_F(SemAi4, a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on)
+{
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, 7}});
+    for (short fixes : {short{0}, short{1}}) {
+        for (int start : {FACE_UP, FACE_UP_RIGHT}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (start == FACE_UP ? "facing UP" : "facing UP_RIGHT"));
+            fresh_world(fixes);
+            walker* w = living_at(FAMILY_SOLDIER, 0, 320, 320);
+            walker* orc = living_at(FAMILY_ORC, 1, 337, 320);
+            ASSERT_TRUE(w && orc);
+            face(w, start);
+            w->set_foe(orc);
+            w->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+            w->set_path_check_counter(0);
+            world().rng_.state_ = s;
+
+            EXPECT_TRUE(w->stats()->walk_to_foe());
+
+            const Cmd f = front_of(w);
+            EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+            EXPECT_EQ(COMMAND_ATTACK, f.type);
+            EXPECT_EQ(37, f.count) << "30 + rng(25), the draw pinned to 7";
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(1, f.com2);
+            EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_) << "not facing its foe: nothing asked";
+            EXPECT_EQ(orc, w->foe());
+            EXPECT_EQ(320, w->xpos());
+            EXPECT_EQ(320, w->ypos());
+            EXPECT_FLOAT_EQ(0.0f, w->busy()) << "nothing started";
+            EXPECT_EQ(ANI_WALK, w->ani_type()) << "nothing started";
+            if (fixes) {
+                EXPECT_EQ(start == FACE_UP ? FACE_UP_RIGHT : FACE_RIGHT, w->curdir()) << "the notch toward the foe stays";
+                EXPECT_EQ(FACE_RIGHT, w->enddir()) << "the aim is kept as the facing it turns to";
+            } else {
+                EXPECT_EQ(start, w->curdir()) << "a notch toward the foe, then init_fire turns it back";
+                EXPECT_EQ(start, w->enddir()) << "the classic turn leaves enddir as it was";
+            }
+            if (start != FACE_UP)
+                continue;
+
+            (void)w->act();
+
+            EXPECT_EQ(FACE_RIGHT, w->curdir()) << "one act later the soldier faces its foe";
+            EXPECT_EQ(COMMAND_ATTACK, front_of(w).type);
+            if (fixes) {
+                EXPECT_EQ(37, front_of(w).count) << "the act was the turn: the order did not run";
+            } else {
+                EXPECT_EQ(36, front_of(w).count) << "the order ran (its snap-face turned the soldier): one round spent";
+            }
+        }
+    }
+}
+
+// Gameplay Fixes BB (#497), stats.cpp statistics::near_swing, the facing
+// bot's heading; both settings. A team-1 orc at (320,320) that faces down
+// (curdir and enddir) while its heading, its last step, points east (lastx
+// one stepsize, lasty 0); its foe a team-0 soldier at (320,337), on the pad
+// below it; a SEARCH(9) queued, re-plan due. Setting off: the classic turn
+// steps the orc a notch off and init_fire turns it back: no swing. Setting
+// on: the orc faces its foe, so its heading is pointed along the facing
+// first (lastx 0, lasty one stepsize) and the pad it asks, and swings at, is
+// the one below it: the soldier's body, so the swing starts. Along the stale
+// heading (east) the pad would be clear and init_fire would only turn it.
+TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_heading)
+{
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, 7}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+        walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 337);
+        ASSERT_TRUE(orc && soldier);
+        ASSERT_FLOAT_EQ(7.0f, orc->fire_frequency()) << "the orc's fire delay (living-14-orc.lua fire_delay 7)";
+        orc->set_curdir(static_cast<signed char>(FACE_DOWN));
+        orc->set_enddir(static_cast<char>(FACE_DOWN));
+        orc->set_lastx(orc->stepsize());
+        orc->set_lasty(0.0f);
+        ASSERT_TRUE(walker::PadAnswer::Clear == orc->fire_pad_answer()) << "the staging: the pad along the stale heading is clear";
+        orc->set_foe(soldier);
+        orc->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        orc->set_path_check_counter(0);
+        world().rng_.state_ = s;
+
+        EXPECT_TRUE(orc->stats()->walk_to_foe());
+
+        const Cmd f = front_of(orc);
+        EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+        EXPECT_EQ(COMMAND_ATTACK, f.type);
+        EXPECT_EQ(37, f.count) << "30 + rng(25), the draw pinned to 7";
+        EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_);
+        EXPECT_EQ(soldier, orc->foe());
+        EXPECT_EQ(320, orc->xpos());
+        EXPECT_EQ(320, orc->ypos());
+        EXPECT_EQ(FACE_DOWN, orc->curdir()) << "facing its foe at the end of the call";
+        if (fixes) {
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "the swing started along the facing";
+            EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "the swing started along the facing";
+            EXPECT_FLOAT_EQ(0.0f, orc->lastx()) << "the heading points along the facing";
+            EXPECT_FLOAT_EQ(orc->stepsize(), orc->lasty()) << "the heading points along the facing";
+        } else {
+            EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "init_fire only turned back: no swing";
+            EXPECT_EQ(ANI_WALK, orc->ani_type()) << "init_fire only turned back: no swing";
+        }
+    }
+}
+
+// #447 (this game only, both settings), stats.cpp statistics::near_adopts.
+// Two floors. A team-1 ghost (it flies; melee only) at (320,320) on floor 0
+// facing down, holding `above`, a team-0 soldier on floor 1; `beside`, a
+// second team-0 soldier; a SEARCH(9) queued, re-plan due. A flyer keeps the
+// floor-blind chase (it never changes floors), so the re-plan finds `above`
+// within 100 px and enters the near branch, where the quick foe search
+// (find_near_foe: floor-keyed, about five map cells round the bot, then the
+// floor-blind full scan) answers a foe; the staging asserts that answer first.
+//  * the scene: `above` at (320,340) on floor 1 (corner distance 20),
+//    `beside` at (320,400) on floor 0 (80: not nearer). The search answers
+//    `beside`, on the ghost's own floor: the ghost takes it and queues its
+//    ATTACK order;
+//  * control, no foe on the ghost's floor: `above` at (320,337) and `beside`
+//    at (320,400), both on floor 1. The search finds nobody on floor 0 and
+//    the full scan answers `above`: the ghost keeps it, and since its pad (on
+//    floor 0) is clear it starts no swing on either setting (busy 0, the walk
+//    animation): a flyer swings at no foe on another floor;
+//  * control, beyond the quick search: `beside` at (320,620) on floor 0, 300
+//    px off. The spiral never reaches it and the full scan answers `above`:
+//    the ghost keeps `above`;
+//  * control, another foe on the other floor at the same distance: `twin`, a
+//    third team-0 soldier at (320,300) on floor 1, made before `above`
+//    (320,340); both 20 px off, `beside` at (320,400) on floor 1. The search
+//    finds nobody on floor 0 and the full scan, which keeps the earlier
+//    walker on a tie, answers `twin`: not nearer than `above` and not on the
+//    ghost's floor, so the ghost keeps `above`. Only this scene tells "take
+//    the foe on its own floor" from "take whatever the search answers": in
+//    the two controls above the search answers the held foe itself;
+//  * control, a ground walker: an orc (it does not fly) in the ghost's place,
+//    the first scene's soldiers. A ground walker whose foe is on another
+//    floor heads for a stair and never enters the near branch: it keeps
+//    `above`. The near branch therefore never asks the rule for it, so the
+//    scene asks near_adopts itself, with the flyer flag walk_to_foe gives a
+//    walker that does not fly: no, though `beside` stands on its floor;
+//  * control, the held foe on the ghost's own floor (after the loop): the
+//    ghost holds `held` at (288,320) on floor 0, 32 px off, and `first` at
+//    (352,352) on floor 0 is 64 px off. The quick search answers the first
+//    foe in spiral order, not the nearest: it reaches `first`'s cell on its
+//    second step, `held`'s on its fifth. `first` is on the ghost's floor but
+//    the held foe is too, so the flyer rule does not apply and #320's alone
+//    decides: not nearer, the ghost keeps `held` and queues its ATTACK order
+//    (the near branch ran, so the rule was asked). Only this scene tells
+//    "the held foe is on another floor" from "the ghost flies".
+// The five controls assert the foe (the ground walker may step; that is not
+// this rule).
+TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor)
+{
+    enum class Scene { OwnFloorFoe, NoFoeOnItsFloor, BeyondTheSearch, TieOnTheOtherFloor, GroundWalker };
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, kAny}});
+    for (short fixes : {short{0}, short{1}}) {
+        for (Scene sc : {Scene::OwnFloorFoe, Scene::NoFoeOnItsFloor, Scene::BeyondTheSearch,
+                         Scene::TieOnTheOtherFloor, Scene::GroundWalker}) {
+            const char* scene = sc == Scene::OwnFloorFoe          ? "a foe on the ghost's floor"
+                                : sc == Scene::NoFoeOnItsFloor    ? "control: no foe on the ghost's floor"
+                                : sc == Scene::BeyondTheSearch    ? "control: the foe on its floor beyond the quick search"
+                                : sc == Scene::TieOnTheOtherFloor ? "control: another foe on the other floor at the same distance"
+                                                                  : "control: a ground walker";
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
+            fresh_world(fixes);
+            two_floors();
+            const bool both_above = sc == Scene::NoFoeOnItsFloor || sc == Scene::TieOnTheOtherFloor;
+            walker* bot = living_at(sc == Scene::GroundWalker ? FAMILY_ORC : FAMILY_GHOST, 1, 320, 320, 0);
+            // Made before `above`, so the full scan meets it first.
+            walker* twin = sc == Scene::TieOnTheOtherFloor ? living_at(FAMILY_SOLDIER, 0, 320, 300, 1) : nullptr;
+            const short above_y = sc == Scene::NoFoeOnItsFloor ? 337 : 340;
+            walker* above = living_at(FAMILY_SOLDIER, 0, 320, above_y, 1);
+            walker* beside = living_at(FAMILY_SOLDIER, 0, 320, sc == Scene::BeyondTheSearch ? 620 : 400,
+                                       both_above ? 1 : 0);
+            ASSERT_TRUE(bot && above && beside);
+            ASSERT_EQ(sc == Scene::TieOnTheOtherFloor, twin != nullptr);
+            ASSERT_EQ(sc != Scene::GroundWalker, bot->stats()->query_bit_flags(BIT_FLYING) != 0)
+                << "the staging: the ghost flies, the orc does not";
+            face(bot, FACE_DOWN);
+            bot->set_foe(above);
+            if (sc != Scene::GroundWalker) {
+                walker* const answered = world().find_near_foe(bot);
+                walker* const expected = sc == Scene::OwnFloorFoe          ? beside
+                                         : sc == Scene::TieOnTheOtherFloor ? twin
+                                                                           : above;
+                ASSERT_EQ(expected, answered) << "the staging: the quick foe search's answer";
+            }
+            if (sc == Scene::TieOnTheOtherFloor) {
+                ASSERT_EQ(bot->distance_to_ob(above), bot->distance_to_ob(twin))
+                    << "the staging: `twin` is exactly as far as `above`, so it is not nearer";
+                ASSERT_EQ(twin->floor(), above->floor()) << "the staging: `twin` stands on the other floor too";
+            }
+            if (sc == Scene::NoFoeOnItsFloor) {
+                ASSERT_TRUE(walker::PadAnswer::Clear == bot->fire_pad_answer())
+                    << "the staging: `above` stands on floor 1, the ghost's pad on floor 0 is clear";
+            }
+            if (sc == Scene::GroundWalker) {
+                EXPECT_FALSE(bot->stats()->near_adopts(beside, static_cast<std::uint32_t>(bot->distance_to_ob(above)),
+                                                       /*flyer=*/false))
+                    << "asked by itself, the rule takes no foe for a walker that does not fly";
+            }
+            bot->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+            bot->set_path_check_counter(0);
+            world().rng_.state_ = s;
+
+            EXPECT_TRUE(bot->stats()->walk_to_foe());
+
+            if (sc == Scene::OwnFloorFoe) {
+                EXPECT_EQ(beside, bot->foe()) << "the foe on its own floor is taken, though it is farther";
+                EXPECT_EQ(COMMAND_ATTACK, front_of(bot).type) << "and attacked";
+            } else {
+                EXPECT_EQ(above, bot->foe()) << "the held foe is kept";
+            }
+            if (sc == Scene::NoFoeOnItsFloor) {
+                EXPECT_FLOAT_EQ(0.0f, bot->busy()) << "no swing at a foe on another floor";
+                EXPECT_EQ(ANI_WALK, bot->ani_type()) << "no swing at a foe on another floor";
+            }
+        }
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                     "control: the held foe on the ghost's own floor, another the search meets first");
+        fresh_world(fixes);
+        two_floors();
+        walker* ghost = living_at(FAMILY_GHOST, 1, 320, 320, 0);
+        walker* held = living_at(FAMILY_SOLDIER, 0, 288, 320, 0);
+        walker* first = living_at(FAMILY_SOLDIER, 0, 352, 352, 0);
+        ASSERT_TRUE(ghost && held && first);
+        ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost flies";
+        ASSERT_EQ(ghost->floor(), held->floor()) << "the staging: the held foe stands on the ghost's floor";
+        ASSERT_EQ(ghost->floor(), first->floor()) << "the staging: `first` stands on the ghost's floor";
+        ASSERT_EQ(32, ghost->distance_to_ob(held)) << "the staging: the held foe is within 100 px";
+        ASSERT_EQ(64, ghost->distance_to_ob(first)) << "the staging: `first` is not nearer than the held foe";
+        face(ghost, FACE_DOWN);
+        ghost->set_foe(held);
+        ASSERT_EQ(first, world().find_near_foe(ghost))
+            << "the staging: the quick foe search meets `first` before the nearer held foe";
+        ghost->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        ghost->set_path_check_counter(0);
+        world().rng_.state_ = s;
+
+        EXPECT_TRUE(ghost->stats()->walk_to_foe());
+
+        EXPECT_EQ(COMMAND_ATTACK, front_of(ghost).type) << "the near branch ran, so the rule was asked";
+        EXPECT_EQ(held, ghost->foe()) << "the held foe on the ghost's own floor is kept: `first` is not nearer";
+    }
+}
+
 // stats.cpp:1351, the crowded map. 201 team-0 soldiers stacked in the far
 // corner put the obmap past 200 objects, so the re-plan skips A* even for a
 // foe 400 px away; no foe is within 100 px, so the current order is ended

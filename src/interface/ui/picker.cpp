@@ -110,6 +110,7 @@ Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 void glad_main(Sint32 playermode);
 std::string get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
+std::string picker_set_campaign();
 Sint32 do_set_scen_level(Sint32 arg1);
 bool picker_prepare_new_game_setup();
 Sint32 show_general_help();
@@ -1118,6 +1119,10 @@ public:
         Sint32 retvalue = 0;
         while (!(retvalue & MENU_EXIT))
         {
+            // Null outside tests: an injector's menu-thread tasks land here
+            // (picker_lobby_client.h), since this loop is not engine-hosted.
+            if (og::ui::g_picker_main_thread_pump != nullptr)
+                og::ui::g_picker_main_thread_pump();
             ensure_relay_room_list_view_is_current();
             // Only a snapshot that was already staged before this frame may
             // be committed after its input dispatch. A completion observed in
@@ -1484,47 +1489,11 @@ public:
         return picker_join_game(lobby_client_);
     }
 
+    // The campaign list, which since #490 only SET CAMPAIGN opens: the same
+    // door as the SCENARIO subscreen's button.
     std::string show_campaign_select() override
     {
-        // Under TESTING this leg runs for real too (it used to short-circuit
-        // to current_campaign, which hid the intro's fade regression from
-        // every flow test): the browser auto-accepts the current campaign one
-        // presented frame in unless a test disarms it
-        // (campaign_picker_testing_set_auto_accept), and the intro scroller
-        // dismisses itself after its first frame unless a test forces the
-        // real view (help_testing_set_force_scroll_text).
-        screen* game = og::runtime::current_session->myscreen_;
-        CampaignResult result = pick_campaign(&game->save_data);
-        if (result.id.empty())
-            return {};
-
-        // A failed load (bad ENTER ID, corrupt package) must not write its
-        // negative return into scen_num: roll back to the previous campaign
-        // and stay on the main menu.
-        if (!og::ui::apply_campaign_selection(game->save_data, result.id,
-                                              result.first_level))
-        {
-            popup_dialog("SET CAMPAIGN", "Could not load campaign.");
-            return {};
-        }
-        // #162: the campaign just mounted may ship its own entity art or pack
-        // families. Between screens here — the next screen re-inits its
-        // buttons before anything draws from the loader.
-        sdl_entity_loader()->reload_graphics_if_stale();
-        picker_lobby_sync_settings_from_save();
-
-        // The CHOSEN campaign's intro, now that the selection committed
-        // (issue #186 — it used to show the default campaign's intro before
-        // the picker ever ran). #237 ownership: campaign select faded its
-        // own last frame out; the intro fades in over that black and fades
-        // itself out on dismissal (read_campaign_intro's LegacyMenuFade), so
-        // Base Camp's entry finds a black window and fades in. Nothing here
-        // may clear the buffer between a screen's last present and its exit
-        // fade — that clear was the reported hard cut.
-        release_mouse();
-        read_campaign_intro(game);
-        grab_mouse();
-        return result.id;
+        return picker_set_campaign();
     }
 
     void show_options() override
@@ -2417,10 +2386,10 @@ void view_team(short left, short top, short right, short bottom)
 
 // The build stamp, bottom-centre of the main menu ON EVERY PLATFORM — the
 // deployed web preview is exactly where "is this fix even in the build I'm
-// playing?" needs an in-game answer, and the version beside the commit is
-// what a bug report should quote. Geometry is og::ui::build_stamp_rect
-// (picker_common, unit-tested): one line in the black band under HELP/QUIT,
-// clear of every button and of both column bases.
+// playing?" needs an in-game answer, and the commit (with the version on a
+// master build, #508) is what a bug report should quote. Geometry is
+// og::ui::build_stamp_rect (picker_common, unit-tested): one line in the
+// black band under HELP/QUIT, clear of every button and of both column bases.
 void draw_build_stamp()
 {
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
@@ -3516,30 +3485,39 @@ Sint32 do_pick_spritesheet(Sint32)
     return MENU_REDRAW;
 }
 
+// SET CAMPAIGN, the one door to the campaign list (#490: a new game no longer
+// opens it). Returns the campaign the save now stands on, or empty when the
+// player backed out or the pick failed to load.
+std::string picker_set_campaign()
+{
+   screen* const game = og::runtime::current_session->myscreen_;
+   CampaignResult result = pick_campaign(&game->save_data);
+   if (result.id.empty())
+       return {};
+   // Load new campaign. A failed load (bad ENTER ID, corrupt package) rolls
+   // the save and mount back instead of writing load_campaign's negative
+   // return into scen_num.
+   if (!og::ui::apply_campaign_selection(game->save_data, result.id,
+                                         result.first_level))
+   {
+       popup_dialog("SET CAMPAIGN", "Could not load campaign.");
+       return {};
+   }
+   // #162: the campaign just mounted may ship its own entity art or pack
+   // families. The caller redraws before anything draws from the loader
+   // (do_pick_campaign's MENU_REDRAW: the frame skeleton re-creates every
+   // button pixie and the SCENARIO spec's guard frame_tick reloads the
+   // preview level), so freeing loader buffers here is safe.
+   sdl_entity_loader()->reload_graphics_if_stale();
+   picker_lobby_sync_settings_from_save();
+   return result.id;
+}
+
 Sint32 do_pick_campaign(Sint32 arg1)
 {
 	(void)arg1;
-   CampaignResult result = pick_campaign(&og::runtime::current_session->myscreen_->save_data);
-   if(result.id.size() > 0)
-   {
-        // Load new campaign. A failed load (bad ENTER ID, corrupt package)
-        // rolls the save and mount back instead of writing load_campaign's
-        // negative return into scen_num.
-        if (!og::ui::apply_campaign_selection(
-                og::runtime::current_session->myscreen_->save_data, result.id,
-                result.first_level))
-        {
-            popup_dialog("SET CAMPAIGN", "Could not load campaign.");
-            return MENU_REDRAW;
-        }
-        // #162: same MENU_REDRAW position as do_pick_spritesheet — the frame
-        // skeleton re-creates every button pixie (reset_buttons) and the
-        // SCENARIO spec's guard frame_tick reloads the preview level before
-        // this frame draws, so freeing loader buffers here is safe.
-        sdl_entity_loader()->reload_graphics_if_stale();
-        picker_lobby_sync_settings_from_save();
-   }
-   return MENU_REDRAW;
+	(void)picker_set_campaign();
+	return MENU_REDRAW;
 }
 
 LevelLoadOutcome load_level_or_roll_back(screen& game, int level,

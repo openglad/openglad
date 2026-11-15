@@ -180,6 +180,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         //   another seat (and, with Gameplay Fixes on, not a walker our side charmed).
         // tests: SimInputHandler.sim_find_next_control_player_first
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed
+        // tests: GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -204,6 +205,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         //   walker of another team (the 2002 'ANYONE' pass is gone).
         // tests: SimInputHandler.sim_find_next_control_team_fallback, SimInputHandler.sim_find_next_control_none, SimInputHandler.sim_find_next_control_never_claims_another_team
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_on_both_settings
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_dead_heros_seat_takes_the_first_body_of_its_colour, GameplayFixesSeats.a_charmed_druids_faerie_is_handed_over_on_both_settings
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -376,12 +378,15 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // either side of a possession: a possessed body belongs to the seat
         // whose ghost rides it, and a bot's possession is the bot's.
         // rule: Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed
-        //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses.
+        //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses,
+        //   nor one unfriendly to the hero it switches from (is_friendly: with Gameplay Fixes on
+        //   each walker's own colour, fix AZ; classic, the heads of both owner chains).
         // tests: SimInputHandler.sim_input_switch_char_skips_ineligible_candidates_then_selects_valid
         // tests: SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies
         // tests: SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
         // tests: KitPossession.claim_scans_refuse_linked_walkers
         // tests: KitPossession.claim_scans_refuse_a_hidden_unlinked_walker
+        // tests: GameplayFixesSeats.switch_character_and_the_hand_off_agree_on_a_summon_of_our_colour_with_the_setting_on, GameplayFixesSeats.a_summon_of_our_colour_fights_for_it_with_the_setting_on
         return !w->dead() && !w->dormant() && !w->hidden() &&
                w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
@@ -441,11 +446,11 @@ SimInputResult sim_process_player_input(
         og::sim::possession_seat_redirect(level, control, player_num);
         // rule: New Specials possession: a seat whose ghost rides a body is moved to drive the body
         //   (and back to the ghost on release); the tick the seat moves is spent on the move, so a
-        //   Special still held from the possessing cast casts nothing on the host.
-        // tests: KitPossession.seat_redirect_follows_host_then_returns
-        // tests: KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input
-        // tests: KitPossession.seat_follows_the_ghost_out_of_a_dying_host
-        if (control != before_redirect)
+        //   Special still held from the possessing cast casts nothing on the host. A seat sent to its
+        //   dead ghost (#535) spends nothing: the ordinary death hand-off below runs on this tick.
+        // tests: KitPossession.seat_redirect_follows_host_then_returns, KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input, KitPossession.seat_follows_the_ghost_out_of_a_dying_host
+        // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        if (control != before_redirect && !control->dead())
         {
             result.new_control = control;
             // rule: New Specials possession: a seat whose ghost rides a body is moved to drive the
@@ -483,8 +488,10 @@ SimInputResult sim_process_player_input(
         }
     }
     // rule: A seat looks for a new body only when it has none or its body is dead: it keeps a live
-    //   body whatever team that body now wears, so a charm running out takes the seat with it (#450).
+    //   body whatever team that body now wears or fights for, so a walker whose charm runs out keeps
+    //   its seat (#450), and so does a summon when the charm on its caster runs out (#496).
     // tests: SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate, SimInputHandler.sim_input_dead_control_reassigns_to_next_alive, GameplayFixesSeats.a_seat_keeps_its_walker_when_the_charm_runs_out
+    // tests: GameplayFixesSeats.a_seat_keeps_a_summon_when_its_casters_charm_runs_out
     if (!control || control->dead())
     {
         // Respawning players keep their exact entity assignment. The normal
@@ -512,6 +519,7 @@ SimInputResult sim_process_player_input(
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings, KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
         if (control->user() == -1)

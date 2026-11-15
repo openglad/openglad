@@ -12,8 +12,10 @@ campaigns, seven versus modes, a browser build and a modding API in Lua.
 [latest release](https://github.com/openglad/openglad/releases/latest)
 (Linux, Windows, macOS) · **Build from source:** [docs/INSTALL.md](docs/INSTALL.md)
 
-Versions are `2.<commit count>`. The main menu shows the version and the
-commit of the build you are running.
+Versions are `2.<commit count>` of a master commit. The main menu shows the
+version and the commit of the build you are running; a build of a commit that is
+not on master (a pull-request preview, a local branch), or a local build with
+uncommitted changes, shows only the commit.
 
 <table>
 <tr>
@@ -73,7 +75,7 @@ commit of the build you are running.
 **Under the hood**
 
 - C++20 in five components with an enforced dependency direction, GoogleTest unit and integration groups, a byte-exact parity harness that pins gameplay against the classic simulation, and a coverage gate at 98 % of lines and 100 % of functions over `src/` and the pack Lua ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/GAMEPLAY_FIXES_FROM_CLASSIC.md](docs/GAMEPLAY_FIXES_FROM_CLASSIC.md)).
-- Every build stamps `v2.<commit count>` and its git hash on the main menu; each push to `master` becomes a GitHub release and a versioned web URL automatically.
+- Every master build stamps `v2.<commit count>` and its git hash on the main menu (any other build stamps the hash alone); each push to `master` becomes a GitHub release and a versioned web URL automatically.
 
 **Note:** as of July 1st, 2002, Gladiator is open sourced under the GPL.
 The Forgotten Sages Development Team has graciously open sourced it,

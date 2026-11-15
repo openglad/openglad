@@ -35,6 +35,8 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -917,6 +919,62 @@ TEST_F(SemLiving, banked_rounds_past_fifty_all_run_in_one_tick)
 
     w->act();
     EXPECT_EQ(4998, w->invulnerable_left()) << "the next tick: one act, nothing carried over";
+}
+
+// living.cpp, the act-type switch (#501). A sitting walker (ACT_SIT, which
+// a level script gives a living to keep it in place) does nothing in its
+// act, as a walker with an act type no arm knows does, and writes no log
+// line. The unknown act type still writes "No act type set." once per act:
+// it proves the capture sees the log and that a soldier here reaches the
+// switch. Over five acts neither walker changes. Log() writes to stderr, so
+// gtest's stderr capture is the seam (no trace needed). Both settings.
+// RED before #501: the sitter wrote the line every act. Break: the
+// ACT_SIT arm removed (the line comes back); the arm answering 1.
+TEST_F(SemLiving, a_sitting_walker_does_nothing_and_writes_no_log_line)
+{
+    const std::string line = "No act type set.";
+    const auto lines_in = [&line](const std::string& out) {
+        std::size_t n = 0;
+        for (std::size_t at = out.find(line); at != std::string::npos;
+             at = out.find(line, at + line.size()))
+            ++n;
+        return n;
+    };
+    const auto state_of = [](walker* w) {
+        return std::make_tuple(w->xpos(), w->ypos(), static_cast<int>(w->curdir()),
+                               static_cast<int>(w->enddir()), static_cast<int>(w->act_type()),
+                               w->foe(), w->stats()->has_commands(),
+                               w->stats()->hitpoints(), w->stats()->magicpoints());
+    };
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        world().gameplay_fixes = fixes;
+        walker* sitter = still(FAMILY_SOLDIER, 1, 96, 96);
+        walker* lost = still(FAMILY_SOLDIER, 1, 192, 96);
+        ASSERT_NE(nullptr, sitter);
+        ASSERT_NE(nullptr, lost);
+        sitter->set_act_type(ACT_SIT);
+        lost->set_act_type(99);  // an act type no arm knows
+        const auto sitter_before = state_of(sitter);
+        const auto lost_before = state_of(lost);
+        for (int i = 0; i < 5; ++i)
+        {
+            SCOPED_TRACE(i);
+            testing::internal::CaptureStderr();
+            const bool sat = sitter->act();
+            const std::string sitter_log = testing::internal::GetCapturedStderr();
+            testing::internal::CaptureStderr();
+            const bool wandered = lost->act();
+            const std::string lost_log = testing::internal::GetCapturedStderr();
+            EXPECT_FALSE(sat) << "a sitting walker's act answers 0";
+            EXPECT_EQ(0u, lines_in(sitter_log)) << "a sitting walker writes no log line";
+            EXPECT_FALSE(wandered) << "an unknown act type answers 0";
+            EXPECT_EQ(1u, lines_in(lost_log)) << "an unknown act type writes the line once";
+        }
+        EXPECT_EQ(sitter_before, state_of(sitter)) << "the sitter does nothing";
+        EXPECT_EQ(lost_before, state_of(lost)) << "the unknown act type does nothing";
+    }
 }
 
 // living.cpp:74/84. A dead walker does nothing in its act; one that dies

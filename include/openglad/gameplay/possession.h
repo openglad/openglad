@@ -43,15 +43,25 @@ PossessResult possess(GameWorld& world, walker& rider, walker& host,
 walker* release_possession(GameWorld& world, walker& either_side,
                            int overkill = 0);
 // Once per tick on the HOST (living::act): the rider follows, the
-// countdown runs, and the possession ends at 0.
+// countdown runs, and the possession ends at 0. A rider that died without
+// walker::death ends the ride: the host goes home, the rider's body stays
+// hidden (#499).
 void possession_host_tick(GameWorld& world, living& host);
 // Called at the top of walker::death(). A dying host releases its rider; a
 // dying hidden rider releases its host; a warded walker (KIT_WARD) gets up
 // instead. Returns true when the walker SURVIVES.
 bool kit_on_death(GameWorld& world, walker& self);
 // The seat redirect at the top of sim_process_player_input: rewrites
-// `control` across a possession link in either direction.
+// `control` across a possession link in either direction, and from a body
+// whose ride ended with the seat's ghost dead onto that dead ghost, so the
+// ordinary death hand-off runs (#535).
 void possession_seat_redirect(GameWorld& world, walker*& control,
                               short player_num);
+// The #535 half of the redirect, which a seat parked by a dropped
+// connection asks too (GameServer::process_disconnected_players): a seat on
+// an untagged body whose ride ended with this seat's ghost dead goes to that
+// ghost and the body's id is cleared. Returns true when it moved `control`.
+bool possession_seat_to_dead_rider(GameWorld& world, walker*& control,
+                                   short player_num);
 
 }  // namespace og::sim

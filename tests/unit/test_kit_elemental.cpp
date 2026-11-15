@@ -576,6 +576,139 @@ TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502): an ember wears the colour of the elemental that
+// drops it at the drop and, with the setting on, keeps it (an ember does not
+// ride; IMMOLATE's fire, which does, is the next test, and goes with its
+// elemental). A team-1 elemental lights IMMOLATE.
+// - It is charmed by hand onto team 2 (the charm's own writes) and the fire
+//   burns on and drops its first ember on the fourth tick: the ember wears
+//   team 2, the charmed elemental's colour at the drop, on both settings.
+// - The burn of an ember dropped before the charm: the fire's fourth tick
+//   drops it (team 1), then the elemental is charmed onto team 0; the ember's
+//   first pulse with the elemental, a team-0 and a team-1 soldier standing on
+//   it. With the setting on the ember keeps team 1: it burns the team-0
+//   soldier and the charmed elemental (6, its 4 + level / 2) and spares the
+//   team-1 soldier. Classic the ember answers for the elemental, team 0 now:
+//   it burns the team-1 soldier and spares the other two.
+// Breaks: drop_ember's ember made with `gf.rides(og.add_ob("fx", FX_EMBER))`
+// (on: the ember goes with the elemental, spares him and burns the team-1
+// soldier); `gf.take_team(ember, km.find(owner, km.IMMOLATION))` after
+// `ember.team = owner.team`, the ember taking its fire's team number (on: the
+// ember dropped after the charm wears team 1).
+TEST(KitElemental, a_charmed_elementals_embers_keep_the_colour_they_were_dropped_with)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "an ember dropped after the charm, setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 4, 1000.0f, 2);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        const Cast lit = cast(e);
+        ASSERT_TRUE(lit.ok) << lit.reason;
+        const auto ms = markers(w);
+        ASSERT_EQ(1u, ms.size());
+        walker* marker = ms[0];
+        EXPECT_EQ(e, marker->owner());
+        EXPECT_EQ(1, marker->team_num()) << "the fire wears the elemental's team from the cast";
+
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(2);
+        e->set_charm_left(30);
+        EXPECT_EQ(2, marker->fights_for_team()) << "the fire fights for the charmed elemental's side";
+        for (int tick = 1; tick <= 4; ++tick)
+            ASSERT_TRUE(marker->act());
+        const auto es = embers(w);
+        ASSERT_EQ(1u, es.size()) << "an ember on the fourth tick";
+        EXPECT_EQ(e, es[0]->owner());
+        EXPECT_EQ(2, es[0]->team_num()) << "the ember: the elemental's colour at the drop";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "the burn of an ember dropped before the charm, setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 4, 1000.0f, 2);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        ASSERT_TRUE(cast(e).ok);
+        walker* marker = markers(w).at(0);
+        for (int tick = 1; tick <= 4; ++tick)
+            ASSERT_TRUE(marker->act());
+        ASSERT_EQ(1u, embers(w).size());
+        walker* ember = embers(w)[0];
+        ASSERT_EQ(1, ember->team_num()) << "dropped before the charm";
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(0);
+        e->set_charm_left(30);
+        e->stats()->set_magicpoints(0.0f);  // struck dry: casts nothing of its own
+        e->stats()->set_hitpoints(100.0f);
+        living* red = add_living(w, FAMILY_SOLDIER, 0, 0, 0);
+        living* green = add_living(w, FAMILY_SOLDIER, 1, 0, 0);
+        ASSERT_TRUE(red && green);
+        place(red, centre_x(ember) - red->sizex() / 2, centre_y(ember) - red->sizey() / 2);
+        place(green, centre_x(ember) - green->sizex() / 2, centre_y(ember) - green->sizey() / 2);
+        while (ember->lifetime() > 36)
+            ASSERT_TRUE(ember->act());
+        const bool fixed = fixes != 0;
+        if (fixed) {
+            EXPECT_TRUE(lost_one_hit_of(6.0f, 100.0f, hp(red))) << "a foe of the ember's colour";
+            EXPECT_TRUE(lost_one_hit_of(6.0f, 100.0f, hp(e))) << "its own charmed elemental";
+            EXPECT_FLOAT_EQ(100.0f, hp(green)) << "the ember's own colour";
+        } else {
+            EXPECT_TRUE(lost_one_hit_of(6.0f, 100.0f, hp(green))) << "the elemental's foe";
+            EXPECT_FLOAT_EQ(100.0f, hp(red)) << "the elemental's friend";
+            EXPECT_FLOAT_EQ(100.0f, hp(e)) << "the elemental itself";
+        }
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
+}
+
+// Gameplay Fixes AZ (#502): IMMOLATE's fire rides the elemental (KIT_RIDER,
+// with the setting on) and goes with him (the maintainer: "obviously they
+// should go with the walker"): it burns his foes of the moment and never him.
+// A team-1 elemental lights IMMOLATE and is charmed by hand onto team 0; a
+// team-0 and a team-1 soldier touch it; the fire's first tick drops no ember.
+// On both settings the fire burns the team-1 soldier, his old side (6 +
+// level), and spares the team-0 one, his side now, and the elemental.
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the fire keeps team 1, and its blow on the team-1 soldier the burn search
+// found is refused); the IMMOLATE `gf.rides(...)` wrapper removed at
+// kit_elemental.lua (the same, and the mark is 0).
+TEST(KitElemental, a_charmed_elementals_fire_burns_his_foes_of_the_moment)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 4, 1000.0f, 2);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        ASSERT_TRUE(cast(e).ok);
+        walker* marker = markers(w).at(0);
+        EXPECT_EQ(fixes != 0 ? KIT_RIDER : 0, marker->kit_state() & KIT_RIDER)
+            << "the fire rides its elemental with the setting on";
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(0);
+        e->set_charm_left(30);
+        EXPECT_EQ(0, marker->fights_for_team()) << "the fire fights for his side now";
+        const int ex = e->xpos();
+        const int ey = e->ypos();
+        living* red = add_living(w, FAMILY_SOLDIER, 0, ex + e->sizex(), ey);
+        living* green = add_living(w, FAMILY_SOLDIER, 1, ex, ey + e->sizey() + 2);
+        ASSERT_TRUE(red && green);
+        ASSERT_TRUE(marker->act());
+        EXPECT_TRUE(embers(w).empty()) << "no ember on the first tick";
+        EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(green))) << "his old side, his foe now";
+        EXPECT_FLOAT_EQ(100.0f, hp(red)) << "his side now";
+        EXPECT_FLOAT_EQ(100.0f, hp(e)) << "never its own elemental";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
+}
+
 // MP 31 -> light -> 1 MP. The next nine presses (one a tick, as a held key
 // repeats) are refused silently by the latch and spend nothing; the press
 // on the tenth tick after lighting quenches it at no cost, at 1 MP.
@@ -800,6 +933,49 @@ TEST(KitElemental, meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster)
     EXPECT_TRUE(rain->dead());
     EXPECT_TRUE(explosions(w).empty());
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502): a meteor takes its rain's colour. The rain's
+// marker wears the elemental's colour from the cast (og.summon). A team-1
+// elemental's rain is falling on a team-0 foe when the elemental is charmed
+// by hand onto team 2 (the charm's own writes); the rain's first meteor
+// falls on the sixth tick. With the setting on it wears the rain's colour,
+// team 1; classic it wears the elemental's colour now, team 2.
+// Breaks: the `gf.take_team(blast, marker)` line removed (setting-on leg red:
+// team 2); take_team's `made.team = from.team` -> `made.team = made.team`
+// (likewise).
+TEST(KitElemental, a_meteor_wears_its_rains_colour_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 7, 1000.0f, 3);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        living* foe = add_living(w, FAMILY_SOLDIER, 0, 200, 100);
+        ASSERT_NE(nullptr, foe);
+        e->set_foe(foe);
+        const Cast c = cast(e);
+        ASSERT_TRUE(c.ok) << c.reason;
+        const auto ms = markers(w);
+        ASSERT_EQ(1u, ms.size());
+        walker* rain = ms[0];
+        EXPECT_EQ(1, rain->team_num()) << "the rain wears the elemental's team from the cast";
+
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(2);
+        e->set_charm_left(30);
+        for (int tick = 1; tick <= 6; ++tick)
+            ASSERT_TRUE(rain->act());
+        const auto strikes = explosions(w);
+        ASSERT_EQ(1u, strikes.size()) << "the first meteor falls on the sixth tick";
+        EXPECT_EQ(e, strikes[0]->owner());
+        EXPECT_EQ(fixes != 0 ? 1 : 2, strikes[0]->team_num())
+            << "the meteor: the rain's team with the setting on, the elemental's now classic";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
 }
 
 TEST(KitElemental, meteor_rain_is_not_cast_with_new_specials_off)

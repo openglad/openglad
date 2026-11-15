@@ -26,9 +26,11 @@
 
 #include "../modes_pack_fixture.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <format>
 #include <string>
+#include <vector>
 
 using namespace og::modes_test;
 
@@ -2379,5 +2381,224 @@ TEST_F(ModesTdm, a_charmed_summons_kill_credits_its_charmed_colour)
                   rig.green->last_attacker_id());
         EXPECT_EQ(fixes != 0 ? 1 : 0, rig.kills(0)) << "red's frag";
         EXPECT_EQ(0, rig.kills(1));
+    }
+}
+
+namespace {
+
+// A three-team match (red 0, green 1, yellow 2) on the first TDM level, the
+// setting as asked, New Specials off; initialized by its first tick.
+struct TdmThree
+{
+    ModesCtfWorld fx{kTdmLevelA};
+
+    explicit TdmThree(short fixes)
+    {
+        fx.world().gameplay_fixes = fixes;
+        fx.world().new_specials = 0;
+        fx.spawn_anchor(0, 96, 96);
+        fx.spawn_anchor(1, 544, 800);
+        fx.spawn_anchor(2, 800, 96);
+        // A parked fighter per team, far from the action, so the match's
+        // active mask holds all three teams.
+        fx.spawn_living(FAMILY_SOLDIER, 0, 96, 140);
+        fx.spawn_living(FAMILY_SOLDIER, 1, 544, 760);
+        fx.spawn_living(FAMILY_SOLDIER, 2, 800, 140);
+    }
+
+    bool start()
+    {
+        fx.tick(1);
+        return fx.world().mode.vars[kTdmSlotModeId] == kModeIdTdm;
+    }
+
+    int kills(int team) const
+    {
+        return fx.world().mode.vars[static_cast<std::size_t>(kTdmSlotKills + team)];
+    }
+
+    walker* shot_of(walker* maker, int family)
+    {
+        walker* s = fx.world().add_weap_ob(Order::Weapon, family);
+        if (s == nullptr)
+            return nullptr;
+        s->set_team_num(maker->team_num());  // as fire() stamps it
+        s->set_owner(maker);
+        s->set_damage(5000.0f);
+        s->stats()->set_hitpoints(1000.0f);
+        return s;
+    }
+};
+
+void charm_by_hand(walker* w, unsigned char onto)
+{
+    w->set_real_team_num(w->team_num());
+    w->set_team_num(onto);
+    w->set_charm_left(30);
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502): a kill counts
+// for the colour of the thing that struck, in Team Deathmatch too.
+// - A green archer's arrow in flight, the archer charmed onto red, kills a
+//   yellow fighter: with the setting on green frags (and is paid its point);
+//   classic the credited archer's colour, red, frags.
+// - The archer dead instead (his arrow owns itself, as weap::act makes it on
+//   its next act): with the setting on the kill comes with no killer and the
+//   arrow's colour, and green frags; classic nobody (no living behind it).
+// - A green thief's real bomb, the thief dead before it goes off (#533): its
+//   blast, green, kills a green fighter: with the setting on green's frag
+//   count goes down one (the teamkill arm) and nobody is paid; classic
+//   nothing changes.
+// - A red tent destroyed beside a red fighter whom green struck a moment
+//   before: with the setting on the tent's blast (red, no living behind it)
+//   replaces green's stamp and the death is a red teamkill; classic the blast
+//   stamps nothing and green's earlier blow frags. Beside a green fighter:
+//   with the setting on a red frag; classic nothing.
+// Breaks: kill_stamp_team's setting-on arm back to the classic one (the
+// first leg on: red frags); Team Deathmatch's `if killer == nil then return
+// end` restored (the later legs on: nothing changes).
+TEST_F(ModesTdm, a_frag_counts_for_the_colour_of_the_arrow_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const bool fixed = fixes != 0;
+        {
+            SCOPED_TRACE(testing::Message() << "the charmed archer, setting " << fixes);
+            TdmThree m(fixes);
+            walker* archer = m.fx.spawn_living(FAMILY_ARCHER, 1, 400, 400);
+            walker* yellow = m.fx.spawn_living(FAMILY_SOLDIER, 2, 200, 200);
+            ASSERT_TRUE(archer && yellow);
+            ASSERT_TRUE(m.start());
+            walker* arrow = m.shot_of(archer, FAMILY_ARROW);
+            ASSERT_NE(nullptr, arrow);
+            arrow->setxy(184, 200);
+            charm_by_hand(archer, 0);
+            yellow->stats()->set_hitpoints(1.0f);
+            ASSERT_TRUE(arrow->attack(yellow));
+            ASSERT_TRUE(yellow->dead());
+            EXPECT_EQ(fixed ? 1 : 0, m.kills(1)) << "green";
+            EXPECT_EQ(fixed ? 0 : 1, m.kills(0)) << "red";
+            EXPECT_TRUE(has_score_change(m.fx.events, fixed ? 1u : 0u, 1));
+        }
+        {
+            SCOPED_TRACE(testing::Message() << "the dead archer, setting " << fixes);
+            TdmThree m(fixes);
+            walker* archer = m.fx.spawn_living(FAMILY_ARCHER, 1, 400, 400);
+            walker* yellow = m.fx.spawn_living(FAMILY_SOLDIER, 2, 200, 200);
+            ASSERT_TRUE(archer && yellow);
+            ASSERT_TRUE(m.start());
+            walker* arrow = m.shot_of(archer, FAMILY_ARROW);
+            ASSERT_NE(nullptr, arrow);
+            arrow->setxy(184, 200);
+            archer->set_dead(1);
+            arrow->set_owner(arrow);  // what weap::act does to a dead maker's shot
+            ASSERT_EQ(nullptr, arrow->credit_head()) << "no living behind it";
+            yellow->stats()->set_hitpoints(1.0f);
+            ASSERT_TRUE(arrow->attack(yellow));
+            ASSERT_TRUE(yellow->dead());
+            EXPECT_EQ(fixed ? 1 : 0, m.kills(1)) << "green";
+            EXPECT_EQ(fixed, has_score_change(m.fx.events, 1, 1));
+            EXPECT_EQ(0, m.kills(0));
+        }
+        {
+            SCOPED_TRACE(testing::Message() << "the dead thief's bomb, setting " << fixes);
+            TdmThree m(fixes);
+            walker* thief = m.fx.spawn_living(FAMILY_THIEF, 1, 300, 300);
+            walker* fighter = m.fx.spawn_living(FAMILY_SOLDIER, 1, 600, 600);
+            ASSERT_TRUE(thief && fighter);
+            ASSERT_TRUE(m.start());
+            thief->stats()->set_level(4);
+            thief->stats()->set_max_magicpoints(100.0f);
+            thief->stats()->set_magicpoints(100.0f);
+            thief->set_user(0);
+            thief->set_act_type(ACT_CONTROL);
+            thief->set_current_special(1);
+            thief->set_shifter_down(0);
+            ASSERT_TRUE(thief->special());
+            walker* bomb = nullptr;
+            for (const auto& ob : m.fx.world().oblist)
+                if (ob && !ob->dead() && ob->query_order() == Order::FX && ob->family() == FAMILY_BOMB)
+                    bomb = ob.get();
+            ASSERT_NE(nullptr, bomb);
+            thief->set_dead(1);
+            fighter->setxy(bomb->xpos(), bomb->ypos());
+            fighter->stats()->set_hitpoints(1.0f);
+            std::vector<walker*> blasts_before;
+            for (const auto& ob : m.fx.world().oblist)
+                if (ob && ob->query_order() == Order::FX && ob->family() == FAMILY_EXPLOSION)
+                    blasts_before.push_back(ob.get());
+            bomb->set_dead(1);
+            bomb->death();
+            walker* blast = nullptr;
+            for (const auto& ob : m.fx.world().oblist)
+                if (ob && !ob->dead() && ob->query_order() == Order::FX && ob->family() == FAMILY_EXPLOSION
+                    && std::find(blasts_before.begin(), blasts_before.end(), ob.get()) == blasts_before.end())
+                    blast = ob.get();
+            ASSERT_NE(nullptr, blast);
+            ASSERT_EQ(fixed ? 1 : 0, blast->team_num());
+            blast->set_dead(1);
+            blast->death();
+            ASSERT_TRUE(fighter->dead()) << "the blast kills the green fighter";
+            EXPECT_EQ(fixed ? -1 : 0, m.kills(1)) << "a green teamkill only with the setting on";
+            EXPECT_EQ(0, m.kills(0));
+            EXPECT_FALSE(has_score_change(m.fx.events, 1, 1)) << "nobody is paid a frag";
+        }
+        for (const bool red_victim : {true, false})
+        {
+            SCOPED_TRACE(testing::Message() << "a dying red tent beside a "
+                                            << (red_victim ? "red" : "green") << " fighter, setting "
+                                            << fixes);
+            TdmThree m(fixes);
+            walker* tent = m.fx.spawn_generator(FAMILY_TENT, 0, 500, 500, 10);
+            walker* victim = m.fx.spawn_living(FAMILY_SOLDIER, red_victim ? 0 : 1, 0, 0);
+            walker* striker = m.fx.spawn_living(FAMILY_ORC, 1, 0, 0);
+            ASSERT_TRUE(tent && victim && striker);
+            victim->setxy(static_cast<short>(tent->xpos() + tent->sizex()), tent->ypos());
+            striker->setxy(static_cast<short>(victim->xpos() + 16), victim->ypos());
+            ASSERT_TRUE(m.start());
+            if (red_victim)
+            {
+                victim->stats()->set_hitpoints(100.0f);
+                striker->set_damage(5.0f);
+                ASSERT_TRUE(striker->attack(victim)) << "green strikes the red fighter first";
+                ASSERT_EQ(striker->entity_id(), victim->last_attacker_id());
+            }
+            striker->setxy(900, 900);  // out of the blasts' reach
+            victim->stats()->set_hitpoints(1.0f);
+            std::vector<walker*> blasts_before;
+            for (const auto& ob : m.fx.world().oblist)
+                if (ob && ob->query_order() == Order::FX && ob->family() == FAMILY_EXPLOSION)
+                    blasts_before.push_back(ob.get());
+            tent->set_dead(1);
+            tent->death();
+            std::vector<walker*> blasts;
+            for (const auto& ob : m.fx.world().oblist)
+                if (ob && !ob->dead() && ob->query_order() == Order::FX && ob->family() == FAMILY_EXPLOSION
+                    && std::find(blasts_before.begin(), blasts_before.end(), ob.get()) == blasts_before.end())
+                    blasts.push_back(ob.get());
+            ASSERT_EQ(4u, blasts.size());
+            for (walker* b : blasts)
+            {
+                b->set_dead(1);
+                b->death();
+            }
+            ASSERT_TRUE(victim->dead()) << "a blast kills the fighter";
+            if (red_victim)
+            {
+                EXPECT_EQ(fixed ? -1 : 0, m.kills(0))
+                    << (fixed ? "setting on: the blast's stamp replaces green's: a red teamkill"
+                              : "setting off: the blast stamps nothing");
+                EXPECT_EQ(fixed ? 0 : 1, m.kills(1))
+                    << (fixed ? "setting on: green's earlier blow no longer frags"
+                              : "setting off: green's earlier blow frags");
+            }
+            else
+            {
+                EXPECT_EQ(fixed ? 1 : 0, m.kills(0)) << "a red frag only with the setting on";
+                EXPECT_EQ(0, m.kills(1));
+            }
+        }
     }
 }

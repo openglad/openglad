@@ -43,7 +43,7 @@ bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
 
 void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
-    constexpr int kMaxOwnerDepth = 16;
+    constexpr int kMaxOwnerDepth = walker::kOwnerLoopCheck;
     walker* current = entity;
     // plumbing: owner-chain walk bounded at 16 hops; see below
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
@@ -51,8 +51,8 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         walker* owner = current->owner();
         // rule: Before any foe scan, a walker's owner chain is trusted only while every owner is
         //   still in the world: an owner that has left every entity list is cut (the summon/weapon
-        //   becomes ownerless), and a chain longer than 16 hops (a save/snapshot loop) is cut at
-        //   the hop the walk gave up on; a self-owner or a legal chain is left alone. Called from
+        //   becomes ownerless), and a chain the walk cannot finish in 16 hops is cut (below);
+        //   a self-owner or a legal chain is left alone. Called from
         //   find_near_foe (below) and find_nearest_foe (below).
         // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
         // tests: SemWorld.a_self_owner_or_no_owner_survives_the_owner_chain_guard
@@ -67,8 +67,13 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         current = owner;
     }
 
-    // Defensive cycle/depth break. Any deeper chain is suspicious in practice.
-    current->set_owner(nullptr);
+    // rule: A chain the walk could not finish in 16 hops is cut before the foe scan: a loop at the
+    //   link that closes it (walker::cut_owner_loop, the cut every climb makes, #503), a longer
+    //   chain with no loop at the hop the walk gave up on.
+    // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
+    // tests: GameWorldEntityIdsFixture.a_chain_longer_than_sixteen_hops_is_cut_where_the_foe_scan_gave_up
+    if (!entity->cut_owner_loop())
+        current->set_owner(nullptr);
 }
 
 void refresh_self_reference_ids(walker& entity)
@@ -2824,8 +2829,8 @@ void GameWorld::tick()
         }
 
         // rule: During FREEZE TIME a Living or Generator not on the player's side skips its turn:
-        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (the head of its
-        //   owner chain does not wear my_team); off (the old game) one not on team 0 itself. Every
+        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (with fix AZ: one
+        //   that does not wear my_team); off (the old game) one not on team 0 itself. Every
         //   other order (effects, treasures, weapons in oblist) still acts. Outside a freeze
         //   everything acts with in_act set.
         // tests: SimWorld.r15_freeze_tick_and_level_done_paths
@@ -2834,7 +2839,7 @@ void GameWorld::tick()
         // tests: parity:enemy_freeze_mage_scen99
         // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
         // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
         if (!enemy_freeze) // normal functionality
         {
             // rule: A level stays unfinished while any Living not friendly to the player's team is
@@ -2899,7 +2904,7 @@ void GameWorld::tick()
             // tests: parity:enemy_freeze_mage_scen99
             // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
             // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
             if (ob && !ob->dead())
             {
                 // Only the census is hoisted out of the act gate: a foe that
@@ -2907,12 +2912,12 @@ void GameWorld::tick()
                 // branch above already counts one.
                 // rule: During FREEZE TIME a Living or Generator may act only on the player's side:
                 //   with Gameplay Fixes on (fix AF, #92) when it is friendly to the player's team
-                //   (the head of its owner chain wears my_team); off (the old game) when it is on
+                //   (with fix AZ: when it wears my_team); off (the old game) when it is on
                 //   team 0 itself, which freezes a non-red player's own side (#86). Every other
                 //   order always acts.
                 // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
                 // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 const bool may_act =
                     ((ob->query_order() != Order::Living) &&
@@ -2928,7 +2933,7 @@ void GameWorld::tick()
                 // tests: parity:enemy_freeze_mage_scen99
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
                 if (may_act)
                     ob->act();
                 // rule: A level stays unfinished while any Living not friendly to the player's team

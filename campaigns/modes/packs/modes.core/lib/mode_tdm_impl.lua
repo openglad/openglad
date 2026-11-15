@@ -206,8 +206,15 @@ local function on_entity_death(ent, killer, killer_team)
   -- Frag ledger. No-score arms: environment/suicide (nil killer or self),
   -- non-score victims (wildlife/neutral), owned victims (summons and
   -- generator spawns), killers outside the active mask.
+  -- Gameplay Fixes AZ (#502): with the setting on a kill by a thing with no
+  -- living behind it (a dead archer's arrow, a dead thief's bomb), or by a
+  -- walker swept from the world since its blow, arrives with no killer and
+  -- the team the blow wore, and frags for that team; classic, no killer
+  -- scores nothing.
   if killer == nil then
-    return
+    if og.match_setting("gameplay_fixes") == 0 then
+      return
+    end
   end
   if not victim_scores then
     return

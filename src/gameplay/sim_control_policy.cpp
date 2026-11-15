@@ -328,6 +328,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
@@ -339,6 +340,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
         // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -362,6 +364,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
@@ -373,6 +376,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
         // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows, GameplayFixesSeats.reacquire_ends_the_game_rather_than_claim_a_charmed_walker, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -402,6 +406,7 @@ SimReacquire sim_reacquire_control(GameWorld& level, short my_team,
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.net_r1_allied_claimed_teammate_shape_yields_endgame_verdict
     // tests: SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows
+    // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings
     if (control_out != nullptr)
         return SimReacquire::Claimed;
 

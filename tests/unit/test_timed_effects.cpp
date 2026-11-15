@@ -675,6 +675,10 @@ protected:
 
 }  // namespace
 
+// The kit marker roles and kit bits reach Lua as og.C with the engine's
+// numbers, KIT_RIDER (Gameplay Fixes AZ) included.
+// Break: the `{"KIT_RIDER", KIT_RIDER}` row removed from bindings_kit.cpp's
+// kKitConstants (C.KIT_RIDER is nil and the chunk errors).
 TEST_F(TimedEffectsLua, the_marker_roles_reach_lua_with_the_engines_numbers)
 {
     TestGameWorld tw;
@@ -693,6 +697,9 @@ TEST_F(TimedEffectsLua, the_marker_roles_reach_lua_with_the_engines_numbers)
         "    end\n"
         "    if C.KIT_QUARTER_FREEZE ~= " + n(KIT_QUARTER_FREEZE) + " then\n"
         "      error('quarter freeze')\n"
+        "    end\n"
+        "    if C.KIT_RIDER ~= " + n(KIT_RIDER) + " then\n"
+        "      error('rider')\n"
         "    end";
     og::script::register_pack_script(
         {"test.kit", "kit_roles_probe.lua",
@@ -711,4 +718,5 @@ TEST_F(TimedEffectsLua, the_marker_roles_reach_lua_with_the_engines_numbers)
     EXPECT_TRUE(*handled);
     EXPECT_EQ(6, MARKER_WARD) << "the ward's role byte";
     EXPECT_EQ(16, KIT_QUARTER_FREEZE) << "a free kit_state bit";
+    EXPECT_EQ(64, KIT_RIDER) << "a free kit_state bit (Gameplay Fixes AZ: a thing that rides its owner)";
 }

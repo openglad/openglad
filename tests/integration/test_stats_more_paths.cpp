@@ -43,6 +43,28 @@ private:
     GameplayContext* previous_ = nullptr;
 };
 
+// Puts a world's Gameplay Fixes setting back to the value it had when the
+// scope ends, on every way out: an ASSERT_ that fails returns from the test
+// at once, and the session world is shared by every later test.
+class ScopedGameplayFixesValue
+{
+public:
+    explicit ScopedGameplayFixesValue(GameWorld& world)
+        : world_(world), saved_(world.gameplay_fixes) {}
+
+    ~ScopedGameplayFixesValue()
+    {
+        world_.gameplay_fixes = saved_;
+    }
+
+    ScopedGameplayFixesValue(const ScopedGameplayFixesValue&) = delete;
+    ScopedGameplayFixesValue& operator=(const ScopedGameplayFixesValue&) = delete;
+
+private:
+    GameWorld& world_;
+    short saved_ = 0;
+};
+
 // statistics draws every AI coin off current_game->world->rng_ (stats.cpp
 // rng()), NOT GameContext::rng -- a context RNG would leave rng(300),
 // the path-check cadence and the ATTACK duration to whatever the LCG
@@ -951,50 +973,68 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_
     // `tempdistance < PATHING_MIN_DISTANCE` arm): a foe already within reach is
     // never pathed to. The arm wipes our standing orders, turns toward the
     // foe, queues an ATTACK for 30 + rng(25) rounds and reports the round
-    // handled. The `!controller_->foe() && firstfoe` fallback below it
-    // cannot be reached from here: find_near_foe()'s return value is discarded
-    // at that call site, so our foe is still the one we arrived with -- which
-    // is what this pins (an assignment there would show up as a changed foe).
+    // handled. The foe stays the one we arrived with: the quick foe search
+    // answers that same orc, and only a strictly nearer foe is taken (#320).
+    // The walker faces north with its heading (enddir) already east and the
+    // orc stands 16 px east, so the turn shows on both values of the Gameplay
+    // Fixes setting:
+    //  * off (classic): the arm's own turn(facing(+16,0)) takes FACE_UP to
+    //    FACE_UP_RIGHT and the init_fire() that closes the arm turns the rest
+    //    of the way onto the standing FACE_RIGHT enddir: two notches, nothing
+    //    fired;
+    //  * on (Gameplay Fixes BB, #497): the arm turns one notch, FACE_UP_RIGHT,
+    //    and leaves the standing enddir (RIGHT) as it was; the turn is its
+    //    act, so nothing starts (busy 0) and its next act finishes the turn.
     //
     // find_foes_in_range scans world.oblist, so the pair has to LIVE in the
-    // world; make_walker's owned walkers are invisible to it.
-    SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
-    ScopedSimRandom scripted(&scripted_values);
-    walker* melee = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* prey = world.add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_NE(nullptr, melee) << "melee fixtures created";
-    ASSERT_NE(nullptr, prey) << "melee fixtures created";
-    melee->set_team_num(0);
-    prey->set_team_num(1);
-    ASSERT_TRUE(melee->setxy(GRID_SIZE * 8, GRID_SIZE * 12));
-    ASSERT_TRUE(prey->setxy(static_cast<short>(melee->xpos() + 16),
-                            static_cast<short>(melee->ypos())));
-    ASSERT_EQ(16, melee->distance_to_ob(prey)) << "inside PATHING_MIN_DISTANCE";
-    // Facing north with a heading already set east, so the two turns the arm
-    // performs are visible and distinguishable (see the curdir pin below).
-    melee->set_curdir(static_cast<char>(FACE_UP));
-    melee->set_enddir(static_cast<char>(FACE_RIGHT));
-    melee->set_foe(prey);
-    melee->set_path_check_counter(0);
-    melee->stats()->clear_command();
-    melee->stats()->add_command(COMMAND_SEARCH, 9, 0, 0); // orders the arm must wipe
+    // world; make_walker's owned walkers are invisible to it. Each pass builds
+    // its own pair on its own row; the first pass's pair is retired (dead)
+    // before the second, so the second sees only its own.
+    const ScopedGameplayFixesValue restore_fixes(world);
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        world.gameplay_fixes = fixes;
+        SequenceRandom scripted_values({1, 1, 1, 1, 1, 1, 1, 1});
+        ScopedSimRandom scripted(&scripted_values);
+        walker* melee = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* prey = world.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, melee) << "melee fixtures created";
+        ASSERT_NE(nullptr, prey) << "melee fixtures created";
+        melee->set_team_num(0);
+        prey->set_team_num(1);
+        ASSERT_TRUE(melee->setxy(static_cast<short>(GRID_SIZE * 8), static_cast<short>(GRID_SIZE * (12 + 4 * fixes))));
+        ASSERT_TRUE(prey->setxy(static_cast<short>(melee->xpos() + 16),
+                                static_cast<short>(melee->ypos())));
+        ASSERT_EQ(16, melee->distance_to_ob(prey)) << "inside PATHING_MIN_DISTANCE";
+        melee->set_curdir(static_cast<char>(FACE_UP));
+        melee->set_enddir(static_cast<char>(FACE_RIGHT));
+        melee->set_foe(prey);
+        melee->set_path_check_counter(0);
+        melee->stats()->clear_command();
+        melee->stats()->add_command(COMMAND_SEARCH, 9, 0, 0); // orders the arm must wipe
 
-    ASSERT_TRUE(melee->stats()->walk_to_foe()) << "a foe in reach is handled by the melee arm";
-    ASSERT_EQ(1u, melee->stats()->commands.size())
-        << "the melee arm clears the queue and leaves exactly its own ATTACK on it";
-    const command& attack = melee->stats()->commands.front();
-    EXPECT_EQ(static_cast<int>(COMMAND_ATTACK), static_cast<int>(attack.commandtype))
-        << "the melee arm queues an attack, not a walk";
-    EXPECT_EQ(31, static_cast<int>(attack.commandcount))
-        << "the attack window is 30 + rng(25), and the script draws 1";
-    // Two notches: the arm's own turn(facing(+16,0)) takes FACE_UP ->
-    // FACE_UP_RIGHT, and the init_fire() that closes the arm turns the rest of
-    // the way onto the standing FACE_RIGHT heading. Without the arm's turn the
-    // walker would stop at FACE_UP_RIGHT.
-    EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->curdir()))
-        << "the melee arm turns us onto the eastward foe";
-    EXPECT_EQ(prey, melee->foe())
-        << "the melee arm keeps the foe it arrived with: find_near_foe's result is discarded";
+        ASSERT_TRUE(melee->stats()->walk_to_foe()) << "a foe in reach is handled by the melee arm";
+        ASSERT_EQ(1u, melee->stats()->commands.size())
+            << "the melee arm clears the queue and leaves exactly its own ATTACK on it";
+        const command& attack = melee->stats()->commands.front();
+        EXPECT_EQ(static_cast<int>(COMMAND_ATTACK), static_cast<int>(attack.commandtype))
+            << "the melee arm queues an attack, not a walk";
+        EXPECT_EQ(31, static_cast<int>(attack.commandcount))
+            << "the attack window is 30 + rng(25), and the script draws 1";
+        EXPECT_EQ(prey, melee->foe()) << "the melee arm keeps the foe it arrived with";
+        if (fixes) {
+            EXPECT_EQ(static_cast<int>(FACE_UP_RIGHT), static_cast<int>(melee->curdir()))
+                << "one notch toward the eastward foe, kept";
+            EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->enddir()))
+                << "the standing enddir is left as it was";
+            EXPECT_FLOAT_EQ(0.0f, melee->busy()) << "the turn is the act: nothing started";
+        } else {
+            EXPECT_EQ(static_cast<int>(FACE_RIGHT), static_cast<int>(melee->curdir()))
+                << "two notches: the arm's turn, then init_fire's turn onto the standing enddir";
+        }
+        melee->set_dead(1);
+        prey->set_dead(1);
+    }
 }
 
 // A GOTO order that has already arrived must issue no step. The engine calls

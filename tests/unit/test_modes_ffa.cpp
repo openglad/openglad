@@ -1322,3 +1322,43 @@ TEST_F(ModesFfa, full_mode_tick_fits_a_tenth_of_the_instruction_budget)
         << "a 10x-reduced budget must never trip";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
+
+// Gameplay Fixes AZ (#502): a kill by a thing with no living behind it counts
+// for the band it wears, in every mode. Fighter a's arrow (a's band,
+// as fire() stamps it) flies on after a is killed (it owns itself, as
+// weap::act makes it on its next act) and kills fighter b. With the setting
+// on the kill arrives with no killer and a's band, and a's band frags;
+// classic it stamps nothing and is an environment death.
+// Break: the death dispatch's `stamped` back to `last_attacker_id() != 0`
+// (on: an environment death, no frag).
+TEST_F(ModesFfa, a_dead_fighters_arrow_kill_frags_for_its_band_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        FfaRig rig(850, 2);
+        rig.fx.world().gameplay_fixes = fixes;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        walker* a = rig.heroes[0];
+        walker* b = rig.heroes[1];
+        const int a_slot = rig.slot_of(a);
+        const int b_slot = rig.slot_of(b);
+        ASSERT_GE(a_slot, 0);
+        ASSERT_GE(b_slot, 0);
+        walker* arrow = rig.fx.world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+        ASSERT_NE(nullptr, arrow);
+        arrow->set_team_num(a->team_num());
+        arrow->set_owner(a);
+        arrow->setxy(static_cast<short>(b->xpos() + 16), b->ypos());
+        arrow->set_damage(5000.0f);
+        arrow->stats()->set_hitpoints(1000.0f);
+        a->set_dead(1);
+        arrow->set_owner(arrow);
+        ASSERT_EQ(nullptr, arrow->credit_head()) << "no living behind it";
+
+        rig.slay(arrow, b);
+        EXPECT_EQ(fixes != 0 ? 1 : 0, rig.frags(a_slot)) << "the dead fighter's band";
+        EXPECT_EQ(0, rig.frags(b_slot));
+    }
+}

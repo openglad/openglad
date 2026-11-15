@@ -687,6 +687,75 @@ TEST(KitCaptain, hook_reels_the_foe_to_the_captains_feet)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502): the hook blade rides the captain who threw it
+// (KIT_RIDER, with the setting on) and goes with him (the maintainer:
+// "obviously they should go with the walker"). A team-1 captain throws HOOK
+// and is charmed onto team 0 by hand. On the blade's first tick a knife he
+// threw for his new side (team 0, his) stands where the blade spins: it is
+// kept, a friend's shot. A team-0 soldier stands 56 px west of the captain,
+// where the spiral passes on the way out (tick 20), and a team-1 soldier 56
+// px east, where it passes on the way back (tick 28): the blade passes the
+// team-0 one, his side now, snags the team-1 one, his old side, and never the
+// captain, on both settings (classic one owner chain gives the same).
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the blade keeps team 1: it cuts the knife and snags the captain, inside its
+// reach from the throw, and no one else); the captain's `gf.rides(...)`
+// wrapper removed at kit_captain.lua (the same, and the mark is 0).
+TEST(KitCaptain, a_hook_blade_goes_with_its_charmed_captain)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        tw.world().gameplay_fixes = fixes;
+        walker* captain = add_captain(tw, 200, 200);
+        ASSERT_NE(nullptr, captain);
+        captain->set_team_num(kThem);
+        walker* old_side = add_living(tw, FAMILY_SOLDIER, kThem, 256, 200);
+        walker* new_side = add_living(tw, FAMILY_SOLDIER, kUs, 144, 200);
+        ASSERT_TRUE(old_side && new_side);
+        ASSERT_TRUE(cast(captain, 3, false).ok);
+        ASSERT_EQ(1u, blades(tw).size());
+        walker* blade = blades(tw).front();
+        ASSERT_EQ(captain, blade->owner());
+        ASSERT_EQ(kThem, blade->team_num());
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? KIT_RIDER : 0, blade->kit_state() & KIT_RIDER);
+        captain->set_real_team_num(captain->team_num());
+        captain->set_team_num(kUs);
+        captain->set_charm_left(30);
+        EXPECT_EQ(1, blade->is_friendly(captain)) << "the blade rides him";
+        EXPECT_EQ(kUs, blade->fights_for_team()) << "it fights for his side now";
+
+        // Where the blade will be on tick 1 (hook_eats_incoming_projectiles):
+        // its guard looks there before it looks for a foe to snag.
+        const short base_x = static_cast<short>(
+            captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
+        const short base_y = static_cast<short>(
+            captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
+        const auto at1 = hook_offset_at(1);
+        walker* knife = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(kUs);  // as fire() stamps it after the charm
+        knife->set_owner(captain);
+        knife->setxy(static_cast<short>(base_x + std::lround(at1.first)),
+                     static_cast<short>(base_y + std::lround(at1.second)));
+        knife->set_damage(5.0f);
+        blade->act();  // tick 1
+        EXPECT_FALSE(knife->dead()) << "his new shot is a friend's";
+        EXPECT_FLOAT_EQ(static_cast<float>(kHookHp), blade->stats()->hitpoints());
+        knife->set_dead(1);
+
+        const int snag = act_until_snagged(blade, old_side);
+        EXPECT_GT(snag, 0) << "his old side, his foe now, is snagged";
+        EXPECT_EQ(0, frozen(new_side)) << "his side now is passed";
+        EXPECT_EQ(0, frozen(captain)) << "never its captain";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // The same reel from the other side: a soldier 56 px west of the captain is
 // touched on the way out (tick 20) and slides east 8 px a tick to the spot
 // on the captain's west side.

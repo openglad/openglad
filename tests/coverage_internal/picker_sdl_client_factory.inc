@@ -435,6 +435,26 @@ struct PickerSdlClientTestAccess
         return proceed;
     }
 
+    // The NETWORKING screen entered directly on the main thread, the way the
+    // #416 kick flows enter TRAIN and Base Camp, with `joiner` as the client
+    // this SdlPickerClient OWNS (the slot the per-frame kicked check swaps
+    // through). ROOM CODE starts OFF and the room list has no platform hooks,
+    // so nothing reaches the network. Returns configure_networking()'s answer.
+    static bool run_networking_screen(
+        std::unique_ptr<og::ui::IPickerLobbyClient> joiner)
+    {
+        ProbeRestore restore;
+        PlatformBridge bridge = platform_bridge();
+        bridge.begin_list_relay_rooms = {};
+        bridge.list_relay_rooms = {};
+        set_platform_bridge(std::move(bridge));
+        SdlPickerClient client;
+        og::ui::install_active_picker_lobby_client(joiner.get());
+        client.lobby_client_ = std::move(joiner);
+        client.networking_settings_.use_room_code = false;
+        return client.configure_networking();
+    }
+
     // SET CAMPAIGN through the real browser: `cancel` leaves it without a
     // pick (the TESTING abort is the browser's own BACK); otherwise the
     // un-driven browser accepts the campaign under its cursor.
@@ -460,6 +480,12 @@ bool picker_testing_submit_direct_join(const std::string& ip_address,
 bool picker_testing_join_relay_prompt(std::string& stored_room_code)
 {
     return PickerSdlClientTestAccess::join_relay_prompt(stored_room_code);
+}
+
+bool picker_testing_run_networking_screen(
+    std::unique_ptr<og::ui::IPickerLobbyClient> joiner)
+{
+    return PickerSdlClientTestAccess::run_networking_screen(std::move(joiner));
 }
 
 std::string picker_testing_show_campaign_select(bool cancel)

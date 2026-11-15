@@ -2067,6 +2067,105 @@ TEST_F(ModesSoccer, weapon_hit_impulses_along_the_shot_motion)
               fx.var(kSocLastKicker));
 }
 
+// Gameplay Fixes AZ (#502): a shot touches the ball
+// for the colour it wears. The staging above, the knife stamped with green's
+// team (as fire() stamps it) and owned by green.
+// - Green charmed by hand onto red before the tick: with the setting on the
+//   touch is green's (the knife's colour) and names green; classic it is the
+//   colour of the living that owns the shot now, red.
+// - The knife owned by itself (a dead maker's shot after its first act):
+//   with the setting on the touch is green's and names nobody; classic it is
+//   uncredited.
+// Breaks: the setting-on arm's `shot:team_num()` -> `shooter:team_num()`
+// (the first leg on: red); its `stamp_toucher(...)` and `credited = true`
+// wrapped in `if shooter:order() == C.ORDER_LIVING then ... end` (the second
+// leg on: uncredited).
+TEST_F(ModesSoccer, a_shot_touches_the_ball_for_its_own_colour_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const bool fixed = fixes != 0;
+        for (const bool orphan : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << (orphan ? "the knife owns itself" : "green charmed red")
+                                            << ", setting " << fixes);
+            SoccerWorld fx;
+            fx.world().gameplay_fixes = fixes;
+            fx.tick(1);
+            ASSERT_TRUE(fx.soccer_active());
+            fx.thaw_kickoff();
+            walker* shot = fx.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+            ASSERT_NE(nullptr, shot);
+            shot->setxy(312, 452);  // near the ball center
+            shot->set_team_num(fx.green->team_num());
+            shot->set_owner(fx.green);
+            shot->set_lastx(0.0f);
+            shot->set_lasty(8.0f);  // flying straight down
+            ASSERT_EQ(1, shot->team_num());
+            if (orphan)
+            {
+                shot->set_owner(shot);
+            }
+            else
+            {
+                fx.green->set_real_team_num(fx.green->team_num());
+                fx.green->set_team_num(0);
+                fx.green->set_charm_left(30);
+            }
+            fx.tick(1);
+            if (orphan)
+            {
+                EXPECT_EQ(fixed ? 2 : 0, fx.var(kSocLastTouch1))
+                    << (fixed ? "setting on: the knife's colour" : "setting off: uncredited");
+                EXPECT_EQ(0, fx.var(kSocLastKicker)) << "no living made it";
+            }
+            else
+            {
+                EXPECT_EQ(fixed ? 2 : 1, fx.var(kSocLastTouch1))
+                    << (fixed ? "setting on: the knife's colour, green"
+                              : "setting off: its charmed maker's colour now, red");
+                EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()), fx.var(kSocLastKicker));
+            }
+        }
+    }
+}
+
+// Gameplay Fixes AZ (#502): a thing that rides a walker touches the ball for
+// his colour of the moment. The staging above, the knife stamped with green's
+// team and owned by green, here marked KIT_RIDER with the setting on (as
+// gf.rides marks a rider), and green charmed by hand onto red: on both
+// settings the touch is red's and names green (with the setting on the colour
+// the knife fights for, classic the colour of the living that owns it now).
+// Break: the setting-on arm's `shot:fights_for_team()` -> `shot:team_num()`
+// (on: green, the colour the knife wears).
+TEST_F(ModesSoccer, a_riders_touch_plays_for_its_walkers_colour_of_the_moment)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        SoccerWorld fx;
+        fx.world().gameplay_fixes = fixes;
+        fx.tick(1);
+        ASSERT_TRUE(fx.soccer_active());
+        fx.thaw_kickoff();
+        walker* shot = fx.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, shot);
+        shot->setxy(312, 452);  // near the ball center
+        shot->set_team_num(fx.green->team_num());
+        shot->set_owner(fx.green);
+        if (fixes != 0)
+            shot->set_kit_state(static_cast<std::uint8_t>(shot->kit_state() | KIT_RIDER));
+        shot->set_lastx(0.0f);
+        shot->set_lasty(8.0f);  // flying straight down
+        fx.green->set_real_team_num(fx.green->team_num());
+        fx.green->set_team_num(0);
+        fx.green->set_charm_left(30);
+        fx.tick(1);
+        EXPECT_EQ(1, fx.var(kSocLastTouch1)) << "red, the charmed maker's colour now";
+        EXPECT_EQ(static_cast<std::int32_t>(fx.green->entity_id()), fx.var(kSocLastKicker));
+    }
+}
+
 // ===========================================================================
 // Rolling spin (sprites/ball.png is an 8-frame turn of the patch lattice)
 // ===========================================================================

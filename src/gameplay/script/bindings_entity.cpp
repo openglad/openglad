@@ -379,7 +379,7 @@ W_SET_REF(foe)
 W_GET_REF(leader)
 W_SET_REF(leader)
 W_GET_REF(owner)
-W_SET_REF(owner)
+int m_set_owner(lua_State* L);  // #503: defined with chain_head below
 W_GET_REF(collide_ob)
 
 // ---------------------------------------------------------------------------
@@ -1327,7 +1327,7 @@ int og_find_in_range(lua_State* L)
     return 2;
 }
 
-// og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
+// og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap"; allegiance is walker:is_friendly's.
 int og_find_foe_weapons_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -4006,6 +4006,56 @@ int m_pad_room(lua_State* L)
 // Gameplay Fixes AP (#429): the head of the one owner-chain climb (walker::chain_head).
 W_GET_REF(chain_head)
 
+// walker:sides_friendly(w) is walker:is_friendly(w) without its dead test.
+// (Gameplay Fixes AZ, #502: a thing that acts from its own death, a blast's
+// half tier, asks it; with the setting on a thing marked KIT_RIDER answers
+// for the live walker it rides, so the two always answer true.)
+int m_sides_friendly(lua_State* L)
+{
+    walker* w = self_arg(L);
+    walker* other = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversion of the C++ answer, as is_friendly's.
+    lua_pushboolean(L, w->sides_friendly(other) ? 1 : 0);
+    return 1;
+}
+
+// walker:fights_for_team() → the colour this walker fights for (walker::fights_for_team).
+// (Gameplay Fixes AZ, #502: with the setting on a thing's own colour, a thing
+// marked KIT_RIDER its live walker's; a mode that asks whose blow it was by
+// colour reads it.)
+int m_fights_for_team(lua_State* L)
+{
+    lua_pushinteger(L, self_arg(L)->fights_for_team());
+    return 1;
+}
+
+// walker:set_owner(w): make w this walker's owner; nil clears it, and the call is refused when this walker is already on w's owner chain.
+// The refusal (#503) is a script error naming both walkers: the link would
+// close an owner loop. A self-link stays legal: every climb ends at a
+// self-loop (a shot whose thrower died owns itself).
+int m_set_owner(lua_State* L)
+{
+    walker* const w = self_arg(L);
+    walker* const owner = resolve_walker_or_nil(L, 2);
+    // plumbing: nil and a self-link close no loop of two or more links
+    if (owner != nullptr && owner != w)
+    {
+        owner->cut_owner_loop();  // a loop already above the new owner (a snapshot's) goes first, so the walk ends
+        // plumbing: the walk up the new owner's chain, which no longer loops
+        for (const walker* up = owner; up != nullptr; up = (up->owner() == up) ? nullptr : up->owner())
+        {
+            // rule: #503: Lua's set_owner refuses a link that would close an owner loop (the walker is
+            //   on its new owner's chain): a script error names both walkers and no link is made.
+            // tests: ScriptBindingTest.set_owner_refuses_a_link_that_would_close_an_owner_loop
+            if (up == w)
+                script_raise(L, "set_owner: walker %I is on walker %I's owner chain, so the link would close an owner loop",
+                             static_cast<lua_Integer>(w->entity_id()), static_cast<lua_Integer>(owner->entity_id()));
+        }
+    }
+    w->set_owner(owner);
+    return 0;
+}
+
 const luaL_Reg kWalkerMethods[] = {
     {"xpos", m_xpos}, {"ypos", m_ypos},
     {"sizex", m_sizex}, {"sizey", m_sizey}, {"sizez", m_sizez},
@@ -4098,6 +4148,8 @@ const luaL_Reg kWalkerMethods[] = {
     {"transfer_stats", m_transfer_stats},
     {"spaces_clear", m_spaces_clear},
     {"is_friendly", m_is_friendly},
+    {"sides_friendly", m_sides_friendly},
+    {"fights_for_team", m_fights_for_team},
     {"set_frame", m_set_frame},
     {"animate", m_animate},
     {"collide", m_collide_check},

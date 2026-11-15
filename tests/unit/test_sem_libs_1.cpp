@@ -21,6 +21,7 @@
 #include "../test_sim_random_scope.h"
 #include "bot_gate_fixture.h"
 
+#include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
@@ -30,16 +31,19 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -478,6 +482,284 @@ TEST(SemLibsBomb, a_blast_leaves_other_floors_treasure_effects_and_the_dead_alon
     EXPECT_EQ(205, cloud->xpos());
     EXPECT_FALSE(corpse->stats()->has_commands()) << "arm 'already dead': left alone";
     EXPECT_FLOAT_EQ(500.0f, hp(corpse)) << "arm 'already dead': not struck";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502, #533): with the setting on the thief's bomb takes
+// his team number when he drops it, and the bomb's blast takes the bomb's,
+// whatever became of the thief since. A level-4 team-1 thief drops a real
+// DROP BOMB (walker::special; a seat drives him, so the cast draws no flee
+// walk); then he is left alone, or charmed by hand onto team 2 during the
+// fuse (the charm's own writes), or killed before it goes off (the bomb then
+// owns itself and its blast). With the setting on the bomb and its blast are
+// team 1 in all three; classic, both stay on team 0, the team they were made
+// with. The charmed leg tells the bomb's number from the thief's number now.
+// Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
+// (every setting-on leg red); made_by's `from or owner` -> `owner` (the
+// charmed leg's blast red: team 2); the thief's `gf.made_by(bomb, self)` ->
+// `bomb:set_owner(self)` (every setting-on leg red); the blast's
+// `gf.made_by(blast, self:owner(), self)` -> `blast:set_owner(self:owner())`
+// (the setting-on blasts red, the bombs green).
+TEST(SemLibsBomb, a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    enum class Then { Nothing, Charmed, Died };
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const Then then : {Then::Nothing, Then::Charmed, Then::Died}) {
+            SCOPED_TRACE(testing::Message()
+                         << "setting " << fixes << ", the thief "
+                         << (then == Then::Nothing   ? "left alone"
+                             : then == Then::Charmed ? "charmed onto team 2"
+                                                     : "dead"));
+            TestGameWorld tw;
+            GameWorld& w = tw.world();
+            w.gameplay_fixes = fixes;
+            w.new_specials = 0;
+            walker* thief = put_living(w, FAMILY_THIEF, 200, 200, 1, 4);
+            ASSERT_NE(nullptr, thief);
+            thief->stats()->set_max_magicpoints(100.0f);
+            thief->stats()->set_magicpoints(100.0f);
+            thief->set_user(0);
+            thief->set_act_type(ACT_CONTROL);
+            thief->set_current_special(1);
+            thief->set_shifter_down(0);
+            walker::SpecialFailure why = walker::SpecialFailure::None;
+            std::string reason;
+            ASSERT_TRUE(thief->special(&why, &reason)) << reason;
+            const std::vector<walker*> bombs = live_of(w, Order::FX, FAMILY_BOMB);
+            ASSERT_EQ(1u, bombs.size()) << "DROP BOMB drops one bomb";
+            walker* bomb = bombs.front();
+            EXPECT_EQ(thief, bomb->owner());
+            EXPECT_EQ(fixes != 0 ? 1 : 0, bomb->team_num())
+                << "the bomb: the thief's team with the setting on, team 0 classic";
+
+            if (then == Then::Charmed) {
+                thief->set_real_team_num(thief->team_num());
+                thief->set_team_num(2);
+                thief->set_charm_left(30);
+            } else if (then == Then::Died) {
+                thief->set_dead(1);
+            }
+            const std::vector<walker*> before = live_of(w, Order::FX, FAMILY_EXPLOSION);
+            bomb->set_dead(1);
+            bomb->death();
+            walker* blast = nullptr;
+            int made = 0;
+            for (walker* ob : live_of(w, Order::FX, FAMILY_EXPLOSION)) {
+                if (std::find(before.begin(), before.end(), ob) == before.end()) {
+                    blast = ob;
+                    ++made;
+                }
+            }
+            ASSERT_EQ(1, made) << "the bomb makes one blast";
+            EXPECT_EQ(then == Then::Died ? bomb : thief, blast->owner())
+                << "the blast is the thief's, or the bomb's once he is dead";
+            EXPECT_EQ(fixes != 0 ? 1 : 0, blast->team_num())
+                << "the blast: the bomb's team with the setting on, team 0 classic";
+            EXPECT_EQ(fixes != 0 ? 1 : 0, bomb->team_num()) << "the bomb keeps its team";
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+namespace {
+
+// What a blow of damage d takes from a bare (armour 0) target under the
+// fixture's zero combat random source: d - sqrt(d)/2, to the nearest point.
+float lands(float d)
+{
+    FixedRandom zero(0);
+    return static_cast<float>(damage_to_hit_points(compute_base_damage(d, zero)));
+}
+
+// A level-4 team-1 thief's real DROP BOMB (a seat drives him, so the cast
+// draws no flee walk; the bomb carries bomb_damage(4) = 75). Answers the bomb.
+walker* drop_a_real_bomb(GameWorld& w, walker* thief)
+{
+    thief->stats()->set_max_magicpoints(100.0f);
+    thief->stats()->set_magicpoints(100.0f);
+    thief->set_user(0);
+    thief->set_act_type(ACT_CONTROL);
+    thief->set_current_special(1);
+    thief->set_shifter_down(0);
+    if (!thief->special())
+        return nullptr;
+    const std::vector<walker*> bombs = live_of(w, Order::FX, FAMILY_BOMB);
+    return bombs.size() == 1 ? bombs.front() : nullptr;
+}
+
+// Sets `what` off as the game does (dead, then death()) and answers the one
+// new blast it made, or nullptr.
+walker* set_off(GameWorld& w, walker* what)
+{
+    const std::vector<walker*> before = live_of(w, Order::FX, FAMILY_EXPLOSION);
+    what->set_dead(1);
+    what->death();
+    walker* blast = nullptr;
+    int made = 0;
+    for (walker* ob : live_of(w, Order::FX, FAMILY_EXPLOSION)) {
+        if (std::find(before.begin(), before.end(), ob) == before.end()) {
+            blast = ob;
+            ++made;
+        }
+    }
+    return made == 1 ? blast : nullptr;
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502, #533), the blast's ladder: its thrower at a quarter
+// (known by who he is), then what is on its side at half, the rest in full. A
+// level-4 team-1 thief drops a real bomb (75); a team-1 and a team-0 soldier
+// stand inside its reach, the thief on the bomb. Three cases:
+// - the thief left alone: on both settings he takes the quarter, the team-1
+//   soldier the half, the team-0 one the full blow;
+// - the thief charmed onto team 0 during the fuse: on both settings he takes
+//   the quarter; with the setting on the blast still halves on team 1, its
+//   colour, and strikes team 0 in full; classic it halves on his live allies,
+//   team 0 now, and strikes team 1 in full;
+// - the thief dead before the bomb goes off (#533): nobody takes a quarter;
+//   with the setting on the blast halves on team 1, classic it strikes
+//   everyone in full.
+// The dead thief's blast pays (its damage plus the victim's level): classic,
+// red, the player's team (0), is paid for the team-1 soldier; with the
+// setting on and the player's team 0 nobody is paid, and with the player's
+// team 1 team 1 is paid for the team-0 soldier.
+// Break: the ladder's setting-on half `gf.on() and self:sides_friendly(w)` ->
+// `gf.on() and false`.
+TEST(SemLibsBomb, a_blast_halves_on_the_colour_it_wears_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    enum class Then { Nothing, Charmed, Died };
+    const float full = lands(75.0f);
+    const float half = lands(37.5f);
+    const float quarter = lands(18.75f);
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const Then then : {Then::Nothing, Then::Charmed, Then::Died}) {
+            for (const short my_team : {short{0}, short{1}}) {
+                if (then != Then::Died && my_team != 0)
+                    continue;
+                SCOPED_TRACE(testing::Message()
+                             << "setting " << fixes << ", the thief "
+                             << (then == Then::Nothing   ? "left alone"
+                                 : then == Then::Charmed ? "charmed onto team 0"
+                                                         : "dead")
+                             << ", the player's team " << my_team);
+                TestGameWorld tw;
+                GameWorld& w = tw.world();
+                w.gameplay_fixes = fixes;
+                w.new_specials = 0;
+                w.my_team = my_team;
+                walker* thief = put_living(w, FAMILY_THIEF, 200, 200, 1, 4);
+                ASSERT_NE(nullptr, thief);
+                thief->clear_myguy();
+                walker* bomb = drop_a_real_bomb(w, thief);
+                ASSERT_NE(nullptr, bomb);
+                ASSERT_FLOAT_EQ(75.0f, bomb->damage()) << "bomb_damage(4)";
+                walker* green = put_living(w, FAMILY_SOLDIER, bomb->xpos() + 10, bomb->ypos(), 1, 1);
+                walker* red = put_living(w, FAMILY_SOLDIER, bomb->xpos(), bomb->ypos() + 10, 0, 1);
+                ASSERT_TRUE(green && red);
+
+                if (then == Then::Charmed) {
+                    thief->set_real_team_num(thief->team_num());
+                    thief->set_team_num(0);
+                    thief->set_charm_left(30);
+                } else if (then == Then::Died) {
+                    thief->set_dead(1);
+                }
+                walker* blast = set_off(w, bomb);
+                ASSERT_NE(nullptr, blast);
+                // On the blast itself: its reach is its owner's level, the
+                // bomb's own once the thief is dead.
+                green->setxy(blast->xpos(), blast->ypos());
+                red->setxy(blast->xpos(), blast->ypos());
+                const std::array<std::uint32_t, 2> before{w.m_score[0], w.m_score[1]};
+                blast->set_dead(1);
+                blast->death();
+
+                const bool fixed = fixes != 0;
+                float green_takes = full;
+                float red_takes = full;
+                if (then == Then::Nothing) {
+                    green_takes = half;
+                } else if (then == Then::Charmed) {
+                    (fixed ? green_takes : red_takes) = half;
+                } else if (fixed) {
+                    green_takes = half;
+                }
+                EXPECT_FLOAT_EQ(500.0f - green_takes, hp(green)) << "the team-1 soldier";
+                EXPECT_FLOAT_EQ(500.0f - red_takes, hp(red)) << "the team-0 soldier";
+                if (then != Then::Died)
+                    EXPECT_FLOAT_EQ(500.0f - quarter, hp(thief)) << "the thrower's quarter";
+                else
+                    EXPECT_FLOAT_EQ(500.0f, hp(thief)) << "a dead thrower is not struck";
+
+                if (then == Then::Died) {
+                    std::array<std::uint32_t, 2> expected = before;
+                    if (!fixed && my_team == 0)
+                        expected[0] += static_cast<std::uint32_t>(full) + 1u;
+                    if (fixed && my_team == 1)
+                        expected[1] += static_cast<std::uint32_t>(full) + 1u;
+                    EXPECT_EQ(expected, (std::array<std::uint32_t, 2>{w.m_score[0], w.m_score[1]}))
+                        << "the dead thrower's blast pays the colour it wears when it may score";
+                }
+            }
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502), the ladder's consequence for a dying tent: a
+// destroyed generator makes four blasts on its own team, at its level, damage
+// 2 x level and no owner (walker::death), so each owns itself. A level-12
+// team-1 tent falls beside a team-1 and a team-0 soldier inside the blasts'
+// reach (level 12: 48 px, the finder's 15 + 48). Each blast goes off in turn.
+// With the setting on a blast halves on what wears its colour: the team-1
+// soldier loses four half blows of 24, the team-0 one four full blows; classic
+// an ownerless blast spares nobody: both lose four full blows.
+// Break: the ladder's setting-on half `gf.on() and self:sides_friendly(w)` ->
+// `gf.on() and false`.
+TEST(SemLibsBomb, a_dying_tents_blasts_halve_on_the_tents_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        w.new_specials = 0;
+        walker* tent = put(w, Order::Generator, FAMILY_TENT, 200, 200, 1);
+        ASSERT_NE(nullptr, tent);
+        tent->stats()->set_level(12);
+        walker* green = put_living(w, FAMILY_SOLDIER, tent->xpos() + tent->sizex(), tent->ypos(), 1, 1);
+        walker* red = put_living(w, FAMILY_SOLDIER, tent->xpos(), tent->ypos() + tent->sizey(), 0, 1);
+        ASSERT_TRUE(green && red);
+        const std::vector<walker*> before = live_of(w, Order::FX, FAMILY_EXPLOSION);
+        tent->set_dead(1);
+        tent->death();
+        std::vector<walker*> blasts;
+        for (walker* ob : live_of(w, Order::FX, FAMILY_EXPLOSION))
+            if (std::find(before.begin(), before.end(), ob) == before.end())
+                blasts.push_back(ob);
+        ASSERT_EQ(4u, blasts.size()) << "a dying tent makes four blasts";
+        for (walker* b : blasts) {
+            ASSERT_EQ(1, b->team_num()) << "on the tent's team";
+            ASSERT_EQ(nullptr, b->owner()) << "with no owner";
+            ASSERT_FLOAT_EQ(24.0f, b->damage()) << "2 x level";
+        }
+        for (walker* b : blasts) {
+            b->set_dead(1);
+            b->death();
+        }
+        const float full = lands(24.0f);
+        const float half = lands(12.0f);
+        EXPECT_FLOAT_EQ(500.0f - 4.0f * (fixes != 0 ? half : full), hp(green))
+            << "the tent's colour";
+        EXPECT_FLOAT_EQ(500.0f - 4.0f * full, hp(red)) << "another colour";
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1332,6 +1614,83 @@ ScareRig scare_rig(GameWorld& w)
 }
 
 }  // namespace
+
+namespace {
+
+// A level-5 team-1 ghost at (100, 100) seated with magic to spare, parked on
+// SCARE (slot 1), and its real cast's scare (og.summon: the ghost's colour,
+// KIT_RIDER with the setting on). Answers the ghost and the scare.
+ScareRig cast_a_scare(GameWorld& w)
+{
+    ScareRig r;
+    r.ghost = put_living(w, FAMILY_GHOST, 100, 100, 1, 5);
+    if (r.ghost == nullptr)
+        return r;
+    r.ghost->clear_myguy();
+    r.ghost->stats()->set_max_magicpoints(100.0f);
+    r.ghost->stats()->set_magicpoints(100.0f);
+    r.ghost->set_user(0);
+    r.ghost->set_act_type(ACT_CONTROL);
+    r.ghost->set_current_special(1);
+    r.ghost->set_shifter_down(0);
+    if (!r.ghost->special())
+        return r;
+    const std::vector<walker*> scares = live_of(w, Order::FX, FAMILY_GHOST_SCARE);
+    if (scares.size() == 1)
+        r.scare = scares.front();
+    return r;
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502): a ghost's scare rides him (KIT_RIDER, with the
+// setting on) and goes with him (the maintainer: "obviously they should go
+// with the walker"): it frightens the ghost's foes of the moment, never the
+// ghost. A team-1 ghost casts SCARE with a team-0 and a team-1 soldier inside
+// its radius, and is charmed onto team 0 by hand before the scare goes off.
+// On both settings the scare frightens the team-1 soldier, his old side, and
+// neither the team-0 soldier, his side now, nor the ghost.
+// Breaks: the scare's search `og.find_foes_in_range("ob", ..., owner)` ->
+// `og.find_foes_in_range("ob", ..., self)` (the dying scare asks its own side,
+// and a dead walker is nobody's friend: everyone round it is frightened, the
+// ghost and his new side included); alliance_head's rider line `return
+// ridden;` -> `return this;` (on: the scare fights for team 1).
+TEST(SemLibsGhostScare, a_scare_frightens_its_ghosts_foes_of_the_moment)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        w.new_specials = 0;
+        walker* red = put_living(w, FAMILY_SOLDIER, 140, 100, 0);
+        walker* green = put_living(w, FAMILY_SOLDIER, 100, 140, 1);
+        ASSERT_TRUE(red && green);
+        red->clear_myguy();
+        green->clear_myguy();
+        ScareRig r = cast_a_scare(w);
+        ASSERT_TRUE(r.ghost && r.scare);
+        ASSERT_EQ(r.ghost, r.scare->owner());
+        ASSERT_EQ(1, r.scare->team_num()) << "the ghost's colour from the cast";
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? KIT_RIDER : 0, r.scare->kit_state() & KIT_RIDER);
+
+        r.ghost->set_real_team_num(r.ghost->team_num());
+        r.ghost->set_team_num(0);
+        r.ghost->set_charm_left(30);
+        EXPECT_EQ(0, r.scare->fights_for_team()) << "the scare fights for his side now";
+        for (walker* ob : {red, green, r.ghost})
+            ob->stats()->clear_command();
+        r.scare->set_dead(1);
+        ASSERT_TRUE(og::test::on_death(efd_of(FAMILY_GHOST_SCARE), static_cast<effect*>(r.scare)));
+        EXPECT_TRUE(green->stats()->has_commands()) << "the team-1 soldier, his old side";
+        EXPECT_FALSE(red->stats()->has_commands()) << "the team-0 soldier, his side now";
+        EXPECT_FALSE(r.ghost->stats()->has_commands()) << "never its ghost";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
 
 // effect_ghost_scare.lua:16 arm "no owner": a scare without its ghost (none,
 // or a dead one: effect::act drops a dead owner first) stays where it is,

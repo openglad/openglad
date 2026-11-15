@@ -184,7 +184,6 @@ walker* find_follow_leader()
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/input_state.h>
 
-bool save_settings() { return cfg.save_settings(); }
 bool load_settings() { return cfg.load_settings(); }
 
 // ---------------------------------------------------------------------------

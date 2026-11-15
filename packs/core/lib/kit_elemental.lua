@@ -1,6 +1,6 @@
 -- core lib: kit_elemental — the fire elemental's New Specials: IMMOLATE, METEOR RAIN, REKINDLE / SUPERNOVA (cookbook: docs/lua-classpacks-design.md §3).
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local G = og.use("gates")
 local km = og.use("kit_marker")
 local foes_touching = og.use("effect_ember").foes_touching
@@ -137,7 +137,10 @@ end
 
 -- A burning footprint at the owner's feet (bottom centre of its box), unless
 -- one still burns there: a standing elemental keeps one ember under it
--- instead of piling them up.
+-- instead of piling them up. The ember wears the elemental's colour at the
+-- drop; with Gameplay Fixes AZ it fights for that colour from then on, and as
+-- IMMOLATE's fire goes with its elemental, an ember dropped while he is
+-- charmed wears the charmer's colour.
 local function drop_ember(owner, t)
   -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks,
   --   but never a second one on a spot where one of its own still burns.
@@ -218,6 +221,7 @@ local function strike(marker, owner, t)
     local dy = og.rand(2 * t.rain_spread + 1) - t.rain_spread
     blast:set_owner(owner)
     blast.team = owner.team
+    gf.take_team(blast, marker)  -- with the setting on a meteor wears its rain's colour (Gameplay Fixes AZ)
     blast.level = marker.level
     blast.damage = marker:damage()
     blast:set_floor(marker:floor())
@@ -308,7 +312,7 @@ function M.immolate(self)
     quench(self, marker)
     return true
   end
-  marker = km.spawn(self, km.IMMOLATION, t.immolate_max)
+  marker = gf.rides(km.spawn(self, km.IMMOLATION, t.immolate_max))
   -- plumbing: og.add_ob / km.spawn nil when the world is full: flash, ember, meteor strike,
   --   immolation marker (COULD NOT IGNITE), rain marker (COULD NOT CALL METEORS), nova blast and
   --   ring blast are skipped or refused

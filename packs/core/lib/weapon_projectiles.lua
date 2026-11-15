@@ -1,7 +1,7 @@
 -- core:fire_arrow + core:boulder — explode on death when armed (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
 local function explode_on_death(self)
@@ -27,7 +27,7 @@ local function explode_on_death(self)
     return false  -- failsafe
   end
   og.emit_positional_sound(self, C.SOUND_EXPLODE)
-  explosion:set_owner(self:owner())
+  gf.made_by(explosion, self:owner(), self)  -- with the setting on it wears the fire arrow's or the boulder's colour (Gameplay Fixes AZ)
   explosion.hp = 0
   explosion.level = self:owner().level
   explosion.ani_type = C.ANI_EXPLODE

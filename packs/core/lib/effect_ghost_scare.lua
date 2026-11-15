@@ -40,7 +40,8 @@ local function on_death(self)
 
   -- The radius caps at 250 px before legacy 50 + 10*L grows off-screen;
   -- the cap begins at L21 and consumes no draw. og.scare_radius binds
-  -- og::combat::scare_radius (core/combat_math.h).
+  -- og::combat::scare_radius (core/combat_math.h). The ghost's foes are the
+  -- scare's: it rides him, so it goes with him (Gameplay Fixes AZ).
   local foes, foe_count =
     og.find_foes_in_range("ob", og.scare_radius(owner.level), owner)
   -- rule: A scare with no foe within the caster's scare radius (50 + 10 per level, capped at 250

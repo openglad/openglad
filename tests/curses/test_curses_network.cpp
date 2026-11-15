@@ -345,7 +345,7 @@ og::sim::LobbyCharacterSlot make_network_roster_slot(
     std::uint8_t slot_index,
     std::int32_t guy_id,
     std::string name,
-    std::int8_t family)
+    std::int16_t family)
 {
     return og::sim::LobbyCharacterSlot{
         .slot_index = slot_index,
@@ -3378,15 +3378,37 @@ TEST(CursesNetworkProcess, dedicated_server_admits_an_unseated_spectator_and_ret
         })) << server.output();
 
     // The watcher connects AFTER the host joined and never sends a join.
+    //
+    // Its own side of the link is up as soon as the handshake answer
+    // arrives. The server knows the peer only once its loop has taken the
+    // connection off its queue, and the host's start travels on another
+    // connection, so it can overtake that. A start that does launches the
+    // match without the watcher, and a peer that is not in the lobby at the
+    // start is never admitted as a spectator (#559; seen on the ASan lane: the
+    // server ran and retimed, the watcher was never seeded). The lobby greets
+    // every peer it takes with the lobby state (LobbyServer::connect_client),
+    // so the host starts only after the watcher has that greeting. One wait
+    // reads both the link and the greeting: the greeting can arrive in the
+    // very poll that shows the link up, and a poll hands each message over
+    // only once.
     og::sim::WebSocketClientTransport watcher(
         std::format("ws://127.0.0.1:{}", *port), client_options);
     watcher.accept_connections();
+    bool watcher_greeted = false;
     ASSERT_TRUE(poll_external_client_until(
         watcher,
-        [&watcher](const auto&) {
-            return watcher.connected_peers() ==
-                std::vector<og::sim::PeerId>{1u};
-        })) << server.output();
+        [&watcher, &watcher_greeted](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::LobbyState &&
+                    message.lobby_state)
+                    watcher_greeted = true;
+            }
+            return watcher_greeted &&
+                watcher.connected_peers() ==
+                    std::vector<og::sim::PeerId>{1u};
+        })) << "the server greets a peer it has taken with the lobby state\n"
+            << server.output();
 
     auto start = std::make_shared<og::sim::LobbyMessage>();
     start->payload = og::sim::LobbyStartGameMessage{
@@ -4424,6 +4446,42 @@ TEST(CursesNetwork, joiners_belt_reaches_the_server_and_spec2_casts_its_entry)
     }
     EXPECT_TRUE(cast)
         << "the server must arm the joiner's slot-2 entry (WHIRLWIND, slot 3)";
+}
+
+// #500: a joiner's hero of a pack class from 128 up keeps its class on the
+// server and on both mirrors. Both clients here talk to the lobby inside one
+// program, so until #500 (the hero's record kept a signed byte) the joiner's
+// class-200 hero reached the lobby as -56 and the lobby dropped it. No pack
+// claims class 200 in this binary: only the class is asserted.
+TEST(CursesNetwork, a_joiners_class_200_hero_keeps_its_class_on_the_server_and_both_mirrors)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_SOLDIER, "Joiner");
+    for (auto& member : join_save.team_list) {
+        if (member)
+            member->family = 200;
+    }
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    const std::uint32_t avatar = game.join_session->followed_entity_id();
+    ASSERT_NE(avatar, 0u) << "the joiner's hero never reached the level";
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    for (GameWorld* world : {server_world, &game.join_session->mirror_world(),
+                             &game.host_session->mirror_world()}) {
+        const walker* hero = world->find_by_id(avatar);
+        ASSERT_NE(nullptr, hero);
+        ASSERT_NE(nullptr, hero->myguy) << "the joiner's hero has no guy";
+        EXPECT_EQ(200, static_cast<int>(hero->myguy->family))
+            << "every copy of the joiner's hero keeps its class";
+    }
 }
 
 // --- The PAUSED menu in a networked mission (#376) -------------------------

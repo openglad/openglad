@@ -1152,7 +1152,10 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
     ASSERT_EQ(0, (int)subject->is_friendly(viewer)) << "is_friendly should reject dead target";
     viewer->set_dead(0);
 
-    // Owner-loop traversal still resolves friendliness from the roots' teams.
+    // With the Gameplay Fixes setting off the owner chain still resolves
+    // friendliness from the roots' teams; with it on (fix AZ) each walker
+    // fights for the colour it wears, so the team-1 orc owned by a team-0
+    // mage is the team-0 viewer's foe.
     walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     ASSERT_TRUE(owner != nullptr) << "owner created";
     if (owner)
@@ -1163,8 +1166,16 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
         viewer->set_owner(nullptr);
         viewer->set_team_num(0);
         viewer->clear_myguy();
-        ASSERT_TRUE(subject->is_friendly(viewer) != 0)
-            << "same-team owner roots must be friendly";
+        const short fixes_before = world.gameplay_fixes;
+        world.gameplay_fixes = 0;
+        const std::int32_t classic = subject->is_friendly(viewer);
+        world.gameplay_fixes = 1;
+        const std::int32_t fixed = subject->is_friendly(viewer);
+        world.gameplay_fixes = fixes_before;
+        ASSERT_TRUE(classic != 0)
+            << "setting off: same-team owner roots must be friendly";
+        ASSERT_EQ(0, fixed)
+            << "setting on: the orc fights for the colour it wears";
     }
 }
 
@@ -1445,29 +1456,45 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
 
     actor->set_dead(0);
     target->set_dead(0);
-    actor_root->set_team_num(0);
-    target_owner->set_team_num(0);
-    actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-    target_owner->clear_myguy();
-    ASSERT_TRUE(actor->is_friendly(target) != 0)
-        << "same-team owner roots should be friendly regardless of ownership";
+    // The actor and the target both wear team 1. With the Gameplay Fixes
+    // setting off the roots of their owner chains decide; with it on (fix AZ)
+    // each fights for the colour it wears and the roots decide nothing.
+    actor->set_team_num(1);
+    target->set_team_num(1);
+    const short fixes_before = world.gameplay_fixes;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        world.gameplay_fixes = fixes;
+        const bool fixed = fixes != 0;
+        actor_root->set_team_num(0);
+        target_owner->set_team_num(0);
+        actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+        target_owner->clear_myguy();
+        ASSERT_TRUE(actor->is_friendly(target) != 0)
+            << "same-team owner roots (off), one colour (on): friendly regardless of ownership";
 
-    // Both roots without myguy: seat mode must not override combat teams.
-    actor_root->clear_myguy();
-    target_owner->clear_myguy();
-    actor_root->set_team_num(2);
-    target_owner->set_team_num(2);
-    ASSERT_EQ(1, (int)actor->is_friendly(target)) << "both roots without myguy and same team should be friendly";
-    target_owner->set_team_num(3);
-    ASSERT_EQ(0, (int)actor->is_friendly(target)) << "both roots without myguy and different team should be unfriendly";
+        // Both roots without myguy: seat mode must not override combat teams.
+        actor_root->clear_myguy();
+        target_owner->clear_myguy();
+        actor_root->set_team_num(2);
+        target_owner->set_team_num(2);
+        ASSERT_EQ(1, (int)actor->is_friendly(target)) << "both roots without myguy and same team should be friendly";
+        target_owner->set_team_num(3);
+        ASSERT_EQ(fixed ? 1 : 0, (int)actor->is_friendly(target))
+            << (fixed ? "setting on: the roots decide nothing, one colour"
+                      : "both roots without myguy and different team should be unfriendly");
 
-    // is_friendly_to_team follows the owner chain but still compares color.
-    actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    actor_root->set_team_num(3);
-    for (unsigned char team = 0; team < 4; ++team)
-        ASSERT_EQ(team == 3, actor->is_friendly_to_team(team) != 0)
-            << "owner-chain unit must use its root's roster color "
-            << static_cast<int>(team);
+        // is_friendly_to_team compares a colour: the root's classic, the
+        // walker's own with the setting on.
+        actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        actor_root->set_team_num(3);
+        for (unsigned char team = 0; team < 4; ++team)
+            ASSERT_EQ(fixed ? team == 1 : team == 3, actor->is_friendly_to_team(team) != 0)
+                << "the colour asked: the root's classic, the walker's own on "
+                << static_cast<int>(team);
+    }
+    world.gameplay_fixes = fixes_before;
 
     // living::set_difficulty on a hostile-team soldier: core:soldier's Lua
     // set_difficulty hook runs og.apply_difficulty_scaling(self, level, 13, 8,

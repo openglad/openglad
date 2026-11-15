@@ -917,15 +917,19 @@ def parse_family_hook_signatures(
 # dispatcher that gains or loses an argument fails the build instead of
 # silently shipping stale names.
 LEVEL_HOOK_ARG_OVERRIDES: Dict[str, List[Tuple[str, str]]] = {
-    # on_damage(target, attacker, amount); attacker is nil for environment
-    # damage, hence the optional type.
+    # on_damage(target, attacker, amount, striker); attacker is nil for
+    # environment damage, hence the optional type; striker is the walker the
+    # blow comes from (the shot, the blast, the spell, or the attacker itself
+    # in melee), never nil.
     "level:on_damage": [
         ("target", "og.Walker"),
         ("attacker", "og.Walker?"),
         ("amount", "integer"),
+        ("striker", "og.Walker"),
     ],
     # on_entity_death(ent, killer, killer_team); killer is nil when the
-    # attribution is stale/absent, killer_team is -1 for environment kills.
+    # attribution is stale/absent (and, with Gameplay Fixes AZ, when no living
+    # was behind the blow), killer_team is -1 for environment kills.
     "level:on_entity_death": [
         ("ent", "og.Walker"),
         ("killer", "og.Walker?"),

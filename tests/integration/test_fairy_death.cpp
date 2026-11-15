@@ -236,9 +236,10 @@ static int fairy_injector(void* data)
     // §2.2: accept the generated company name at the name-entry screen.
     accept_generated_company_name();
 
-    // No campaign intro here anymore (issue #186: it moved behind the
-    // campaign select, skipped under TESTING) — an Escape here would BACK
-    // out of the team-build screen instead.
+    // The founded campaign's intro plays inside the founding and dismisses
+    // itself after its first frame under TESTING (#490: no campaign list on
+    // a new game); an Escape here would BACK out of the team-build screen
+    // instead.
 
     // New games now land on team build first, then enter hire explicitly.
     SDL_Delay(kUiSettleMs);

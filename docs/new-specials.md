@@ -125,7 +125,7 @@ Three per-entity fields, all in every snapshot:
 
 | field | type | dirty bit | meaning |
 |---|---|---|---|
-| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one; GLIMMER's sprinkles), `KIT_NOVA` 32 (on a blast: a SUPERNOVA blast, which spares its own team half the damage by team colour) |
+| `kit_state` | `uint8` | 94 | `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one; GLIMMER's sprinkles), `KIT_NOVA` 32 (on a blast: a SUPERNOVA blast, which spares its own team half the damage by team colour), `KIT_RIDER` 64 (a weapon or effect that rides its owner and goes with him, Gameplay Fixes AZ) |
 | `possess_link` | `uint32` | 93 | the entity id of the possession partner, 0 when none |
 | `possess_ticks` | `int16` | 95 | on the host: ticks left; 0 = for good, which the core kit never asks for |
 
@@ -212,7 +212,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   excess (how far below zero it drove the host's health) as damage, which
   can kill it.
 - The ghost dies while it rides (only a script can do that): the host goes
-  free.
+  free and home to its own team, also when the script only marks the ghost
+  dead (`set_dead`) without its death running; the ghost's body then stays
+  hidden (#499). A player who drove the body is handed the next hero of the
+  team, as after any hero's death (#535).
 
 **Further rules.**
 

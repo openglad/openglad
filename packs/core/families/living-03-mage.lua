@@ -472,7 +472,7 @@ local function energy_wave(self)
   end
   wave:set_floor(bolt:floor())  -- wave rides the caster's floor
   wave:center_on(bolt)
-  wave:set_owner(self)
+  gf.made_by(wave, self)  -- with the setting on it keeps the mage's colour through WAVE2 and WAVE3 (Gameplay Fixes AZ)
   wave.level = self.level
   wave:set_lastx(bolt:lastx())
   wave:set_lasty(bolt:lasty())

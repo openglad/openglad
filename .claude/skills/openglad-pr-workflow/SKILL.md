@@ -154,11 +154,12 @@ sign-off, quoted.
 
 wasm-e2e.yml also posts the preview link as a sticky comment on the PR
 (marker `<!-- wasm-preview-link -->`, updated in place), quoting the
-version and commit hash read out of the built artifact — that comment is
-the delivery path for a preview, not the job summary.
+commit hash read out of the built artifact (a PR build has no version
+number). That comment is the delivery path for a preview, not the job
+summary.
 
 Before explaining why a user "sees the old build": read the git-hash
 stamp on the main menu of the build THEY named and compare to branch
 HEAD. Never reason about caching from first principles. Always hand back
-preview URLs with the commit SHA they serve and the version beside it
-(`v2.<count>`).
+preview URLs with the commit SHA they serve, and a master build's URL with
+its version beside it (`v2.<count>`); a PR preview has no version.

@@ -40,7 +40,9 @@ fi
 # emcc caches to its own (read-only in nix) prefix unless told otherwise.
 export EM_CACHE="${EM_CACHE:-${SCRIPT_DIR}/../build/.emscripten-cache}"
 
-cmake --preset web-emscripten
+# #508: the web workflow says whether this is a master build. Always passed,
+# so an unset variable empties the cached answer and the build asks git.
+cmake --preset web-emscripten "-DOPENGLAD_ON_MASTER=${OPENGLAD_ON_MASTER:-}"
 cmake --build --preset web-emscripten --target play -j"$(nproc)"
 
 echo "Web build complete: dist/play.html"

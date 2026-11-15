@@ -979,9 +979,20 @@ TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_hostile_weapons_in_ran
     reset_level_state();
 }
 
-TEST(MassCoverage, screen_foe_weapon_finder_follows_owner_chain_allegiance) {
+// The foe-weapon finder asks walker::is_friendly of each weapon. The two
+// projectiles' colours deliberately disagree with their living owners. With
+// the Gameplay Fixes setting off allegiance follows the whole owner chain,
+// a weapon owned by another weapon included, so the hostile owner's chain
+// decides: the team-1 projectile of the team-2 orc's relay is the foe. With
+// the setting on (fix AZ) every weapon fights for the colour it wears, so the
+// team-2 projectile of the searcher's own team-1 ally is the foe. Neither is
+// marked KIT_RIDER, so neither goes with its owner.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// owner chain decides again).
+TEST(MassCoverage, screen_foe_weapon_finder_reads_each_weapons_colour_with_the_setting_on_and_its_owner_chain_off) {
     reset_level_state();
     GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short fixes_before = world.gameplay_fixes;
 
     walker* searcher = add_living(1);
     walker* ally_owner = add_living(1);
@@ -994,9 +1005,6 @@ TEST(MassCoverage, screen_foe_weapon_finder_follows_owner_chain_allegiance) {
     ASSERT_TRUE(ally_projectile && hostile_relay && hostile_projectile);
     ASSERT_EQ(3u, world.weaplist.size()) << "normal spawns are in weaplist";
 
-    // The projectile colors deliberately disagree with their living owners.
-    // Following the entire chain, including a weapon owned by another weapon,
-    // must take precedence over each projectile's stale team number.
     ally_projectile->set_owner(ally_owner);
     ally_projectile->set_team_num(2);
     ally_projectile->setxy(105, 100);
@@ -1007,11 +1015,17 @@ TEST(MassCoverage, screen_foe_weapon_finder_follows_owner_chain_allegiance) {
     hostile_projectile->set_team_num(1);
     hostile_projectile->setxy(106, 100);
 
-    std::int32_t count = -1;
-    const auto found = world.find_foe_weapons_in_range(world.weaplist, 64, &count, searcher);
-    EXPECT_EQ(1, count);
-    EXPECT_EQ(std::list<walker*>({hostile_projectile}), found)
-        << "the hostile owner's team decides weapon allegiance";
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        world.gameplay_fixes = fixes;
+        std::int32_t count = -1;
+        const auto found = world.find_foe_weapons_in_range(world.weaplist, 64, &count, searcher);
+        EXPECT_EQ(1, count);
+        EXPECT_EQ(std::list<walker*>({fixes != 0 ? ally_projectile : hostile_projectile}), found)
+            << (fixes != 0 ? "setting on: the weapon's own colour decides"
+                           : "setting off: the owner chain's head decides");
+    }
+    world.gameplay_fixes = fixes_before;
 
     reset_level_state();
 }

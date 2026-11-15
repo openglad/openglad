@@ -636,7 +636,7 @@ TEST(LivingCombat, obmap_guard_and_hash_and_move_branches)
     orphan.set_sizex(8);
     orphan.set_sizey(8);
     orphan.setxy(-1, -1);
-    ASSERT_EQ(0, (int)map.remove(&orphan)) << "remove unknown negative-position walker should fail";
+    ASSERT_EQ(0, (int)map.remove(&orphan)) << "a walker walker_to_pos does not know is a miss";
 
     walker* live = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(live != nullptr) << "live walker created";
@@ -674,11 +674,15 @@ TEST(LivingCombat, obmap_remove_stale_and_collide_axis_reject_paths)
     stale.set_sizey(12);
     stale.setxy(96, 96);
 
-    // Simulate stale bookkeeping: present in pile map, absent in walker_to_pos.
+    // Stale bookkeeping: present in a pile, absent from walker_to_pos. A
+    // removal answers from walker_to_pos alone (#504), so it is a miss and
+    // the hand-filed entry stays.
     auto cell = std::make_pair(obmap::hash(stale.xpos()), obmap::hash(stale.ypos()));
     map.pos_to_walker[cell].push_back(&stale);
-    ASSERT_EQ(1, (int)map.remove(&stale)) << "remove should clean stale pointer via bounded fallback";
-    ASSERT_TRUE(map.pos_to_walker.find(cell) == map.pos_to_walker.end()) << "fallback remove should erase empty cell pile";
+    ASSERT_EQ(0, (int)map.remove(&stale)) << "a walker walker_to_pos does not know is a miss";
+    const auto pile = map.pos_to_walker.find(cell);
+    ASSERT_TRUE(pile != map.pos_to_walker.end()) << "its hand-filed pile stays";
+    ASSERT_EQ(std::list<walker*>{&stale}, pile->second) << "its hand-filed entry stays";
 
     ASSERT_EQ(0, (int)collide(100, 100, 10, 10, 200, 100, 10, 10)) << "collide should reject separated x-right case";
     ASSERT_EQ(0, (int)collide(200, 100, 10, 10, 100, 100, 10, 10)) << "collide should reject separated x-left case";
@@ -1071,22 +1075,27 @@ TEST(LivingCombat, obmap_round10_add_remove_move_and_fallback_paths)
     ASSERT_EQ(1, (int)map.add(&a, 32, 32)) << "add duplicate should remove old occupancy then re-add";
     ASSERT_EQ(1, (int)map.remove(&a)) << "remove should succeed for mapped object";
 
-    // Fallback remove path: object not in walker_to_pos but present in nearby pile cells.
+    // An object not in walker_to_pos but present in a pile: a removal
+    // answers from walker_to_pos alone (#504), so it is a miss and the pile
+    // entry stays.
     walker b;
     b.set_sizex(12);
     b.set_sizey(12);
     b.setxy(64, 64);
     auto cell = std::make_pair(obmap::hash(b.xpos()), obmap::hash(b.ypos()));
     map.pos_to_walker[cell].push_back(&b);
-    ASSERT_EQ(1, (int)map.remove(&b)) << "remove fallback should clear stale pile entry";
-    ASSERT_TRUE(map.pos_to_walker.find(cell) == map.pos_to_walker.end()) << "fallback remove should erase emptied cell";
+    ASSERT_EQ(0, (int)map.remove(&b)) << "a walker walker_to_pos does not know is a miss";
+    const auto pile = map.pos_to_walker.find(cell);
+    ASSERT_TRUE(pile != map.pos_to_walker.end()) << "its hand-filed pile stays";
+    ASSERT_EQ(std::list<walker*>{&b}, pile->second) << "its hand-filed entry stays";
 
-    // Fallback remove early-return path when stale object has negative coordinates.
+    // The position does not matter: an unknown walker at negative
+    // coordinates is the same miss.
     walker c;
     c.set_sizex(12);
     c.set_sizey(12);
     c.setxy(-5, -5);
-    ASSERT_EQ(0, (int)map.remove(&c)) << "remove fallback should reject negative-position stale object";
+    ASSERT_EQ(0, (int)map.remove(&c)) << "a miss whatever its position";
 }
 
 

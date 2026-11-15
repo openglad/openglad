@@ -567,9 +567,17 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     ASSERT_FLOAT_EQ(300.0f, w->stats()->max_hitpoints()) << "200 * 150 / 100";
     ASSERT_FLOAT_EQ(15.0f, w->damage()) << "10 * 150 / 100";
 
-    // Alliance follows the OWNER CHAIN: a walker we own is friendly to us even
-    // though its own team colour differs, and stops being so the moment the
-    // chain is cut.
+    // With the Gameplay Fixes setting off (read from the session's world,
+    // og::sim::session_gameplay_fixes) alliance follows the OWNER CHAIN: a
+    // walker we own is friendly to us even though its own team colour
+    // differs, and stops being so the moment the chain is cut. With the
+    // setting on (fix AZ) each walker fights for the colour it wears (a
+    // hand-made walker carries no KIT_RIDER, so it does not go with its
+    // owner).
+    GameWorld* const session_world = current_game != nullptr ? current_game->world : nullptr;
+    ASSERT_NE(nullptr, session_world) << "the world the setting is read from";
+    const short fixes_before = session_world->gameplay_fixes;
+    session_world->gameplay_fixes = 0;
     walker* owned = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 100, 100);
     owned->set_owner(w);
     w->set_owner(w); // self-loop guard branch: the chain walk must terminate
@@ -580,6 +588,12 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     ASSERT_EQ(0, w->is_friendly(owned))
         << "with the chain cut, team 1 and team 0 are enemies again";
     owned->set_owner(w);
+    session_world->gameplay_fixes = 1;
+    const std::int32_t fixed = w->is_friendly(owned);
+    session_world->gameplay_fixes = fixes_before;
+    ASSERT_EQ(w->team_num() == owned->team_num() ? 1 : 0, fixed)
+        << "setting on: each walker's own colour, team 1 and team 0";
+    ASSERT_NE(w->team_num(), owned->team_num());
     w->set_dead(1);
     ASSERT_EQ(0, w->is_friendly_to_team(0)) << "a corpse is friendly to nobody";
     ASSERT_EQ(0, w->is_friendly_to_team(1)) << "not even to its own colour";

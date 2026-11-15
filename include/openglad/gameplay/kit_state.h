@@ -27,9 +27,20 @@
 //                rolled one (a faerie's GLIMMER sprinkle).
 //   KIT_NOVA     a Supernova blast: its caster is gone, so the blast spares
 //                its own team half the damage by team colour.
+//   KIT_RIDER    Gameplay Fixes AZ: this weapon or effect rides the walker
+//                who owns it (a circle of protection, a mace, a boomerang, a
+//                hook blade, a scare, IMMOLATE's fire, a returning knife's
+//                probe, the cheat's magic shield) and goes with him: while
+//                he lives it fights for whatever side he is on now
+//                (walker::alliance_head answers him for it). Set where the
+//                thing is made, with the setting on only. The mark is read
+//                on any walker: a pack that set it on a living would make
+//                that living follow its owner's side, so mark only things
+//                that sit on their owner.
 inline constexpr std::uint8_t KIT_HIDDEN = 1;
 inline constexpr std::uint8_t KIT_FEARLESS = 2;
 inline constexpr std::uint8_t KIT_WARD = 4;
 inline constexpr std::uint8_t KIT_CHANNEL = 8;
 inline constexpr std::uint8_t KIT_QUARTER_FREEZE = 16;
 inline constexpr std::uint8_t KIT_NOVA = 32;
+inline constexpr std::uint8_t KIT_RIDER = 64;

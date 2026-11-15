@@ -278,6 +278,13 @@ class walker : public og::sim::SimEntity
 			short shove(walker* target, float x, float y) { return shove(target, static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
+		// is_friendly without its null and dead tests: the side question. A
+		// thing that acts from its own death (a blast) asks it (the Lua
+		// walker:sides_friendly). It compares the colours of the two
+		// alliance heads: with Gameplay Fixes AZ each walker's own, a thing
+		// marked KIT_RIDER its walker's. `target` must not be null. Defined
+		// in walker.cpp.
+		std::int32_t sides_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
 		// Gameplay Fixes AD (#412): true while this walker's charm runs
 		// (charm_left() > 0) with the setting on; New Specials (#430): true
@@ -289,15 +296,39 @@ class walker : public og::sim::SimEntity
 		// Gameplay Fixes AP (#429): the one owner-chain climb. chain_next is
 		// the next link up, or nullptr where every climb stops (no owner, a
 		// self-loop, a walker charmed_head names); a dead owner is
-		// climbed through. chain_head is the top of the climb, the head a blow
-		// scores for; alliance_head is the head is_friendly reads (with the
-		// setting off the classic climb, which stops at a dead owner and at a
-		// possessed body). Defined
-		// in walker_specials.cpp.
+		// climbed through. chain_head is the top of the climb, the person
+		// behind a blow (the score gate's hero, experience, credit);
+		// alliance_head is the head is_friendly reads: with the setting on
+		// the walker itself (fix AZ, every walker fights for the colour it
+		// wears), except a walker marked KIT_RIDER (a weapon or an effect),
+		// which answers the live walker it rides, its owner, one hop;
+		// off the classic climb, which stops at a dead owner and at a
+		// possessed body. Defined in walker_specials.cpp.
 		walker* chain_next() const;
 		walker* chain_head();
 		const walker* chain_head() const;
 		const walker* alliance_head() const;
+		// Gameplay Fixes AZ (#502): the colour this walker fights for, the
+		// one its alliance head wears: with the setting on its own colour,
+		// or for a thing that rides a live walker that walker's colour now;
+		// off, the colour of the classic friendliness head. With the setting
+		// on walker::attack reads it as the side of a blow (the score gate's
+		// colour half, the payments), kill_stamp_team as the kill's team, and
+		// the modes (the Lua walker:fights_for_team) as the colour a striking
+		// thing plays for. Defined in walker_specials.cpp.
+		unsigned char fights_for_team() const;
+		// #503: the one owner-chain walk. climb goes up from this walker
+		// while `step` names a next link (chain_next, or the classic
+		// friendliness step alliance_next_classic) and returns the walker it
+		// stops at; with `top_living` it also stores the topmost living it
+		// passed (credit_head). Past kOwnerLoopCheck links it asks
+		// cut_owner_loop, which clears the link that closes an owner loop
+		// (A owns B owns A) and logs it once. Defined in walker_specials.cpp.
+		using ChainStep = walker* (walker::*)() const;
+		static constexpr int kOwnerLoopCheck = 16;
+		const walker* climb(ChainStep step, walker** top_living = nullptr) const;
+		walker* alliance_next_classic() const;
+		bool cut_owner_loop() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -502,11 +533,41 @@ class walker : public og::sim::SimEntity
 		{
 			last_self_teleport_tick_ = tick;
 		}
+		// Server-only transient (#535, like the teleport stamp above: no
+		// dirty bit, not in EntitySnapshot): on a body whose ride ended with
+		// its ghost dead while a player's seat drove the body, the ghost's
+		// id, so that seat goes to the dead ghost at its next input tick and
+		// the ordinary death hand-off gives the player the next hero. Every
+		// end of a ride writes it (og::sim::end_ride: 0 unless the ghost is
+		// dead and the body wore a seat's tag, which goes back to the ghost).
+		// It is read only on an untagged body, by the seat whose tag the dead
+		// ghost wears (og::sim::possession_seat_to_dead_rider, from the seat
+		// redirect and for a seat parked by a dropped connection), and
+		// cleared when that seat goes to the ghost. When the ghost dies
+		// before its seat's input ever moved into the body (a script that
+		// possesses and kills in one tick) the seat is still on the dead
+		// ghost and hands off from there, and the id stays on the body until
+		// the body's next ride ends and writes it again. That does no harm:
+		// a seat sent to its own dead hero gets the hand-off that hero's
+		// death gives it anyway, and a seat holds an untagged body at its
+		// input only right after a ride ends (when the id is fresh) or when
+		// the control policy refused a body supplied to it; every other claim
+		// tags the body in the call that hands it to the seat. 0 = none.
+		[[nodiscard]] std::uint32_t seat_dead_rider() const noexcept
+		{
+			return seat_dead_rider_;
+		}
+		void set_seat_dead_rider(std::uint32_t id) noexcept
+		{
+			seat_dead_rider_ = id;
+		}
 
 		// Kill-attribution transients (server-only, like the teleport stamp
 		// above: no dirty bit, not in EntitySnapshot). The combat path stamps
 		// the OWNER-CHAIN-ROOT Living that last landed a positive-damage hit
-		// on this walker, plus its team and the world tick. on_entity_death
+		// on this walker, plus a team (kill_stamp_team: with Gameplay Fixes
+		// AZ the colour the thing that struck fights for, stamped also with no
+		// living behind it) and the world tick. on_entity_death
 		// passes the killer to Lua only while the stamp is fresh
 		// (og::sim::kKillAttributionTicks); non-combat deaths (drowning,
 		// lifetime expiry, pit falls) never stamp, so they read as
@@ -524,30 +585,39 @@ class walker : public og::sim::SimEntity
 		{
 			return last_attacker_tick_;
 		}
-		void note_attacker(const walker* who, std::uint32_t tick) noexcept
+		void note_attacker(const walker* who, std::int16_t team, std::uint32_t tick) noexcept
 		{
-			// rule: A hit is credited (kill-attribution stamp: id, team, tick) to the topmost
-			//   LIVING on the attacker's owner chain (credit_head); when no living is on the chain
-			//   (an orphaned weapon whose thrower is gone, a scripted ball fx), no stamp is
-			//   written, so a death from that hit reads as an environment death and Lua on_kill /
-			//   mode scoring pays nobody. walker_combat.cpp passes credit_head() unchecked and
-			//   relies on this guard; walker_specials.cpp (turn undead) checks credit
-			//   itself on the partial-damage arm but not on the lethal arm (also relies on this
-			//   guard).
+			// rule: A blow's kill-attribution stamp is the walker credited (the topmost LIVING on the
+			//   attacker's owner chain, credit_head) and the team walker::kill_stamp_team names (the
+			//   colour the hitter fights for with Gameplay Fixes AZ, the credited walker's classic). A blow
+			//   with neither (classic: no living on the chain, an orphaned weapon whose thrower is
+			//   gone, a scripted ball fx) writes nothing, so a death from it reads as an environment
+			//   death; with Gameplay Fixes AZ a blow with no living on its chain stamps its colour
+			//   and no walker (id 0). walker_combat.cpp passes credit_head() unchecked and relies on
+			//   this guard; walker_specials.cpp (turn undead) checks credit itself on the
+			//   partial-damage arm but not on the lethal arm.
 			// tests: SemWalker1.a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain
-			if (who == nullptr)
+			// tests: SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
+			if (who == nullptr && team < 0)
 				return;
-			last_attacker_id_ = who->entity_id();
-			last_attacker_team_ = static_cast<std::int16_t>(who->team_num());
+			last_attacker_id_ = who != nullptr ? who->entity_id() : 0u;
+			last_attacker_team_ = team;
 			last_attacker_tick_ = tick;
 		}
 		// The walker a hit or a kill is credited to (#411): the topmost
 		// LIVING on this walker's owner chain (a tent's troop is its own
-		// credit: a generator is not a body), climbed by chain_next (fix AP:
-		// through a dead owner, stopping at a charmed head); nullptr when no
+		// credit: a generator is not a body), climbed by walker::climb with
+		// chain_next (fix AP: through a dead owner, stopping at a charmed
+		// head; #503: an owner loop is cut where it closes); nullptr when no
 		// living is on the chain. The kill stamp and on_kill read it; score
 		// and experience keep the chain's root.
 		walker* credit_head();
+		// Gameplay Fixes AZ (#502): the team a blow's kill stamp records (the
+		// team a mode's kill ledger pays): with the setting on the colour this
+		// hitter fights for (fights_for_team), also when no living is on its
+		// chain; classic, the colour of `credit`, -1 with none. Defined in
+		// walker_specials.cpp.
+		std::int16_t kill_stamp_team(const walker* credit) const;
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber
@@ -667,6 +737,8 @@ class walker : public og::sim::SimEntity
 		std::int32_t special_rest_left_ = 0;
 		std::int32_t special_rest_slot_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
+		// #535 (see seat_dead_rider above): server-only, never replicated.
+		std::uint32_t seat_dead_rider_ = 0;
 		// Kill-attribution stamp (see the accessors above): server-only,
 		// never replicated.
 		std::uint32_t last_attacker_id_ = 0;

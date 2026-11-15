@@ -24,10 +24,15 @@ class FakeKickedJoinClient final : public og::ui::IPickerLobbyClient
 {
 public:
     // `lost_flag` (#278) models the session_lost() latch of a joiner whose
-    // link died; nullptr = never lost.
+    // link died; nullptr = never lost. `established_flag` (#441) is what
+    // session_established() answers, so the NETWORKING screen can show a
+    // joiner's session view (DISCONNECT); nullptr = never established, the
+    // answer every other user of this fake relies on.
     explicit FakeKickedJoinClient(std::atomic<bool>* kicked_flag,
-                                  std::atomic<bool>* lost_flag = nullptr)
-        : kicked_flag_(kicked_flag), lost_flag_(lost_flag)
+                                  std::atomic<bool>* lost_flag = nullptr,
+                                  std::atomic<bool>* established_flag = nullptr)
+        : kicked_flag_(kicked_flag), lost_flag_(lost_flag),
+          established_flag_(established_flag)
     {
     }
     void initialize_from_save() override {}
@@ -62,6 +67,10 @@ public:
     {
         return lost_flag_ != nullptr && lost_flag_->load();
     }
+    [[nodiscard]] bool session_established() const noexcept override
+    {
+        return established_flag_ != nullptr && established_flag_->load();
+    }
     [[nodiscard]] std::optional<std::string> connection_alert() const override
     {
         if (kicked_flag_->load())
@@ -72,4 +81,5 @@ public:
 private:
     std::atomic<bool>* kicked_flag_;
     std::atomic<bool>* lost_flag_;
+    std::atomic<bool>* established_flag_;
 };

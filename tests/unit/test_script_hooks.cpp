@@ -29,11 +29,15 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/packs.h>
 
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "unit_pack_store_guard.h"
@@ -1109,6 +1113,106 @@ TEST_F(ScriptBindingTest, award_score_credits_the_team_and_emits_score_change)
     EXPECT_EQ(250u, scores[0].b);
     EXPECT_EQ(1u, scores[1].a);
     EXPECT_EQ(50u, scores[1].b);
+}
+
+// #503: set_owner refuses a link that would close an owner loop. spawn is
+// owned by gen and a third walker by spawn; gen:set_owner(spawn) would close
+// a two-link loop and gen:set_owner(third) a three-link one: each raises a
+// script error naming both walkers and makes no link. A self-link, nil and an
+// ordinary link stay legal.
+// Break: the refusal's `if (up == w)` -> `if (false)`.
+TEST_F(ScriptBindingTest, set_owner_refuses_a_link_that_would_close_an_owner_loop)
+{
+    run("local third = og.add_ob('living', 0)\n"
+        "spawn:set_owner(gen)\n"
+        "third:set_owner(spawn)\n"
+        "local ok2, e2 = pcall(function()\n"
+        "  gen:set_owner(spawn)\n"
+        "end)\n"
+        "local ok3, e3 = pcall(function()\n"
+        "  gen:set_owner(third)\n"
+        "end)\n"
+        "og.log('two', ok2, e2)\n"
+        "og.log('three', ok3, e3)\n"
+        "og.log('third', og.entity_id(third))\n"
+        "third:set_owner(third)\n"
+        "og.log('self', og.entity_id(third:owner()))\n"
+        "third:set_owner(nil)\n"
+        "og.log('nil', third:owner() == nil)\n"
+        "third:set_owner(spawn)\n"
+        "og.log('legal', og.entity_id(third:owner()))\n");
+    ASSERT_EQ(6u, vm_log().size());
+    const std::string gen_id = std::to_string(generator->entity_id());
+    const std::string spawn_id = std::to_string(spawn->entity_id());
+    const std::string third_line = vm_log()[2];
+    ASSERT_EQ(0u, third_line.rfind("third\t", 0)) << third_line;
+    const std::string third_id = third_line.substr(6);
+
+    EXPECT_EQ(0u, vm_log()[0].rfind("two\tfalse\t", 0)) << vm_log()[0];
+    EXPECT_NE(std::string::npos,
+              vm_log()[0].find("set_owner: walker " + gen_id + " is on walker " + spawn_id +
+                               "'s owner chain, so the link would close an owner loop"))
+        << vm_log()[0];
+    EXPECT_EQ(0u, vm_log()[1].rfind("three\tfalse\t", 0)) << vm_log()[1];
+    EXPECT_NE(std::string::npos,
+              vm_log()[1].find("set_owner: walker " + gen_id + " is on walker " + third_id +
+                               "'s owner chain, so the link would close an owner loop"))
+        << vm_log()[1];
+    EXPECT_EQ("self\t" + third_id, vm_log()[3]) << "a self-link stays legal";
+    EXPECT_EQ("nil\ttrue", vm_log()[4]);
+    EXPECT_EQ("legal\t" + spawn_id, vm_log()[5]);
+
+    EXPECT_EQ(nullptr, generator->owner()) << "no refused link was made";
+    EXPECT_EQ(generator, spawn->owner());
+}
+
+// #503: before set_owner walks up the new owner's chain it cuts a loop that
+// is already there (a snapshot can bring one in), so the walk ends. gen owns
+// spawn and spawn owns gen, built here as a snapshot would leave them, and a
+// third walker takes gen as its owner from Lua: the link is made, spawn's
+// link back to gen, the one that closes the loop, is cut, gen keeps its own,
+// and one log line names spawn and gen.
+// Without the cut the walk never ends, so the call runs on a worker thread
+// under a ten-second ceiling. If it is still running then, the test cuts the
+// loop itself so the walk ends and the test reports instead of hanging.
+// Break: in m_set_owner, delete `owner->cut_owner_loop();`.
+TEST_F(ScriptBindingTest, set_owner_cuts_a_loop_above_the_new_owner_and_makes_the_link)
+{
+    walker* const third = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, third);
+    generator->set_owner(spawn);
+    spawn->set_owner(generator);
+    const std::string body =
+        "og.find_by_id(" + std::to_string(third->entity_id()) + "):set_owner(gen)\n";
+
+    testing::internal::CaptureStderr();
+    std::promise<void> done;
+    std::future<void> finished = done.get_future();
+    GameplayContext* const context_here = current_game;  // thread_local: the worker sets its own
+    std::thread worker([&] {
+        current_game = context_here;
+        run(body);
+        done.set_value();
+    });
+    const bool ended = finished.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+    if (!ended)
+        spawn->set_owner(nullptr);  // the cut the call did not make, so the worker's walk ends
+    worker.join();
+    const std::string said = testing::internal::GetCapturedStderr();
+
+    EXPECT_TRUE(ended) << "set_owner's walk up gen's chain never ended: the loop above it was not cut";
+    EXPECT_EQ(generator, third->owner()) << "the link is made";
+    EXPECT_EQ(nullptr, spawn->owner()) << "spawn's link back to gen closes the loop and is cut";
+    EXPECT_EQ(spawn, generator->owner()) << "gen's own link is kept";
+    std::size_t lines = 0;
+    for (std::size_t at = said.find("closed an owner loop"); at != std::string::npos;
+         at = said.find("closed an owner loop", at + 1))
+        ++lines;
+    EXPECT_EQ(1u, lines) << said;
+    EXPECT_NE(std::string::npos,
+              said.find("walker " + std::to_string(spawn->entity_id()) + " to walker " +
+                        std::to_string(generator->entity_id())))
+        << said;
 }
 
 TEST_F(ScriptBindingTest, exit_flow_bindings_read_and_write_progression)

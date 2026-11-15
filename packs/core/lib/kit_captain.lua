@@ -4,6 +4,7 @@ local C = og.C
 local G = og.use("gates")
 local lc = og.use("living_common")
 local orc = og.use("orc_specials")
+local gf = og.use("gameplay_fixes")
 
 local FX_HOOK_BLADE = assert(og.family_id("fx", "core:hook_blade"))
 local WEAPON_WAR_BANNER = assert(og.family_id("weapon", "core:war_banner"))
@@ -192,13 +193,13 @@ local function hook_blade(self)
   local t = og.tuning(self)
   -- og.summon_configured applies these keys in its own fixed order:
   -- ani_type, lifetime, hp_add, max_hp_from_hp, damage_add
-  local blade = og.summon_configured(self, "fx", FX_HOOK_BLADE, {
+  local blade = gf.rides(og.summon_configured(self, "fx", FX_HOOK_BLADE, {
     ani_type = 1,
     lifetime = t.hook_ticks,
     hp_add = t.hook_hp,
     max_hp_from_hp = true,
     damage_add = self:damage(),
-  })
+  }))
   -- plumbing: summon_configured nil (world full): 'COULD NOT MAKE A BLADE'
   if not blade then
     return false, "COULD NOT MAKE A BLADE"

@@ -223,7 +223,7 @@ public:
 
     std::string get_name() const;
     std::string get_class_name() const;
-    char get_family() const;
+    std::uint8_t get_family() const;
     int get_level() const;
     bool gained_level() const;
     bool lost_level() const;
@@ -259,9 +259,9 @@ std::string TroopResult::get_name() const
     return std::string();
 }
 
-char TroopResult::get_family() const
+std::uint8_t TroopResult::get_family() const
 {
-    char family = FAMILY_SOLDIER;
+    std::uint8_t family = FAMILY_SOLDIER;
     if(before != nullptr)
         family = before->family;
     if(after != nullptr)

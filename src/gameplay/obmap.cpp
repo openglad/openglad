@@ -179,70 +179,16 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
     // legitimate gameplay/test loops into O(N^2) behavior.
     // Get the list of positions that the walker occupies
     auto e = walker_to_pos.find(ob);
-    // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's current bbox cells
-    //   (skipped at negative coords), returns whether anything was removed; asserted by
-    //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
+    // rule: #504: a removal answers from walker_to_pos alone, as the old game's does: a walker it
+    //   does not know is a miss (0) and nothing changes, a pile entry filed behind its back
+    //   included. The pointer is a key and is never read, since a caller may hold a freed one; in
+    //   play the piles and walker_to_pos always agree, so such a walker is in no pile.
+    // tests: SemWorld.removing_a_walker_the_index_does_not_know_changes_nothing
+    // tests: SemWorld.removing_a_freed_walker_only_compares_its_pointer
+    // tests: LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
+    // tests: LivingCombat.obmap_round10_add_remove_move_and_fallback_paths
     if (e == walker_to_pos.end())
-    {
-        // Bookkeeping mismatch: attempt a bounded removal based on the
-        // walker's current bounding box. This avoids global scans while still
-        // preventing stale pointers in pos_to_walker (ASan/UAF).
-        // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's current bbox
-        //   cells (skipped at negative coords), returns whether anything was removed; asserted by
-        //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-        if (ob->xpos() < 0 || ob->ypos() < 0)
-            return 0;
-
-        short numx, startnumx, endnumx;
-        short numy, startnumy, endnumy;
-        const short fo = floor_numx_offset(ob);
-        startnumx = static_cast<short>(hash(ob->xpos()) + fo);
-        endnumx = static_cast<short>(hash(static_cast<short>(ob->xpos() + ob->sizex())) + fo);
-        startnumy = hash(ob->ypos());
-        endnumy = hash(static_cast<short>(ob->ypos() + ob->sizey()));
-
-        bool removed_any = false;
-        // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's current bbox
-        //   cells (skipped at negative coords), returns whether anything was removed; asserted by
-        //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-        for (numx = startnumx; numx <= endnumx; numx++)
-        {
-            // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's current
-            //   bbox cells (skipped at negative coords), returns whether anything was removed;
-            //   asserted by LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-            for (numy = startnumy; numy <= endnumy; numy++)
-            {
-                auto g = pos_to_walker.find(std::make_pair(numx, numy));
-                // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's
-                //   current bbox cells (skipped at negative coords), returns whether anything was
-                //   removed; asserted by
-                //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-                if (g == pos_to_walker.end())
-                    continue;
-                const size_t before = g->second.size();
-                g->second.remove(ob);
-                // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's
-                //   current bbox cells (skipped at negative coords), returns whether anything was
-                //   removed; asserted by
-                //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-                if (g->second.size() != before)
-                    removed_any = true;
-                // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's
-                //   current bbox cells (skipped at negative coords), returns whether anything was
-                //   removed; asserted by
-                //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-                if (g->second.empty())
-                {
-                    cell_index_.erase(pack_cell(numx, numy));
-                    pos_to_walker.erase(g);
-                }
-            }
-        }
-        // plumbing: bookkeeping-mismatch fallback: bounded removal from the walker's current bbox
-        //   cells (skipped at negative coords), returns whether anything was removed; asserted by
-        //   LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
-        return removed_any ? 1 : 0;
-    }
+        return 0;
 
     // For each occupied cell, remove all occurrences (defensive against
     // accidental duplicates) and drop empty piles.
@@ -446,11 +392,10 @@ void obmap::forget_untracked(short x, short y, int floor, const GameWorld& world
 	for (walker* w : gone)
 	{
 		// rule: #427: a forgotten walker walker_to_pos knows leaves every pile it is filed under and
-		//   walker_to_pos (remove()'s fast path, which uses the pointer only as a key); one it
-		//   does not know leaves this pile alone (remove()'s fallback would read its position).
+		//   walker_to_pos (remove(), which uses the pointer only as a key); one it does not know
+		//   is remove()'s miss and leaves only this pile (below).
 		// tests: SemWorld.a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps
-		if (walker_to_pos.find(w) != walker_to_pos.end())
-			(void)remove(w);
+		(void)remove(w);
 		auto here = pos_to_walker.find(cell);
 		// plumbing: remove() may have dropped this pile, or left w in it (filed elsewhere)
 		if (here != pos_to_walker.end())
@@ -520,9 +465,13 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             targetorder = w->query_order();
             
             // Let our own team's weapons pass over us
-            // rule: A weapon and anything friendly to it (same team on the owner chain: its
-            //   thrower, allies, allied weapons) pass through each other: you never block or are
-            //   blocked by your own side's projectiles.
+            // rule: A weapon and anything friendly to it (walker::is_friendly: with Gameplay Fixes AZ
+            //   the same colour, a ring or a returning knife's probe fighting for the walker it rides;
+            //   classic, one team at the heads of both owner chains: its thrower, allies, allied
+            //   weapons) pass through each other: you never block or are blocked by your own side's
+            //   projectiles.
+            // tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
+            // tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
             // tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))

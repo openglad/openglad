@@ -526,7 +526,8 @@ public:
     std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                           std::int32_t range, std::int32_t* howmany, walker* ob);
     // Live hostile weapons in range; normal projectiles use weaplist, and
-    // allegiance follows the owner chain.
+    // allegiance is walker::is_friendly's (each weapon's own colour with Gameplay
+    // Fixes AZ, a rider's its walker's; the owner chain classic).
     std::list<walker*> find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany, walker* ob);
     // Other live friendly Living actors in range; excludes the searcher.

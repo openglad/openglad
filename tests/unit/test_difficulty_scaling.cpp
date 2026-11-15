@@ -12,6 +12,12 @@
  * walker with no player character took the percent (A12a) and, from #473,
  * its shots too; both are reverted.
  *
+ * A foe's summon that takes its caster's team only after it is scaled (the
+ * cleric's RAISE GHOST, the archmage's elemental and phantom) is still on
+ * team 0 then and keeps 100% with the Gameplay Fixes setting off, as in the
+ * old game; with it on it takes the team first and the percent with it
+ * (#495, fix AX).
+ *
  * A12b: generator spawns received set_difficulty TWICE (create_weapon at the
  * generator's level, then fire()'s generator branch at the rolled level) —
  * legacy-original 2002 behavior that compounded two additive hp/regen boosts
@@ -184,6 +190,7 @@ struct Raised
 {
     Body body;
     int team = -1;
+    int level = -1;
     bool owned_by_the_cleric = false;
     bool carries_a_character = true;
 };
@@ -279,6 +286,7 @@ void raise_once(short fixes, short percent, unsigned char team, bool hero, int s
     ASSERT_EQ(1u, risen.size()) << "slot " << slot << ": exactly one walker rises";
     out->body = body_of(risen[0]);
     out->team = static_cast<int>(risen[0]->team_num());
+    out->level = static_cast<int>(risen[0]->stats()->level());
     out->owned_by_the_cleric = risen[0]->owner() == cleric;
     out->carries_a_character = risen[0]->myguy != nullptr;
     EXPECT_EQ(0u, guard.count()) << guard.message();
@@ -291,9 +299,8 @@ void raise_once(short fixes, short percent, unsigned char team, bool hero, int s
 // player's cleric raises on Hard and on Easy have the hit points, magic and
 // damage of the same raise at 100%, bit for bit. The rule reads only the
 // summon's team (0, its caster's), never its caster's character. A team-1
-// cleric's skeleton takes the percent: the control. (A foe cleric's ghost
-// gets its team only after it is scaled, so it is on team 0 then and keeps
-// 100% in both games; that is not pinned here.)
+// cleric's skeleton takes the percent: the control. (A foe cleric's ghost:
+// see a_foes_raised_ghost_takes_the_difficulty_only_with_the_setting_on.)
 TEST(DifficultyScaling, a_players_raised_skeleton_and_ghost_never_scale)
 {
     for (const short fixes : {short{0}, short{1}})
@@ -341,6 +348,257 @@ TEST(DifficultyScaling, a_players_raised_skeleton_and_ghost_never_scale)
                 << "control: a team-1 cleric's skeleton takes " << percent << "%, fixes " << fixes;
             EXPECT_FLOAT_EQ(k * foe_ref.body.damage, foe.body.damage)
                 << "control: a team-1 cleric's skeleton takes " << percent << "%, fixes " << fixes;
+        }
+    }
+}
+
+namespace {
+
+// A foe's summon at `percent` (`got`) against the same summon at 100%
+// (`ref`): with the Gameplay Fixes setting on it takes the percent as its
+// caster does (on Hard twice, on Easy half); with it off it keeps 100%, bit
+// for bit, as in the old game. `with_hp` false: a phantom, whose hit points
+// are set after the scaling, so only its magic and damage are compared.
+void expect_scaled_only_with_the_setting_on(short fixes, short percent, const Body& ref, const Body& got,
+                                            const char* what, bool with_hp)
+{
+    const float k = static_cast<float>(percent) / 100.0f;
+    if (fixes != 0)
+    {
+        if (with_hp)
+        {
+            EXPECT_FLOAT_EQ(k * ref.max_hp, got.max_hp)
+                << what << " takes " << percent << "% hit points with the setting on (#495)";
+        }
+        EXPECT_FLOAT_EQ(k * ref.max_mp, got.max_mp)
+            << what << " takes " << percent << "% magic with the setting on (#495)";
+        EXPECT_FLOAT_EQ(k * ref.damage, got.damage)
+            << what << " takes " << percent << "% damage with the setting on (#495)";
+        return;
+    }
+    if (with_hp)
+    {
+        EXPECT_EQ(ref.max_hp, got.max_hp)
+            << what << " keeps 100% hit points at " << percent << "% with the setting off, as in the old game";
+    }
+    EXPECT_EQ(ref.max_mp, got.max_mp)
+        << what << " keeps 100% magic at " << percent << "% with the setting off, as in the old game";
+    EXPECT_EQ(ref.damage, got.damage)
+        << what << " keeps 100% damage at " << percent << "% with the setting off, as in the old game";
+}
+
+// What an archmage's SUMMON left beside it.
+struct Summoned
+{
+    Body body;
+    int team = -1;
+    int level = -1;
+    int family = -1;
+    bool owned_by_the_archmage = false;
+};
+
+// A level-30 archmage on `team` (`hero`: carrying a player character with
+// 200 intelligence, past the true summon's 150) at (80,80) on an open grass
+// field casts SUMMON (slot 3, priced 0) through the real walker::special()
+// and the shipped core pack, at `percent`. The world's New Specials setting
+// is left off, so slot 3 with Shift has no other price. With Shift
+// (`illusion` false) it calls the fire elemental, level (30+1)/2 = 15, from a
+// 9000 magic pool; without it the phantom, level (30+2)/3 = 10, from 50
+// magic: under 100 magic left after the price the phantom is always an elf
+// and no draw is made.
+void summon_once(short fixes, short percent, unsigned char team, bool hero, bool illusion, Summoned* out)
+{
+    FixedRandom zero(0);
+    ScopedSimRandom scoped(&zero);
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.resize_grid(64, 64);
+    std::fill_n(w.grid.data.get(), static_cast<std::size_t>(w.grid.w) * w.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    w.my_team = 0;
+    w.gameplay_fixes = fixes;
+    w.allied_mode = 0;
+    w.enemy_freeze = 0;
+    w.rng_.state_ = 12345u;
+    w.difficulty = percent;
+
+    walker* mage = w.add_ob(Order::Living, FAMILY_ARCHMAGE);
+    ASSERT_NE(nullptr, mage);
+    mage->set_team_num(team);
+    mage->set_real_team_num(255);
+    mage->setxy(static_cast<short>(81), static_cast<short>(80));
+    mage->setxy(static_cast<short>(80), static_cast<short>(80));
+    mage->stats()->set_level(30);
+    mage->stats()->set_special_cost(3, 0);
+    mage->stats()->set_max_magicpoints(9000.0f);
+    mage->stats()->set_magicpoints(illusion ? 50.0f : 9000.0f);
+    mage->set_busy(0);
+    mage->set_user(-1);
+    mage->set_current_special(static_cast<char>(3));
+    mage->set_shifter_down(static_cast<short>(illusion ? 0 : 1));
+    if (hero)
+    {
+        auto g = std::make_unique<guy>(FAMILY_ARCHMAGE);
+        g->teamnum = team;
+        g->intelligence = 200;
+        mage->set_owned_myguy(std::move(g));
+    }
+
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    ASSERT_TRUE(mage->special(&why, &reason)) << (illusion ? "the phantom: " : "the elemental: ") << reason;
+    std::vector<walker*> summoned;
+    for (const GameWorld::EntityList* list : {&w.oblist, &w.fxlist, &w.weaplist})
+        for (const auto& ob : *list)
+            if (ob != nullptr && ob->dead() == 0 && ob->query_order() == Order::Living && ob->owner() == mage)
+                summoned.push_back(ob.get());
+    ASSERT_EQ(1u, summoned.size()) << (illusion ? "the phantom" : "the elemental") << ": exactly one summon stands";
+    out->body = body_of(summoned[0]);
+    out->team = static_cast<int>(summoned[0]->team_num());
+    out->level = static_cast<int>(summoned[0]->stats()->level());
+    out->family = static_cast<int>(static_cast<unsigned char>(summoned[0]->family()));
+    out->owned_by_the_archmage = summoned[0]->owner() == mage;
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+}  // namespace
+
+// #495, fix AX: a foe cleric's RAISE GHOST ghost is scaled before it takes
+// the cleric's team. With the Gameplay Fixes setting off it is still on team
+// 0 then, so on Hard and on Easy it has the hit points, magic and damage of
+// the same raise at 100%, bit for bit, as in the old game. With the setting
+// on it takes the team first and the percent with it: on Hard twice the
+// raise at 100%, on Easy half. Both raises roll the same level (asserted).
+TEST(DifficultyScaling, a_foes_raised_ghost_takes_the_difficulty_only_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        Raised ref;
+        ASSERT_NO_FATAL_FAILURE(raise_once(fixes, 100, 1, false, 3, &ref));
+        ASSERT_EQ(1, ref.team) << "staging: the ghost is on its caster's team";
+        ASSERT_TRUE(ref.owned_by_the_cleric) << "staging: the cleric's summon";
+        ASSERT_FALSE(ref.carries_a_character) << "staging: a summon carries no character";
+        ASSERT_GT(ref.body.max_hp, 0.0f) << "staging: hit points to scale";
+        ASSERT_GT(ref.body.max_mp, 0.0f) << "staging: magic to scale";
+        ASSERT_GT(ref.body.damage, 0.0f) << "staging: damage to scale";
+        for (const short percent : {short{200}, short{50}})
+        {
+            Raised got;
+            ASSERT_NO_FATAL_FAILURE(raise_once(fixes, percent, 1, false, 3, &got));
+            ASSERT_EQ(1, got.team) << percent << "%, fixes " << fixes;
+            ASSERT_TRUE(got.owned_by_the_cleric) << percent << "%, fixes " << fixes;
+            ASSERT_EQ(ref.level, got.level) << "staging: the same risen level, " << percent << "%, fixes " << fixes;
+            expect_scaled_only_with_the_setting_on(fixes, percent, ref.body, got.body, "a foe's raised ghost", true);
+        }
+    }
+}
+
+// #495, fix AX: a foe archmage's fire elemental (SUMMON with Shift) is scaled
+// before it takes the archmage's team: with the setting off it keeps 100% on
+// Hard and on Easy, as in the old game; with it on it takes the percent.
+TEST(DifficultyScaling, a_foes_elemental_takes_the_difficulty_only_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        Summoned ref;
+        ASSERT_NO_FATAL_FAILURE(summon_once(fixes, 100, 1, false, false, &ref));
+        ASSERT_EQ(FAMILY_FIREELEMENTAL, ref.family) << "staging: the true summon";
+        ASSERT_EQ(1, ref.team) << "staging: the elemental is on its caster's team";
+        ASSERT_TRUE(ref.owned_by_the_archmage) << "staging: the archmage's summon";
+        ASSERT_GT(ref.body.max_hp, 0.0f) << "staging: hit points to scale";
+        ASSERT_GT(ref.body.max_mp, 0.0f) << "staging: magic to scale";
+        ASSERT_GT(ref.body.damage, 0.0f) << "staging: damage to scale";
+        for (const short percent : {short{200}, short{50}})
+        {
+            Summoned got;
+            ASSERT_NO_FATAL_FAILURE(summon_once(fixes, percent, 1, false, false, &got));
+            ASSERT_EQ(FAMILY_FIREELEMENTAL, got.family) << percent << "%, fixes " << fixes;
+            ASSERT_EQ(1, got.team) << percent << "%, fixes " << fixes;
+            ASSERT_TRUE(got.owned_by_the_archmage) << percent << "%, fixes " << fixes;
+            ASSERT_EQ(ref.level, got.level) << "staging: the same level, " << percent << "%, fixes " << fixes;
+            expect_scaled_only_with_the_setting_on(fixes, percent, ref.body, got.body, "a foe's elemental", true);
+        }
+    }
+}
+
+// #495, fix AX: a foe archmage's phantom (SUMMON without Shift) is scaled
+// before it takes the archmage's team: with the setting off its magic and
+// damage keep 100% on Hard and on Easy, as in the old game; with it on they
+// take the percent. Its hit points are set to 1 after the scaling on every
+// run, so they are only staged here.
+TEST(DifficultyScaling, a_foes_phantom_takes_the_difficulty_only_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        Summoned ref;
+        ASSERT_NO_FATAL_FAILURE(summon_once(fixes, 100, 1, false, true, &ref));
+        ASSERT_EQ(FAMILY_ELF, ref.family) << "staging: the phantom of the cheapest tier";
+        ASSERT_EQ(1, ref.team) << "staging: the phantom is on its caster's team";
+        ASSERT_TRUE(ref.owned_by_the_archmage) << "staging: the archmage's summon";
+        ASSERT_EQ(1.0f, ref.body.max_hp) << "staging: the phantom's one hit point";
+        ASSERT_GT(ref.body.max_mp, 0.0f) << "staging: magic to scale";
+        ASSERT_GT(ref.body.damage, 0.0f) << "staging: damage to scale";
+        for (const short percent : {short{200}, short{50}})
+        {
+            Summoned got;
+            ASSERT_NO_FATAL_FAILURE(summon_once(fixes, percent, 1, false, true, &got));
+            ASSERT_EQ(FAMILY_ELF, got.family) << percent << "%, fixes " << fixes;
+            ASSERT_EQ(1, got.team) << percent << "%, fixes " << fixes;
+            ASSERT_TRUE(got.owned_by_the_archmage) << percent << "%, fixes " << fixes;
+            ASSERT_EQ(ref.level, got.level) << "staging: the same level, " << percent << "%, fixes " << fixes;
+            ASSERT_EQ(1.0f, got.body.max_hp) << "staging: the phantom's one hit point, " << percent << "%";
+            expect_scaled_only_with_the_setting_on(fixes, percent, ref.body, got.body, "a foe's phantom", false);
+        }
+    }
+}
+
+// #493 with #495: a player's archmage's elemental and phantom are on team 0,
+// the player's side, which the difficulty never scales, on both settings: on
+// Hard and on Easy each has the hit points (the elemental), magic and damage
+// of the same summon at 100%, bit for bit. The foe tests above are the
+// control that the percent was live.
+TEST(DifficultyScaling, a_players_elemental_and_phantom_never_scale)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        for (const bool illusion : {false, true})
+        {
+            const char* what = illusion ? "a player's phantom" : "a player's elemental";
+            Summoned ref;
+            ASSERT_NO_FATAL_FAILURE(summon_once(fixes, 100, 0, true, illusion, &ref));
+            ASSERT_EQ(illusion ? FAMILY_ELF : FAMILY_FIREELEMENTAL, ref.family) << "staging: " << what;
+            ASSERT_EQ(0, ref.team) << "staging: the summon is on the player's team";
+            ASSERT_TRUE(ref.owned_by_the_archmage) << "staging: the archmage's summon";
+            if (illusion)
+            {
+                ASSERT_EQ(1.0f, ref.body.max_hp) << "staging: the phantom's one hit point";
+            }
+            else
+            {
+                ASSERT_GT(ref.body.max_hp, 0.0f) << "staging: hit points to scale";
+            }
+            ASSERT_GT(ref.body.max_mp, 0.0f) << "staging: magic to scale";
+            ASSERT_GT(ref.body.damage, 0.0f) << "staging: damage to scale";
+            for (const short percent : {short{200}, short{50}})
+            {
+                Summoned got;
+                ASSERT_NO_FATAL_FAILURE(summon_once(fixes, percent, 0, true, illusion, &got));
+                ASSERT_EQ(ref.family, got.family) << what << ", " << percent << "%, fixes " << fixes;
+                ASSERT_EQ(0, got.team) << what << ", " << percent << "%, fixes " << fixes;
+                ASSERT_TRUE(got.owned_by_the_archmage) << what << ", " << percent << "%, fixes " << fixes;
+                ASSERT_EQ(ref.level, got.level) << "staging: the same level, " << what << ", " << percent << "%";
+                if (!illusion)
+                {
+                    EXPECT_EQ(ref.body.max_hp, got.body.max_hp)
+                        << what << " never takes the difficulty (#493), " << percent << "%, fixes " << fixes;
+                }
+                EXPECT_EQ(ref.body.max_mp, got.body.max_mp)
+                    << what << " never takes the difficulty (#493), " << percent << "%, fixes " << fixes;
+                EXPECT_EQ(ref.body.damage, got.body.damage)
+                    << what << " never takes the difficulty (#493), " << percent << "%, fixes " << fixes;
+            }
         }
     }
 }
