@@ -3378,15 +3378,37 @@ TEST(CursesNetworkProcess, dedicated_server_admits_an_unseated_spectator_and_ret
         })) << server.output();
 
     // The watcher connects AFTER the host joined and never sends a join.
+    //
+    // Its own side of the link is up as soon as the handshake answer
+    // arrives. The server knows the peer only once its loop has taken the
+    // connection off its queue, and the host's start travels on another
+    // connection, so it can overtake that. A start that does launches the
+    // match without the watcher, and a peer that is not in the lobby at the
+    // start is never admitted as a spectator (#559; seen on the ASan lane: the
+    // server ran and retimed, the watcher was never seeded). The lobby greets
+    // every peer it takes with the lobby state (LobbyServer::connect_client),
+    // so the host starts only after the watcher has that greeting. One wait
+    // reads both the link and the greeting: the greeting can arrive in the
+    // very poll that shows the link up, and a poll hands each message over
+    // only once.
     og::sim::WebSocketClientTransport watcher(
         std::format("ws://127.0.0.1:{}", *port), client_options);
     watcher.accept_connections();
+    bool watcher_greeted = false;
     ASSERT_TRUE(poll_external_client_until(
         watcher,
-        [&watcher](const auto&) {
-            return watcher.connected_peers() ==
-                std::vector<og::sim::PeerId>{1u};
-        })) << server.output();
+        [&watcher, &watcher_greeted](const auto& messages) {
+            for (const og::sim::TypedReceivedMessage& message : messages) {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::LobbyState &&
+                    message.lobby_state)
+                    watcher_greeted = true;
+            }
+            return watcher_greeted &&
+                watcher.connected_peers() ==
+                    std::vector<og::sim::PeerId>{1u};
+        })) << "the server greets a peer it has taken with the lobby state\n"
+            << server.output();
 
     auto start = std::make_shared<og::sim::LobbyMessage>();
     start->payload = og::sim::LobbyStartGameMessage{
