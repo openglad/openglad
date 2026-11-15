@@ -517,6 +517,10 @@ The core pack's helpers for these fixes live in one lib module,
 | `gf.charmable(foe, fixes)` | `true` when a charm can take `foe`: never charmed (`real_team_num() == 255`) and living; when `fixes` is true, also not a hero a player drives (`foe:seat_driven()`). `fixes` is the caller's one read of the setting. |
 | `gf.nearest_charmable(self, foes, max_level)` | The nearest charmable foe in the list `foes` by `distance_to_ob` (a tie goes to the first in the list), or `nil`; `max_level` `nil` means any level, otherwise only a foe at or below it. Draws nothing. |
 | `gf.scale_summon(summon, caster)` | Scales `summon` for the difficulty at its level (`summon:set_difficulty(summon.level)`); with the setting on it first gives `summon` the team of `caster`, so a foe's summon takes the difficulty percent. The caller writes the team afterwards as before. Draws nothing. |
+| `gf.made_by(made, owner [, from])` | Gives `made` the owner `owner` and, with the setting on, the team of `from` (`owner`'s when `from` is `nil`): a thing a walker makes with `og.add_ob` keeps that team whatever happens to its maker (fix AZ). Draws nothing. |
+| `gf.take_team(made, from)` | With the setting on, gives `made` the team of `from` (a child of a thing takes its parent's, never its owner's current one). Draws nothing. |
+| `gf.rides(thing)` | With the setting on, marks a weapon or effect that rides the walker who owns it (`KIT_RIDER`), so the two are never foes; answers `thing`, so it wraps the call that makes it (`nil` stays `nil`). |
+| `gf.foes_round(effect, range)` | The foes round `effect`'s owner within `range`, and how many: with the setting off the owner's foes (`og.find_foes_in_range("ob", range, owner)`), with it on the livings and generators there that are not on `effect`'s side (the same call with `effect` as its side). |
 
 ### Duplicate registration: last one wins
 
@@ -652,6 +656,11 @@ A weapon that stands as scenery sets `ACT_SIT` (pair it with
 yet — outside the obmap, outside snapshot capture, and skipped by every
 census; waking it is the engine's decision)
 `is_friendly(other) → bool`
+`sides_friendly(other) → bool` (`is_friendly` without its dead test, so a
+walker that acts from its own death, a blast going off, can ask it; with
+the Gameplay Fixes setting on it answers whether the two fight for one
+colour, and a thing marked `KIT_RIDER` and the walker who owns it always
+do, fix AZ)
 `seat_driven() → bool` (read-only: a seat drives this body, by a user tag
 or the player-control act; `og::sim::seat_driven`, the one rule POSSESS
 and the Gameplay Fixes charm casts refuse a hero by).
@@ -683,7 +692,7 @@ physical Shift key (see "Abilities on keys" above).
 
 | Method | Result |
 |---|---|
-| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one), `KIT_NOVA` 32 (on an explosion: a SUPERNOVA blast, which spares its own team half the damage by team colour). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
+| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one), `KIT_NOVA` 32 (on an explosion: a SUPERNOVA blast, which spares its own team half the damage by team colour), `KIT_RIDER` 64 (on a weapon or effect: with the Gameplay Fixes setting on it rides the walker who owns it and the two are never foes, whatever colours they wear; the core pack sets it with `gf.rides` where it makes a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire or a returning knife's probe, and the F2 cheat on its shield; a pack class's guard that rides its owner must be marked too, or with the setting on it turns on its owner once he is charmed). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
 | `set_kit_state(n)` | Writes the byte. A change of the HIDDEN bit goes through `set_hidden`, so it may be turned away (a possessed body never hides); the other bits land as written. |
 | `hidden() → bool` | The HIDDEN bit: the walker does not act, is out of the collision table, is skipped by every finder and target scan, cannot be hit, and is drawn only to its own team. It stays in snapshots. |
 | `set_hidden(v)` | `v` is a boolean or `0`/`1`. Hides or reveals (a revealed walker rejoins the collision table unless it is ignored or dormant). Refused for a walker whose possession partner is hidden. |
@@ -737,10 +746,12 @@ snapshot) is cut where it closes the first time a climb meets it, so
 `chain_head()` always answers.
 
 `chain_head()` (read-only) answers the head of this walker's owner chain by
-the game's one climb (Gameplay Fixes AP, #429), the head a blow scores for:
-up through every owner, a dead one included, stopping at a self-loop and,
-with Gameplay Fixes on, at a charmed walker. A walker with no owner is its
-own head, so the answer is never `nil`.
+the game's one climb (Gameplay Fixes AP, #429), the person behind a blow (the
+score gate's hero, experience and credit): up through every owner, a dead one
+included, stopping at a self-loop and, with Gameplay Fixes on, at a charmed
+walker. With the setting on friendliness does not read it: every walker
+fights for the colour it wears (fix AZ). A walker with no owner is its own
+head, so the answer is never `nil`.
 
 ### Actions
 
@@ -856,10 +867,10 @@ which accepts either a guy handle or a walker.
 
 | Function | Result |
 |---|---|
-| `og.add_ob(order, family [, atstart])` | Handle or `nil`. Adds to the ob list (weapons go to the weapon list). Dispatches `on_entity_spawn` for livings and generators. |
+| `og.add_ob(order, family [, atstart])` | Handle or `nil`. Adds to the ob list (weapons go to the weapon list). Dispatches `on_entity_spawn` for livings and generators. The new thing has team 0 (red) and no owner. With the Gameplay Fixes setting on an owner no longer gives a made thing its side (fix AZ): a thing made here and given an owner with `set_owner` but no `team` fights for red, so give it its maker's team (a core-pack script calls `gf.made_by`). |
 | `og.add_fx_ob(order, family)` | Handle or `nil` — fx list. |
 | `og.add_weap_ob(order, family)` | Handle or `nil` — weapon list. |
-| `og.summon(self, order, family)` | Handle or `nil` — spawns at the summoner with `owner` set. |
+| `og.summon(self, order, family)` | Handle or `nil` — spawns at the summoner with `owner` set and the summoner's team; with the Gameplay Fixes setting on that team is its side for good, it does not follow its summoner afterwards (fix AZ). |
 | `og.summon_configured(self, order, family, opts)` | `og.summon` plus the standard configuration cluster (soldier-boomerang shape), applied in this FIXED order: `ani_type` (char narrowing), `lifetime` (int32), `hp_add` (float add onto hitpoints), `max_hp_from_hp` (truthy: copy hp into max hp), `damage_add` (float add onto damage). Absent keys apply nothing; every present key is type-checked and an unknown key is an error BEFORE the summon happens (a typo'd option must not half-configure a live entity). A failed summon answers `nil` exactly like `og.summon`. |
 
 `order` is the same string vocabulary as `og.register_hooks`; `family` is a
@@ -876,7 +887,7 @@ which accepts either a guy handle or a walker.
 | `og.find_foes_in_range(list, range, self [, side])` | Array, count: the live, awake, visible livings and generators within `range` of `self` that are not its friends. With `side` (a walker), those not on `side`'s side, asked by `side:sides_friendly`, which has no dead test, so an effect can search round its owner for its own side, also from its own death (the core pack's `gf.foes_round`, Gameplay Fixes AZ). |
 | `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
 | `og.find_in_range(list, range, self)` | Array, count. |
-| `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |
+| `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`. With the Gameplay Fixes setting off allegiance follows the owner chain; with it on each weapon's own colour decides (fix AZ). |
 | `og.oblist()` | Array of every entity in the ob list, in list order. `og.add_ob` and `og.summon` put every non-weapon here, effects included, so this is the list to scan for a live effect a kit spawned. |
 | `og.fxlist()` | Array of the fx list, in list order: what `og.add_fx_ob` adds (flags, exit pads, balls, stains). |
 | `og.weaplist()` | Array of the weapon list, in list order. |
@@ -1149,9 +1160,9 @@ Rules, each of which is deterministic by construction:
 og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_load         = function(level) ... end,
   on_tick         = function(level, tick) ... end,
-  on_entity_death = function(ent) ... end,
+  on_entity_death = function(ent, killer, killer_team) ... end,
   on_entity_spawn = function(ent) ... end,
-  on_damage       = function(target, attacker, amount) ... end,
+  on_damage       = function(target, attacker, amount, striker) ... end,
   on_mode_init    = function(level) ... end,           -- scripted modes
   on_mode_tick    = function(level, tick) ... end,     -- scripted modes
   on_respawn      = function(ent) ... end,             -- scripted modes
@@ -1168,14 +1179,25 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 - `on_entity_death` fires for **living and generator** deaths. Generators
   dispatch it after their death FX, so the hook observes the same world a
   living-death hook would; a pillar or tower falling is an event, not
-  something to poll for.
+  something to poll for. `killer` and `killer_team` name the last blow's
+  credited walker (the topmost living on the hitter's owner chain) and its
+  team, stamped within 48 ticks of the death; `killer_team` is -1 for an
+  environment death. With the Gameplay Fixes setting on the team is the
+  colour of the thing that struck, also when no living was behind it
+  (`killer` `nil`), so a mode that pays kills should read `killer_team`, not
+  test `killer` for `nil`.
 - `on_entity_spawn` fires only for sim-authored living/generator spawns
   through `add_ob`. Snapshot and replay insertion paths bypass it and stay
   silent.
 - `on_damage` gates each hit before it lands. Return `nil` (or nothing) to
   keep `amount`, a number to replace it (clamped to 0..32767, fraction
   truncated), or `false` to cancel the hit outright. `attacker` is `nil` for
-  environment damage, and only the first return value is read.
+  environment damage, and only the first return value is read. `striker` is
+  the walker the blow comes from: the shot, the blast or the spell effect, or
+  `attacker` itself for a melee blow. With the Gameplay Fixes setting on a
+  thing fights for the colour it wears (fix AZ), so a mode that asks whose
+  blow it was by colour reads `striker`'s team; `attacker`, the owner one hop
+  up, is the person behind it.
 
   **`return 0` is not a cancel.** Zero is a replacement amount: the hit still
   lands for zero damage, the target still retaliates, and the engine still

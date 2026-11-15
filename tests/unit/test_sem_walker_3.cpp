@@ -1637,11 +1637,11 @@ TEST_F(SemWalker3, a_blast_that_kills_its_charmed_thrower_credits_him_no_kill_on
 // to the colour the hitter wears at that payment, after the answer
 // (src/walker.cpp `target->stats->hit_response(this);`, then
 // `m_score[team_num]`), and so does the setting off; with the setting on the
-// blow pays the team its chain head wore as the blow landed. One hitter for
+// blow pays the colour the hitter wore as the blow landed. One hitter for
 // each payment: a hero's wounding blow (the melee arm), a hero's killing blow
 // (the melee arm and the kill) and a summon's blow (the owned hitter's arm,
-// its caster's colour with the setting on). Every hitter is on team 1, the
-// thief on team 2.
+// the summon's own colour with the setting on). Every hitter is on team 1,
+// the thief on team 2.
 // The sim stream answers 3 to every draw: the Shift coin next(2) is 1, the
 // answer's rng(3) is 0 and the charm's resist draw rand(20) is 3 (the thief
 // and the hitter are both level 4, so only a 0 resists). With the setting on
@@ -1703,7 +1703,7 @@ TEST_F(SemWalker3, a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_
             expected[fixes != 0 ? std::size_t{1} : std::size_t{2}] += leg.paid;
             EXPECT_EQ(expected, scores())
                 << (fixes != 0
-                        ? "setting on: team 1, the colour the head wore as the blow landed"
+                        ? "setting on: team 1, the colour the hitter wore as the blow landed"
                         : "setting off: team 2, the colour the hitter wears at each payment");
         }
     }

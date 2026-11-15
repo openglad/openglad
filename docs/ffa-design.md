@@ -230,7 +230,15 @@ living, so a generator's troop would be its own credit, but FFA clears
 generators at init. With the Gameplay Fixes setting on, a charmed walker
 heads its own chain for the charm's length, so a charmed summon's kill is
 credited to the summon in the color it wears. Mutual kills score via the
-stamped team even with a nil killer handle.
+stamped team even with a nil killer handle; with the Gameplay Fixes setting
+on that includes a kill with no living behind it, stamped with the colour of
+the thing that struck (fix AZ). FFA reads only that team, never the killer,
+so one case reads oddly on each setting: a blast that kills its own charmed
+thrower is stamped, with the setting on, with the blast's colour, the
+thrower's old band, while he dies wearing the charmer's, so his old band
+gains a frag for the death of its own fighter; classic, the stamp is the
+colour he dies in, the charmer's band, which loses a frag (the suicide
+shape) for a death its member did not cause.
 
 **Win**: first fighter with frags ≥ limit (ascending color index tiebreak);
 at the deadline, leader by frags, tie → lowest index. Declared via

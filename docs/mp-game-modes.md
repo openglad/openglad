@@ -407,20 +407,28 @@ than the number above and they all play, up to sixteen.
 
 - **Team Deathmatch** (300-305, the six adapted arenas): kills of fighters
   on scoring teams count; wildlife, suicides, and environment deaths score
-  nothing. Everyone respawns.
+  nothing. With the Gameplay Fixes setting on, a kill by a shot or a blast
+  whose maker has died since counts for the colour it wears. Everyone
+  respawns.
 - **Onslaught** (800-803): sprawling generator fields. A lethal hit on a
   generator never destroys it — it flips, full-HP, to the attacker's team
-  and starts pumping that team's fighters (existing troops keep their old
+  (with the Gameplay Fixes setting on, to the colour of the shot, blast or
+  spell that struck it, even when its maker has been charmed or has died
+  since) and starts pumping that team's fighters (existing troops keep their old
   colors and their old loyalty: they fight on for the side they wear and
   they can take the post back). Every troop's kills count for the color it
   wears, a post's own troops and released ones alike: a generator is not a
-  fighter, so its troop is credited with its own kills. A team whose last
+  fighter, so its troop is credited with its own kills. With the setting on
+  a kill by a shot whose maker has died counts for the shot's colour too. A
+  team whose last
   generator flips away has a short grace to take one back — its HUD row
   counts the seconds down — and is eliminated when the clock runs out.
   Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
-  goal for the last-touching team. A ball that reaches water floats onward
+  goal for the last-touching team. With the Gameplay Fixes setting on a shot
+  touches the ball for the colour it wears, whatever became of the one who
+  threw it. A ball that reaches water floats onward
   while steadily slowing, then bogs sharply at the far shore; strike it again
   with a projectile to shoot it loose.
   THE MUDBOWL's two pools make that recovery part of the field. Its automatic

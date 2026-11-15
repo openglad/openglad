@@ -886,7 +886,7 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_tick         = function(level, tick) ... end,
   on_entity_death = function(ent) ... end,
   on_entity_spawn = function(ent) ... end,
-  on_damage       = function(target, attacker, amount) ... end,
+  on_damage       = function(target, attacker, amount, striker) ... end,
 })
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
 ```

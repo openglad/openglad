@@ -511,7 +511,7 @@ shots sailing over a backboard stub into the perimeter and lobs onto scenery.
     `og.clamp(og.div(z_px, T.shadow_band), 0, 3)`; HUD (§8); beacon 0 = shadow,
     beacon 1 = carrier or nil.
 
-The `on_damage` hook (`on_damage(target, attacker, amount)`) runs during the
+The `on_damage` hook (`on_damage(target, attacker, amount, striker)`; the mode does not read `striker`) runs during the
 act phase, strictly before all of the above. It gates on the MODE_ID latch, and
 when `og.entity_id(target) == CARRIER` AND `amount >= T.fumble_min_damage` AND
 `og.world_tick() >= POSSESS_SINCE + T.possession_grace` (D21) writes
@@ -617,7 +617,9 @@ REBOUND/PASS descending rim-plane crossings inside an ACTIVE hoop's `rim_r`
 score **2** for `LAST_TOUCH1 - 1`. Attribution mirrors soccer's
 `stamp_toucher` exactly: every possession gain, throw release and swat restamps
 LAST_TOUCHER/LAST_TOUCH1 and demotes a different outgoing score team into
-LAST_TOUCH2; an unowned-weapon swat clears LAST_TOUCH1 only. The ball entity
+LAST_TOUCH2 (a swat's team is the swatting weapon's owner root's; with the
+Gameplay Fixes setting on, the swatting weapon's own colour, fix AZ, the root
+naming only the toucher); an unowned-weapon swat clears LAST_TOUCH1 only. The ball entity
 wears the toucher's team color (`set_team_num`), neutral after resets.
 
 **Own basket** (crossing team == the hoop's defending team t): beneficiary =
@@ -686,7 +688,8 @@ step — the interference itself is the offense.)
   contest. Convert to REBOUND: horizontal = weapon step direction scaled
   `clamp(trunc(damage) * 2, 4, 12)` px/tick (soccer shot-impulse constants),
   `vz += 512` pop; restamp toucher to the weapon's owner root (unowned → clear
-  LAST_TOUCH1); announce `"BLOCK!"` when the victim state was SHOT. The
+  LAST_TOUCH1; with the Gameplay Fixes setting on the team is the swatting
+  weapon's own colour, fix AZ, the root naming only the toucher); announce `"BLOCK!"` when the victim state was SHOT. The
   swatting weapon is NOT consumed — only the carrier's own throw is. A restamp
   never moves a grace bar: the entity-scoped bar is pinned to GRACE_ENTITY
   (D24), so a blocker who swats during someone else's self-grace window may
@@ -1490,7 +1493,9 @@ sorts after `fx-bshadow.lua`, keeping ids 21/22/23.
    the free ball, riding the turnover cycle, or keeping the ball carried
    cannot stall the reset. No deadlock, no babysit.
 8. **Block-swat attribution** — restamp to the swatting weapon's owner-chain
-   root's team; unowned/generator weapons clear LAST_TOUCH1 only; an
+   root's team (with the Gameplay Fixes setting on, the swatting weapon's own
+   colour, fix AZ, the root naming only the toucher); unowned/generator
+   weapons clear LAST_TOUCH1 only; an
    unattributed crossing scores nothing.
 9. **Fumble during shot windup** — no windup exists; within a tick, damage
    (act phase → FUMBLE_TICK → step 4) strictly precedes consumption (step 6).

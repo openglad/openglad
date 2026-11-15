@@ -370,7 +370,9 @@ ships them in an embedded pack that mounts and unmounts with it.
 - `og.set_entity_hooks(ent, { on_death = fn })` attaches a one-shot
   per-entity hook (consumed when it fires); register from `on_load` or
   `on_entity_spawn` after selecting the entity.
-- `on_damage(target, attacker, amount)` gates each hit: `nil` keeps the
+- `on_damage(target, attacker, amount, striker)` gates each hit (`striker` is
+  the walker the blow comes from: the shot, the blast, or `attacker` itself in
+  melee): `nil` keeps the
   amount, a number replaces it, `false` cancels. **`return 0` is not a
   cancel** — it is a zero-damage hit, and the engine still runs its `hp <= 0`
   death check afterwards, so 0 against a target already at 0 hp kills it.
