@@ -618,8 +618,8 @@ score **2** for `LAST_TOUCH1 - 1`. Attribution mirrors soccer's
 `stamp_toucher` exactly: every possession gain, throw release and swat restamps
 LAST_TOUCHER/LAST_TOUCH1 and demotes a different outgoing score team into
 LAST_TOUCH2 (a swat's team is the swatting weapon's owner root's; with the
-Gameplay Fixes setting on, the swatting weapon's own colour, fix AZ, the root
-naming only the toucher); an unowned-weapon swat clears LAST_TOUCH1 only. The ball entity
+Gameplay Fixes setting on, the colour the swatting weapon fights for, fix AZ,
+the root naming only the toucher); an unowned-weapon swat clears LAST_TOUCH1 only. The ball entity
 wears the toucher's team color (`set_team_num`), neutral after resets.
 
 **Own basket** (crossing team == the hoop's defending team t): beneficiary =
@@ -688,8 +688,8 @@ step — the interference itself is the offense.)
   contest. Convert to REBOUND: horizontal = weapon step direction scaled
   `clamp(trunc(damage) * 2, 4, 12)` px/tick (soccer shot-impulse constants),
   `vz += 512` pop; restamp toucher to the weapon's owner root (unowned → clear
-  LAST_TOUCH1; with the Gameplay Fixes setting on the team is the swatting
-  weapon's own colour, fix AZ, the root naming only the toucher); announce `"BLOCK!"` when the victim state was SHOT. The
+  LAST_TOUCH1; with the Gameplay Fixes setting on the team is the colour the
+  swatting weapon fights for, fix AZ, the root naming only the toucher); announce `"BLOCK!"` when the victim state was SHOT. The
   swatting weapon is NOT consumed — only the carrier's own throw is. A restamp
   never moves a grace bar: the entity-scoped bar is pinned to GRACE_ENTITY
   (D24), so a blocker who swats during someone else's self-grace window may

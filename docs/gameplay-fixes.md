@@ -109,7 +109,7 @@ usual pause.
 | AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 | AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
-| AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. A thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife, the F2 cheat's shield) never turns on him. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
+| AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. The one exception is a thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife on its way home, the F2 cheat's shield): it goes with him and fights for whatever side he is on now. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
 | BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act. A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -562,12 +562,14 @@ Fixes X to BB, in play:
   side), which team its blow's score pays and which team its kill counts
   for all read that colour. A summon stays on the team it was summoned for
   whatever happens to its caster, and a tent's troop on the team the tent
-  had when it made it. A thing that rides the walker who owns it (a ring
-  of protection, a cleric's mace, a soldier's boomerang, a captain's hook
-  blade, a ghost's scare, IMMOLATE's fire, a returning knife, the F2
-  cheat's magic shield) never blocks, strikes or frightens him, whatever
-  colour a charm puts on him; it meets everyone else by the colour it
-  wears. What belongs to a person stays with the maker: experience and
+  had when it made it. The one exception is a thing that rides the walker
+  who owns it (a ring of protection, a cleric's mace, a soldier's
+  boomerang, a captain's hook blade, a ghost's scare, IMMOLATE's fire, a
+  returning knife on its way home, the F2 cheat's magic shield): it is part
+  of that walker and goes with him (the maintainer: "obviously they should
+  go with the walker"), so it fights for whatever side he is on now, never
+  against him, and its blows score and count for that side. What belongs
+  to a person stays with the maker: experience and
   kills on a hero's record, the hero whose record opens the score gate,
   whom the victim turns on, and a blast's quarter on its own thrower. A
   walker is never credited with his own death: when the person behind a
@@ -598,22 +600,26 @@ Fixes X to BB, in play:
     (#496, #536). A tent's troop keeps the colour the tent had when it
     made it, so it fights its tent if a script recolours the tent.
   - A ring of protection, a mace, a boomerang, a hook blade, a ghost's
-    scare, IMMOLATE's fire, a returning knife and the F2 cheat's shield
-    never block, strike, snag, burn or frighten the walker they ride, even
-    after he is charmed. They go on fighting for the colour they were cast
-    in: a ring keeps blocking his old foes' side, now his friends, a
-    boomerang, a mace or a hook blade keeps striking them, and any of them
-    can cut down the shots he throws for his new side. A ghost's scare
-    cast before the ghost is charmed frightens the charmer's side, never
-    the ghost; an elemental charmed while IMMOLATE burns burns its new
-    friends with its fire, never itself.
+    scare, IMMOLATE's fire, a returning knife on its way home and the F2
+    cheat's shield go with the walker they ride. While he is charmed they
+    fight for the charmer's side: the ring blocks his old friends and lets
+    his new friends pass, the boomerang, the mace and the hook blade strike
+    his old friends, a ghost's scare frightens them and IMMOLATE's fire
+    burns them, and none of them blocks, strikes or frightens him or his
+    new friends. A blow of one of them scores and counts for the charmer's
+    team, and a post one of them strikes down in Onslaught flips to the
+    charmer's colour. All of it turns back when the charm ends. A ring
+    whose walker has died fights for the colour it was made with again.
+    An ember IMMOLATE drops while its elemental is charmed wears the
+    charmer's colour; one dropped before keeps the colour it was dropped
+    with.
   - Everything else a walker made meets him by its colour once he is
-    charmed: his poison cloud poisons him, he trips his own mine, his
-    embers burn him while he stands on them, his war banner keeps rallying
-    and healing the side it was planted for and stops rallying and healing
-    him (and frightens him if he is weaker than it), his tree or bone wall
-    blocks him and he attacks it when he bumps it, and a cleric is blocked
-    by his own glows and swings at them.
+    charmed: his poison cloud poisons him, he trips his own mine, the
+    embers he dropped before the charm burn him while he stands on them,
+    his war banner keeps rallying and healing the side it was planted for
+    and stops rallying and healing him (and frightens him if he is weaker
+    than it), his tree or bone wall blocks him and he attacks it when he
+    bumps it, and a cleric is blocked by his own glows and swings at them.
   - A dying tent's four blasts halve on the tent's own side. In Team
     Deathmatch a red tent's blast that kills a red fighter is a red
     teamkill and takes the kill away from an enemy who had wounded him a
@@ -629,9 +635,10 @@ Fixes X to BB, in play:
   - In every mode a kill by a shot or a blast whose maker has died since
     counts for the colour it wears (in Team Deathmatch a kill of its own
     colour is a teamkill). An Onslaught post struck down flips to the
-    colour of the thing that struck it, even when its maker has been
-    charmed or has died since. A shot that touches a soccer ball or swats
-    a basketball plays for its own colour.
+    colour the thing that struck it fights for, even when its maker has
+    been charmed or has died since. A shot that touches a soccer ball or
+    swats a basketball plays for its own colour, and a thing that rides a
+    walker for his.
   The pairs `archer_charmed_arrow_in_flight_scen99`,
   `thief_bomb_charmed_thrower_scen99` and `thief_bomb_dead_thrower_scen99`,
   each with its setting-on twin, record it, and four setting-on rows move
@@ -3284,13 +3291,12 @@ where an entry was only told to him, or is still open, it says so.
    a blast whose maker has died counts for its colour in every mode; a
    dead thrower's blast halves on his own side; nobody is credited with
    his own death; a shot does not spare its shooter; a returning knife
-   never cuts the hand that catches it. One question is still with the
-   maintainer: a thing that sits on a walker (a ring of protection, a mace,
-   a boomerang, a hook blade) keeps the colour it was cast in and never
-   blocks or strikes the walker it sits on, which is what is built; the
-   alternative is that it goes with its walker when he is charmed. The rule
-   is one function (`walker::rider_pair`), so the alternative is a change
-   of that function.
+   never cuts the hand that catches it. A thing that sits on a walker (a
+   ring of protection, a mace, a boomerang, a hook blade, a ghost's scare,
+   IMMOLATE's fire) is the one exception: asked whether it should keep the
+   colour it was cast in, the maintainer answered "obviously they should go
+   with the walker". While its walker is charmed it fights for the charmer's
+   side, and it comes back with him when the charm ends.
 4. **#505: a walker that dies charmed.** No change of its own, so there is
    no fix BA. With the setting on no side reads the owner chain any more
    (entry 3), so the question of who heads a dead charmed walker's chain
