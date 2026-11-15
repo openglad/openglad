@@ -181,7 +181,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         //   whose owner chain heads another team: fix AY, #496).
         // tests: SimInputHandler.sim_find_next_control_player_first
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed
-        // tests: GameplayFixesSeats.the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team
+        // tests: GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -207,7 +207,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         //   #496); it never takes a walker of another team (the 2002 'ANYONE' pass is gone).
         // tests: SimInputHandler.sim_find_next_control_team_fallback, SimInputHandler.sim_find_next_control_none, SimInputHandler.sim_find_next_control_never_claims_another_team
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_on_both_settings
-        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_beside_a_foes_summon, GameplayFixesSeats.a_charmed_druids_faerie_is_handed_over_only_with_the_setting_off
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_dead_heros_seat_takes_the_first_body_of_its_colour, GameplayFixesSeats.a_charmed_druids_faerie_is_handed_over_on_both_settings
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -389,7 +389,7 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // tests: SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
         // tests: KitPossession.claim_scans_refuse_linked_walkers
         // tests: KitPossession.claim_scans_refuse_a_hidden_unlinked_walker
-        // tests: GameplayFixesSeats.the_hand_off_asks_switch_characters_question_only_with_the_setting_on, GameplayFixesSeats.fights_for_side_asks_the_head_of_the_owner_chain
+        // tests: GameplayFixesSeats.switch_character_and_the_hand_off_agree_on_a_summon_of_our_colour_with_the_setting_on, GameplayFixesSeats.a_summon_of_our_colour_fights_for_it_with_the_setting_on
         return !w->dead() && !w->dormant() && !w->hidden() &&
                w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
@@ -522,7 +522,7 @@ SimInputResult sim_process_player_input(
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
-        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off, GameplayFixesSeats.a_refused_summon_holds_the_level_open_until_it_dies
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
         if (control->user() == -1)

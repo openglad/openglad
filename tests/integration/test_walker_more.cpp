@@ -455,7 +455,14 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
     ASSERT_EQ(0, (int)a->is_friendly(b.get())) << "dead target should be unfriendly";
     b->set_dead(0);
 
-    // Owner-chain traversal branches.
+    // Owner-chain traversal branches, with the Gameplay Fixes setting off
+    // (the classic climb): a and b wear different colours and the heads of
+    // their owner chains decide.
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    const short fixes_before = world.gameplay_fixes;
+    world.gameplay_fixes = 0;
+    a->set_team_num(0);
+    b->set_team_num(1);
     a->set_owner(owner_a.get());
     b->set_owner(owner_b.get());
     owner_a->set_team_num(0);
@@ -487,6 +494,20 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
     owner_a->clear_myguy();
     og::runtime::current_session->myscreen_->world_.allied_mode = 0;
     ASSERT_TRUE(a->is_friendly_to_team(owner_a->team_num()) != 0) << "non-myguy path should still compare team";
+
+    // With the setting on (fix AZ) each walker fights for the colour it
+    // wears: the owners decide nothing (neither walker is a KIT_RIDER thing,
+    // so the rider clause plays no part).
+    // Break: alliance_head's `return this;` -> `return chain_head();`.
+    world.gameplay_fixes = 1;
+    ASSERT_EQ(owner_a->team_num(), owner_b->team_num()) << "one colour at both heads";
+    EXPECT_EQ(a->team_num() == b->team_num() ? 1 : 0, (int)a->is_friendly(b.get()))
+        << "setting on: a and b wear different colours";
+    EXPECT_EQ(0, (int)a->is_friendly(b.get()));
+    b->set_team_num(a->team_num());
+    owner_b->set_team_num(3);
+    EXPECT_EQ(1, (int)a->is_friendly(b.get())) << "setting on: one colour, whatever the heads wear";
+    world.gameplay_fixes = fixes_before;
 
     og::runtime::current_session->myscreen_->world_.allied_mode = static_cast<short>(old_allied_mode);
 }

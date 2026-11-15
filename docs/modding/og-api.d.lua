@@ -262,6 +262,7 @@
 ---@field setworldxy fun(self: og.Walker, arg2: number, arg3: number)
 ---@field setxy fun(self: og.Walker, x: number, y: number): boolean
 ---@field shifter_down fun(self: og.Walker): integer
+---@field sides_friendly fun(self: og.Walker, other: og.Walker): boolean # walker:sides_friendly(w) is walker:is_friendly(w) without its dead test.
 ---@field sizex fun(self: og.Walker): integer
 ---@field sizey fun(self: og.Walker): integer
 ---@field sizez fun(self: og.Walker): integer
@@ -362,7 +363,7 @@
 
 -- Hook table for og.register_level_hooks.
 ---@class og.LevelHooks
----@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer)
+---@field on_damage? fun(target: og.Walker, attacker: og.Walker?, amount: integer, striker: og.Walker)
 ---@field on_entity_death? fun(ent: og.Walker, killer: og.Walker?, killer_team: integer)
 ---@field on_entity_spawn? fun(entity: og.Walker)
 ---@field on_lineup_stage? fun(level: integer)
@@ -606,6 +607,7 @@
 ---@field KIT_HIDDEN integer
 ---@field KIT_NOVA integer
 ---@field KIT_QUARTER_FREEZE integer
+---@field KIT_RIDER integer
 ---@field KIT_WARD integer
 ---@field MACE_LIFE_CAP integer
 ---@field MARKER_BURROW integer
@@ -747,8 +749,8 @@
 ---@field fdiv fun(a: number, b: number): number
 ---@field fearless fun(entity: og.Walker): boolean # og.fearless(ent) -> boolean (og::sim::fearless: the kit mark, or a friendly banner's rally aura with the setting on)
 ---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
----@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
----@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
+---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap"; allegiance is walker:is_friendly's.
+---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker, side: og.Walker?): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self [, side]) → array, count; with side, the foes of side's side (walker:sides_friendly).
 ---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 ---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
 ---@field find_near_foe fun(entity: og.Walker): og.Walker? # og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.

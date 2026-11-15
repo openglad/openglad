@@ -17,6 +17,11 @@
 // walker::cut_owner_loop whether the chain loops, and a loop is cut at the
 // link that closes it, with one line in the log. This game only (the old
 // game has no scripts or snapshots), so both values of the setting.
+// With Gameplay Fixes AZ (#502) a side question (is_friendly,
+// is_friendly_to_team) does not climb at all: every walker fights for the
+// colour it wears. So with the setting on such a question meets no loop and
+// cuts nothing; the next climb (chain_head, credit_head, which every blow
+// asks) cuts it.
 //
 // The scene: red (team 0) soldiers, a red knife and a green (team 1)
 // soldier; red is the player's team (my_team 0).
@@ -155,6 +160,13 @@ void expect_first_climb(Climb c, walker* from, walker* green, walker* head)
 constexpr Climb kClimbs[] = {Climb::ChainHead, Climb::CreditHead, Climb::IsFriendly,
                              Climb::IsFriendlyToTeam, Climb::Attack};
 
+// Whether climb c climbs the owner chain: with Gameplay Fixes AZ the two side
+// questions read the walker's own colour and climb nothing.
+bool climbs(short fixes, Climb c)
+{
+    return !(fixes != 0 && (c == Climb::IsFriendly || c == Climb::IsFriendlyToTeam));
+}
+
 }  // namespace
 
 // A knife k thrown by a, where a owns b and b owns a (k -> a -> b -> a). On
@@ -162,7 +174,11 @@ constexpr Climb kClimbs[] = {Climb::ChainHead, Climb::CreditHead, Climb::IsFrien
 // a closes the loop and is cut, so the head (and the credit) is b, red. The
 // knife is no friend of green, is red's, and its blow on green lands, and so
 // answers the first climb itself, the one that cuts the loop. One log line
-// names b and a.
+// names b and a. With the setting on a first side question cuts nothing (it
+// does not climb): the loop is still there after it, and the next climb cuts
+// it.
+// Break (the setting-on side questions): alliance_head's `return this;` ->
+// `return chain_head();` (the cut comes one line early).
 // Break: in cut_owner_loop, `w->set_owner(nullptr)` -> `up->set_owner(nullptr)`
 // (a's link is cut instead: the head becomes a). Break: in walker::climb, the
 // restart `return climb(step, top_living);` -> `return climb(step);` (the
@@ -186,6 +202,10 @@ TEST(OwnerChainLoop, every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_
 
             testing::internal::CaptureStderr();
             expect_first_climb(first, k, g, b);
+            if (!climbs(fixes, first)) {
+                EXPECT_EQ(a, b->owner()) << "a side question climbs nothing with the setting on";
+                EXPECT_EQ(b, k->chain_head()) << "the next climb cuts the loop";
+            }
             EXPECT_EQ(nullptr, b->owner()) << "b's link back to a closes the loop";
             EXPECT_EQ(b, a->owner()) << "a's link is kept";
             EXPECT_EQ(a, k->owner()) << "the knife's link is kept";
@@ -209,7 +229,10 @@ TEST(OwnerChainLoop, every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_
 // closes the loop and is cut, so the head is c, red; a is no friend of
 // green, is red's, and its blow on green lands, the first climb's own answer
 // included; one log line names c and a. From b the loop closes at a's link
-// back to b: a's link is cut and the head is a.
+// back to b: a's link is cut and the head is a. With the setting on a first
+// side question cuts nothing, and the next climb cuts the loop.
+// Break (the setting-on side questions): alliance_head's `return this;` ->
+// `return chain_head();`.
 // Break: in cut_owner_loop, `w->set_owner(nullptr)` -> `up->set_owner(nullptr)`.
 // Break: in walker::climb, `return climb(step, top_living);` ->
 // `return climb(step);`.
@@ -232,6 +255,10 @@ TEST(OwnerChainLoop, a_three_link_loop_is_cut_at_the_link_that_closes_it)
 
             testing::internal::CaptureStderr();
             expect_first_climb(first, a, g, c);
+            if (!climbs(fixes, first)) {
+                EXPECT_EQ(a, c->owner()) << "a side question climbs nothing with the setting on";
+                EXPECT_EQ(c, a->chain_head()) << "the next climb cuts the loop";
+            }
             EXPECT_EQ(nullptr, c->owner()) << "c's link back to a closes the loop";
             EXPECT_EQ(b, a->owner());
             EXPECT_EQ(c, b->owner());
@@ -274,7 +301,9 @@ TEST(OwnerChainLoop, a_three_link_loop_is_cut_at_the_link_that_closes_it)
 
 // A chain of 40 soldiers, w0 owned by w1 ... w38 by w39 (green, no owner),
 // longer than any in play and with no loop: every climb reaches w39, no
-// link is cut and nothing is logged.
+// link is cut and nothing is logged. Classic, w0 is on w39's side, green;
+// with the setting on (Gameplay Fixes AZ) a walker fights for the colour it
+// wears, red.
 // Break: climb's loop guard becomes a depth cap,
 // `if (++links == kOwnerLoopCheck) { up->set_owner(nullptr); }` (the head
 // becomes w16).
@@ -299,8 +328,10 @@ TEST(OwnerChainLoop, a_long_chain_with_no_loop_resolves_to_its_head)
         testing::internal::CaptureStderr();
         EXPECT_EQ(chain.back(), chain.front()->chain_head());
         EXPECT_EQ(chain.back(), chain.front()->credit_head());
-        EXPECT_EQ(1, chain.front()->is_friendly_to_team(kGreen));
-        EXPECT_EQ(0, chain.front()->is_friendly_to_team(kRed));
+        EXPECT_EQ(fixes != 0 ? 0 : 1, chain.front()->is_friendly_to_team(kGreen))
+            << "with the setting on a walker fights for the colour it wears";
+        EXPECT_EQ(fixes != 0 ? 1 : 0, chain.front()->is_friendly_to_team(kRed))
+            << "with the setting on a walker fights for the colour it wears";
         const std::string said = testing::internal::GetCapturedStderr();
         for (std::size_t i = 0; i + 1 < kLength; ++i)
             EXPECT_EQ(chain[i + 1], chain[i]->owner()) << "link " << i;

@@ -541,6 +541,10 @@ TEST(SemMage, energy_wave_replaces_its_fireball_and_fails_when_none_fires)
 // once per weapon, in the old game too, so a wave promoted once never
 // reaches WAVE3 through it, and the test clears that once-only flag by hand
 // to promote it again.
+// Then whom a wave fights for: a fresh wave of a team-1 mage, the mage then
+// charmed by hand onto team 0. With the setting on the wave (team 1) lands on
+// a team-0 walker and is refused by a team-1 one; classic it answers for the
+// charmed mage, team 0 now: the reverse.
 // Breaks: the mage's `gf.made_by(wave, self)` -> `wave:set_owner(self)`
 // (every setting-on check red); take_team's `made.team = from.team` ->
 // `made.team = made.team` (likewise).
@@ -580,6 +584,30 @@ TEST(SemMage, an_energy_wave_wears_the_mages_colour_through_its_promotions_only_
         ASSERT_EQ(FAMILY_WAVE3, static_cast<int>(wave->family()));
         EXPECT_EQ(team, wave->team_num()) << "WAVE3 keeps the wave's team";
         EXPECT_EQ(mage, wave->owner());
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "whom it fights for, setting " << fixes);
+        MidpointRandom midpoint;
+        ScopedSimRandom scoped(&midpoint);
+        Field f(fixes);
+        walker* mage = f.caster(FAMILY_MAGE, 1, 160, 160, 6, 600.0f, 4);
+        walker* red = f.living_at(FAMILY_SOLDIER, 0, 400, 400);
+        walker* green = f.living_at(FAMILY_SOLDIER, 1, 400, 300);
+        ASSERT_TRUE(mage && red && green);
+        mage->set_lastx(2);
+        mage->set_lasty(0);
+        ASSERT_TRUE(mage->special());
+        const auto waves = f.live(Order::Weapon, FAMILY_WAVE);
+        ASSERT_EQ(1u, waves.size());
+        walker* wave = waves[0];
+        wave->stats()->set_hitpoints(1000.0f);
+        mage->set_real_team_num(mage->team_num());
+        mage->set_team_num(0);
+        mage->set_charm_left(30);
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed, wave->attack(red)) << "a team-0 walker";
+        EXPECT_EQ(!fixed, wave->attack(green)) << "a team-1 walker";
         EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
     }
 }

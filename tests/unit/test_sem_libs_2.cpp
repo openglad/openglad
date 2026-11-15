@@ -713,6 +713,162 @@ TEST(SemShield, a_guard_passes_a_foes_bone_wall_and_war_banner_by)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+namespace {
+
+// A walker seated with magic to spare, parked on `slot` (Shift as asked).
+void seat_for_a_cast(walker* w, char slot, short shift)
+{
+    w->clear_myguy();
+    w->stats()->set_max_magicpoints(1000.0f);
+    w->stats()->set_magicpoints(1000.0f);
+    w->stats()->set_magic_per_round(0.0f);
+    w->set_user(0);
+    w->set_act_type(ACT_CONTROL);
+    w->set_current_special(slot);
+    w->set_shifter_down(shift);
+    w->set_lastx(1.0f);
+    w->set_lasty(0.0f);
+}
+
+// The one live effect of `family` the cast made.
+walker* the_one(TestGameWorld& tw, int family)
+{
+    walker* found = nullptr;
+    int n = 0;
+    for (const auto& ob : tw.world().oblist)
+        if (ob && !ob->dead() && ob->query_order() == Order::FX && ob->family() == family) {
+            found = ob.get();
+            ++n;
+        }
+    return n == 1 ? found : nullptr;
+}
+
+void charm_by_hand(walker* w, unsigned char onto)
+{
+    w->set_real_team_num(w->team_num());
+    w->set_team_num(onto);
+    w->set_charm_left(30);
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502) and the lead's ruling M3: a boomerang rides the
+// soldier who threw it (KIT_RIDER, with the setting on) and never turns on
+// him; it fights everyone else for the colour it was thrown in. A team-1
+// level-4 soldier throws BOOMERANG (its first act holds it 2 px off his
+// centre: drawcycle 0) and is charmed onto team 0 by hand; he throws a knife
+// for his new side (team 0); a team-0 and a team-1 soldier stand on him; one
+// act of the boomerang. On both settings he is not struck. With the setting on
+// the boomerang (team 1) strikes the team-0 soldier, spares the team-1 one and
+// destroys the knife (a foe's weapon to it: two things of one owner are not
+// joined); classic it answers for its charmed thrower: it strikes the team-1
+// soldier, spares the team-0 one and keeps the knife.
+// Breaks: rider_pair's gate always `return false` (on: the soldier is
+// struck); the soldier's `gf.rides(...)` wrapper removed at
+// living-00-soldier.lua (on: the soldier is struck, the mark is 0).
+TEST(SemShield, a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives)
+{
+    og::test::ScopedHookFailureGuard guard;
+    og::test::mount_core_pack();
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().gameplay_fixes = fixes;
+        tw.world().new_specials = 0;
+        walker* soldier = add_living(tw, FAMILY_SOLDIER, 1, 200, 200, 4);
+        ASSERT_NE(nullptr, soldier);
+        seat_for_a_cast(soldier, 2, 0);
+        std::string reason;
+        ASSERT_TRUE(soldier->special(nullptr, &reason)) << reason;
+        walker* boomerang = the_one(tw, FAMILY_BOOMERANG);
+        ASSERT_NE(nullptr, boomerang);
+        ASSERT_EQ(soldier, boomerang->owner());
+        ASSERT_EQ(1, boomerang->team_num());
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? KIT_RIDER : 0, boomerang->kit_state() & KIT_RIDER);
+
+        charm_by_hand(soldier, 0);
+        walker* knife = soldier->fire();
+        ASSERT_NE(nullptr, knife);
+        ASSERT_EQ(0, knife->team_num()) << "thrown after the charm";
+        knife->stats()->set_hitpoints(1000.0f);
+        knife->setxy(soldier->xpos(), soldier->ypos());
+        walker* red = add_living(tw, FAMILY_SOLDIER, 0, soldier->xpos(), soldier->ypos());
+        walker* green = add_living(tw, FAMILY_SOLDIER, 1, soldier->xpos(), soldier->ypos());
+        ASSERT_TRUE(red && green);
+        const float soldier_hp = soldier->stats()->hitpoints();
+
+        const EffectFamilyDescriptor* efd = get_effect_family_descriptor(FAMILY_BOOMERANG);
+        ASSERT_NE(nullptr, efd);
+        ASSERT_EQ(0, boomerang->drawcycle());
+        ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(boomerang)));
+        EXPECT_FLOAT_EQ(soldier_hp, soldier->stats()->hitpoints()) << "never its thrower";
+        if (fixed) {
+            EXPECT_LT(red->stats()->hitpoints(), 200.0f) << "a foe of its colour";
+            EXPECT_FLOAT_EQ(200.0f, green->stats()->hitpoints()) << "its own colour";
+            EXPECT_EQ(1, knife->dead()) << "his new knife is a foe's weapon to it";
+        } else {
+            EXPECT_LT(green->stats()->hitpoints(), 200.0f) << "its thrower's foe";
+            EXPECT_FLOAT_EQ(200.0f, red->stats()->hitpoints()) << "its thrower's friend";
+            EXPECT_EQ(0, knife->dead()) << "its thrower's own knife";
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502) and the lead's ruling M3: the cleric's MYSTIC MACE
+// rides him (KIT_RIDER, with the setting on). A team-1 cleric casts it (slot
+// 1 with Shift) and is charmed onto team 0 by hand; on both settings the mace
+// and he are friends. A team-0 soldier stands on the mace's orbit spot (drawcycle
+// 0: 24 px above the cleric, where its first act put it): with the setting on
+// the mace (team 1) strikes him on its next act; classic it answers for the
+// charmed cleric, team 0 now, and spares him.
+// Break: the cleric's `gf.rides(...)` wrapper removed at living-05-cleric.lua
+// (on: the mace and the charmed cleric are foes, the mark is 0).
+TEST(SemShield, a_mace_never_turns_on_its_charmed_cleric)
+{
+    og::test::ScopedHookFailureGuard guard;
+    og::test::mount_core_pack();
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().gameplay_fixes = fixes;
+        tw.world().new_specials = 0;
+        walker* cleric = add_living(tw, FAMILY_CLERIC, 1, 200, 200, 4);
+        ASSERT_NE(nullptr, cleric);
+        seat_for_a_cast(cleric, 1, 1);
+        std::string reason;
+        ASSERT_TRUE(cleric->special(nullptr, &reason)) << reason;
+        walker* mace = the_one(tw, FAMILY_MAGIC_SHIELD);
+        ASSERT_NE(nullptr, mace);
+        ASSERT_EQ(cleric, mace->owner());
+        ASSERT_EQ(1, mace->team_num());
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? KIT_RIDER : 0, mace->kit_state() & KIT_RIDER);
+
+        charm_by_hand(cleric, 0);
+        EXPECT_EQ(1, mace->is_friendly(cleric)) << "the mace rides him";
+        EXPECT_EQ(1, cleric->is_friendly(mace));
+        // The orbit step is the drawcycle's (effect::act advances it each
+        // tick); the Lua act is driven at drawcycle 0 both times, so the mace
+        // stands on the same spot.
+        const EffectFamilyDescriptor* efd = get_effect_family_descriptor(FAMILY_MAGIC_SHIELD);
+        ASSERT_NE(nullptr, efd);
+        ASSERT_EQ(0, mace->drawcycle());
+        ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(mace)));  // onto its orbit spot, nobody near
+        walker* red = add_living(tw, FAMILY_SOLDIER, 0, mace->xpos(), mace->ypos());
+        ASSERT_NE(nullptr, red);
+        const float cleric_hp = cleric->stats()->hitpoints();
+        ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(mace)));
+        EXPECT_EQ(fixed, red->stats()->hitpoints() < 200.0f)
+            << (fixed ? "setting on: a foe of the mace's colour" : "setting off: the cleric's friend");
+        EXPECT_FLOAT_EQ(cleric_hp, cleric->stats()->hitpoints()) << "never its cleric";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // ===========================================================================
 // effect_hook_blade.lua + kit_captain.lua — the orc captain's HOOK BLADE,
 // WAR BANNER and WARBAND (New Specials; with the setting off the captain has

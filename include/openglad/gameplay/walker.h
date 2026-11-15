@@ -278,6 +278,21 @@ class walker : public og::sim::SimEntity
 			short shove(walker* target, float x, float y) { return shove(target, static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
+		// is_friendly without its null and dead tests: the side question. A
+		// thing that acts from its own death (a blast, the ghost's scare)
+		// asks it (the Lua walker:sides_friendly). With Gameplay Fixes AZ a
+		// thing marked KIT_RIDER and the walker who owns it are never foes
+		// (rider_pair), and otherwise each walker fights for the colour it
+		// wears. `target` must not be null. Defined in walker.cpp.
+		std::int32_t sides_friendly(const walker *target) const;
+		// Gameplay Fixes AZ (#502), the rider clause, in this one function:
+		// true, with the setting on, when one of the two is a weapon or
+		// effect marked KIT_RIDER that the other owns (it rides him: a ring
+		// of protection, a mace, a boomerang, a hook blade, a scare,
+		// IMMOLATE's fire, a returning knife's probe, the cheat's magic
+		// shield). Two other things of one owner are not joined. Always false
+		// with the setting off. Defined in walker_specials.cpp.
+		bool rider_pair(const walker *other) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
 		// Gameplay Fixes AD (#412): true while this walker's charm runs
 		// (charm_left() > 0) with the setting on; New Specials (#430): true
@@ -289,11 +304,12 @@ class walker : public og::sim::SimEntity
 		// Gameplay Fixes AP (#429): the one owner-chain climb. chain_next is
 		// the next link up, or nullptr where every climb stops (no owner, a
 		// self-loop, a walker charmed_head names); a dead owner is
-		// climbed through. chain_head is the top of the climb, the head a blow
-		// scores for; alliance_head is the head is_friendly reads (with the
-		// setting off the classic climb, which stops at a dead owner and at a
-		// possessed body). Defined
-		// in walker_specials.cpp.
+		// climbed through. chain_head is the top of the climb, the person
+		// behind a blow (the score gate's hero, experience, credit);
+		// alliance_head is the head is_friendly reads: with the setting on
+		// the walker itself (fix AZ, every walker fights for the colour it
+		// wears); off the classic climb, which stops at a dead owner and at
+		// a possessed body. Defined in walker_specials.cpp.
 		walker* chain_next() const;
 		walker* chain_head();
 		const walker* chain_head() const;
@@ -518,7 +534,9 @@ class walker : public og::sim::SimEntity
 		// Kill-attribution transients (server-only, like the teleport stamp
 		// above: no dirty bit, not in EntitySnapshot). The combat path stamps
 		// the OWNER-CHAIN-ROOT Living that last landed a positive-damage hit
-		// on this walker, plus its team and the world tick. on_entity_death
+		// on this walker, plus a team (kill_stamp_team: with Gameplay Fixes
+		// AZ the colour of the thing that struck, stamped also with no living
+		// behind it) and the world tick. on_entity_death
 		// passes the killer to Lua only while the stamp is fresh
 		// (og::sim::kKillAttributionTicks); non-combat deaths (drowning,
 		// lifetime expiry, pit falls) never stamp, so they read as
@@ -536,21 +554,23 @@ class walker : public og::sim::SimEntity
 		{
 			return last_attacker_tick_;
 		}
-		void note_attacker(const walker* who, std::uint32_t tick) noexcept
+		void note_attacker(const walker* who, std::int16_t team, std::uint32_t tick) noexcept
 		{
-			// rule: A hit is credited (kill-attribution stamp: id, team, tick) to the topmost
-			//   LIVING on the attacker's owner chain (credit_head); when no living is on the chain
-			//   (an orphaned weapon whose thrower is gone, a scripted ball fx), no stamp is
-			//   written, so a death from that hit reads as an environment death and Lua on_kill /
-			//   mode scoring pays nobody. walker_combat.cpp passes credit_head() unchecked and
-			//   relies on this guard; walker_specials.cpp (turn undead) checks credit
-			//   itself on the partial-damage arm but not on the lethal arm (also relies on this
-			//   guard).
+			// rule: A blow's kill-attribution stamp is the walker credited (the topmost LIVING on the
+			//   attacker's owner chain, credit_head) and the team walker::kill_stamp_team names (the
+			//   hitter's own colour with Gameplay Fixes AZ, the credited walker's classic). A blow
+			//   with neither (classic: no living on the chain, an orphaned weapon whose thrower is
+			//   gone, a scripted ball fx) writes nothing, so a death from it reads as an environment
+			//   death; with Gameplay Fixes AZ a blow with no living on its chain stamps its colour
+			//   and no walker (id 0). walker_combat.cpp passes credit_head() unchecked and relies on
+			//   this guard; walker_specials.cpp (turn undead) checks credit itself on the
+			//   partial-damage arm but not on the lethal arm.
 			// tests: SemWalker1.a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain
-			if (who == nullptr)
+			// tests: SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
+			if (who == nullptr && team < 0)
 				return;
-			last_attacker_id_ = who->entity_id();
-			last_attacker_team_ = static_cast<std::int16_t>(who->team_num());
+			last_attacker_id_ = who != nullptr ? who->entity_id() : 0u;
+			last_attacker_team_ = team;
 			last_attacker_tick_ = tick;
 		}
 		// The walker a hit or a kill is credited to (#411): the topmost
@@ -561,6 +581,11 @@ class walker : public og::sim::SimEntity
 		// living is on the chain. The kill stamp and on_kill read it; score
 		// and experience keep the chain's root.
 		walker* credit_head();
+		// Gameplay Fixes AZ (#502): the team a blow's kill stamp records (the
+		// team a mode's kill ledger pays): with the setting on the colour this
+		// hitter wears, also when no living is on its chain; classic, the colour
+		// of `credit`, -1 with none. Defined in walker_specials.cpp.
+		std::int16_t kill_stamp_team(const walker* credit) const;
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

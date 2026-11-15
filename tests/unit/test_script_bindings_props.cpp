@@ -1278,7 +1278,7 @@ TEST_F(ScriptBindingPropsTest, kit_last_attacker_id_and_init_fire)
     EXPECT_EQ(ANI_ATTACK, self->ani_type()) << "the attack row started";
     EXPECT_GT(self->busy(), 0.0f);
 
-    self->note_attacker(hitter, 7u);
+    self->note_attacker(hitter, static_cast<std::int16_t>(hitter->team_num()), 7u);
     ASSERT_NE(0u, hitter->entity_id());
     expect_ran_clean(dispatch(self));
     const std::vector<std::string> log = logged();
@@ -1286,6 +1286,59 @@ TEST_F(ScriptBindingPropsTest, kit_last_attacker_id_and_init_fire)
     EXPECT_EQ("hit\t0", log[0]) << "nobody has hit it yet";
     EXPECT_EQ("fire\t1\t0", log[1]) << "the second start is refused: busy";
     EXPECT_EQ("hit\t" + std::to_string(hitter->entity_id()), log[2]);
+}
+
+// walker:sides_friendly(w) (Gameplay Fixes AZ, #502) is walker:is_friendly(w)
+// without its dead test: a thing that acts from its own death asks it. Two
+// walkers of one colour: both true; the other one dead: is_friendly false,
+// sides_friendly still true; two colours: both false. A knife the soldier
+// owns, of another colour: marked KIT_RIDER, with the setting on the knife
+// and its owner are friends both ways (the rider clause); unmarked, foes.
+// With the setting off the one owner chain makes them friends either way.
+// Breaks: m_sides_friendly pushes `w->is_friendly(other)` (the dead leg
+// red); rider_pair's gate always `return false` (the marked leg on red).
+TEST_F(ScriptBindingPropsTest, sides_friendly_is_is_friendly_without_the_dead_test)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* mate = w.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* other = w.add_ob(Order::Living, FAMILY_ORC);
+        walker* knife = w.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_TRUE(self && mate && other && knife);
+        self->set_team_num(1);
+        mate->set_team_num(1);
+        other->set_team_num(2);
+        knife->set_team_num(3);
+        knife->set_owner(self);
+        const std::string body =
+            "    local mate = og.find_by_id(" + std::to_string(mate->entity_id()) + ")\n"
+            "    local other = og.find_by_id(" + std::to_string(other->entity_id()) + ")\n"
+            "    local knife = og.find_by_id(" + std::to_string(knife->entity_id()) + ")\n"
+            "    local function b(v) return v and 1 or 0 end\n"
+            "    og.log('one', b(self:is_friendly(mate)), b(self:sides_friendly(mate)))\n"
+            "    mate.dead = 1\n"
+            "    og.log('dead', b(self:is_friendly(mate)), b(self:sides_friendly(mate)))\n"
+            "    mate.dead = 0\n"
+            "    og.log('two', b(self:is_friendly(other)), b(self:sides_friendly(other)))\n"
+            "    knife:set_kit_state(knife:kit_state() | og.C.KIT_RIDER)\n"
+            "    og.log('marked', b(knife:sides_friendly(self)), b(self:sides_friendly(knife)))\n"
+            "    knife:set_kit_state(0)\n"
+            "    og.log('unmarked', b(knife:sides_friendly(self)), b(self:sides_friendly(knife)))\n";
+        expect_ran_clean(run_do_special(body, self));
+        const std::vector<std::string> log = logged();
+        ASSERT_EQ(5u, log.size());
+        EXPECT_EQ("one\t1\t1", log[0]) << "one colour";
+        EXPECT_EQ("dead\t0\t1", log[1]) << "no dead test in sides_friendly";
+        EXPECT_EQ("two\t0\t0", log[2]) << "two colours";
+        EXPECT_EQ("marked\t1\t1", log[3]) << "a rider and its owner are friends";
+        EXPECT_EQ(fixes != 0 ? std::string("unmarked\t0\t0") : std::string("unmarked\t1\t1"), log[4])
+            << (fixes != 0 ? "setting on: unmarked, two colours"
+                           : "setting off: one owner chain");
+    }
 }
 
 // og.possess(rider, host, ticks) hands back the engine's answer: true, or

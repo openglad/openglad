@@ -18,13 +18,14 @@
 // maintainer's ruling: refuse a charmed walker for the hand-off, keep one
 // already controlled).
 //
-// Nor is a seat handed a walker that fights for the other side (#496, fix
-// AY): a faerie an enemy druid summoned while our side had the druid
-// charmed keeps our colour when the charm runs out, but the head of its
-// owner chain is the druid, back on its own team. Switch Character has
-// refused such a walker since 2013; with the setting on the hand-off asks
-// the same question through the same function, of the seat's team. A seat
-// already on such a walker keeps it.
+// A summon of our colour (#496): a faerie an enemy druid summoned while our
+// side had the druid charmed keeps our colour when the charm runs out. With
+// the setting on every walker fights for the colour it wears (Gameplay Fixes
+// AZ), so the faerie fights for our side: the hand-off may take it and Switch
+// Character may switch to it. Classic, it fights for its druid's side:
+// Switch Character refuses it (Jonathan Dearborn's 2013 test asks whose side
+// a walker fights for) while the hand-off, which asks only the colour, takes
+// it. A seat already on such a walker keeps it.
 //
 // The predicates first, on hand-made walkers: a charm is told from a fresh
 // spawn by its timer, because a freshly spawned walker carries
@@ -520,12 +521,13 @@ TEST(GameplayFixesSeats, a_seat_keeps_its_walker_when_the_charm_runs_out)
 }
 
 // ---------------------------------------------------------------------------
-// A walker that fights for the other side (#496, fix AY). A team-1 druid our
-// side charmed onto team 0 summons a faerie: the faerie takes the druid's
-// colour of the moment (team 0) and the druid as its owner
-// (living-13-druid.lua). When the charm runs out the druid goes back to team
-// 1 and the faerie stays on team 0 with no charm of its own, so the charm
-// test passes it; but the head of its owner chain is the druid, on team 1.
+// A summon of our colour (#496). A team-1 druid our side charmed onto team 0
+// summons a faerie: the faerie takes the druid's colour of the moment (team
+// 0) and the druid as its owner (living-13-druid.lua). When the charm runs
+// out the druid goes back to team 1 and the faerie stays on team 0 with no
+// charm of its own. With the setting on (Gameplay Fixes AZ) it fights for team
+// 0, the colour it wears; classic, for the head of its owner chain, the druid,
+// on team 1.
 
 namespace {
 
@@ -583,26 +585,31 @@ walker* add_player_hero(GameWorld& world, short x, short y)
     return hero;
 }
 
+// Player 0 presses Switch Character once (the key released first).
+void press_switch(SeatWorld& fx, walker*& control, SimInputDebounce& debounce)
+{
+    (void)seat_tick(fx.world(), fx.events, control, debounce);
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    (void)sim_process_player_input(input.players[0], control, fx.world(), 0, 0,
+                                   debounce, &fx.events);
+}
+
 }  // namespace
 
-// The shared predicate and its two forms, on hand-made walkers, on both
-// settings. fights_for_side asks the colour the head of the owner chain
-// wears: the faerie wears team 0 but fights for team 1 (its druid); a real
-// teammate fights for team 0; a team-0 summon of a team-0 hero fights for
-// team 0. seat_may_claim_for_team, the scans' form, asks it only with the
-// setting on, together with the charm test. fights_alongside, Switch
-// Character's form, is exactly walker::is_friendly(hero) for every walker
-// and every hero, a dead or missing hero included, so the switch asks what
-// it always asked.
-// RED with fights_for_side reading the walker's own colour (the faerie fights
-// for team 0), with the dead-hero test dropped from fights_alongside (it
-// differs from is_friendly against the dead hero), and with
-// seat_may_claim_for_team asking the side on both settings (the classic
-// game refuses the faerie).
-TEST(GameplayFixesSeats, fights_for_side_asks_the_head_of_the_owner_chain)
+// The faerie's side, on hand-made walkers, on both settings: with the setting
+// on it fights for team 0, the colour it wears, and is the friend of team 0's
+// hero; classic it fights for team 1, its druid's. A seat may claim it on both
+// settings (it is not charmed); a walker our side charmed is refused only with
+// the setting on. A dead hero is nobody's friend.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// faerie fights for team 1).
+TEST(GameplayFixesSeats, a_summon_of_our_colour_fights_for_it_with_the_setting_on)
 {
     for (const short fixes : {short{0}, short{1}})
     {
+        SCOPED_TRACE(fixes);
         SeatWorld fx;
         fx.world().gameplay_fixes = fixes;
         walker* hero = fx.add({.team = 0, .user = 0, .hero = true, .owner = 0});
@@ -610,57 +617,30 @@ TEST(GameplayFixesSeats, fights_for_side_asks_the_head_of_the_owner_chain)
         dead_hero->set_dead(1);
         const FoesSummon s = add_foes_summon(fx);
         walker* mate = fx.add({.team = 0});
-        walker* imp = fx.add({.team = 0});
-        imp->set_owner(hero);
         walker* charmed = fx.add({.team = 0, .real_team = 1, .charm_left = 100});
 
-        EXPECT_FALSE(og::sim::fights_for_side(*s.faerie, 0)) << fixes;
-        EXPECT_TRUE(og::sim::fights_for_side(*s.faerie, 1)) << fixes;
-        EXPECT_TRUE(og::sim::fights_for_side(*mate, 0)) << fixes;
-        EXPECT_FALSE(og::sim::fights_for_side(*mate, 1)) << fixes;
-        EXPECT_TRUE(og::sim::fights_for_side(*imp, 0)) << fixes;
-        EXPECT_FALSE(og::sim::fights_for_side(*dead_hero, 0))
-            << fixes << ": a corpse fights for no side";
-
-        EXPECT_EQ(fixes == 0, og::sim::seat_may_claim_for_team(fx.world(), *s.faerie, 0))
-            << fixes << ": the classic scans hand over the foe's summon";
-        EXPECT_TRUE(og::sim::seat_may_claim_for_team(fx.world(), *mate, 0)) << fixes;
-        EXPECT_TRUE(og::sim::seat_may_claim_for_team(fx.world(), *imp, 0)) << fixes;
-        EXPECT_EQ(fixes == 0, og::sim::seat_may_claim_for_team(fx.world(), *charmed, 0))
-            << fixes << ": the charm test rides along";
-
-        EXPECT_FALSE(og::sim::fights_alongside(*s.faerie, hero)) << fixes;
-        EXPECT_TRUE(og::sim::fights_alongside(*mate, hero)) << fixes;
-        EXPECT_FALSE(og::sim::fights_alongside(*mate, dead_hero))
-            << fixes << ": a dead hero has no side";
-        EXPECT_FALSE(og::sim::fights_alongside(*mate, nullptr)) << fixes;
-
-        const std::array<walker*, 6> walkers{s.faerie, mate, imp, s.druid, hero, dead_hero};
-        const std::array<walker*, 5> heroes{hero, dead_hero, s.druid, s.faerie, nullptr};
-        for (std::size_t i = 0; i < walkers.size(); ++i)
-        {
-            for (std::size_t j = 0; j < heroes.size(); ++j)
-            {
-                EXPECT_EQ(walkers[i]->is_friendly(heroes[j]) != 0,
-                          og::sim::fights_alongside(*walkers[i], heroes[j]))
-                    << "setting " << fixes << ", walker " << i << ", hero " << j;
-            }
-        }
+        EXPECT_EQ(fixes != 0 ? 1 : 0, s.faerie->is_friendly_to_team(0));
+        EXPECT_EQ(fixes != 0 ? 0 : 1, s.faerie->is_friendly_to_team(1));
+        EXPECT_EQ(fixes != 0 ? 1 : 0, s.faerie->is_friendly(hero));
+        EXPECT_TRUE(og::sim::seat_may_claim(fx.world(), *s.faerie)) << "it is not charmed";
+        EXPECT_TRUE(og::sim::seat_may_claim(fx.world(), *mate));
+        EXPECT_EQ(fixes == 0, og::sim::seat_may_claim(fx.world(), *charmed))
+            << "a walker our side charmed is refused only with the setting on";
+        EXPECT_EQ(1, mate->is_friendly(hero));
+        EXPECT_EQ(0, mate->is_friendly(dead_hero)) << "a dead hero is nobody's friend";
     }
 }
 
 // Player 0's hero lies dead beside the druid and its faerie (41 hit points),
-// the only other body on team 0. The classic game hands the seat the faerie
-// and shows its 41 hit points; with the setting on there is nobody to hand
-// over and the seat asks for the end of the game (type 1), the faerie left
-// as it was: the fields a seat whose team is wiped out reports, which a twin
-// world with no faerie shows. The legacy scan and the owner-locked one
-// (every seat on one deployed machine) answer alike.
-// RED with the second pass of sim_find_next_control back on the charm test
-// alone: with the setting on the seat takes the faerie (legacy) or follows
-// without ending the game (owner-locked). RED with the owner-locked second
-// pass back on the charm test alone: owner-locked takes the faerie.
-TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_with_the_setting_off)
+// the only other body on team 0. On both settings the seat is handed the
+// faerie and shows its 41 hit points: classic because the hand-off asks only
+// the colour, with the setting on because the faerie fights for the colour it
+// wears. A twin world with no faerie is a wiped-out team: the seat asks for
+// the end of the game. The legacy scan and the owner-locked one (every seat
+// on one deployed machine) answer alike.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// faerie fights for team 1 and nobody is handed over).
+TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings)
 {
     for (const bool locked : {false, true})
     {
@@ -676,32 +656,18 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_
                 walker* hero = add_dead_hero(fx);
                 const FoesSummon s = add_foes_summon(fx);
                 s.faerie->stats()->set_hitpoints(41.0f);
-                const int faerie_act = s.faerie->act_type();
 
                 walker* control = hero;
                 SimInputDebounce debounce{};
                 const SimInputResult result =
                     seat_tick(fx.world(), fx.events, control, debounce);
 
-                if (fixes == 0)
-                {
-                    EXPECT_EQ(s.faerie, control)
-                        << where << ": the classic game hands over the foe's summon";
-                    EXPECT_EQ(0, s.faerie->user()) << where;
-                    EXPECT_EQ(ACT_CONTROL, s.faerie->act_type()) << where;
-                    EXPECT_FALSE(result.endgame_requested) << where;
-                    EXPECT_TRUE(result.control_hp_changed) << where;
-                    EXPECT_EQ(41.0f, result.control_hp) << where;
-                    continue;
-                }
-                EXPECT_EQ(nullptr, control)
-                    << where << ": with the setting on nobody is handed over";
-                EXPECT_EQ(-1, s.faerie->user()) << where;
-                EXPECT_EQ(faerie_act, s.faerie->act_type()) << where;
-                EXPECT_TRUE(result.endgame_requested)
-                    << where << ": the game ends rather than follow";
-                EXPECT_EQ(1, result.endgame_type) << where;
-                EXPECT_FALSE(result.control_hp_changed) << where;
+                EXPECT_EQ(s.faerie, control) << where << ": the faerie is handed over";
+                EXPECT_EQ(0, s.faerie->user()) << where;
+                EXPECT_EQ(ACT_CONTROL, s.faerie->act_type()) << where;
+                EXPECT_FALSE(result.endgame_requested) << where;
+                EXPECT_TRUE(result.control_hp_changed) << where;
+                EXPECT_EQ(41.0f, result.control_hp) << where;
             }
 
             // The wipe: the same seat with the druid and no faerie.
@@ -723,14 +689,13 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_foes_summon_on_our_team_only_
     }
 }
 
-// The same dead hero, with the foe's summon and a real teammate both on team
-// 0, in both orders of the world's list. The real teammate is handed over on
-// both settings; the summon only by the classic game, and only when it
-// stands first. Legacy and owner-locked alike.
-// RED with the second pass of sim_find_next_control back on the charm test
-// alone: with the setting on and the summon first, the legacy seat takes the
-// summon (and with the owner-locked second pass back, the owner-locked one).
-TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_real_teammate_beside_a_foes_summon)
+// The same dead hero, with the faerie and a real teammate both on team 0, in
+// both orders of the world's list. On both settings the seat takes the first
+// of them in the world's list: both wear and (with the setting on) fight for
+// team 0. Legacy and owner-locked alike.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on, the
+// faerie first: the teammate is taken).
+TEST(GameplayFixesSeats, a_dead_heros_seat_takes_the_first_body_of_its_colour)
 {
     for (const bool locked : {false, true})
     {
@@ -761,9 +726,8 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_real_teammate_beside_a_foes_s
                 const SimInputResult result =
                     seat_tick(fx.world(), fx.events, control, debounce);
 
-                const bool takes_summon = fixes == 0 && summon_first;
-                walker* const taken = takes_summon ? summon : mate;
-                walker* const left = takes_summon ? mate : summon;
+                walker* const taken = summon_first ? summon : mate;
+                walker* const left = summon_first ? mate : summon;
                 const std::string where = std::string("locked ") + (locked ? "1" : "0") +
                     (summon_first ? ", summon first" : ", teammate first") +
                     ", setting " + (fixes != 0 ? "on" : "off");
@@ -778,16 +742,14 @@ TEST(GameplayFixesSeats, a_dead_heros_seat_takes_a_real_teammate_beside_a_foes_s
 }
 
 // The first pass, which looks for a player character: a team-0 hero with a
-// character record whose owner chain heads the team-1 druid (staged by hand:
-// the pass's own rule), then an unclaimed team-0 troop. The classic game
-// takes the hero; with the setting on the first pass skips it and the second
-// pass takes the troop. Both the classic scan and the scan a seat takes
-// through the control policy, legacy and owner-locked.
-// RED with the first pass of sim_find_next_control back on the charm test
-// alone (setting on: the hero from the classic scan and the legacy policy),
-// and with the owner-locked first pass back (owner-locked, setting on: the
-// hero).
-TEST(GameplayFixesSeats, the_first_pass_skips_a_hero_whose_owner_chain_heads_another_team)
+// character record owned (by hand) by the team-1 druid, then an unclaimed
+// team-0 troop. On both settings the first pass takes the hero: it wears the
+// seat's colour and, with the setting on, fights for it whoever owns it. Both
+// the classic scan and the scan a seat takes through the control policy,
+// legacy and owner-locked.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// first pass skips the hero and the troop is taken).
+TEST(GameplayFixesSeats, the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it)
 {
     for (const bool locked : {false, true})
     {
@@ -800,31 +762,31 @@ TEST(GameplayFixesSeats, the_first_pass_skips_a_hero_whose_owner_chain_heads_ano
             walker* druid = fx.add({.team = 1});
             walker* hero = fx.add({.team = 0, .hero = true, .owner = 0});
             hero->set_owner(druid);
-            walker* troop = fx.add({.team = 0});
+            fx.add({.team = 0});
 
-            walker* const expected = fixes == 0 ? hero : troop;
             const std::string where = std::string("locked ") + (locked ? "1" : "0") +
                 ", setting " + (fixes != 0 ? "on" : "off");
-            EXPECT_EQ(expected, sim_find_next_control(fx.world(), 0)) << where;
-            EXPECT_EQ(expected, og::sim::sim_find_next_control_owned(fx.world(), 0, 0))
+            EXPECT_EQ(hero, sim_find_next_control(fx.world(), 0)) << where;
+            EXPECT_EQ(hero, og::sim::sim_find_next_control_owned(fx.world(), 0, 0))
                 << where;
         }
     }
 }
 
-// Switch Character has asked whose side a walker fights for since 2013:
-// from a live hero it skips the foe's summon on team 0, keeps the hero and
-// says "NO ONE TO SWITCH TO", on both settings; with a real teammate after
-// the summon the next press switches to the teammate. The hand-off asked
-// the team alone: in a fresh world with the hero dead, the classic game
-// hands the seat the summon, and with the setting on the hand-off asks the
-// switch's question and the game ends instead.
-// RED with the switch's side test made optional (the team enough): the seat
-// switches to the summon on both settings.
-TEST(GameplayFixesSeats, the_hand_off_asks_switch_characters_question_only_with_the_setting_on)
+// Switch Character has asked whose side a walker fights for since 2013. From
+// a live hero, with the setting on it switches to the faerie (it fights for
+// team 0, the colour it wears); classic it skips the faerie (its druid's
+// side), keeps the hero and says "NO ONE TO SWITCH TO". With a real teammate
+// after the faerie the next press switches to the teammate on both settings.
+// The hand-off from a dead hero takes the faerie on both settings, so the two
+// agree with the setting on.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// switch skips the faerie).
+TEST(GameplayFixesSeats, switch_character_and_the_hand_off_agree_on_a_summon_of_our_colour_with_the_setting_on)
 {
     for (const short fixes : {short{0}, short{1}})
     {
+        SCOPED_TRACE(fixes);
         {
             SeatWorld fx;
             fx.world().gameplay_fixes = fixes;
@@ -838,20 +800,27 @@ TEST(GameplayFixesSeats, the_hand_off_asks_switch_characters_question_only_with_
             input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
             (void)sim_process_player_input(input.players[0], control, fx.world(), 0, 0,
                                            debounce, &fx.events);
-            EXPECT_EQ(hero, control) << fixes << ": the switch skips the summon";
-            EXPECT_EQ(0, hero->user()) << fixes;
-            EXPECT_EQ(1, notices(fx.events, "NO ONE TO SWITCH TO")) << fixes;
-            EXPECT_EQ(-1, s.faerie->user()) << fixes;
+            if (fixes != 0)
+            {
+                EXPECT_EQ(s.faerie, control) << "the switch takes the faerie";
+                EXPECT_EQ(0, s.faerie->user());
+                EXPECT_EQ(0, notices(fx.events, "NO ONE TO SWITCH TO"));
+            }
+            else
+            {
+                EXPECT_EQ(hero, control) << "the switch skips the faerie";
+                EXPECT_EQ(0, hero->user());
+                EXPECT_EQ(1, notices(fx.events, "NO ONE TO SWITCH TO"));
+                EXPECT_EQ(-1, s.faerie->user());
+            }
 
-            // A real teammate after the summon; the key released, then
+            // A real teammate after the faerie; the key released, then
             // pressed again.
             walker* mate = fx.add({.team = 0});
-            (void)seat_tick(fx.world(), fx.events, control, debounce);
-            (void)sim_process_player_input(input.players[0], control, fx.world(), 0, 0,
-                                           debounce, &fx.events);
-            EXPECT_EQ(mate, control) << fixes << ": the switch takes the teammate";
-            EXPECT_EQ(0, mate->user()) << fixes;
-            EXPECT_EQ(-1, s.faerie->user()) << fixes;
+            press_switch(fx, control, debounce);
+            EXPECT_EQ(mate, control) << "the switch takes the teammate";
+            EXPECT_EQ(0, mate->user());
+            EXPECT_EQ(-1, s.faerie->user());
         }
 
         SeatWorld fx;
@@ -861,34 +830,25 @@ TEST(GameplayFixesSeats, the_hand_off_asks_switch_characters_question_only_with_
         walker* control = hero;
         SimInputDebounce debounce{};
         const SimInputResult result = seat_tick(fx.world(), fx.events, control, debounce);
-        if (fixes == 0)
-        {
-            EXPECT_EQ(s.faerie, control) << "the classic hand-off takes the summon";
-            EXPECT_FALSE(result.endgame_requested);
-        }
-        else
-        {
-            EXPECT_EQ(nullptr, control) << "the hand-off asks the switch's question";
-            EXPECT_EQ(-1, s.faerie->user());
-            EXPECT_TRUE(result.endgame_requested);
-            EXPECT_EQ(1, result.endgame_type);
-        }
+        EXPECT_EQ(s.faerie, control) << "the hand-off takes the faerie";
+        EXPECT_FALSE(result.endgame_requested);
     }
 }
 
-// A seat on the foe's summon keeps it when the charm on the summon's caster
-// runs out (#496, the #450 ruling). Team 0's unclaimed hero stands first in
-// the world's list, so a seat that looked for a new body would take it. The
-// druid our side charmed (100 ticks left) has summoned the faerie, which
-// fights for team 0 while the charm runs, and the seat drives the faerie.
-// Then the charm runs out as living::act's decay leaves it (the druid back on
-// team 1, no team recorded, no timer; the decay itself is pinned by
-// SemLiving.charm_counts_down_without_touching_the_team_and_an_uncharmed_walker_keeps_its_team),
-// and the faerie, still on team 0, fights for team 1. The seat looks for a
-// new body only when it has none or its body is dead, so it stays on the
-// faerie, on both settings.
+// A seat on the faerie keeps it when the charm on the faerie's caster runs
+// out (#496, the #450 ruling). Team 0's unclaimed hero stands first in the
+// world's list, so a seat that looked for a new body would take it. The druid
+// our side charmed (100 ticks left) has summoned the faerie, which fights for
+// team 0 while the charm runs, and the seat drives the faerie. Then the charm
+// runs out as living::act's decay leaves it (the druid back on team 1, no team
+// recorded, no timer; the decay itself is pinned by
+// SemLiving.charm_counts_down_without_touching_the_team_and_an_uncharmed_walker_keeps_its_team).
+// With the setting on the faerie, still on team 0, fights for team 0, the
+// colour it wears; classic, for team 1, its druid's. The seat looks for a new
+// body only when it has none or its body is dead, so it stays on the faerie,
+// on both settings.
 // RED with a seat that also looks when its body no longer fights for the
-// seat's team: once the charm is out, with the setting on, the seat jumps to
+// seat's team: once the charm is out, with the setting off, the seat jumps to
 // the hero.
 TEST(GameplayFixesSeats, a_seat_keeps_a_summon_when_its_casters_charm_runs_out)
 {
@@ -914,8 +874,9 @@ TEST(GameplayFixesSeats, a_seat_keeps_a_summon_when_its_casters_charm_runs_out)
         druid->set_team_num(1);
         druid->set_real_team_num(255);
         druid->set_charm_left(0);
-        ASSERT_EQ(0, faerie->is_friendly_to_team(0))
-            << fixes << ": the faerie now fights for team 1";
+        ASSERT_EQ(fixes != 0 ? 1 : 0, faerie->is_friendly_to_team(0))
+            << fixes << ": with the setting on the faerie fights for the colour it wears; "
+                        "classic, for the druid's";
         ASSERT_EQ(0, faerie->team_num()) << fixes << ": and still wears team 0";
 
         result = seat_tick(fx.world(), fx.events, control, debounce);
@@ -929,18 +890,63 @@ TEST(GameplayFixesSeats, a_seat_keeps_a_summon_when_its_casters_charm_runs_out)
     }
 }
 
+// #536: the seat on the faerie of the test above, the charm out, and a team-0
+// teammate after it in the world's list. With the setting on the faerie
+// fights for team 0, so Switch Character takes the teammate (a friend of the
+// body it switches from); classic the faerie fights for its druid's side,
+// every team-0 body is its foe, and the switch says "NO ONE TO SWITCH TO"
+// once and keeps the faerie.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: no one
+// to switch to).
+TEST(GameplayFixesSeats, a_seat_on_a_summon_whose_casters_charm_ran_out_switches_home_only_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        SeatWorld fx;
+        fx.world().gameplay_fixes = fixes;
+        walker* druid = fx.add({.team = 0, .real_team = 1, .charm_left = 100});
+        walker* faerie = fx.add({.team = 0});
+        faerie->set_owner(druid);
+        walker* mate = fx.add({.team = 0});
+        ASSERT_TRUE(sim_claim_control(fx.world(), *faerie, 0));
+        walker* control = faerie;
+        SimInputDebounce debounce{};
+        (void)seat_tick(fx.world(), fx.events, control, debounce);
+        druid->set_team_num(1);
+        druid->set_real_team_num(255);
+        druid->set_charm_left(0);
+
+        press_switch(fx, control, debounce);
+        if (fixes != 0)
+        {
+            EXPECT_EQ(mate, control) << "the switch takes the teammate";
+            EXPECT_EQ(0, mate->user());
+            EXPECT_EQ(0, notices(fx.events, "NO ONE TO SWITCH TO"));
+        }
+        else
+        {
+            EXPECT_EQ(faerie, control) << "classic: no one to switch to";
+            EXPECT_EQ(0, faerie->user());
+            EXPECT_EQ(-1, mate->user());
+            EXPECT_EQ(1, notices(fx.events, "NO ONE TO SWITCH TO"));
+        }
+    }
+}
+
 // The issue's staging end to end, with the core pack's druid. Player 0's
 // hero lies dead. A level-4 druid of team 1 that our side charmed onto team
 // 0 (one act of charm left) casts SUMMON FAERIE on open ground, as
 // SemDruid.a_faerie_summoned_on_open_ground_lives_for_its_lifetime casts it:
 // the faerie takes the druid's colour of the moment and the druid as its
 // owner. The druid's next act runs the charm out: the druid is back on team
-// 1 and the faerie stays on team 0. The classic game hands the dead hero's
-// seat the faerie; with the setting on nobody is handed over and the game
-// ends (type 1).
-// RED with the second pass of sim_find_next_control back on the charm test
-// alone: with the setting on the seat takes the faerie.
-TEST(GameplayFixesSeats, a_charmed_druids_faerie_is_handed_over_only_with_the_setting_off)
+// 1 and the faerie stays on team 0. On both settings the dead hero's seat is
+// handed the faerie: classic because the hand-off asks only the colour, with
+// the setting on (#496) because the faerie stays on the charmer's team and
+// fights for it.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on:
+// nobody is handed over and the game ends).
+TEST(GameplayFixesSeats, a_charmed_druids_faerie_is_handed_over_on_both_settings)
 {
     for (const short fixes : {short{0}, short{1}})
     {
@@ -1011,36 +1017,24 @@ TEST(GameplayFixesSeats, a_charmed_druids_faerie_is_handed_over_only_with_the_se
         walker* control = hero;
         SimInputDebounce debounce{};
         const SimInputResult result = seat_tick(world, tw.events, control, debounce);
-        if (fixes == 0)
-        {
-            EXPECT_EQ(faerie, control) << "the classic game hands over the faerie";
-            EXPECT_EQ(0, faerie->user());
-            EXPECT_FALSE(result.endgame_requested);
-        }
-        else
-        {
-            EXPECT_EQ(nullptr, control) << "with the setting on nobody is handed over";
-            EXPECT_EQ(-1, faerie->user());
-            EXPECT_TRUE(result.endgame_requested);
-            EXPECT_EQ(1, result.endgame_type);
-        }
+        EXPECT_EQ(faerie, control) << fixes << ": the faerie is handed over";
+        EXPECT_EQ(0, faerie->user()) << fixes;
+        EXPECT_FALSE(result.endgame_requested) << fixes;
         EXPECT_EQ(0u, hook_failures.count()) << hook_failures.message();
     }
 }
 
-// The host's side of the same hand-off, through a real GameServer over the
-// in-process transport, in a classic world with respawns off: player 0's
-// hero bound to seat 0 on team 0, a stationary team-1 druid, and the team-0
-// faerie it owns (the shape the druid's charm leaves when it runs out). The
-// hero dies. With the setting off the seat drives the faerie and the level
-// goes on. With it on the seat holds nobody and asks for the end of the
-// game; the host still counts the faerie, which wears team 0's colour, so
-// the level waits, the seat empty, until the faerie dies, and the next step
-// ends it as a wiped-out team's does. A twin with no faerie ends on the
-// first step after the hero's death, on both settings.
-// RED with the second pass of sim_find_next_control back on the charm test
-// alone: with the setting on the seat holds the faerie.
-TEST(GameplayFixesSeats, a_refused_summon_holds_the_level_open_until_it_dies)
+// The host's side of the same hand-off (#537's untimed shape), through a real
+// GameServer over the in-process transport, in a classic world with respawns
+// off: player 0's hero bound to seat 0 on team 0, a stationary team-1 druid,
+// and the team-0 faerie it owns (the shape the druid's charm leaves when it
+// runs out; it has no lifetime). The hero dies. On both settings the seat
+// drives the faerie and the level goes on; once the faerie is killed by hand
+// the next step ends the level as a wiped-out team's does. A twin with no
+// faerie ends on the first step after the hero's death, on both settings.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+// seat holds nobody after the hero's death).
+TEST(GameplayFixesSeats, a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings)
 {
     for (const bool with_faerie : {true, false})
     {
@@ -1092,28 +1086,18 @@ TEST(GameplayFixesSeats, a_refused_summon_holds_the_level_open_until_it_dies)
             {
                 EXPECT_EQ(1, world.ending) << "the wipe ends the level";
             }
-            else if (fixes == 0)
-            {
-                EXPECT_EQ(faerie, server.player_control(0))
-                    << "the classic game hands over the faerie";
-                EXPECT_EQ(0, faerie->user());
-                EXPECT_EQ(0, world.ending);
-            }
             else
             {
-                for (int i = 0; i < 4; ++i)
-                    server.step();
-                EXPECT_EQ(nullptr, server.player_control(0)) << "nobody is handed over";
-                EXPECT_EQ(-1, faerie->user());
-                EXPECT_EQ(0, world.ending)
-                    << "the host waits while the faerie wears team 0's colour";
+                EXPECT_EQ(faerie, server.player_control(0)) << "the seat drives the faerie";
+                EXPECT_EQ(0, faerie->user());
+                EXPECT_EQ(0, world.ending);
 
                 faerie->set_dead(1);
                 faerie->death();
                 server.step();
                 EXPECT_EQ(1, world.ending) << "the faerie is gone: the level ends as on a wipe";
             }
-            // Every leg, the classic one and the one with no faerie included.
+            // Every leg, the one with no faerie included.
             EXPECT_EQ(0u, hook_failures.count()) << hook_failures.message();
         }
     }

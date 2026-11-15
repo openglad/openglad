@@ -687,6 +687,52 @@ TEST(KitCaptain, hook_reels_the_foe_to_the_captains_feet)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502) and the lead's ruling M3: the hook blade rides the
+// captain who threw it (KIT_RIDER, with the setting on) and never snags him.
+// A team-1 captain throws HOOK and is charmed onto team 0 by hand; a team-0
+// soldier stands where the spiral touches it on the way back (56 px east of
+// the captain). With the setting on the blade (team 1) snags the soldier, a
+// foe of its colour, and never the captain; classic it answers for the
+// charmed captain, team 0 now: it snags nobody.
+// Break: the captain's `gf.rides(...)` wrapper removed at kit_captain.lua (on:
+// the blade and the charmed captain are foes and its first snag search finds
+// the captain, who is inside its reach from the throw).
+TEST(KitCaptain, a_hook_blade_never_snags_its_charmed_captain)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        tw.world().gameplay_fixes = fixes;
+        walker* captain = add_captain(tw, 200, 200);
+        ASSERT_NE(nullptr, captain);
+        captain->set_team_num(kThem);
+        walker* soldier = add_living(tw, FAMILY_SOLDIER, kUs, 256, 200);
+        ASSERT_NE(nullptr, soldier);
+        ASSERT_TRUE(cast(captain, 3, false).ok);
+        ASSERT_EQ(1u, blades(tw).size());
+        walker* blade = blades(tw).front();
+        ASSERT_EQ(captain, blade->owner());
+        ASSERT_EQ(kThem, blade->team_num());
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? KIT_RIDER : 0, blade->kit_state() & KIT_RIDER);
+        captain->set_real_team_num(captain->team_num());
+        captain->set_team_num(kUs);
+        captain->set_charm_left(30);
+        EXPECT_EQ(1, blade->is_friendly(captain)) << "the blade rides him";
+
+        const int snag = act_until_snagged(blade, soldier);
+        if (fixed)
+            EXPECT_GT(snag, 0) << "setting on: a foe of the blade's colour is snagged";
+        else
+            EXPECT_EQ(-1, snag) << "setting off: the charmed captain's friend is not";
+        EXPECT_EQ(0, frozen(captain)) << "never its captain";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // The same reel from the other side: a soldier 56 px west of the captain is
 // touched on the way out (tick 20) and slides east 8 px a tick to the spot
 // on the captain's west side.

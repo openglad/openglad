@@ -1,6 +1,6 @@
 -- core lib: effect_ember — IMMOLATE's burning footprint: smoulders for its lifetime and burns the foes standing on it (cookbook: docs/lua-classpacks-design.md §3).
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local hits = og.use("effect_common").hits
 
 -- The finder measures from top-left corner to top-left corner, so a radius
@@ -13,10 +13,21 @@ local LIVING_BOX = 64
 
 -- The living foes on ent's floor whose box overlaps ent's box grown by
 -- grow px on every side, in the finder's order. Shared with IMMOLATE's
--- contact burn (lib/kit_elemental.lua).
-local function foes_touching(ent, grow)
+-- contact burn (lib/kit_elemental.lua); with `effect` named (IMMOLATE's
+-- marker, owned by `ent`) the foes of the effect's side (gf.foes_round).
+local function foes_touching(ent, grow, effect)
   local reach = ent:sizex() + ent:sizey() + 2 * LIVING_BOX + 2 * grow
-  local foes = og.find_foes_in_range("ob", reach, ent)
+  local foes
+  -- rule: Gameplay Fixes AZ (#502): IMMOLATE's contact burn (its marker named as `effect`, owned by
+  --   `ent`) finds round the burning elemental the foes of the side its fire is on (gf.foes_round);
+  --   an ember asks its own side. Classic, the elemental's own foes.
+  -- tests: KitElemental.a_charmed_elementals_fire_burns_the_foes_of_its_own_colour
+  -- tests: KitElemental.embers_burn_crossers_then_die
+  if effect then
+    foes = gf.foes_round(effect, reach)
+  else
+    foes = og.find_foes_in_range("ob", reach, ent)
+  end
   local touching = {}
   -- plumbing: iterates the foe scan; rule below
   for i = 1, #foes do

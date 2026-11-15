@@ -1663,20 +1663,34 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     ASSERT_NE(nullptr, t_named) << "targets created";
     ASSERT_NE(nullptr, t_myguy_name) << "targets created";
 
-    // A walker we own is friendly THROUGH THE OWNER CHAIN (is_friendly walks
-    // to the chain head), so we cannot strike it down at all -- no damage, no
-    // death, no toast. The "Dispelled!" wording lives in the same-team arm
-    // that a team-1 killer of a team-0 victim never reaches.
+    // With the Gameplay Fixes setting off a walker we own is friendly THROUGH
+    // THE OWNER CHAIN (is_friendly walks to the chain head), so we cannot
+    // strike it down at all -- no damage, no death, no toast. The "Dispelled!"
+    // wording lives in the same-team arm that a team-1 killer of a team-0
+    // victim never reaches. With the setting on (fix AZ) the orc fights for
+    // the colour it wears, team 0, and is the attacker's foe (both are
+    // livings, so the rider clause plays no part); it is not struck here, the
+    // rest of the test needs it alive.
+    // Break: alliance_head's `return this;` -> `return chain_head();` (on: the
+    // orc is friendly again).
     t_dispelled->stats()->set_armor(0);
     t_dispelled->stats()->set_hitpoints(1);
     t_dispelled->stats()->name = "Summon";
     t_dispelled->set_owner(attacker);
+    const short fixes_before = world.gameplay_fixes;
+    world.gameplay_fixes = 0;
     current_game->sim_events->clear();
-    ASSERT_FALSE(attacker->attack(t_dispelled))
-        << "a walker on our own owner chain is friendly and cannot be attacked";
+    const bool struck_classic = attacker->attack(t_dispelled);
+    world.gameplay_fixes = fixes_before;
+    ASSERT_FALSE(struck_classic)
+        << "setting off: a walker on our own owner chain is friendly and cannot be attacked";
     ASSERT_FALSE(t_dispelled->dead()) << "a refused attack must not kill";
     ASSERT_FLOAT_EQ(1.0f, t_dispelled->stats()->hitpoints()) << "a refused attack deals no damage";
     ASSERT_TRUE(first_death_notification().empty()) << "a refused attack announces nothing";
+    world.gameplay_fixes = 1;
+    EXPECT_EQ(0, attacker->is_friendly(t_dispelled))
+        << "setting on: the orc fights for the colour it wears";
+    world.gameplay_fixes = fixes_before;
 
     // A named, un-summoned victim on the PLAYER's team: announced with the
     // plain wording, because the wording is chosen off world.my_team.

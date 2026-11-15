@@ -939,7 +939,11 @@ TEST_F(SemBarbarian, a_boulder_at_terrain_spends_nothing_with_the_setting_on)
 // the boulder of HURL BOULDER (slot 1) and EXPLODING BOULDER (slot 2) takes
 // the barbarian's team number when he throws it, team 1 here; classic it
 // stays on team 0, the team it was made with (the hammer it rides on is the
-// barbarian's on both settings, as fire() stamps every shot).
+// barbarian's on both settings, as fire() stamps every shot). Then whom it
+// fights for: the barbarian charmed by hand onto team 0 while it flies. With
+// the setting on the boulder (team 1) is refused by a team-1 walker and lands
+// on a team-0 one; classic it answers for the charmed barbarian, team 0 now:
+// the reverse.
 // Breaks: the barbarian's `gf.made_by(boulder, self)` ->
 // `boulder:set_owner(self)` (both setting-on legs red); take_team's
 // `made.team = from.team` -> `made.team = made.team` (likewise).
@@ -964,6 +968,20 @@ TEST_F(SemBarbarian, a_boulder_wears_the_barbarians_colour_only_with_the_setting
             const std::vector<walker*> hammers = any(Order::Weapon, FAMILY_HAMMER);
             ASSERT_EQ(1u, hammers.size()) << "the one hammer fired";
             EXPECT_EQ(1, hammers[0]->team_num()) << "fire() stamps the hammer on both settings";
+
+            walker* boulder = boulders[0];
+            boulder->stats()->set_hitpoints(1000.0f);
+            walker* red = add(FAMILY_SOLDIER, 0, 400, 400, 1, 0.0f);
+            walker* green = add(FAMILY_SOLDIER, 1, 400, 300, 1, 0.0f);
+            ASSERT_TRUE(red && green);
+            barb->set_real_team_num(barb->team_num());
+            barb->set_team_num(0);
+            barb->set_charm_left(30);
+            const bool fixed = fixes != 0;
+            walker* const friend_ = fixed ? green : red;
+            walker* const foe = fixed ? red : green;
+            EXPECT_FALSE(boulder->attack(friend_)) << "its own side";
+            EXPECT_TRUE(boulder->attack(foe)) << "its foe";
         }
     }
 }

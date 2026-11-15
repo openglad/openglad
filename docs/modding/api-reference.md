@@ -873,7 +873,7 @@ which accepts either a guy handle or a walker.
 | `og.find_nearest_blood(self)` | Handle or `nil`: the nearest live blood stain on `self`'s floor whose squared centre distance from `self` is under 800 (about 28 px). A stain on another floor is never answered. Draw-free. |
 | `og.blood_in_reach(self)` | Array — every stain `og.find_nearest_blood` would consider (a live stain whose squared centre distance from `self` is under 800, about 28 px), on `self`'s floor, nearest first; equal distances keep fx-list order. Draw-free. |
 | `og.foes_in_range(self, range)` | Array — the `for_each_foe_in_range` traversal. |
-| `og.find_foes_in_range(list, range, self)` | Array, count. |
+| `og.find_foes_in_range(list, range, self [, side])` | Array, count: the live, awake, visible livings and generators within `range` of `self` that are not its friends. With `side` (a walker), those not on `side`'s side, asked by `side:sides_friendly`, which has no dead test, so an effect can search round its owner for its own side, also from its own death (the core pack's `gf.foes_round`, Gameplay Fixes AZ). |
 | `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
 | `og.find_in_range(list, range, self)` | Array, count. |
 | `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`, and allegiance follows the owner chain. |

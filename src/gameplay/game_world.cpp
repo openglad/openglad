@@ -2202,7 +2202,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
 
 std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany,
-                                                 walker* ob)
+                                                 walker* ob, const walker* side)
 {
     std::list<walker*> result;
     // plumbing: range finders: zero the count, null searcher or null count pointer -> empty result
@@ -2217,15 +2217,15 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        // rule: find_foes_in_range returns the live, awake, visible, non-friendly Livings and
-        //   Generators within range (inclusive); no cloak roll, so an invisible foe IS found here.
-        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
-        // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
+        // rule: find_foes_in_range returns the live, awake, visible Livings and Generators within range (inclusive)
+        //   not friendly to the searcher, or, with `side` given, not on that walker's side (sides_friendly: Gameplay Fixes AZ, an effect asks for its own side, also from its own death); no cloak roll.
+        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches, SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
+        // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder, SemLibsGhostScare.an_uncharmed_ghosts_scare_finds_its_foes_in_the_same_order_on_both_settings
         // tests: SemWorld.find_foes_in_range_keeps_hostile_livings_and_generators_only
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
-            (ob->is_friendly(w) == 0) &&
+            ((side ? side->sides_friendly(w) : ob->is_friendly(w)) == 0) &&
             ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
@@ -2829,8 +2829,8 @@ void GameWorld::tick()
         }
 
         // rule: During FREEZE TIME a Living or Generator not on the player's side skips its turn:
-        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (the head of its
-        //   owner chain does not wear my_team); off (the old game) one not on team 0 itself. Every
+        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (with fix AZ: one
+        //   that does not wear my_team); off (the old game) one not on team 0 itself. Every
         //   other order (effects, treasures, weapons in oblist) still acts. Outside a freeze
         //   everything acts with in_act set.
         // tests: SimWorld.r15_freeze_tick_and_level_done_paths
@@ -2839,7 +2839,7 @@ void GameWorld::tick()
         // tests: parity:enemy_freeze_mage_scen99
         // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
         // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
         if (!enemy_freeze) // normal functionality
         {
             // rule: A level stays unfinished while any Living not friendly to the player's team is
@@ -2904,7 +2904,7 @@ void GameWorld::tick()
             // tests: parity:enemy_freeze_mage_scen99
             // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
             // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
             if (ob && !ob->dead())
             {
                 // Only the census is hoisted out of the act gate: a foe that
@@ -2912,12 +2912,12 @@ void GameWorld::tick()
                 // branch above already counts one.
                 // rule: During FREEZE TIME a Living or Generator may act only on the player's side:
                 //   with Gameplay Fixes on (fix AF, #92) when it is friendly to the player's team
-                //   (the head of its owner chain wears my_team); off (the old game) when it is on
+                //   (with fix AZ: when it wears my_team); off (the old game) when it is on
                 //   team 0 itself, which freezes a non-red player's own side (#86). Every other
                 //   order always acts.
                 // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
                 // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 const bool may_act =
                     ((ob->query_order() != Order::Living) &&
@@ -2933,7 +2933,7 @@ void GameWorld::tick()
                 // tests: parity:enemy_freeze_mage_scen99
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
-                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on
                 if (may_act)
                     ob->act();
                 // rule: A level stays unfinished while any Living not friendly to the player's team

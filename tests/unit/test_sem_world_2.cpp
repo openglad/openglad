@@ -679,42 +679,45 @@ TEST(SemWorld, freeze_time_stops_hostile_generators_but_not_effects_or_treasures
 
 // Fix AF (#461). During FREEZE TIME the old game lets a Living or Generator
 // act when it is on team 0 itself; with Gameplay Fixes on it acts when it is
-// friendly to the player's team, the head of its owner chain wearing
-// my_team. A team-0 Living owned by a live team-1 walker acts with the
-// setting off and is frozen with it on; a team-1 Living owned by a live
-// team-0 walker is frozen off and acts on, and a team-1 Generator owned by
-// a team-0 walker goes the same way. The unowned owners agree on both
-// settings.
-TEST(SemWorld, freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on)
+// friendly to the player's team, and with fix AZ (#502) that is when it wears
+// my_team itself. The player's team is 1 here, so the two rules differ for
+// every walker: off, every team-0 walker acts and every team-1 one is frozen;
+// on, every team-1 walker acts and every team-0 one is frozen. Owners decide
+// nothing on either setting: a team-0 Living owned by a team-1 walker, a
+// team-1 Living owned by a team-0 walker and a team-1 Generator owned by a
+// team-0 walker go by their own colour. The team-0 walkers hold the level.
+// Break: alliance_head's `return this;` -> `return chain_head();` (on: an
+// owned walker follows its owner).
+TEST(SemWorld, freeze_time_asks_team_zero_with_the_fixes_off_and_the_players_colour_with_them_on)
 {
     for (const short fixes : {short{0}, short{1}})
     {
         TestGameWorld tw;
         GameWorld& world = tw.world();
-        world.my_team = 0;
+        world.my_team = 1;
         world.gameplay_fixes = fixes;
-        TickWalker* foe_owner = push_tick_walker(world.oblist, Order::Living, FAMILY_MAGE, 1, 32, 32);
-        TickWalker* our_owner = push_tick_walker(world.oblist, Order::Living, FAMILY_MAGE, 0, 64, 32);
-        TickWalker* red_of_foe = push_tick_walker(world.oblist, Order::Living, FAMILY_SKELETON, 0, 96, 32);
-        TickWalker* blue_of_ours = push_tick_walker(world.oblist, Order::Living, FAMILY_SKELETON, 1, 128, 32);
-        TickWalker* tent_of_ours = push_tick_walker(world.oblist, Order::Generator, FAMILY_TENT, 1, 160, 64);
-        red_of_foe->set_owner(foe_owner);
-        blue_of_ours->set_owner(our_owner);
-        tent_of_ours->set_owner(our_owner);
+        TickWalker* blue_owner = push_tick_walker(world.oblist, Order::Living, FAMILY_MAGE, 1, 32, 32);
+        TickWalker* red_owner = push_tick_walker(world.oblist, Order::Living, FAMILY_MAGE, 0, 64, 32);
+        TickWalker* red_of_blue = push_tick_walker(world.oblist, Order::Living, FAMILY_SKELETON, 0, 96, 32);
+        TickWalker* blue_of_red = push_tick_walker(world.oblist, Order::Living, FAMILY_SKELETON, 1, 128, 32);
+        TickWalker* blue_tent_of_red = push_tick_walker(world.oblist, Order::Generator, FAMILY_TENT, 1, 160, 64);
+        red_of_blue->set_owner(blue_owner);
+        blue_of_red->set_owner(red_owner);
+        blue_tent_of_red->set_owner(red_owner);
         world.enemy_freeze = 20;
         for (int i = 0; i < 3; ++i)
             world.tick();
-        EXPECT_EQ(0, foe_owner->acts) << "a team-1 owner: frozen; fixes " << fixes;
-        EXPECT_EQ(3, our_owner->acts) << "a team-0 owner: acts; fixes " << fixes;
-        EXPECT_EQ(fixes != 0 ? 0 : 3, red_of_foe->acts)
-            << "team 0, owned by a team-1 walker: acts off (team 0), frozen on (chain); fixes "
-            << fixes;
-        EXPECT_EQ(fixes != 0 ? 3 : 0, blue_of_ours->acts)
-            << "team 1, owned by a team-0 walker: frozen off (team 1), acts on (chain); fixes "
-            << fixes;
-        EXPECT_EQ(fixes != 0 ? 3 : 0, tent_of_ours->acts)
+        const int red_acts = fixes != 0 ? 0 : 3;
+        const int blue_acts = fixes != 0 ? 3 : 0;
+        EXPECT_EQ(blue_acts, blue_owner->acts) << "a team-1 owner; fixes " << fixes;
+        EXPECT_EQ(red_acts, red_owner->acts) << "a team-0 owner; fixes " << fixes;
+        EXPECT_EQ(red_acts, red_of_blue->acts)
+            << "team 0, owned by a team-1 walker: its own colour decides; fixes " << fixes;
+        EXPECT_EQ(blue_acts, blue_of_red->acts)
+            << "team 1, owned by a team-0 walker: its own colour decides; fixes " << fixes;
+        EXPECT_EQ(blue_acts, blue_tent_of_red->acts)
             << "a team-1 Generator owned by a team-0 walker: the same rule; fixes " << fixes;
-        EXPECT_EQ(0, world.level_done) << "frozen or not, the team-1 owner holds the level";
+        EXPECT_EQ(0, world.level_done) << "frozen or not, the team-0 walkers hold the level";
     }
 }
 

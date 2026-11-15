@@ -523,10 +523,16 @@ public:
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                      std::int32_t range, std::int32_t* howmany, walker* ob);
+    // The live, awake, visible Livings and Generators within range of `ob`
+    // that are not its friends; with `side` given (Gameplay Fixes AZ: an
+    // effect searching round its owner), those not on `side`'s side, asked
+    // through walker::sides_friendly, so a dead effect can ask it too.
     std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
-                                          std::int32_t range, std::int32_t* howmany, walker* ob);
+                                          std::int32_t range, std::int32_t* howmany, walker* ob,
+                                          const walker* side = nullptr);
     // Live hostile weapons in range; normal projectiles use weaplist, and
-    // allegiance follows the owner chain.
+    // allegiance is walker::is_friendly's (each weapon's own colour with Gameplay
+    // Fixes AZ, the owner chain classic).
     std::list<walker*> find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany, walker* ob);
     // Other live friendly Living actors in range; excludes the searcher.

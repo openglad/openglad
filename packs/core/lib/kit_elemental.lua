@@ -69,7 +69,7 @@ end
 -- fire, is a melee attacker and burns double (hit_response cannot do this:
 -- it never fires for a player-driven victim).
 local function burn_contacts(marker, owner, t)
-  local foes = foes_touching(owner, 4)
+  local foes = foes_touching(owner, 4, marker)
   local striker = owner:last_attacker_id()
   -- rule: IMMOLATE burns every living foe on the elemental's floor touching its box grown by 4 px
   --   for immolate_contact + level each tick; the foe that last struck it burns double.
@@ -312,7 +312,7 @@ function M.immolate(self)
     quench(self, marker)
     return true
   end
-  marker = km.spawn(self, km.IMMOLATION, t.immolate_max)
+  marker = gf.rides(km.spawn(self, km.IMMOLATION, t.immolate_max))
   -- plumbing: og.add_ob / km.spawn nil when the world is full: flash, ember, meteor strike,
   --   immolation marker (COULD NOT IGNITE), rain marker (COULD NOT CALL METEORS), nova blast and
   --   ring blast are skipped or refused

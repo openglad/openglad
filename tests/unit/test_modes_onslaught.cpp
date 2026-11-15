@@ -2529,3 +2529,101 @@ TEST_F(ModesOnslaught, a_tent_skeletons_kill_reaches_its_legion)
     EXPECT_EQ(green_skeletons + 1, skeletons_alive_on_team(fx.world(), 1))
         << "the slain orc rises for green";
 }
+
+// Gameplay Fixes AZ (#502) and the lead's rulings M1 and M4: a post struck
+// down flips to the colour of the thing that struck it (the hook's fourth
+// argument), and a kill by a thing with no living behind it pays the colour
+// it wore. The red post is at 1 hp, so any landed blow is lethal and the floor
+// arm's answer is a cancel (the post keeps its 1 hp).
+// - A green archer's arrow in flight, the archer then charmed red: with the
+//   setting on the arrow (green) strikes the red post, which flips to green,
+//   and green is paid the capture; classic the arrow answers for the charmed
+//   archer, red: the blow is refused before the hook and nothing changes.
+// - The archer dead instead (his arrow owns itself, as weap::act makes it on
+//   its next act): with the setting on the post flips to green and green is
+//   paid; classic the blow's attacker is the arrow, not a living: no flip, the
+//   floor cancels it, no capture.
+// - Such an arrow kills a red troop: with the setting on green is paid the
+//   troop's kill points; classic nobody (no killer).
+// Breaks: the capture's setting-on `team = striker:team_num()` -> the classic
+// body (the first two legs on: no flip); Onslaught's `if killer == nil then
+// return end` restored (the last leg on: nobody paid).
+TEST_F(ModesOnslaught, a_post_struck_down_by_a_shot_flips_to_the_shots_colour_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const bool fixed = fixes != 0;
+        for (const bool dead_archer : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << (dead_archer ? "the dead archer" : "the charmed archer")
+                                            << ", setting " << fixes);
+            OnsWorld fx;
+            fx.world().gameplay_fixes = fixes;
+            fx.world().new_specials = 0;
+            walker* archer = fx.spawn_living(FAMILY_ARCHER, 1, 400, 400);
+            ASSERT_NE(nullptr, archer);
+            fx.tick(1);
+            ASSERT_TRUE(fx.ons_active());
+            walker* arrow = fx.world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+            ASSERT_NE(nullptr, arrow);
+            arrow->set_team_num(1);  // as fire() stamps it
+            arrow->set_owner(archer);
+            arrow->setxy(140, 340);
+            arrow->stats()->set_hitpoints(1000.0f);
+            if (dead_archer)
+            {
+                archer->set_dead(1);
+                arrow->set_owner(arrow);  // what weap::act does to a dead maker's shot
+            }
+            else
+            {
+                archer->set_real_team_num(archer->team_num());
+                archer->set_team_num(0);
+                archer->set_charm_left(30);
+            }
+            fx.red_gen_a->stats()->set_hitpoints(1.0f);
+            const std::uint32_t green_before = fx.world().m_score[1];
+            arrow->set_damage(5000.0f);
+            arrow->attack(fx.red_gen_a);
+            EXPECT_FALSE(fx.red_gen_a->dead()) << "a post never dies";
+            if (fixed)
+            {
+                EXPECT_EQ(1, fx.red_gen_a->team_num()) << "flipped to the arrow's colour";
+                EXPECT_EQ(fx.red_gen_a->stats()->max_hitpoints(), fx.red_gen_a->stats()->hitpoints());
+                EXPECT_EQ(green_before + 300u, fx.world().m_score[1]) << "green is paid the capture";
+            }
+            else
+            {
+                EXPECT_EQ(0, fx.red_gen_a->team_num()) << "no flip";
+                EXPECT_EQ(1.0f, fx.red_gen_a->stats()->hitpoints()) << "the post keeps its 1 hp";
+                EXPECT_EQ(green_before, fx.world().m_score[1]) << "no capture";
+            }
+        }
+        {
+            SCOPED_TRACE(testing::Message() << "a troop killed by the dead archer's arrow, setting " << fixes);
+            OnsWorld fx;
+            fx.world().gameplay_fixes = fixes;
+            fx.world().new_specials = 0;
+            walker* archer = fx.spawn_living(FAMILY_ARCHER, 1, 400, 400);
+            ASSERT_NE(nullptr, archer);
+            fx.tick(1);
+            ASSERT_TRUE(fx.ons_active());
+            walker* arrow = fx.world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+            ASSERT_NE(nullptr, arrow);
+            arrow->set_team_num(1);
+            arrow->set_owner(archer);
+            arrow->setxy(static_cast<short>(fx.red->xpos() + 16), fx.red->ypos());
+            arrow->stats()->set_hitpoints(1000.0f);
+            archer->set_dead(1);
+            arrow->set_owner(arrow);
+            ASSERT_EQ(nullptr, fx.red->myguy) << "a troop, not a hero";
+            fx.red->stats()->set_hitpoints(1.0f);
+            arrow->set_damage(5000.0f);
+            ASSERT_TRUE(arrow->attack(fx.red));
+            ASSERT_TRUE(fx.red->dead());
+            EXPECT_EQ(fixed, has_score_change(fx.events, 1, 10))
+                << (fixed ? "setting on: green is paid the troop's kill"
+                          : "setting off: no killer, no pay");
+        }
+    }
+}

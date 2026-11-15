@@ -249,7 +249,8 @@ end
 
 -- Weapon hit: the impulse follows the shot's own motion (lastx/lasty are
 -- its per-tick step), at the stronger shot scale; the shooter becomes the
--- last toucher when a living owns the weapon.
+-- last toucher when a living owns the weapon; with the Gameplay Fixes
+-- setting on the touch is for the shot's own colour.
 local function run_shots(ball)
   if og.world_tick() < og.mode_get(S.KICKOFF_UNTIL) then
     return false
@@ -268,7 +269,21 @@ local function run_shots(ball)
           set_ball_velocity(mx, my, speed_px)
           local shooter = shot:owner()
           local credited = false
-          if shooter ~= nil then
+          if og.match_setting("gameplay_fixes") ~= 0 then
+            -- Gameplay Fixes AZ (#502): with the setting on a shot touches the
+            -- ball for the colour it wears, the colour it was made with, even
+            -- after its maker was charmed or killed; the touch names its maker
+            -- when a living made it. Classic: the colour of the living that
+            -- owns the shot now, and no credit without one.
+            local kicker_id = 0
+            if shooter ~= nil then
+              if shooter:order() == C.ORDER_LIVING then
+                kicker_id = og.entity_id(shooter)
+              end
+            end
+            stamp_toucher(ball, kicker_id, shot:team_num())
+            credited = true
+          elseif shooter ~= nil then
             if shooter:order() == C.ORDER_LIVING then
               stamp_toucher(ball, og.entity_id(shooter), shooter:team_num())
               credited = true

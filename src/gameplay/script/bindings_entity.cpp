@@ -1288,15 +1288,16 @@ int og_find_nearest_blood(lua_State* L)
     return 1;
 }
 
-// og.find_foes_in_range(list_sel, range, self) → array, count
+// og.find_foes_in_range(list_sel, range, self [, side]) → array, count; with side, the foes of side's side (walker:sides_friendly).
 int og_find_foes_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const auto& list = list_from_selector(L, 1);
     const auto range = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
+    const walker* side = resolve_walker_or_nil(L, 4);
     std::int32_t howmany = 0;
-    push_walker_list(L, world->find_foes_in_range(list, range, &howmany, w));
+    push_walker_list(L, world->find_foes_in_range(list, range, &howmany, w, side));
     lua_pushinteger(L, howmany);
     return 2;
 }
@@ -1327,7 +1328,7 @@ int og_find_in_range(lua_State* L)
     return 2;
 }
 
-// og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap", and allegiance follows the owner chain.
+// og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap"; allegiance is walker:is_friendly's.
 int og_find_foe_weapons_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);
@@ -4006,6 +4007,19 @@ int m_pad_room(lua_State* L)
 // Gameplay Fixes AP (#429): the head of the one owner-chain climb (walker::chain_head).
 W_GET_REF(chain_head)
 
+// walker:sides_friendly(w) is walker:is_friendly(w) without its dead test.
+// (Gameplay Fixes AZ, #502: a thing that acts from its own death, a blast's
+// half tier, asks it; with the setting on a thing marked KIT_RIDER and the
+// walker who owns it always answer true.)
+int m_sides_friendly(lua_State* L)
+{
+    walker* w = self_arg(L);
+    walker* other = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversion of the C++ answer, as is_friendly's.
+    lua_pushboolean(L, w->sides_friendly(other) ? 1 : 0);
+    return 1;
+}
+
 // walker:set_owner(w): make w this walker's owner; nil clears it, and the call is refused when this walker is already on w's owner chain.
 // The refusal (#503) is a script error naming both walkers: the link would
 // close an owner loop. A self-link stays legal: every climb ends at a
@@ -4125,6 +4139,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"transfer_stats", m_transfer_stats},
     {"spaces_clear", m_spaces_clear},
     {"is_friendly", m_is_friendly},
+    {"sides_friendly", m_sides_friendly},
     {"set_frame", m_set_frame},
     {"animate", m_animate},
     {"collide", m_collide_check},

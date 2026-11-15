@@ -351,10 +351,21 @@ TEST(SemLibsKnife, a_classic_orphaned_knife_returns_owned_by_itself)
 // re-owns itself on its next act). With the setting on the blade is team 1
 // all three times; classic it stays on team 0, the team it was made with.
 // The charmed leg tells the knife's number from the soldier's number now.
+// Then the flight home (the lead's ruling C-12: the blade's probe rides the
+// soldier, KIT_RIDER with the setting on): the soldier charmed onto team 0,
+// the blade's next step meets a team-0 walker. With the setting on the probe
+// (team 1, copied from the blade) strikes it, stamped team 1 and credited to
+// the soldier; classic the probe answers for the charmed soldier, team 0, and
+// passes. Then the blade flies into the soldier himself: on both settings the
+// probe passes him (with the setting on by the rider clause, classic by one
+// owner chain) and he catches it (weapons_left + 1).
 // Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
 // (every setting-on leg red); made_by's `from or owner` -> `owner` (the
 // charmed leg red: team 2); the knife's `gf.made_by(blade, self:owner(),
-// self)` -> `blade:set_owner(self:owner())` (every setting-on leg red).
+// self)` -> `blade:set_owner(self:owner())` (every setting-on leg red);
+// rider_pair's gate always `return false` (on: the probe cuts the soldier);
+// the probe's `gf.rides(...)` wrapper removed at effect_knife_back.lua (on:
+// the probe cuts the soldier).
 TEST(SemLibsKnife, a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on)
 {
     og::test::mount_core_pack();
@@ -401,6 +412,60 @@ TEST(SemLibsKnife, a_returning_knife_wears_the_knifes_colour_only_with_the_setti
             EXPECT_EQ(fixes != 0 ? 1 : 0, blade->team_num())
                 << "the blade: the knife's team with the setting on, team 0 classic";
         }
+    }
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "the flight home, setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().gameplay_fixes = fixes;
+        walker* soldier = add_living(tw, FAMILY_SOLDIER, 1, 100, 100);
+        ASSERT_NE(nullptr, soldier);
+        walker* knife = tw.world().add_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(1);
+        knife->set_owner(soldier);
+        knife->setxy(300, 300);
+        knife->set_stepsize(4);
+        knife->set_damage(9.0f);
+        knife->set_dead(1);
+        const auto before = live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK);
+        ASSERT_TRUE(knife->death());
+        walker* blade = only_new(before, live_of(tw.world(), Order::FX, FAMILY_KNIFE_BACK));
+        ASSERT_NE(nullptr, blade);
+        soldier->set_real_team_num(soldier->team_num());
+        soldier->set_team_num(0);
+        soldier->set_charm_left(30);
+
+        // The blade 30 px east of the soldier's box; its first step takes it
+        // 4 px west and its probe looks one more step on, where a team-0
+        // walker stands.
+        const int bx = soldier->xpos() + soldier->sizex() + 30;
+        blade->setxy(static_cast<short>(bx), soldier->ypos());
+        walker* red = add_living(tw, FAMILY_SOLDIER, 0, static_cast<short>(bx - 8),
+                                 static_cast<short>(soldier->ypos()));
+        ASSERT_NE(nullptr, red);
+        const float red_hp = red->stats()->hitpoints();
+        blade->act();
+        const bool fixed = fixes != 0;
+        if (fixed) {
+            EXPECT_LT(red->stats()->hitpoints(), red_hp) << "the probe cuts a foe of its colour";
+            EXPECT_EQ(1, red->last_attacker_team()) << "stamped with the blade's colour";
+            EXPECT_EQ(soldier->entity_id(), red->last_attacker_id()) << "credited to the soldier";
+        } else {
+            EXPECT_FLOAT_EQ(red_hp, red->stats()->hitpoints()) << "the charmed soldier's friend";
+        }
+
+        red->setxy(500, 500);
+        const float soldier_hp = soldier->stats()->hitpoints();
+        const int weapons = soldier->weapons_left();
+        int acts = 1;
+        while (blade->dead() == 0 && acts < 40) {
+            blade->act();
+            ++acts;
+        }
+        EXPECT_EQ(1, blade->dead());
+        EXPECT_EQ(weapons + 1, soldier->weapons_left()) << "he catches it";
+        EXPECT_FLOAT_EQ(soldier_hp, soldier->stats()->hitpoints()) << "it never cuts the hand that catches it";
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

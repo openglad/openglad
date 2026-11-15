@@ -1236,7 +1236,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
     "packs/core/families/living-05-cleric.lua", 258,
-    "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
+    "local mace = gf.rides(og.summon(self, \"fx\", FX_MAGIC_SHIELD))",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. The live shield count WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1) falls from 1 to 0."
 };
@@ -3560,8 +3560,8 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
     "packs/core/families/living-00-soldier.lua", 38,
-    "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
-    "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "local boomerang = gf.rides(og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "local boomerang = nil and gf.rides(og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies or intercepts hostile projectiles, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900)."
 };
 
@@ -4099,7 +4099,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
     "packs/core/families/living-12-ghost.lua", 54,
-    "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
+    "local scare = gf.rides(og.summon(self, \"fx\", FX_GHOST_SCARE))",
     "local scare = nil",
     "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
 };
@@ -4817,7 +4817,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
     "packs/core/families/living-13-druid.lua", 195,
-    "      local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
+    "      local circle = gf.rides(og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION))",
     "        do return false, 'MUTATION REFUSAL' end",
     "Replaces the PROTECTION circle summon with `do return false, 'MUTATION REFUSAL' end`, so protection_circle declines on the first uncircled friend before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole druid.lua load and takes plant-tree, the bolt, and summon faerie down with it; the row would then flip on collateral damage rather than on the circle. With the wrapper this is the only row in the corpus that moves."
 };
@@ -5094,7 +5094,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3756,
+    "src/gameplay/walker.cpp", 3781,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -7832,7 +7832,7 @@ inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
 // Spawns prepend, so oblist order is the reverse of this array: the player orc is the
 // head (ACT_CONTROL), then the FAMILY_TOWER generator, then the skeleton. Harness-spawned
 // generators have hitpoints == 0, so trunc(hp/30) == 0 and og.rand0(0 * mult) must answer
-// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2769 `if (n <= 0) {` == master screen.cpp:66). The
+// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2770 `if (n <= 0) {` == master screen.cpp:66). The
 // skeleton is iterated second with con == 2, so any spurious draw at the tower shifts its
 // stun roll and every downstream draw for the rest of the run.
 inline constexpr SpawnSpec kFamilySpawns_orc_yell_zero_constitution_scen99[] = {
@@ -11335,9 +11335,12 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
 // tick 167) and takes the thief's colour, but its owner is still the tent. The
 // classic alliance climbs the owner chain to the tent: the charmed skeleton is
 // still the thief's foe, keeps fighting it, and the thief is dead by the final
-// tick. With the setting on (fix AD) a charmed walker heads its own chain: the
-// skeleton fights for the thief, the tent falls (the level is won) and the
-// thief ends untouched.
+// tick. With the setting on (fix AD) a charmed walker heads its own chain, and
+// (fix AZ) every walker fights for the colour it wears: the skeleton fights for
+// the thief, the tent falls (the level is won) and the thief ends untouched.
+// With fix AZ the skeleton's side no longer depends on where its chain stops,
+// so AD's stop now decides only credit and experience, which no recording
+// carries: the setting-on row's mutation is the charm's own colour write.
 // The setting-on twin has its own spawns: the tent at (160, 150) and the thief
 // 100 px east of it at (260, 150), inside the 320 x 200 view at (0, 0) that the
 // old game's recorder plays its sounds in. The tent's death plays
@@ -11380,10 +11383,10 @@ inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
         "consequence: the charmed skeleton brings the tent down and the level is won"),
 };
 inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 773,
-    "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
-    "return false;",
-    "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
+    "packs/core/families/living-11-thief.lua", 371,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "The charm never moves the skeleton onto the thief's team, so it keeps fighting the thief, which dies, and the tent stands: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
 };
 
 // --- elf_forest_haste (fix AG, #462: the forest penalty comes off the normal step) ---
@@ -11744,22 +11747,24 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
     "The gate is inverted, so the fixed row loses fix AT: at the re-plan the near branch's turn steps the orc a notch off the soldier although it faced him, and Gameplay Fixes BB then asks the pad along that new facing, which is clear, so no swing starts and no blow lands by tick 11: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
 };
 
-// --- thief_bomb_colour_score (fix AZ, #502: a blow's team score pays the team its chain head wears) ---
+// --- thief_bomb_colour_score (fix AZ, #502: everything fights for the colour it wears) ---
 // effect_bomb_bystander_scen99's arena, recoloured: the player thief stands on
 // team 1 (player_team 1) and the stationary level-1 TOWER1 on team 2. The
-// thief drops its bomb on tick 20. The blast it leaves wears no colour (team
-// 0, red): in both games a blast is spawned with its owner, level and damage
-// and no team. It lands its full tier on the tower and its owner's quarter on
-// the thief. A blow pays team score (its damage plus the victim's level) when
-// the head of the hitter's owner chain is a hero or stands on the player's
-// team: the head is the thief, on the player's team, so the blow on the tower
-// scores. With the setting off the tower loses 90 to 92 of its 130 hp (the
-// bystander row's tower fact) and is level 1, so the blow pays 91 to 93 (the
-// setting-on row's bands are below its facts). Classic, it pays the
-// blast's own colour, red; with the setting on, the team its chain head
-// wears, the thief's. The blast's blow on the thief is a blow on its own
-// head's team, and the tower's arrows have a team-2 head that is neither a
-// hero nor on the player's team: neither scores.
+// thief drops its bomb on tick 20. Classic, the bomb and the blast it leaves
+// wear no colour (team 0, red): in both games a blast is spawned with its
+// owner, level and damage and no team. With the setting on the bomb takes the
+// thief's colour when it is dropped, and the blast the bomb's. The blast lands
+// its full tier on the tower and its owner's quarter on the thief. A blow pays
+// team score (its damage plus the victim's level) when the head of the
+// hitter's owner chain is a hero or the blow's side stands on the player's
+// team (classic the head's colour, with the setting on the blast's own: the
+// thief's either way), so the blow on the tower scores. With the setting off
+// the tower loses 90 to 92 of its 130 hp (the bystander row's tower fact) and
+// is level 1, so the blow pays 91 to 93 (the setting-on row's bands are below
+// its facts). Classic, it pays the blast's own colour, red; with the setting
+// on, the blast's own colour too, which is now the thief's. The blast's blow on
+// the thief is a blow on its own side, and the tower's arrows have a team-2
+// head that is neither a hero nor on the player's team: neither scores.
 inline constexpr SpawnSpec kFamilySpawns_thief_bomb_colour_score_scen99[] = {
     { FAMILY_TOWER1, 2, kOrderLiving, 222, 196, 0, 0 },           // stationary team-2 level-1 bystander on effect_bomb_bystander's tile, inside the blast's reach
     { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // the player LAST, on team 1 (player_team 1); level 5: bomb damage 90 and a blast reach of 20
@@ -11774,10 +11779,10 @@ inline constexpr FactPredicate kFacts_thief_bomb_colour_score_scen99[] = {
         "the classic thief's own team is paid nothing for its bomb"),
 };
 inline constexpr Mutation kMut_thief_bomb_colour_score_scen99 = {
-    "src/gameplay/walker_combat.cpp", 509,
-    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
-    "gameplay_fixes != 0 ? headguy->team_num() : headguy->team_num();",
-    "The classic arm pays the chain head's team too, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
+    "src/gameplay/walker_combat.cpp", 510,
+    "gameplay_fixes != 0 ? playerteam : team_num()",
+    "gameplay_fixes != 0 ? playerteam : headguy->team_num()",
+    "The classic payments pay the chain head's team, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
 };
 // With the setting on the tower, a stationary shooter facing the thief, no
 // longer turns off it and back before it shoots (fix AT), so its arrows fly a
@@ -11797,10 +11802,10 @@ inline constexpr FactPredicate kFacts_thief_bomb_colour_score_fixes_scen99[] = {
         "consequence: with the setting on the blow's score goes to the team its chain head wears, the thief's: the 85 to 93 hp the tower lost plus its level 1"),
 };
 inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
-    "src/gameplay/walker_combat.cpp", 509,
-    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
-    "gameplay_fixes != 0 ? team_num() : team_num();",
-    "The setting-on arm pays the hitter's own colour again, so the blast's blow on the tower pays red: ScoreDelta(1, 86, 94) reads 0 and ScoreDelta(0, 0, 0) reads 86 to 94."
+    "packs/core/lib/effect_bomb.lua", 54,
+    "gf.made_by(blast, self:owner(), self)",
+    "gf.made_by(blast, self:owner(), blast)",
+    "The blast keeps the team it was made with, red: it is not the player's team (1) and the thief has no record, so it pays nobody: ScoreDelta(1, 86, 94) reads 0."
 };
 
 // --- mage_bot_far_foe (fix BB, #497: a bot near its foe swings only when the blow can land) ---

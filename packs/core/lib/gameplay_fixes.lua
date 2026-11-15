@@ -198,4 +198,51 @@ function M.take_team(made, from)
   end
 end
 
+-- Gameplay Fixes AZ (#502): marks a weapon or effect that rides the walker
+-- who owns it (a circle of protection, a mace, a boomerang, a hook blade, a
+-- scare, IMMOLATE's fire, a returning knife's probe). With the setting on the
+-- two are never foes, whatever colours they wear later (walker::rider_pair,
+-- the one place the clause lives). Answers `thing`, so it wraps the call that
+-- makes it; nil (a full world) stays nil. Draws nothing.
+function M.rides(thing)
+  -- rule: Gameplay Fixes AZ (#502): with the setting on a thing that rides its owner is marked
+  --   KIT_RIDER when it is made, so it never blocks, strikes or frightens him, even after a charm
+  --   changed his colour. Classic: no mark (one owner chain gives one head anyway).
+  -- tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
+  -- tests: SemShield.a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives
+  -- tests: SemShield.a_mace_never_turns_on_its_charmed_cleric
+  -- tests: KitCaptain.a_hook_blade_never_snags_its_charmed_captain
+  -- tests: SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
+  -- tests: KitElemental.a_charmed_elementals_fire_burns_the_foes_of_its_own_colour
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  if thing and M.on() then
+    thing:set_kit_state(thing:kit_state() | C.KIT_RIDER)
+  end
+  return thing
+end
+
+-- Gameplay Fixes AZ (#502): the foes an effect that searches round its owner
+-- finds (the ghost's SCARE, IMMOLATE's contact burn): measured from the owner,
+-- who gives the place and the reach, and with the setting on asked of the
+-- effect's own side (og.find_foes_in_range's fourth argument, which asks
+-- walker:sides_friendly, so an effect can ask from its own death; both effects
+-- ride their owner, KIT_RIDER, so he is never their foe). Classic, the owner's
+-- own foes. While the owner still wears the effect's colour both answers are
+-- the same list in the same order. Answers the list and its length. Draws
+-- nothing.
+function M.foes_round(effect, range)
+  local near = effect:owner()
+  -- rule: Gameplay Fixes AZ (#502): with the setting on an effect that searches round its owner
+  --   (the ghost's SCARE, IMMOLATE's burn) finds the livings and generators within reach of the
+  --   owner that are not on the effect's side, the side of the colour it was made with; classic,
+  --   the owner's foes.
+  -- tests: SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
+  -- tests: KitElemental.a_charmed_elementals_fire_burns_the_foes_of_its_own_colour
+  -- tests: SemLibsGhostScare.an_uncharmed_ghosts_scare_finds_its_foes_in_the_same_order_on_both_settings
+  if M.on() then
+    return og.find_foes_in_range("ob", range, near, effect)
+  end
+  return og.find_foes_in_range("ob", range, near)
+end
+
 return M

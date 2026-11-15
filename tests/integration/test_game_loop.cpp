@@ -1628,7 +1628,11 @@ TEST(GameLoop, the_shape_change_cheat_turns_the_hero_into_the_next_family)
 }
 
 // Cheat+F2: one magic shield in the game, the hero's, on its team, for 200
-// ticks.
+// ticks. With the Gameplay Fixes setting on (the integration game's) it rides
+// the hero (KIT_RIDER, fix AZ), as the cleric's mace does, so it never turns
+// on him, and the mark reaches the display with the snapshot.
+// Break: the cheat's `set_kit_state(... | KIT_RIDER)` line removed (both mark
+// checks fail).
 TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
 {
     CheatGame game;
@@ -1654,6 +1658,9 @@ TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
     EXPECT_EQ(hero, shield->owner());
     EXPECT_EQ(static_cast<int>(hero->team_num()), static_cast<int>(shield->team_num()));
     EXPECT_EQ(200, static_cast<int>(shield->lifetime()));
+    ASSERT_NE(0, world.gameplay_fixes) << "the integration game plays with the setting on";
+    EXPECT_NE(0, shield->kit_state() & KIT_RIDER)
+        << "with the setting on the shield rides the hero (Gameplay Fixes AZ)";
     const std::uint32_t shield_id = shield->entity_id();
 
     ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
@@ -1664,6 +1671,7 @@ TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
     const walker* const shown = game.display->world().find_by_id(shield_id);
     ASSERT_NE(nullptr, shown) << "the display shows it after the next snapshot";
     EXPECT_EQ(FAMILY_MAGIC_SHIELD, static_cast<int>(shown->family()));
+    EXPECT_NE(0, shown->kit_state() & KIT_RIDER) << "the mark reaches the display with the snapshot";
     ASSERT_EQ(hero, game.hero());
     EXPECT_EQ(game.shown(hero), shown->owner());
 }

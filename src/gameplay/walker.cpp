@@ -3703,7 +3703,6 @@ std::int32_t walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
-	const walker *headus, *headtarget;
 
 	// In case we're passed a null pointer somehow,
 	// we're always unfriendly :)
@@ -3718,23 +3717,49 @@ std::int32_t walker::is_friendly(const walker *target) const
 	if (dead() || target->dead())
 		return 0;
 
+	// The rest is the side question, which a thing that acts from its own
+	// death (a blast, the ghost's scare) asks without the dead test above.
+	return sides_friendly(target);
+}
+
+// The side question of is_friendly without its null and dead tests (Gameplay
+// Fixes AZ, #502): a blast strikes from its own death and the ghost's scare
+// frightens from it, so with the setting on they ask this directly (the Lua
+// walker:sides_friendly). The old game's port has the same split.
+std::int32_t walker::sides_friendly(const walker *target) const
+{
+	const walker *headus, *headtarget;
+
+	// rule: Gameplay Fixes AZ (#502): with the setting on a thing that rides the walker who owns
+	//   it and that walker are never foes, whatever colours they wear now (walker::rider_pair, the
+	//   one place the clause lives), so a walker charmed since is never blocked, struck, burned or
+	//   frightened by his ring, mace, boomerang, hook blade, scare, IMMOLATE's fire or returning
+	//   knife's probe. A shot does not ride: it meets its own charmed thrower by colour. Classic:
+	//   one owner chain gives one head anyway.
+	// tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
+	// tests: SemShield.a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives
+	// tests: ScriptBindingPropsTest.sides_friendly_is_is_friendly_without_the_dead_test
+	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
+	if (rider_pair(target))
+		return 1;
+
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
-	// rule: Alliance is decided by team colour of the heads of both owner chains (weapon -> summon
-	//   -> caster), each read from walker::alliance_head; saved-character status and seats never
-	//   make different colours friendly. Classic: the climb stops at a dead owner (the walker
-	//   stands for itself), at a self-loop and at a possessed body (#430), and passes through a
-	//   charm, so a charmed troop answers for its (uncharmed) owner's side. With Gameplay Fixes on
-	//   it is the one climb (fix AP): through a dead owner, stopping at a self-loop and at a walker
-	//   charmed_head names (a charmed walker, fix AD; a possessed body, #430), so a charmed tent
-	//   troop or summon fights for the colour it wears, and a dead caster's summon or shot keeps
-	//   the caster's side.
+	// rule: Alliance is decided by team colour. With Gameplay Fixes on (fix AZ, #502) every walker
+	//   fights for the colour it wears: walker::alliance_head is the walker itself, so a shot, a
+	//   blast, a spell, a summon and a troop answer for the colour they were made with, whatever
+	//   their maker wears now or whether it lives. Classic: the colours of the heads of both owner
+	//   chains (weapon -> summon -> caster); the climb stops at a dead owner (the walker stands for
+	//   itself), at a self-loop and at a possessed body (#430), and passes through a charm.
+	//   Saved-character status and seats never make different colours friendly.
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
 	// tests: GameplayFixesCharm.a_mind_controlled_tent_troop_fights_for_its_master
 	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
-	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
-	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
+	// tests: GameplayFixesChain.a_live_charmed_casters_summon_fights_for_its_own_colour_with_the_setting_on
+	// tests: GameplayFixesChain.a_tent_troop_keeps_its_colour_when_a_script_recolours_its_tent
+	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	headus = alliance_head();
 	// Now our target ..
@@ -3749,10 +3774,10 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// Team color is the single combat-alliance authority. `myguy` means that
 	// a walker persists in a company save; it must never make different colors
 	// friendly. Likewise, Base Camp seat assignments choose a player's control
-	// team; they never make a red walker friendly to a yellow walker. Following
-	// owner chains keeps weapons, summons, and effects on their living owner's
-	// current team; with Gameplay Fixes AD a charmed walker heads its own chain,
-	// and with AP a dead owner's summon or shot keeps its owner's side.
+	// team; they never make a red walker friendly to a yellow walker. Classic,
+	// following owner chains keeps weapons, summons and effects on the current
+	// team of their owner; with Gameplay Fixes on (fix AZ) nothing follows its
+	// maker, and each walker fights for the colour it was made with.
 	return headus->team_num() == headtarget->team_num();
 }
 
@@ -3773,12 +3798,12 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	// rule: Same alliance rule as above against a bare team number, used by level
-	//   completion ('foes remain'), enemy freeze and respawn: a walker counts for the team its
-	//   chain head wears (walker::alliance_head: with fixes on the one climb, through a dead owner
-	//   and stopping at a walker charmed_head names; a possessed body stops it on both values, #430).
+	//   completion ('foes remain'), enemy freeze and respawn: a walker counts for the team it
+	//   wears itself with Gameplay Fixes on (fix AZ), for the team its chain head wears classic
+	//   (walker::alliance_head; a possessed body stops the classic climb, #430).
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
-	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
 	headus = alliance_head();
 	
 	// Keep completion, enemy-freeze, and respawn decisions on exactly the same

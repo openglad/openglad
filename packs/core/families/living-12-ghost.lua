@@ -51,7 +51,7 @@ local function do_special(self)
     return false, "NO FOE IN RANGE"
   end
   -- The old "nifty scare thing" is a carrier; its on_death does the scare.
-  local scare = og.summon(self, "fx", FX_GHOST_SCARE)
+  local scare = gf.rides(og.summon(self, "fx", FX_GHOST_SCARE))
   -- plumbing: og.summon failure for the scare carrier: 'COULD NOT CREATE SCARE'.
   if not scare then
     return false, "COULD NOT CREATE SCARE"

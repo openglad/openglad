@@ -217,9 +217,12 @@ bool generator_customize_spawn(int generator_family, walker* generator,
 void level_load(GameWorld* world);         // first tick of a level id
 void level_tick(GameWorld* world);         // every tick, before entity acts
 // Living + generator deaths. Passes the kill-attribution channel to Lua:
-// on_entity_death(ent, killer, killer_team) — killer is the owner-chain-root
-// Living stamped by the combat path within og::sim::kKillAttributionTicks
-// of the death (nil when stale/absent/swept; killer_team -1 = environment).
+// on_entity_death(ent, killer, killer_team): killer is the topmost living on
+// the hitter's owner chain, stamped by the combat path within
+// og::sim::kKillAttributionTicks of the death (nil when stale, absent or
+// swept, and, with Gameplay Fixes AZ, when no living was behind the blow);
+// killer_team is the stamped team (with Gameplay Fixes AZ the colour of the
+// thing that struck), -1 for an environment death.
 // Per-entity og.set_entity_hooks on_death receives the same args.
 void level_entity_death(walker* self);
 void level_entity_spawn(walker* spawned);  // sim-authored living/generator
@@ -258,8 +261,11 @@ void level_respawn(GameWorld* world, walker* revived);
 // unmodded classic world is byte-identical with the seam in place (C3).
 bool level_lineup_stage(GameWorld* world);
 
-// Pre-damage gate: on_damage(target, attacker, amount) -> nil keep /
-// number replace / false cancel / true keep. Only the hook's first return
+// Pre-damage gate: on_damage(target, attacker, amount, striker) -> nil keep /
+// number replace / false cancel / true keep. `striker` is the walker the blow
+// comes from: the shot, the blast or the spell effect, or the attacker itself
+// for a melee blow or a cast; it is pushed as the hook's fourth argument
+// (never nil; Gameplay Fixes AZ reads its colour). Only the hook's first return
 // value is read; a number is clamped to [0, 32767] with the fraction
 // truncated toward zero, and any other type — as well as a hook that
 // errors — keeps the offered amount. Returns the amount to apply, or -1
@@ -283,7 +289,7 @@ bool level_lineup_stage(GameWorld* world);
 // walker::turn_undead's scripted arm runs no death check of its own, so
 // there a replacement below the offered lethal amount is always ordinary
 // damage and only a replacement >= it kills.
-short level_damage_gate(walker* target, walker* attacker, short amount);
+short level_damage_gate(walker* target, walker* attacker, short amount, walker* striker);
 
 }  // namespace hooks
 

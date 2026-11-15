@@ -402,8 +402,10 @@ local function press_count(livings, team, x, y)
 end
 
 -- Owner-chain root of a weapon, when that root is a Living — swat credit
--- and the goaltend side test read it (§3.5). Bounded walk; owner chains
--- are shallow and acyclic, the bound is a tripwire.
+-- and the goaltend side test read it (§3.5); with the Gameplay Fixes
+-- setting on they read the weapon's own colour instead and the root only
+-- names the toucher. Bounded walk; owner chains are shallow and acyclic,
+-- the bound is a tripwire.
 local function owner_root(w)
   local node = w
   for _ = 1, 8 do
@@ -1223,15 +1225,22 @@ local function run_swat(ball)
       local sx, sy = walker_center(swat)
       if dist_l1(gx, gy, sx, sy) <= T.swat_radius then
         local root = owner_root(swat)
+        -- Gameplay Fixes AZ (#502): with the setting on a swat plays for the
+        -- colour the weapon wears (the colour it was made with, whatever
+        -- became of its maker); classic, the colour of the living at the root
+        -- of its owner chain, none without one.
+        local swat_side = -1
+        if og.match_setting("gameplay_fixes") ~= 0 then
+          swat_side = swat:team_num()
+        elseif root ~= nil then
+          swat_side = root:team_num()
+        end
         local windowed = z_px <= T.block_ceiling
         local tipped = false
         if not windowed then
           if in_goaltend_window(z_px, gx, gy) then
             local shooter_team = og.mode_get(S.SHOT_TEAM1) - 1
-            local swat_team = -1
-            if root ~= nil then
-              swat_team = root:team_num()
-            end
+            local swat_team = swat_side
             local defensive = false
             if swat_team >= 0 then
               if swat_team < C.SCORE_TEAM_COUNT then
@@ -1265,8 +1274,12 @@ local function run_swat(ball)
           og.mode_set(S.BALL_VZ, og.mode_get(S.BALL_VZ) + 512)
           og.mode_set(S.BALL_STATE, STATE_REBOUND)
           clear_flight()
-          if root ~= nil then
-            stamp_toucher(ball, og.entity_id(root), root:team_num())
+          if swat_side >= 0 then
+            local toucher = 0
+            if root ~= nil then
+              toucher = og.entity_id(root)
+            end
+            stamp_toucher(ball, toucher, swat_side)
           else
             stamp_toucher(ball, 0, C.SCORE_TEAM_COUNT)
           end

@@ -660,7 +660,7 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 					const short lethal = static_cast<short>(
 					    std::clamp(w->stats()->hitpoints(), 1.0f, 32000.0f));
 					const short gated =
-					    og::script::hooks::level_damage_gate(w, this, lethal);
+					    og::script::hooks::level_damage_gate(w, this, lethal, this);
 					// rule: In a scripted match the level's damage gate decides a turn: a cancel
 					//   spares the victim; a replacement below the victim's hp is ordinary damage
 					//   (hp drops by it, a positive amount stamps the attacker's chain head, the
@@ -687,12 +687,12 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 						// tests: ModesOnslaught.turn_undead_partial_hit_by_a_charmed_caster_credits_the_caster
 						if (gated > 0 &&
 						    credit != nullptr)
-							w->note_attacker(credit, world->tick_count_);
+							w->note_attacker(credit, kill_stamp_team(credit), world->tick_count_);
 						do_combat_damage(this, w, gated);
 						w->stats()->hit_response(this);
 						continue;
 					}
-					w->note_attacker(credit, world->tick_count_);
+					w->note_attacker(credit, kill_stamp_team(credit), world->tick_count_);
 					w->set_dead(1);
 					w->stats()->set_hitpoints(0);
 					w->death();
@@ -766,10 +766,10 @@ bool walker::charmed_head() const
 		return true;
 	// rule: Gameplay Fixes AD (#412): a charmed walker heads its own owner chain while its charm
 	//   runs, also in the tick it dies charmed (#505); off, the climbs pass through it (classic).
-	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
-	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
+	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
 	// tests: GameplayFixesChain.a_troop_that_dies_charmed_heads_its_chain_until_the_tick_ends
-	// tests: parity:thief_charm_tent_troop_fixes_scen99
+	// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
+	// tests: ModesMutant.the_damage_gate_reads_the_games_owner_climb
 	return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;
 }
 
@@ -778,20 +778,22 @@ bool walker::charmed_head() const
 // walker charmed_head names (a charmed walker with the setting on, fix AD; a
 // possessed body on both values, #430). A dead owner is climbed through: its summon and its
 // shots keep its side for the rest of the tick it died in (the tick's end
-// drops every link to the dead). chain_head is the top of the climb, the head
-// a blow scores for; alliance_head is the head friendliness reads;
-// credit_head (walker.cpp) is the topmost living on the climb. Appended at the
-// end of the file so the parity canary pins above stay where they are.
+// drops every link to the dead). chain_head is the top of the climb, the
+// person behind a blow (the score gate's hero, experience, credit);
+// alliance_head is the head friendliness reads with the setting off (with it
+// on every walker is its own, fix AZ); credit_head (walker.cpp) is the topmost
+// living on the climb. Appended at the end of the file so the parity canary
+// pins above stay where they are.
 walker* walker::chain_next() const
 {
 	walker* const next = owner();
-	// rule: Every owner-chain climb (the head a blow scores for, the head friendliness reads with
-	//   Gameplay Fixes on, the topmost living credit_head credits, the mutant mode's root) goes up
+	// rule: Every owner-chain climb (the person behind a blow, the topmost living credit_head
+	//   credits, the mutant mode's root) goes up
 	//   through every owner, a dead one included, and stops at a walker with no owner, at a
 	//   self-loop and at a walker charmed_head names (a charmed walker with Gameplay Fixes on,
 	//   fix AD; a possessed body on both values, #430); every climb ends on an owner loop (#503,
 	//   walker::climb).
-	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
 	// tests: OwnerChainLoop.every_climb_ends_on_a_two_link_loop_and_cuts_the_link_that_closes_it
 	// tests: SemWalker3.classic_credit_for_a_blow_climbs_past_a_dead_thrower
 	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
@@ -814,17 +816,22 @@ walker* walker::chain_head()
 
 const walker* walker::alliance_head() const
 {
-	// rule: Gameplay Fixes AP (#429): friendliness and alliance (is_friendly, is_friendly_to_team)
-	//   read the one climb's head (chain_head), the head a blow scores for, so a walker whose owner
-	//   died this tick keeps its owner's side. Classic: the friendliness climb stops at a dead owner
-	//   (the walker then stands for itself), at a self-loop and at a possessed body (#430: charmed_head
-	//   names one on both values), while score and credit climb through a dead owner.
-	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
-	// tests: GameplayFixesChain.a_live_casters_chain_reads_one_head_on_both_values
-	// tests: GameplayFixesChain.a_summon_of_a_caster_that_died_charmed_answers_for_the_colour_the_caster_wore
+	// rule: Gameplay Fixes AZ (#502): with the setting on every walker fights for the colour it
+	//   wears, so friendliness and alliance (walker::sides_friendly, is_friendly_to_team) read the
+	//   walker itself: a shot, a blast, a spell effect, a summon and a troop keep the colour they
+	//   were made with, whatever their maker wears now or whether it lives. The one climb,
+	//   chain_head, still names the person behind a blow (the score gate's hero, experience,
+	//   credit). Classic: the friendliness climb stops at a dead owner (the walker then stands for
+	//   itself), at a self-loop and at a possessed body (#430: charmed_head names one on both
+	//   values), and passes through a charm.
+	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
+	// tests: GameplayFixesChain.a_live_charmed_casters_summon_fights_for_its_own_colour_with_the_setting_on
+	// tests: GameplayFixesChain.a_summon_of_a_caster_that_died_charmed_fights_for_its_own_colour
+	// tests: GameplayFixesChain.a_tent_troop_keeps_its_colour_when_a_script_recolours_its_tent
+	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	if (og::sim::session_gameplay_fixes() != 0)
-		return chain_head();
+		return this;
 	return climb(&walker::alliance_next_classic);
 }
 
@@ -835,15 +842,15 @@ walker* walker::alliance_next_classic() const
 	walker* const next = chain_next();
 	// rule: Classic friendliness (Gameplay Fixes off) climbs only up to a live owner: a walker whose
 	//   owner is dead stands for itself; every other stop is chain_next's.
-	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
 	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
 	if (next != nullptr && next->dead() != 0)
 		return nullptr;
 	return next;
 }
 
-// #503: the one owner-chain walk every climb takes (chain_head, alliance_head,
-// credit_head; walker::attack and the mutant mode read chain_head). No chain in
+// #503: the one owner-chain walk every climb takes (chain_head, the classic
+// alliance_head, credit_head; walker::attack and the mutant mode read chain_head). No chain in
 // play is longer than three links (a shot, its summon, the summon's caster), so
 // a walk past kOwnerLoopCheck links asks cut_owner_loop whether the chain loops:
 // a loop is cut where it closes and the walk starts again, so every climb ends.
@@ -863,7 +870,7 @@ const walker* walker::climb(ChainStep step, walker** top_living) const
 		// tests: ModesTdm.a_tent_troops_kill_counts_a_frag
 		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
 		// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
-		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
+		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
 		if (top_living != nullptr && head->query_order() == Order::Living)
 			top = const_cast<walker*>(head);
 		walker* const up = (head->*step)();
@@ -918,4 +925,46 @@ bool walker::cut_owner_loop() const
 		w = up;
 	}
 	return false;
+}
+
+// Gameplay Fixes AZ (#502): the team a blow's kill stamp records. Appended at
+// the end of the file so the parity canary pins above stay where they are.
+std::int16_t walker::kill_stamp_team(const walker* credit) const
+{
+	// rule: Gameplay Fixes AZ (#502): with the setting on a blow's kill stamp records the colour
+	//   the hitter wears (a shot's, a blast's, a summon's own), whoever is credited, and a blow with
+	//   no living on its chain (a dead archer's arrow, a blast whose thrower is gone) still records
+	//   it, with no walker; classic, the credited walker's colour, and nothing without one.
+	// tests: SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
+	// tests: GameplayFixesChain.a_shot_thrown_before_its_caster_was_charmed_hits_and_pays_its_own_colour
+	// tests: ModesTdm.a_frag_counts_for_the_colour_of_the_arrow_with_the_setting_on
+	if (og::sim::session_gameplay_fixes() != 0)
+		return static_cast<std::int16_t>(team_num());
+	return credit != nullptr ? static_cast<std::int16_t>(credit->team_num()) : std::int16_t{-1};
+}
+
+// Gameplay Fixes AZ (#502): the rider clause, kept in this one function so
+// that every side question (walker::sides_friendly, and through it is_friendly,
+// the obmap pass rule, the foe searches, the Lua walker:sides_friendly) reads
+// it the same way. A thing that rides the walker who owns it is marked
+// KIT_RIDER where it is made (the core pack's gf.rides; the F2 cheat's shield);
+// it and that walker are never foes, by identity, the way a blast knows its own
+// thrower. Appended at the end of the file so the parity canary pins above stay
+// where they are.
+bool walker::rider_pair(const walker* other) const
+{
+	// rule: Gameplay Fixes AZ (#502): with the setting on a weapon or effect marked KIT_RIDER and
+	//   the walker who owns it (it rides him) are never foes; nothing else is joined by it: a shot,
+	//   a mine, a cloud, an ember, a banner, a tree or a wall meets its own maker by colour, and two
+	//   things of one owner meet each other by colour. Classic: no mark, the owner chain decides.
+	// tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
+	// tests: SemShield.a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives
+	// tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
+	// tests: KitElemental.a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire
+	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
+	if (og::sim::session_gameplay_fixes() == 0)
+		return false;
+	const bool this_rides_other = (kit_state() & KIT_RIDER) != 0 && owner() == other;
+	const bool other_rides_this = (other->kit_state() & KIT_RIDER) != 0 && other->owner() == this;
+	return this_rides_other || other_rides_this;
 }

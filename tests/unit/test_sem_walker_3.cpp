@@ -713,13 +713,18 @@ TEST_F(SemWalker3, a_possession_link_to_a_gone_walker_does_not_stop_a_hide)
 // ---------------------------------------------------------------------------
 
 // An effect with no owner, or owned by a generator, has no living on its
-// chain: credit_head is null, its blow lands but stamps no attacker. Both
-// values of Gameplay Fixes.
-TEST_F(SemWalker3, a_blow_with_no_living_on_its_chain_is_credited_to_nobody)
+// chain: credit_head is null on both values of Gameplay Fixes and its blow
+// lands with no walker credited (id 0). Classic, it stamps nothing (team -1,
+// no tick). With Gameplay Fixes AZ (#502) the stamp records the colour the
+// blow wears, the explosion's own (team 2, then team 3), and the tick.
+// Break: kill_stamp_team's setting-on arm back to the classic one.
+TEST_F(SemWalker3, a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour)
 {
     for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
         fresh_world();
         world().gameplay_fixes = fixes;
+        world().tick_count_ = 7;
         walker* victim = living_at(FAMILY_SOLDIER, 1, 300, 300);
         walker* tent = generator_at(0, 600, 600);
         ASSERT_TRUE(victim && tent);
@@ -727,20 +732,25 @@ TEST_F(SemWalker3, a_blow_with_no_living_on_its_chain_is_credited_to_nobody)
         walker* loose = world().add_ob(Order::FX, FAMILY_EXPLOSION);
         walker* posted = world().add_ob(Order::FX, FAMILY_EXPLOSION);
         ASSERT_TRUE(loose && posted);
-        for (walker* fx : {loose, posted}) {
-            fx->set_team_num(0);
+        loose->set_team_num(2);
+        posted->set_team_num(3);
+        for (walker* fx : {loose, posted})
             fx->set_damage(50.0f);
-        }
         posted->set_owner(tent);
-        EXPECT_EQ(nullptr, loose->credit_head()) << "fixes " << fixes << ": no owner: nullptr";
-        EXPECT_EQ(nullptr, posted->credit_head()) << "fixes " << fixes << ": generator owner: nullptr";
+        EXPECT_EQ(nullptr, loose->credit_head()) << "no owner: nullptr";
+        EXPECT_EQ(nullptr, posted->credit_head()) << "generator owner: nullptr";
 
+        const bool fixed = fixes != 0;
         ASSERT_TRUE(loose->attack(victim));
-        EXPECT_FLOAT_EQ(354.0f, victim->stats()->hitpoints()) << "fixes " << fixes << ": the blow lands (46)";
-        EXPECT_EQ(0u, victim->last_attacker_id()) << "fixes " << fixes << ": no stamp";
+        EXPECT_FLOAT_EQ(354.0f, victim->stats()->hitpoints()) << "the blow lands (46)";
+        EXPECT_EQ(0u, victim->last_attacker_id()) << "no walker";
+        EXPECT_EQ(fixed ? 2 : -1, victim->last_attacker_team())
+            << (fixed ? "setting on: the explosion's colour" : "setting off: no stamp");
+        EXPECT_EQ(fixed ? 7u : 0u, victim->last_attacker_tick());
         ASSERT_TRUE(posted->attack(victim));
         EXPECT_FLOAT_EQ(308.0f, victim->stats()->hitpoints());
-        EXPECT_EQ(0u, victim->last_attacker_id()) << "fixes " << fixes << ": generator chain: no stamp";
+        EXPECT_EQ(0u, victim->last_attacker_id()) << "generator chain: no walker";
+        EXPECT_EQ(fixed ? 3 : -1, victim->last_attacker_team());
     }
 }
 
@@ -1445,6 +1455,60 @@ TEST_F(SemWalker3, a_kill_adds_the_kill_bonus_alone_to_its_heros_experience)
 
 namespace {
 
+// A level-4 thief's real DROP BOMB (walker::special, slot 1; a seat drives
+// him, so the cast draws no flee walk). The real bomb carries
+// bomb_damage(4) = 75; the bomb's damage is then set to `damage` by hand so
+// the expected numbers stay the round ones the other blows here use. The
+// bomb is moved onto `at`'s spot (left where it fell with `at` null) and set
+// off as the game sets it off (dead, then death()), which spawns its blast.
+struct Dropped
+{
+    walker* bomb = nullptr;
+    walker* blast = nullptr;
+};
+
+Dropped drop_and_blow(GameWorld& w, walker* thief, float damage, walker* at)
+{
+    Dropped out;
+    thief->stats()->set_max_magicpoints(100.0f);
+    thief->stats()->set_magicpoints(100.0f);
+    thief->set_user(0);
+    thief->set_act_type(ACT_CONTROL);
+    thief->set_current_special(1);
+    thief->set_shifter_down(0);
+    std::vector<walker*> bombs_before;
+    for (const auto& e : w.oblist)
+        if (e && e->query_order() == Order::FX && e->family() == FAMILY_BOMB)
+            bombs_before.push_back(e.get());
+    if (!thief->special())
+        return out;
+    for (const auto& e : w.oblist)
+        if (e && !e->dead() && e->query_order() == Order::FX && e->family() == FAMILY_BOMB
+            && std::find(bombs_before.begin(), bombs_before.end(), e.get()) == bombs_before.end())
+            out.bomb = e.get();
+    if (out.bomb == nullptr)
+        return out;
+    out.bomb->set_damage(damage);
+    if (at != nullptr)
+        out.bomb->setxy(at->xpos(), at->ypos());
+    std::vector<walker*> blasts_before;
+    for (const auto& e : w.oblist)
+        if (e && e->query_order() == Order::FX && e->family() == FAMILY_EXPLOSION)
+            blasts_before.push_back(e.get());
+    out.bomb->set_dead(1);
+    out.bomb->death();
+    std::size_t made = 0;
+    for (const auto& e : w.oblist)
+        if (e && e->query_order() == Order::FX && e->family() == FAMILY_EXPLOSION
+            && std::find(blasts_before.begin(), blasts_before.end(), e.get()) == blasts_before.end()) {
+            out.blast = e.get();
+            ++made;
+        }
+    if (made != 1)
+        out.blast = nullptr;
+    return out;
+}
+
 // A thief's bomb thrown at `at`: a FAMILY_BOMB owned by `thief` with
 // `damage`, on `at`'s spot. It goes off as the game sets it off (dead, then
 // death()), which spawns the blast; the blast goes off the same way. Answers
@@ -1473,13 +1537,15 @@ walker* blow_up_a_bomb(GameWorld& w, walker* thief, float damage, walker* at,
 
 }  // namespace
 
-// Gameplay Fixes AZ (#502): a bomb's blast wears no colour (team 0, red), and
-// it pays its blow's team score (damage plus the victim's level). A hero thief
-// on team 1 throws it at a team-2 soldier: the thief's record opens the score
-// gate. With the setting on the score goes to the team the chain's head
-// wears, the thief's; classic, to the blast's own colour, red.
-// Break: score_team's on arm `headguy->team_num()` -> `team_num()`.
-TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_on)
+// Gameplay Fixes AZ (#502): a bomb's blast pays its blow's team score (damage
+// plus the victim's level) to the colour it wears. A hero thief on team 1
+// drops a real DROP BOMB (its damage set to 10 by hand) at a team-2 soldier:
+// the thief's record opens the score gate. With the setting on the bomb takes
+// the thief's colour and the blast the bomb's, and team 1 is paid; classic
+// both wear no colour (team 0, red) and red is paid.
+// Break: the thief's `gf.made_by(bomb, self)` -> `bomb:set_owner(self)` (on:
+// the bomb and its blast stay red and red is paid).
+TEST_F(SemWalker3, a_bombs_blast_pays_the_colour_the_bomb_took_from_its_thief_with_the_setting_on)
 {
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(fixes);
@@ -1488,14 +1554,17 @@ TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_o
         walker* thief = hero_at(FAMILY_THIEF, 1, 100, 100);
         walker* soldier = living_at(FAMILY_SOLDIER, 2, 500, 500);
         ASSERT_TRUE(thief && soldier);
-        const auto blasts_before = of_family(world().oblist, Order::FX, FAMILY_EXPLOSION);
         const auto before = scores();
 
-        walker* blast = blow_up_a_bomb(world(), thief, 10.0f, soldier, blasts_before);
-        ASSERT_NE(nullptr, blast) << "the bomb makes one blast";
+        const Dropped d = drop_and_blow(world(), thief, 10.0f, soldier);
+        ASSERT_NE(nullptr, d.bomb) << "DROP BOMB drops one bomb";
+        ASSERT_NE(nullptr, d.blast) << "the bomb makes one blast";
+        walker* blast = d.blast;
         EXPECT_EQ(thief, blast->owner());
         EXPECT_EQ(4, blast->stats()->level()) << "the thief's level";
-        EXPECT_EQ(0, blast->team_num()) << "the blast wears no colour";
+        EXPECT_EQ(fixes != 0 ? 1 : 0, d.bomb->team_num());
+        EXPECT_EQ(fixes != 0 ? 1 : 0, blast->team_num())
+            << "the blast: the bomb's colour with the setting on, none classic";
         blast->set_dead(1);
         blast->death();
         EXPECT_FLOAT_EQ(392.0f, soldier->stats()->hitpoints()) << "the blast lands 8";
@@ -1504,8 +1573,60 @@ TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_o
         auto expected = before;
         expected[fixes != 0 ? std::size_t{1} : std::size_t{0}] += paid;
         EXPECT_EQ(expected, scores())
-            << (fixes != 0 ? "setting on: the thief's team is paid"
+            << (fixes != 0 ? "setting on: team 1, the blast's colour, is paid"
                            : "setting off: red, the blast's colour, is paid");
+    }
+}
+
+// Gameplay Fixes AZ (#502), the lead's ruling C-11: a walker is never credited
+// with his own death. A level-4 hero thief on team 1 drops a real bomb (its
+// damage set to 40 by hand, so its quarter of 10 lands 8 on armour 0), is
+// charmed onto team 0 by hand (the charm's own writes) and set to 1 hp, and
+// the blast's quarter (it knows its own thrower) kills him. On both settings
+// he takes the owner arm's experience of the blow, exp_from_action(Attack,
+// blast, thief, 8), and no kill: no kills, no scenario or level kills, no kill
+// experience, no kill score. With the setting on the blast wears team 1 and
+// he team 0, so the blow is a blow on another team: team 1 is paid its damage
+// score 8 + 4 (the owned hitter's arm; his record opens the gate), and the
+// death takes the same-team arm because the person behind the blow is the
+// walker it kills. Classic the blast and he are both red: nothing is paid.
+// Break: the kill arm's `(gameplay_fixes == 0 || headguy != target)` dropped
+// (on: his record counts the kill and team 1 is paid the kill score too).
+TEST_F(SemWalker3, a_blast_that_kills_its_charmed_thrower_credits_him_no_kill_on_both_settings)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes);
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        walker* thief = hero_at(FAMILY_THIEF, 1, 300, 300);
+        ASSERT_NE(nullptr, thief);
+        thief->myguy->exp = 0;
+        const Dropped d = drop_and_blow(world(), thief, 40.0f, nullptr);
+        ASSERT_NE(nullptr, d.bomb);
+        ASSERT_NE(nullptr, d.blast);
+        thief->set_real_team_num(thief->team_num());
+        thief->set_team_num(0);
+        thief->set_charm_left(30);
+        thief->stats()->set_hitpoints(1.0f);
+        thief->myguy->exp = 0;
+        const auto before = scores();
+        const std::uint32_t a = static_cast<std::uint32_t>(
+            exp_from_action(ExpAction::Attack, d.blast, thief, 8));
+        ASSERT_GT(a, 0u);
+
+        d.blast->set_dead(1);
+        d.blast->death();
+        ASSERT_EQ(1, thief->dead()) << "the quarter kills him";
+        EXPECT_EQ(0, thief->myguy->kills) << "never credited with his own death";
+        EXPECT_EQ(0, thief->myguy->scen_kills);
+        EXPECT_EQ(0, thief->myguy->level_kills);
+        EXPECT_EQ(a, thief->myguy->exp) << "the blow's experience alone";
+        auto expected = before;
+        if (fixes != 0)
+            expected[1] += 8u + 4u;
+        EXPECT_EQ(expected, scores())
+            << (fixes != 0 ? "setting on: the blast's colour is paid the blow, not the kill"
+                           : "setting off: one colour, nothing paid");
     }
 }
 
@@ -1523,10 +1644,12 @@ TEST_F(SemWalker3, a_bombs_blast_scores_for_its_throwers_team_with_the_setting_o
 // thief on team 2.
 // The sim stream answers 3 to every draw: the Shift coin next(2) is 1, the
 // answer's rng(3) is 0 and the charm's resist draw rand(20) is 3 (the thief
-// and the hitter are both level 4, so only a 0 resists). The blow lands 8 on
+// and the hitter are both level 4, so only a 0 resists). With the setting on
+// a blow's side is the hitter's own colour read as it lands (Gameplay Fixes
+// AZ), team 1 here, the summon's included. The blow lands 8 on
 // the level-4 thief: the melee arm and the owned arm pay 8 + 4, a kill 8 + 40.
-// Break: the three payments back to the colour read before the answer
-// (`score_team()` -> `team_as_struck`).
+// Break: score_team's off arm `team_num()` -> `playerteam` (off: team 1 is
+// paid).
 TEST_F(SemWalker3, a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_setting_off)
 {
     struct Leg
@@ -1590,13 +1713,14 @@ TEST_F(SemWalker3, a_hitter_the_answer_charms_pays_its_new_colour_only_with_the_
 // character record pays its blow's team score there. Only a script gives
 // such a walker an owner of another colour: a soldier with a record on team 3
 // owned by a hero mage on team 1 strikes a level-4 orc of team 2, and lands
-// 8. The mage's record opens the score gate. With the setting on the blow
-// pays team 1, the colour of the chain's head; classic, team 3, the hitter's
-// own. Such a hitter is also an owned hitter, so the arm that pays a summon's
-// blow pays the same blow again to the same team: each arm pays 8 + 4.
-// Break: the melee arm's payment `award_score(score_team(), ...)` ->
-// `award_score(team_num(), ...)`.
-TEST_F(SemWalker3, a_scripted_hitters_melee_blow_scores_for_its_heads_colour_with_the_setting_on)
+// 8. The mage's record opens the score gate. On both settings the blow pays
+// team 3, the colour the hitter wears (with the setting on its side; classic
+// the colour read at the payment). Such a hitter is also an owned hitter, so
+// the arm that pays a summon's blow pays the same blow again to the same
+// team: each arm pays 8 + 4.
+// Break: score_team's on arm `playerteam` -> `headguy->team_num()` (on: team
+// 1 is paid).
+TEST_F(SemWalker3, a_scripted_hitters_melee_blow_pays_its_own_colour_on_both_settings)
 {
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(fixes);
@@ -1616,10 +1740,8 @@ TEST_F(SemWalker3, a_scripted_hitters_melee_blow_scores_for_its_heads_colour_wit
         EXPECT_EQ(3, hitter->team_num()) << "nobody changed the hitter's colour";
 
         auto expected = before;
-        expected[fixes != 0 ? std::size_t{1} : std::size_t{3}] += 2u * (8u + 4u);
-        EXPECT_EQ(expected, scores())
-            << (fixes != 0 ? "setting on: both arms pay team 1, the head's colour"
-                           : "setting off: both arms pay team 3, the hitter's own colour");
+        expected[3] += 2u * (8u + 4u);
+        EXPECT_EQ(expected, scores()) << "both arms pay team 3, the hitter's own colour";
     }
 }
 

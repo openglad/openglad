@@ -35,7 +35,7 @@ local function throw_boomerang(self)
   local t = og.tuning(self)
   -- og.summon_configured applies these keys in exactly the legacy order:
   -- ani_type, lifetime, hp_add, max_hp_from_hp, damage_add
-  local boomerang = og.summon_configured(self, "fx", FX_BOOMERANG, {
+  local boomerang = gf.rides(og.summon_configured(self, "fx", FX_BOOMERANG, {
     -- The old code used ani_type = 1 only as a dummy non-zero value.
     ani_type = 1,
     lifetime = t.boomerang_lifetime_base
@@ -43,7 +43,7 @@ local function throw_boomerang(self)
     hp_add = self.level * t.boomerang_hp_per_level,
     max_hp_from_hp = true,
     damage_add = self.level * t.boomerang_damage_per_level,
-  })
+  }))
   -- plumbing: og.summon_configured returned nil (object cap / allocation failure): 'COULD NOT MAKE
   --   BOOMERANG'.
   if not boomerang then

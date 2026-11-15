@@ -494,6 +494,16 @@ std::uint32_t caster_head(const Cast& c, const std::vector<Living>& before)
     return c.id;
 }
 
+// The nearer of two distances, -1 meaning none.
+int nearer(int a, int b)
+{
+    if (a < 0)
+        return b;
+    if (b < 0)
+        return a;
+    return std::min(a, b);
+}
+
 int nearest_foe(const Cast& c, const std::vector<Living>& before)
 {
     int best = -1;
@@ -535,9 +545,14 @@ Play play_level(std::uint32_t seed)
     {
         // The foes as the gates saw them when they said yes: by the end of
         // the tick a charmed foe is on the caster's team and a charged one
-        // may be dead.
+        // may be dead. A foe that acted earlier in the same tick than the
+        // caster was where its own act left it (an archmage's TELEPORT lands
+        // it beside the caster, a generator's troop appears), so each foe is
+        // also measured where it stands after the tick, and a cast is
+        // measured against the nearer of the two.
         const std::vector<Living> before = snapshot_livings(world);
         world.tick();
+        const std::vector<Living> after = snapshot_livings(world);
         // A crew member raised from its stain (the faerie's WISH, the
         // cleric's RESURRECT) is a new walker that carries a copy of its
         // hero (walker::transfer_stats): it is still the crew, at the crew's
@@ -589,7 +604,7 @@ Play play_level(std::uint32_t seed)
                 c.key = {family_name(c.family),
                          special_label(c.family, c.slot, c.shift, world.new_specials)};
                 c.crew = crew_ids.count(c.id) != 0;
-                c.nearest_foe = nearest_foe(c, before);
+                c.nearest_foe = nearer(nearest_foe(c, before), nearest_foe(c, after));
                 c.level = caster_level(c, before);
                 c.channel = caster_channel(c, before);
                 c.raised = !c.crew && crew_ids.count(caster_head(c, before)) != 0;

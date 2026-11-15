@@ -309,10 +309,23 @@ TEST(KitThief, mine_detonates_under_a_foe_not_an_ally)
 // on the blast is team 1 both times; classic it stays on team 0, the team it
 // was made with. The charmed leg tells the mine's number from the thief's
 // number now.
+// Then whom the blast halves on: the thief charmed onto team 0 and out of the
+// blast's reach, a team-1 and a team-0 soldier (armour 0) on the mine. With
+// the setting on the blast halves on team 1, its colour, and strikes team 0
+// in full; classic it halves on its live owner's allies, team 0 now, and
+// strikes team 1 in full.
+// Then the trip (the lead's ruling M3: a mine does not ride its thief): a
+// fresh mine of the team-1 thief, the thief charmed onto team 0 and standing
+// on it, nobody else near; one act of the mine. With the setting on it finds
+// him as a foe of its colour and goes off; classic it answers for him (one
+// owner chain) and waits.
 // Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
-// (both setting-on legs red); made_by's `from or owner` -> `owner` (the
-// charmed leg red: team 2); the blast's `gf.made_by(blast, self:owner(),
-// self)` -> `blast:set_owner(self:owner())` (both setting-on legs red).
+// (the setting-on stamp and halving legs red); made_by's `from or owner` ->
+// `owner` (the charmed leg red: team 2); the blast's `gf.made_by(blast,
+// self:owner(), self)` -> `blast:set_owner(self:owner())` (likewise); the
+// rider clause widened to every owned thing, `(kit_state() & KIT_RIDER) != 0
+// &&` dropped from both arms of rider_pair (the trip leg on red: the mine
+// spares its thief).
 TEST(KitThief, a_mines_blast_wears_the_mines_colour_only_with_the_setting_on)
 {
     og::test::mount_core_pack();
@@ -353,6 +366,63 @@ TEST(KitThief, a_mines_blast_wears_the_mines_colour_only_with_the_setting_on)
             EXPECT_EQ(fixes != 0 ? 1 : 0, blast->team_num())
                 << "the blast: the mine's team with the setting on, team 0 classic";
         }
+    }
+    const auto lands = [](float d) {
+        FixedRandom zero(0);
+        return static_cast<float>(damage_to_hit_points(compute_base_damage(d, zero)));
+    };
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "whom the blast halves on, setting " << fixes);
+        ThiefScene s(1, 3, 500.0f);
+        ASSERT_NE(nullptr, s.thief);
+        s.tw.world().gameplay_fixes = fixes;
+        s.thief->set_team_num(1);
+        walker* mine = s.lay_mine();
+        ASSERT_NE(nullptr, mine);
+        s.thief->setxy(40, 40);
+        s.thief->set_real_team_num(s.thief->team_num());
+        s.thief->set_team_num(0);
+        s.thief->set_charm_left(30);
+        walker* green = add_living(s.tw, FAMILY_SOLDIER, 1, mine->xpos(), mine->ypos());
+        walker* red = add_living(s.tw, FAMILY_SOLDIER, 0, mine->xpos(), mine->ypos());
+        ASSERT_TRUE(green && red);
+        for (walker* w : {green, red})
+            w->stats()->set_armor(0.0f);
+        const auto before = live_of(s.tw, Order::FX, FAMILY_EXPLOSION);
+        mine->set_dead(1);
+        ASSERT_TRUE(mine->death());
+        walker* blast = nullptr;
+        for (walker* ob : live_of(s.tw, Order::FX, FAMILY_EXPLOSION))
+            if (std::find(before.begin(), before.end(), ob) == before.end())
+                blast = ob;
+        ASSERT_NE(nullptr, blast);
+        const float d = blast->damage();
+        ASSERT_GT(d, 0.0f);
+        blast->set_dead(1);
+        blast->death();
+        const bool fixed = fixes != 0;
+        EXPECT_FLOAT_EQ(200.0f - lands(fixed ? d / 2.0f : d), green->stats()->hitpoints())
+            << "the team-1 soldier";
+        EXPECT_FLOAT_EQ(200.0f - lands(fixed ? d : d / 2.0f), red->stats()->hitpoints())
+            << "the team-0 soldier";
+        EXPECT_FLOAT_EQ(200.0f, s.thief->stats()->hitpoints()) << "the thief stands out of reach";
+    }
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "the trip, setting " << fixes);
+        ThiefScene s(1, 3, 500.0f);
+        ASSERT_NE(nullptr, s.thief);
+        s.tw.world().gameplay_fixes = fixes;
+        s.thief->set_team_num(1);
+        walker* mine = s.lay_mine();
+        ASSERT_NE(nullptr, mine);
+        s.thief->set_real_team_num(s.thief->team_num());
+        s.thief->set_team_num(0);
+        s.thief->set_charm_left(30);
+        s.thief->setxy(mine->xpos(), mine->ypos());
+        mine->act();
+        EXPECT_EQ(fixes != 0 ? 1 : 0, mine->dead())
+            << (fixes != 0 ? "setting on: its own charmed thief trips it"
+                           : "setting off: one owner chain, it waits");
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

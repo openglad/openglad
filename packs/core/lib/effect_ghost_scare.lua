@@ -8,7 +8,7 @@
 -- s_force_command is NOT a substitute: it stacks overlapping scares
 -- end-to-end instead of refreshing the active flee.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 
 -- ghost_scare_on_act: the scare cloud rides its caster for its whole life.
 local function on_act(self)
@@ -40,9 +40,9 @@ local function on_death(self)
 
   -- The radius caps at 250 px before legacy 50 + 10*L grows off-screen;
   -- the cap begins at L21 and consumes no draw. og.scare_radius binds
-  -- og::combat::scare_radius (core/combat_math.h).
+  -- og::combat::scare_radius (core/combat_math.h); gf.foes_round asks its side (fix AZ).
   local foes, foe_count =
-    og.find_foes_in_range("ob", og.scare_radius(owner.level), owner)
+    gf.foes_round(self, og.scare_radius(owner.level))
   -- rule: A scare with no foe within the caster's scare radius (50 + 10 per level, capped at 250
   --   px) does nothing and draws nothing.
   -- tests: EffectAct.effect_death_ghost_scare_frights_only_foes_in_radius
