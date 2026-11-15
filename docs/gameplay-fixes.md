@@ -1101,7 +1101,7 @@ The old game's death searches (`viewscreen::input` and
 behind the setting since `787eb516` (#450). No parity capture runs them, so
 the port moved no golden. Fix AY's question, ported into the first two
 passes of the same searches as `3a21c890`, was taken out again when fix AZ
-made it the colour test the scans already ask (the port reverts
+made it the colour test the scans already ask (`98d05c56` reverts
 `3a21c890`); the third pass is #139's difference (see
 GAMEPLAY_FIXES_FROM_CLASSIC.md).
 
@@ -1219,8 +1219,21 @@ The parity goldens are captures from the old game (branch
   citations re-pointed by line, corrected comments, and the fact kind
   that #498 retired dropped from the old game's fact header; nothing else
   moved). Four new goldens and 28 recaptured; no setting-off golden moved.
-  `30ada1c5` is the commit the goldens are captured from: 378 of 378
-  goldens `cmp` equal to a full capture there.
+  Then fix AZ as the maintainer ruled it (everything fights for the colour
+  it wears, and a thing that rides a walker goes with him): the table
+  mirror `9df7fc3a` first (the three new arenas below, each with the
+  setting off and on, and the pins the rule moved; nothing else moved),
+  then `98d05c56` (reverts AY's port `3a21c890`; nothing moved), `ac32063a`
+  and `d4a87048` (revert the first AZ port's correction `fbcab638` and the
+  first AZ port `bc75c886`, fix AW's lines kept; the colour-score row with
+  the setting on moved, and the next commit put it back), `fbefdccc` (the
+  stamps: the four rows below and the dead thrower's arena with the
+  setting on moved) and `b1252282` (the readers and the rider mark: the
+  other two new arenas with the setting on moved). Six new goldens and four
+  recaptured; no setting-off golden moved at any step. `b1252282` is the
+  commit the goldens are captured from: 384 of 384 goldens `cmp` equal to a
+  full capture there, and every capture there `cmp`s equal to this game's
+  run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1439,8 +1452,10 @@ row's pin moves the classic payment to the chain head's team; the
 setting-on row's pin leaves the blast red, so it pays nobody. Both rows
 were captured from the old game at `30ada1c5`, after the first port of AZ
 (`bc75c886`, corrected by `fbcab638`); the rule as it stands pays the same
-team on both rows, so both still `cmp` equal to this game's run, and the
-port of the rule must keep them so.
+team on both rows, so both still `cmp` equal to this game's run. The
+rule's port kept them: taking the first port out (`d4a87048`) left the
+setting-on row's blast red for one commit, and the stamps (`fbefdccc`)
+gave it the thief's colour back, byte for byte the recording.
 
 Fix AZ's arrow arena, `archer_charmed_arrow_in_flight_scen99` and
 `archer_charmed_arrow_in_flight_fixes_scen99`: a hostile level-1 archer
@@ -1459,7 +1474,10 @@ an arrow aimed at the thief in the air when the charm lands: its pin
 carries it, and so does the setting-on twin on the same inputs and ticks,
 whose thief takes exactly that arrow's blow. The setting-off row's pin
 stops the charm, so the arrow and the later ones strike the thief; the
-setting-on row's makes friendliness climb the owner chain again.
+setting-on row's makes friendliness climb the owner chain again. Both rows
+are captures from the old game at `b1252282`: the setting-off one played
+the same before the port, and the setting-on one took this game's answer
+with the readers' port, `b1252282` (the thief ends at 69 hp).
 
 Fix AZ's charmed-thrower arena, `thief_bomb_charmed_thrower_scen99` and
 `thief_bomb_charmed_thrower_fixes_scen99`: a hostile level-3 thief bot
@@ -1472,7 +1490,10 @@ the charmed bot and halves on the player: 27 to 31 of his 75. With the
 setting on it wears the colour the bomb was dropped in, team 1's, and
 strikes him in full: 56 to 62. The setting-off row's pin stops the charm;
 the setting-on row's leaves the bomb red, so its blast halves on the
-player again.
+player again. Both rows are captures from the old game at `b1252282`: the
+setting-off one played the same before the port, and the setting-on one
+took this game's answer with the readers' port, `b1252282` (the player
+ends at 13 hp).
 
 Fix AZ's dead-thrower arena (#533), `thief_bomb_dead_thrower_scen99` and
 `thief_bomb_dead_thrower_fixes_scen99`: a hostile level-1 thief bot drops
@@ -1491,7 +1512,10 @@ the blast's full blow and nothing else) show that the blast went off; no
 fact reads that the thief died first (no fact reads an order of ticks,
 #552), which rests on the staging it shares with the classic row. The
 setting-off row's pin stamps the bomb with the thief's colour classic too;
-the setting-on row's leaves it red.
+the setting-on row's leaves it red. Both rows are captures from the old
+game at `b1252282`: the setting-off one played the same before the port,
+and the setting-on one took this game's answer with the stamps' port,
+`fbefdccc` (the score went from 218 to 187).
 
 No pair shows a summon that stays on its team when its caster is charmed:
 every summon a bot casts on a fixed seed fights with blows whose count
@@ -1510,8 +1534,10 @@ of one thing a walker made changes, from 0 to 1, and with it the walkers'
 order in the dump, which follows the team: `thief_bot_bomb_ally` (the
 thief's bomb), and `soldier_bot_charge_door`,
 `soldier_bot_whirlwind_one_foe` and `cleric_turn_no_undead` (a soldier's
-returning knife). Every fact of the four holds; each is to be recaptured
-from the old game after the port. No setting-off row moves.
+returning knife). Every fact of the four holds. The old game's stamps
+(`fbefdccc`) move exactly these four the same way, and each is recaptured
+from the old game at `b1252282`, byte-identical to this game's run. No
+setting-off row moves.
 
 Fix BB's arena, `mage_bot_far_foe_scen99` and
 `mage_bot_far_foe_fixes_scen99`: a hostile level-1 mage bot spawns facing
