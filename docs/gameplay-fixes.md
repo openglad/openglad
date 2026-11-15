@@ -664,8 +664,8 @@ Fixes X to BB, in play:
   order, so no setting-off golden moves; the rows it moves with the setting
   on are listed under [Parity](#parity), and [Bots](#bots) has the measure.
 - There is no fix BC: the one-floor part of #447, a melee-only bot
-  standing in its ATTACK order, is left for the maintainer (see
-  [Rulings (2026-11-14)](#rulings-2026-11-14)).
+  standing in its ATTACK order, is left for a later round of its own, as
+  the maintainer ruled (see [Rulings (2026-11-14)](#rulings-2026-11-14)).
 
 ## Refusals at a glance
 
@@ -1388,7 +1388,7 @@ in the run) and `cleric_bot_resurrect_foe_stain` (3: the cleric never cast
 near the stain). The table mirror `d4fa405f` carries the seeds; the
 capture there moves those four rows alone, and each `cmp`s equal to the
 current game's dump. After fix BB two of them took another seed (Rulings
-(2026-11-14), entry 14): the archmage row is back on its twin's 198 and
+(2026-11-14), entry 13): the archmage row is back on its twin's 198 and
 the cleric row is on 84. One of the 44, `archer_bot_bolt_at_blows`, was also
 re-staged for #438 (the archer one pixel lower), so its pair is captured
 anew rather than recaptured. No setting-off golden moves: every
@@ -1551,7 +1551,7 @@ corrections). The seventeenth, `archmage_mind_control_berserk`, and one of
 the 11, `cleric_bot_resurrect_foe_stain`, no longer reached the rule they
 test, so their pins changed nothing: each setting-on twin took another
 seed while its setting-off twin stayed as it is (Rulings (2026-11-14),
-entry 14), and was recaptured from the old game on it.
+entry 13), and was recaptured from the old game on it.
 `orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
 does not move: the orc stands 1 px above the soldier, the pad holds the
 soldier's body and the swing starts on tick 9 as before. No setting-off row
@@ -3203,12 +3203,11 @@ the game does today.
 ## Rulings (2026-11-14)
 
 The third bugs batch (#494 to #505 and #508, with #398, #432, #441, #447
-and #490) asked its questions in the chat. The maintainer said three
+and #490) asked its questions in the chat. The maintainer first said three
 things: take the proposed issues, leave the flaky tests for a separate
-round, and add #490. He has not answered the rest yet, so every entry
-below is a default taken: what the game does today, and the alternative.
-The two questions the bot fixes leave open (fix BB for #497, and the
-flying bot's own floor for #447) come first.
+round, and add #490. On 2026-11-15 he answered the rest, one question at a
+time. Each entry below is his answer and what the game does because of it;
+where an entry was only told to him, or is still open, it says so.
 
 1. **#447: what the count was.** The issue counted, on Westlands 7, 16 and
    22, the ticks a melee-only bot stands within 30 px of its live foe
@@ -3240,71 +3239,88 @@ flying bot's own floor for #447) come first.
    for a few ticks, which now count. How much of the rise that accounts for
    was not measured; blows landed and damage per 100 ticks near a foe did
    not fall (see [Bots](#bots)).
-2. **#447: the melee-only bot's ATTACK order.** Left as it is. A melee-only
-   bot has no aimed blow: its ATTACK order only faces its foe, and its blows
-   are its bumps. Letting it swing in that order when a foe's body stands on
-   its weapon's pad, and step toward the foe otherwise, was built and
-   measured: it halves the one-floor stall (11,259 to 5,023 ticks with no
-   blow landed for 60) and doubles what these bots do, per 100 ticks near a
-   foe from 0.97 blows and 21.1 damage to 2.06 and 44.3, kills from 0.024 to
-   0.080, and the Westlands crews lose a fifth of their survivors (322 to
-   255 over 75 battles; level 19 from 18 to 4, level 23 from 16 to 3). That
-   is a change of the campaigns' difficulty, not a bug fix to slip into this
-   batch. Default: not taken. The alternative: take it as fix BC, behind the
-   setting, with the campaigns' levels eased in their builders.
-3. **#505: a walker that dies charmed.** Default taken: no change to the
-   game, so there is no fix BA. A walker that dies charmed keeps heading its
-   owner chain until the tick ends, as fix AP rules (one climb of the owner
-   chain, through a dead owner, stopping at a charmed head). Alternative: a
-   dead walker never counts as charmed.
-4. **#502 (AZ): whose team a blast pays.** Default taken: with the setting
-   on a bomb's, a mine's or an exploding shot's blast pays its thrower's
-   team, not red. Alternative: fix AZ only for shots and summons whose
-   caster changed sides, and a blast keeps paying red.
-5. **#503: owner loops.** Default taken: a script's `set_owner` refuses a
-   link that would close an owner loop, and every climb cuts a loop a
-   snapshot brings in where it closes. Alternative: `set_owner` makes any
-   link and the next climb cuts the loop.
-6. **#495 (AX): whose summons the difficulty scales.** Default taken: a
-   summon takes its caster's team before it is scaled, so a human team
-   other than team 0 gets scaled summons as its hero is (the open question
-   of #506 is untouched). Alternative: every human team's summons are
-   exempt, as team 0's are, which is #506's question.
-7. **#496 (AY): a seat with nobody to take.** Default taken: the level
-   waits for a refused summon to die, as it waits for a charmed walker
-   since #450, and every search that gives a seat a body asks the new
-   question. Alternative: the host ends the level as soon as only walkers
-   the seat may not take wear its colour.
-8. **#499: a ride whose ghost a script marks dead.** Default taken: the
-   ridden body goes home at its next act and the ghost stays out of sight;
-   a player's seat keeps steering the freed body (filed as its own issue).
-   Alternative: when a ride ends with its ghost dead, the seat moves to the
-   ghost, so the ordinary death hand-off picks the next hero.
-9. **#500: a hero of a class no installed pack provides.** Default taken:
-   the hero stays in the company, with a soldier's body and its class's own
-   empty stat row, as classes 21 to 127 already had. Alternative: one
-   function names the class a hero stands as (the soldier when no pack
-   provides it), so its body, its stats and its price agree.
-10. **#432: the cheat keys.** Default taken: all twelve keys change the
-    game; none does anything in a networked game; cheats are not recorded
-    in replays; the team hop keeps the seat's starting team for Switch
-    Character and the death hand-off. Alternatives: a host's cheats change
-    everyone's game; replays record the cheats (a new replay format); a hop
-    gives the seat the new team too.
-11. **#490: a new game.** Default taken: the campaign's story text still
-    plays once, between name entry and Base Camp, and a new company always
-    starts on Gladiator; another campaign is set from Base Camp.
-    Alternatives: drop the story text there; or a SET CAMPAIGN button on
-    the name-entry screen.
-12. **#508: the version a build shows.** Default taken: a build off master
-    shows its commit only, and a local build of a master commit with
-    changes not yet committed still shows the number (the rule is about
-    the commit). Alternative: such a build shows its commit only too.
-13. **#398: Game Settings in the terminal clients.** Default taken: the
-    terminal clients still do not save Game Settings to disk (filed as its
-    own issue). Alternative: save them as the SDL client does, in this
-    batch.
-14. **Two setting-on recordings took another seed after fix BB**
+2. **#447: the melee-only bot's ATTACK order.** Left for a later round of
+   its own (the maintainer: "let's do A and handle that later"); #447 stays
+   open. A melee-only bot has no aimed blow: its ATTACK order only faces
+   its foe, and its blows are its bumps. Letting it swing in that order
+   when a foe's body stands on its weapon's pad, and step toward the foe
+   otherwise, was built and measured: it halves the one-floor stall (11,259
+   to 5,023 ticks with no blow landed for 60) and doubles what these bots
+   do, per 100 ticks near a foe from 0.97 blows and 21.1 damage to 2.06 and
+   44.3, kills from 0.024 to 0.080, and the Westlands crews lose a fifth of
+   their survivors (322 to 255 over 75 battles; level 19 from 18 to 4,
+   level 23 from 16 to 3). That is a change of the campaigns' difficulty,
+   so it waits for a round that eases the campaigns' levels with it.
+3. **Whose side a thing is on (#502, and with it #496 and #533).** The
+   batch first fixed #502 by making a blow's score ask its thrower's team.
+   The maintainer rejected that: "why can't the blast track its own team
+   number independently?", and "everything should just work normally as
+   expected, including arrows and other shots. They should all stay with
+   the team they were when cast. Like, they should be independent of their
+   originator, right?" He ruled the same for summons (a summon stays on the
+   team it was summoned for, whatever happens to its caster) and for tents
+   ("once a tent makes a dude, the dude should stay on the team the tent
+   was on when it was made"). The cause he pointed at was real: the bomb,
+   its blast, a mine's blast, an exploding shot's blast, ENERGY WAVE, the
+   boulder and the returning knife were never given a team number, so they
+   were red. Fix AZ is now that rule: with the setting on everything
+   fights for the colour it wears and nothing follows its maker (see fix AZ
+   under [The fixes](#the-fixes) for all a player sees). Fix AY is gone,
+   because under the rule its extra question is the plain colour test;
+   fix AP no longer decides a side; #496 and #533 close with it, and #536
+   and #537 close with the setting on. Taken from the rule without a
+   question of their own, and told to the maintainer: a kill by a shot or
+   a blast whose maker has died counts for its colour in every mode; a
+   dead thrower's blast halves on his own side; nobody is credited with
+   his own death; a shot does not spare its shooter; a returning knife
+   never cuts the hand that catches it. One question is still with the
+   maintainer: a thing that sits on a walker (a ring of protection, a mace,
+   a boomerang, a hook blade) keeps the colour it was cast in and never
+   blocks or strikes the walker it sits on, which is what is built; the
+   alternative is that it goes with its walker when he is charmed. The rule
+   is one function (`walker::rider_pair`), so the alternative is a change
+   of that function.
+4. **#505: a walker that dies charmed.** No change of its own, so there is
+   no fix BA. With the setting on no side reads the owner chain any more
+   (entry 3), so the question of who heads a dead charmed walker's chain
+   arises only for the person behind a blow: the walker keeps heading its
+   chain until the tick ends, and its summons' blows are credited to it
+   for that tick.
+5. **#503: owner loops.** A script's `set_owner` that would close an owner
+   loop fails with an error (the maintainer's answer), and every climb
+   cuts a loop a snapshot brings in where it closes.
+6. **#495 (AX): whose summons the difficulty scales.** A summon is scaled
+   as its caster is (the maintainer's answer): it takes its caster's team
+   before it is scaled, so a human team other than team 0 gets scaled
+   summons as its hero is. Which human-played teams the difficulty should
+   exempt at all stays #506.
+7. **#499: a ride whose ghost a script marks dead.** The ridden body goes
+   home at its next act and the ghost stays out of sight. The maintainer
+   ruled that the seat moves too: when a ride ends with its ghost dead,
+   the seat goes to the dead ghost, so the ordinary death hand-off gives
+   the player the next hero (#535).
+8. **#500: a hero of a class no installed pack provides.** Left as it is
+   (the maintainer's answer): the hero stays in the company, with a
+   soldier's body and its class's own empty stat row, as classes 21 to 127
+   already had. #528 stays open.
+9. **#432: the cheat keys.** All twelve keys change the game, and none
+   does anything in a networked game, for now (the maintainer: "leave an
+   issue opened to revisit this in the future"; that is #543, which also
+   covers replays, where cheats are not recorded). The team hop keeps the
+   seat's starting team for Switch Character and the death hand-off, as in
+   the old game; that was not asked.
+10. **#490: a new game.** The campaign's introduction (the opening text of
+    its `campaign.yaml`, not a level's own text) still plays once, between
+    name entry and Base Camp (the maintainer's answer), and a new company
+    always starts on Gladiator; another campaign is set from Base Camp.
+11. **#508: the version a build shows.** Only a clean build of a commit on
+    master's history shows the number. A build off master shows its commit
+    only, and so does a local build of a master commit with changes not
+    yet committed, with its `+` (the maintainer's answer).
+12. **#398: Game Settings in the terminal clients.** The text and curses
+    clients save the Game Settings answers to the settings file, as the
+    SDL game does (the maintainer's answer; #525).
+13. **Two setting-on recordings took another seed after fix BB**
     (a bot near its foe turns to it for good and swings only when the
     blow can land): on the old seed the row no longer reached the rule it
     tests, and its pin changed nothing.
@@ -3318,7 +3334,8 @@ flying bot's own floor for #447) come first.
     off without asking for RESURRECT near the faerie's stain. Each is the
     first seed from 0 where the row's own pin changes what its facts read;
     the spawns, inputs, budgets and facts stay, and the setting-off twins
-    keep their seeds and recordings. Two rows' facts now read another
+    keep their seeds and recordings. The maintainer was told of this and
+    has not ruled on it. Two rows' facts now read another
     walker, because fix BB left the one they read dead:
     `cleric_bot_raise_or_turn_fixes_scen99` reads the tower's hit points
     and counts the faerie as gone (the faerie now falls to the cleric's
