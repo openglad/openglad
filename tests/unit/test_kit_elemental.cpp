@@ -576,6 +576,47 @@ TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502): an ember takes the colour of the fire that drops
+// it, IMMOLATE's marker, which wears the elemental's colour from the cast
+// (og.summon). A team-1 elemental lights IMMOLATE and is then charmed by hand
+// onto team 2 (the charm's own writes); the fire burns on and drops its first
+// ember on the fourth tick. With the setting on that ember wears the fire's
+// colour, team 1; classic it wears the elemental's colour now, team 2.
+// Breaks: the `gf.take_team(ember, marker)` line removed (setting-on leg red:
+// team 2); take_team's `made.team = from.team` -> `made.team = made.team`
+// (likewise).
+TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 4, 1000.0f, 2);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        const Cast lit = cast(e);
+        ASSERT_TRUE(lit.ok) << lit.reason;
+        const auto ms = markers(w);
+        ASSERT_EQ(1u, ms.size());
+        walker* marker = ms[0];
+        EXPECT_EQ(e, marker->owner());
+        EXPECT_EQ(1, marker->team_num()) << "the fire wears the elemental's team from the cast";
+
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(2);
+        e->set_charm_left(30);
+        for (int tick = 1; tick <= 4; ++tick)
+            ASSERT_TRUE(marker->act());
+        const auto es = embers(w);
+        ASSERT_EQ(1u, es.size()) << "an ember on the fourth tick";
+        EXPECT_EQ(e, es[0]->owner());
+        EXPECT_EQ(fixes != 0 ? 1 : 2, es[0]->team_num())
+            << "the ember: the fire's team with the setting on, the elemental's now classic";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
+}
+
 // MP 31 -> light -> 1 MP. The next nine presses (one a tick, as a held key
 // repeats) are refused silently by the latch and spend nothing; the press
 // on the tenth tick after lighting quenches it at no cost, at 1 MP.
@@ -800,6 +841,49 @@ TEST(KitElemental, meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster)
     EXPECT_TRUE(rain->dead());
     EXPECT_TRUE(explosions(w).empty());
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502): a meteor takes its rain's colour. The rain's
+// marker wears the elemental's colour from the cast (og.summon). A team-1
+// elemental's rain is falling on a team-0 foe when the elemental is charmed
+// by hand onto team 2 (the charm's own writes); the rain's first meteor
+// falls on the sixth tick. With the setting on it wears the rain's colour,
+// team 1; classic it wears the elemental's colour now, team 2.
+// Breaks: the `gf.take_team(blast, marker)` line removed (setting-on leg red:
+// team 2); take_team's `made.team = from.team` -> `made.team = made.team`
+// (likewise).
+TEST(KitElemental, a_meteor_wears_its_rains_colour_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        og::test::ScopedHookFailureGuard guard;
+        ElementalWorld w(1);
+        w.world().gameplay_fixes = fixes;
+        living* e = add_elemental(w, 7, 1000.0f, 3);
+        ASSERT_NE(nullptr, e);
+        e->set_team_num(1);
+        living* foe = add_living(w, FAMILY_SOLDIER, 0, 200, 100);
+        ASSERT_NE(nullptr, foe);
+        e->set_foe(foe);
+        const Cast c = cast(e);
+        ASSERT_TRUE(c.ok) << c.reason;
+        const auto ms = markers(w);
+        ASSERT_EQ(1u, ms.size());
+        walker* rain = ms[0];
+        EXPECT_EQ(1, rain->team_num()) << "the rain wears the elemental's team from the cast";
+
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(2);
+        e->set_charm_left(30);
+        for (int tick = 1; tick <= 6; ++tick)
+            ASSERT_TRUE(rain->act());
+        const auto strikes = explosions(w);
+        ASSERT_EQ(1u, strikes.size()) << "the first meteor falls on the sixth tick";
+        EXPECT_EQ(e, strikes[0]->owner());
+        EXPECT_EQ(fixes != 0 ? 1 : 2, strikes[0]->team_num())
+            << "the meteor: the rain's team with the setting on, the elemental's now classic";
+        EXPECT_EQ(0u, guard.count()) << guard.message();
+    }
 }
 
 TEST(KitElemental, meteor_rain_is_not_cast_with_new_specials_off)

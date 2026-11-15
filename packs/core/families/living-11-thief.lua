@@ -210,7 +210,7 @@ local function drop_bomb(self)
                - bomb:sizex() // 2,
              self:ypos() + self:sizey() // 2
                - bomb:sizey() // 2)
-  bomb:set_owner(self)
+  gf.made_by(bomb, self)  -- the thief's bomb, wearing his colour with the setting on (Gameplay Fixes AZ)
   -- An AI thief flees its own armed bomb.
   -- rule: An AI thief flees its own freshly armed bomb: it is forced to walk 20 steps along a
   --   random direction (two og.rand(3) draws, x first); a still roll becomes a step right. A

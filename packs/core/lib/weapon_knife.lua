@@ -5,7 +5,7 @@
 -- og.family_flag("living", owner:family(), "has_returning_weapon"). A nil
 -- owner is the C++ `owner_fd == nullptr` case: no special handling.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local FX_KNIFE_BACK = assert(og.family_id("fx", "core:knife_back"))
 
 -- knife_on_death: a knife thrown by a returning-weapon family (soldier)
@@ -35,7 +35,7 @@ local function on_death(self)
   if not blade then
     return true
   end
-  blade:set_owner(self:owner())
+  gf.made_by(blade, self:owner(), self)  -- with the setting on it wears the knife's colour, and its probes copy it (Gameplay Fixes AZ)
   -- Return flight starts on the knife's floor.
   blade:set_floor(self:floor())
   blade:center_on(self)

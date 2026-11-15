@@ -1,6 +1,6 @@
 -- core lib: kit_elemental — the fire elemental's New Specials: IMMOLATE, METEOR RAIN, REKINDLE / SUPERNOVA (cookbook: docs/lua-classpacks-design.md §3).
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local G = og.use("gates")
 local km = og.use("kit_marker")
 local foes_touching = og.use("effect_ember").foes_touching
@@ -137,8 +137,10 @@ end
 
 -- A burning footprint at the owner's feet (bottom centre of its box), unless
 -- one still burns there: a standing elemental keeps one ember under it
--- instead of piling them up.
-local function drop_ember(owner, t)
+-- instead of piling them up. With the setting on the ember takes the colour of
+-- the fire that drops it (IMMOLATE's marker), so an elemental charmed while it
+-- burns keeps laying embers of the side it lit them for (Gameplay Fixes AZ).
+local function drop_ember(owner, t, marker)
   -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks,
   --   but never a second one on a spot where one of its own still burns.
   -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
@@ -155,6 +157,7 @@ local function drop_ember(owner, t)
   if ember then
     ember:set_owner(owner)
     ember.team = owner.team
+    gf.take_team(ember, marker)  -- with the setting on an ember wears IMMOLATE's colour, not the elemental's now (Gameplay Fixes AZ)
     ember:set_floor(owner:floor())
     ember.lifetime = t.ember_ticks
     ember.damage = t.ember_damage + og.div(owner.level, 2)
@@ -201,7 +204,7 @@ local function immolation_act(marker)
   marker:center_on(owner)
   burn_contacts(marker, owner, t)
   if og.mod(marker:lifetime(), t.ember_step) == 0 then
-    drop_ember(owner, t)
+    drop_ember(owner, t, marker)
   end
 end
 
@@ -218,6 +221,7 @@ local function strike(marker, owner, t)
     local dy = og.rand(2 * t.rain_spread + 1) - t.rain_spread
     blast:set_owner(owner)
     blast.team = owner.team
+    gf.take_team(blast, marker)  -- with the setting on a meteor wears its rain's colour (Gameplay Fixes AZ)
     blast.level = marker.level
     blast.damage = marker:damage()
     blast:set_floor(marker:floor())

@@ -1615,6 +1615,56 @@ TEST(SemWail, a_wail_forks_to_at_most_its_budget_and_skipped_foes_keep_it)
     expect_wail_off_twin();
 }
 
+// effect_wail.lua M.launch, Gameplay Fixes AZ (#502): with the setting on a
+// wail's fork takes the team number of the bolt it forks from, not its
+// ghost's now. A team-1 ghost's WAIL (the real cast: its bolt wears team 1)
+// is flying when the ghost is charmed by hand onto team 2 (the charm's own
+// writes) and steps far off; the bolt strikes a team-0 orc and forks to the
+// team-0 orc beside it, a foe of the ghost's old colour and of its new one
+// alike. With the setting on the fork wears the struck bolt's colour, team 1;
+// classic it wears the ghost's colour now, team 2.
+// Breaks: the `gf.take_team(bolt, from)` line removed (setting-on leg red:
+// team 2); take_team's `made.team = from.team` -> `made.team = made.team`
+// (likewise).
+TEST(SemWail, a_wail_fork_wears_the_colour_of_the_bolt_it_forks_from_with_the_setting_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        WailScene s;
+        ASSERT_NE(nullptr, s.ghost);
+        s.tw.world().gameplay_fixes = fixes;
+        s.ghost->set_team_num(1);
+        walker* struck = add_living(s.tw, FAMILY_ORC, 0, 140, 80);
+        walker* beside = add_living(s.tw, FAMILY_ORC, 0, 200, 80);
+        ASSERT_TRUE(struck && beside);
+        struck->set_act_type(ACT_GUARD);
+        beside->set_act_type(ACT_GUARD);
+        const Cast c = cast(s.ghost, 1, true);
+        ASSERT_TRUE(c.ok) << c.reason;
+        const auto bolts = live_of(s.tw.world().oblist, Order::FX, wail_family());
+        ASSERT_EQ(1u, bolts.size()) << "the cast launches one bolt";
+        walker* bolt = bolts.front();
+        ASSERT_EQ(struck, bolt->leader()) << "it homes on the nearest foe";
+        EXPECT_EQ(1, bolt->team_num()) << "the cast's bolt wears the ghost's team";
+
+        s.ghost->set_real_team_num(s.ghost->team_num());
+        s.ghost->set_team_num(2);
+        s.ghost->set_charm_left(30);
+        s.ghost->setxy(440, 440);
+        centre_on_foe(bolt, struck);
+        bolt->act();
+        ASSERT_NE(0, bolt->dead()) << "it struck on its act";
+        const auto forks = live_of(s.tw.world().oblist, Order::FX, wail_family());
+        ASSERT_EQ(1u, forks.size()) << "one fork, to the orc beside the struck one";
+        EXPECT_EQ(beside, forks.front()->leader());
+        EXPECT_EQ(s.ghost, forks.front()->owner()) << "the fork is the ghost's";
+        EXPECT_EQ(fixes != 0 ? 1 : 2, forks.front()->team_num())
+            << "the fork: the struck bolt's team with the setting on, the ghost's now classic";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // effect_wail.lua:115-122. The puff steers its centre onto its foe's centre at
 // most 6 px per axis an act, never past it, and an axis already level does
 // not move; it faces where it flies.

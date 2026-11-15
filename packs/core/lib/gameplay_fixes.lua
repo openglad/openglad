@@ -153,4 +153,49 @@ function M.scale_summon(summon, caster)
   summon:set_difficulty(summon.level)
 end
 
+-- Gameplay Fixes AZ (#502, #533): with the setting on everything fights for
+-- the colour it wears and nothing follows its maker. A thing one walker makes
+-- with og.add_ob (a thief's bomb, ENERGY WAVE, a boulder, a blast, a returning
+-- knife) takes `owner` as its owner, as always, and with the setting on the
+-- team number of `from` (`owner` itself unless given: a blast takes its
+-- bomb's, its mine's or its shot's, a returning knife its knife's), which it
+-- keeps whatever happens to its maker afterwards. Classic, it stays on the
+-- team it was made with (team 0) and fights for the head of its owner chain.
+-- Draws nothing.
+function M.made_by(made, owner, from)
+  made:set_owner(owner)
+  -- rule: Gameplay Fixes AZ (#502, #533): a thing made from another thing takes that thing's team
+  --   number (a blast its bomb's, its mine's or its shot's; a returning knife its knife's), and
+  --   any other thing its owner's (a thief's bomb, ENERGY WAVE, a boulder). The setting's gate is
+  --   take_team's.
+  -- tests: SemLibsBomb.a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  -- tests: SemMage.an_energy_wave_wears_the_mages_colour_through_its_promotions_only_with_the_setting_on
+  M.take_team(made, from or owner)
+end
+
+-- The team half of made_by, for a thing whose owner is set apart: a wail's
+-- fork takes the bolt it forks from, a meteor its rain, an ember its fire.
+-- Draws nothing.
+function M.take_team(made, from)
+  -- rule: Gameplay Fixes AZ (#502, #533): with the setting on a thing takes, when it is made, the
+  --   team number of the thing it comes from (a thief's bomb, a mage's ENERGY WAVE, a barbarian's
+  --   boulder; a blast from its bomb, mine or exploding shot; a returning knife from its knife; a
+  --   wail's fork from its bolt; a meteor from its rain; an ember from IMMOLATE's fire) and keeps
+  --   it. Classic: the team it was made with.
+  -- tests: SemLibsBomb.a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on
+  -- tests: SemLibsProjectiles.an_exploding_shots_blast_wears_the_shots_colour_only_with_the_setting_on
+  -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+  -- tests: SemMage.an_energy_wave_wears_the_mages_colour_through_its_promotions_only_with_the_setting_on
+  -- tests: SemBarbarian.a_boulder_wears_the_barbarians_colour_only_with_the_setting_on
+  -- tests: SemWail.a_wail_fork_wears_the_colour_of_the_bolt_it_forks_from_with_the_setting_on
+  -- tests: KitElemental.a_meteor_wears_its_rains_colour_with_the_setting_on
+  -- tests: KitElemental.a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire
+  -- tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
+  -- tests: parity:thief_bomb_colour_score_fixes_scen99
+  if M.on() then
+    made.team = from.team
+  end
+end
+
 return M

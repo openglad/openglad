@@ -44,7 +44,7 @@ local function do_special(self)
   end
   boulder:set_floor(shot:floor())  -- boulder rolls on the thrower's floor
   boulder:center_on(shot)
-  boulder:set_owner(self)
+  gf.made_by(boulder, self)  -- the barbarian's boulder, wearing his colour with the setting on (Gameplay Fixes AZ)
   boulder.level = self.level
   boulder:set_lastx(shot:lastx())
   boulder:set_lasty(shot:lasty())

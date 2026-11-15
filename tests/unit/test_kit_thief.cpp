@@ -44,6 +44,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -297,6 +298,63 @@ TEST(KitThief, mine_detonates_under_a_foe_not_an_ally)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 
     expect_off_twin_lays_a_bomb(3, 500.0f);
+}
+
+// Gameplay Fixes AZ (#502): a mine is laid on its thief's team on both
+// settings (kit_thief.lua), and with the setting on its blast takes the
+// MINE's team number (effect_bomb.lua, the bomb's own blast), whatever became
+// of the thief since. A team-1 thief's mine is set off by hand (dead, then
+// death(), as a foe's step sets it off) while he is as he was, and after he
+// is charmed by hand onto team 2 (the charm's own writes). With the setting
+// on the blast is team 1 both times; classic it stays on team 0, the team it
+// was made with. The charmed leg tells the mine's number from the thief's
+// number now.
+// Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
+// (both setting-on legs red); made_by's `from or owner` -> `owner` (the
+// charmed leg red: team 2); the blast's `gf.made_by(blast, self:owner(),
+// self)` -> `blast:set_owner(self:owner())` (both setting-on legs red).
+TEST(KitThief, a_mines_blast_wears_the_mines_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const bool charmed : {false, true}) {
+            SCOPED_TRACE(testing::Message() << "setting " << fixes << ", the thief "
+                                            << (charmed ? "charmed onto team 2" : "as he was"));
+            ThiefScene s(1, 3, 500.0f);
+            ASSERT_NE(nullptr, s.thief);
+            s.tw.world().gameplay_fixes = fixes;
+            s.thief->set_team_num(1);
+            walker* mine = s.lay_mine();
+            ASSERT_NE(nullptr, mine);
+            EXPECT_EQ(s.thief, mine->owner());
+            EXPECT_EQ(1, mine->team_num()) << "the mine: the thief's team on both settings";
+            s.thief->setxy(40, 40);
+            if (charmed) {
+                s.thief->set_real_team_num(s.thief->team_num());
+                s.thief->set_team_num(2);
+                s.thief->set_charm_left(30);
+            }
+            ASSERT_GE(mine->stats()->hitpoints(), 0.0f) << "a live mine, not an expired one";
+
+            const auto before = live_of(s.tw, Order::FX, FAMILY_EXPLOSION);
+            mine->set_dead(1);
+            ASSERT_TRUE(mine->death());
+            walker* blast = nullptr;
+            int made = 0;
+            for (walker* ob : live_of(s.tw, Order::FX, FAMILY_EXPLOSION)) {
+                if (std::find(before.begin(), before.end(), ob) == before.end()) {
+                    blast = ob;
+                    ++made;
+                }
+            }
+            ASSERT_EQ(1, made) << "the mine makes one blast";
+            EXPECT_EQ(s.thief, blast->owner());
+            EXPECT_EQ(fixes != 0 ? 1 : 0, blast->team_num())
+                << "the blast: the mine's team with the setting on, team 0 classic";
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
 // Faeries and ghosts float over mines: a foe with the FLYING bit, or with

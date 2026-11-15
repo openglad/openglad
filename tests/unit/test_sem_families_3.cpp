@@ -935,6 +935,39 @@ TEST_F(SemBarbarian, a_boulder_at_terrain_spends_nothing_with_the_setting_on)
     EXPECT_LT(foe->stats()->hitpoints(), 400.0f) << "body arm: the blow lands on the foe";
 }
 
+// living-16-barbarian.lua:47, Gameplay Fixes AZ (#502): with the setting on
+// the boulder of HURL BOULDER (slot 1) and EXPLODING BOULDER (slot 2) takes
+// the barbarian's team number when he throws it, team 1 here; classic it
+// stays on team 0, the team it was made with (the hammer it rides on is the
+// barbarian's on both settings, as fire() stamps every shot).
+// Breaks: the barbarian's `gf.made_by(boulder, self)` ->
+// `boulder:set_owner(self)` (both setting-on legs red); take_team's
+// `made.team = from.team` -> `made.team = made.team` (likewise).
+TEST_F(SemBarbarian, a_boulder_wears_the_barbarians_colour_only_with_the_setting_on)
+{
+    for (const int slot : {1, 2}) {
+        for (const short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(testing::Message() << "slot " << slot << ", setting " << fixes);
+            fresh_world();
+            living* barb = body(add(FAMILY_BARBARIAN, 1, 160, 160, 5, 500.0f), 16, 16);
+            ASSERT_NE(nullptr, barb);
+            barb->set_user(0);
+            barb->set_act_type(ACT_CONTROL);
+            face(barb, 1.0f, 0.0f, FACE_RIGHT);
+            std::string reason;
+            ASSERT_TRUE(cast(barb, slot, fixes, &reason)) << reason;
+            const std::vector<walker*> boulders = live(Order::Weapon, FAMILY_BOULDER);
+            ASSERT_EQ(1u, boulders.size()) << "one boulder";
+            EXPECT_EQ(barb, boulders[0]->owner());
+            EXPECT_EQ(fixes != 0 ? 1 : 0, boulders[0]->team_num())
+                << "the boulder: the barbarian's team with the setting on, team 0 classic";
+            const std::vector<walker*> hammers = any(Order::Weapon, FAMILY_HAMMER);
+            ASSERT_EQ(1u, hammers.size()) << "the one hammer fired";
+            EXPECT_EQ(1, hammers[0]->team_num()) << "fire() stamps the hammer on both settings";
+        }
+    }
+}
+
 namespace {
 
 // One HURL BOULDER's results: the boulder (nullptr when none) and the

@@ -1,6 +1,6 @@
 -- core:wail — the ghost's wail: a homing puff of the scare's sparkles that hops foe to foe like chain lightning (cookbook: docs/lua-classpacks-design.md §3).
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local FX_WAIL = assert(og.family_id("fx", "core:wail"))
 
 local hits = og.use("effect_common").hits
@@ -14,7 +14,10 @@ local M = {}
 -- A fresh bolt leaving `from` (the ghost, or the bolt that just struck) and
 -- homing on `foe`. It is owned by the ghost, harmless (damage 0) and carries
 -- the hops it may still make in its lifetime field, which an effect whose
--- on_act always answers true never counts down. nil when the world is full.
+-- on_act always answers true never counts down. It wears the ghost's colour;
+-- with the setting on a fork wears the colour of the bolt it forks from, so a
+-- ghost charmed while its wail flies does not recolour the chain (Gameplay
+-- Fixes AZ). nil when the world is full.
 function M.launch(owner, from, foe, hops)
   local bolt = og.add_ob("fx", FX_WAIL)
   -- rule: A WAIL (or a wail fork) that cannot get an entity (full world) does not launch; the cast
@@ -28,6 +31,7 @@ function M.launch(owner, from, foe, hops)
   local t = og.tuning(bolt)
   bolt:set_owner(owner)
   bolt.team = owner.team
+  gf.take_team(bolt, from)  -- with the setting on a fork wears the bolt it forks from (Gameplay Fixes AZ)
   bolt.level = owner.level
   bolt.damage = 0
   bolt:set_floor(from:floor())

@@ -481,6 +481,84 @@ TEST(SemLibsBomb, a_blast_leaves_other_floors_treasure_effects_and_the_dead_alon
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes AZ (#502, #533): with the setting on the thief's bomb takes
+// his team number when he drops it, and the bomb's blast takes the bomb's,
+// whatever became of the thief since. A level-4 team-1 thief drops a real
+// DROP BOMB (walker::special; a seat drives him, so the cast draws no flee
+// walk); then he is left alone, or charmed by hand onto team 2 during the
+// fuse (the charm's own writes), or killed before it goes off (the bomb then
+// owns itself and its blast). With the setting on the bomb and its blast are
+// team 1 in all three; classic, both stay on team 0, the team they were made
+// with. The charmed leg tells the bomb's number from the thief's number now.
+// Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
+// (every setting-on leg red); made_by's `from or owner` -> `owner` (the
+// charmed leg's blast red: team 2); the thief's `gf.made_by(bomb, self)` ->
+// `bomb:set_owner(self)` (every setting-on leg red); the blast's
+// `gf.made_by(blast, self:owner(), self)` -> `blast:set_owner(self:owner())`
+// (the setting-on blasts red, the bombs green).
+TEST(SemLibsBomb, a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    enum class Then { Nothing, Charmed, Died };
+    for (const short fixes : {short{0}, short{1}}) {
+        for (const Then then : {Then::Nothing, Then::Charmed, Then::Died}) {
+            SCOPED_TRACE(testing::Message()
+                         << "setting " << fixes << ", the thief "
+                         << (then == Then::Nothing   ? "left alone"
+                             : then == Then::Charmed ? "charmed onto team 2"
+                                                     : "dead"));
+            TestGameWorld tw;
+            GameWorld& w = tw.world();
+            w.gameplay_fixes = fixes;
+            w.new_specials = 0;
+            walker* thief = put_living(w, FAMILY_THIEF, 200, 200, 1, 4);
+            ASSERT_NE(nullptr, thief);
+            thief->stats()->set_max_magicpoints(100.0f);
+            thief->stats()->set_magicpoints(100.0f);
+            thief->set_user(0);
+            thief->set_act_type(ACT_CONTROL);
+            thief->set_current_special(1);
+            thief->set_shifter_down(0);
+            walker::SpecialFailure why = walker::SpecialFailure::None;
+            std::string reason;
+            ASSERT_TRUE(thief->special(&why, &reason)) << reason;
+            const std::vector<walker*> bombs = live_of(w, Order::FX, FAMILY_BOMB);
+            ASSERT_EQ(1u, bombs.size()) << "DROP BOMB drops one bomb";
+            walker* bomb = bombs.front();
+            EXPECT_EQ(thief, bomb->owner());
+            EXPECT_EQ(fixes != 0 ? 1 : 0, bomb->team_num())
+                << "the bomb: the thief's team with the setting on, team 0 classic";
+
+            if (then == Then::Charmed) {
+                thief->set_real_team_num(thief->team_num());
+                thief->set_team_num(2);
+                thief->set_charm_left(30);
+            } else if (then == Then::Died) {
+                thief->set_dead(1);
+            }
+            const std::vector<walker*> before = live_of(w, Order::FX, FAMILY_EXPLOSION);
+            bomb->set_dead(1);
+            bomb->death();
+            walker* blast = nullptr;
+            int made = 0;
+            for (walker* ob : live_of(w, Order::FX, FAMILY_EXPLOSION)) {
+                if (std::find(before.begin(), before.end(), ob) == before.end()) {
+                    blast = ob;
+                    ++made;
+                }
+            }
+            ASSERT_EQ(1, made) << "the bomb makes one blast";
+            EXPECT_EQ(then == Then::Died ? bomb : thief, blast->owner())
+                << "the blast is the thief's, or the bomb's once he is dead";
+            EXPECT_EQ(fixes != 0 ? 1 : 0, blast->team_num())
+                << "the blast: the bomb's team with the setting on, team 0 classic";
+            EXPECT_EQ(fixes != 0 ? 1 : 0, bomb->team_num()) << "the bomb keeps its team";
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // ===========================================================================
 // effect_chain.lua — the chain-lightning bolt
 // ===========================================================================

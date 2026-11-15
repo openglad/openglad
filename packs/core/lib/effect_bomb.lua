@@ -1,7 +1,7 @@
 -- core:bomb + core:explosion — the thief's bomb and its blast (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 
 -- Ported from the former effect.cpp compute_explosion_range(level, skip_exit); this is the only copy now.
@@ -51,7 +51,7 @@ local function bomb_on_death(self)
   if not blast then
     return true
   end
-  blast:set_owner(self:owner())
+  gf.made_by(blast, self:owner(), self)  -- with the setting on the blast wears the bomb's or the mine's colour (Gameplay Fixes AZ)
   blast.hp = 0
   blast.level = self:owner().level
   blast.ani_type = C.ANI_EXPLODE
