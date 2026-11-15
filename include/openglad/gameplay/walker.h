@@ -300,8 +300,8 @@ class walker : public og::sim::SimEntity
 		// behind a blow (the score gate's hero, experience, credit);
 		// alliance_head is the head is_friendly reads: with the setting on
 		// the walker itself (fix AZ, every walker fights for the colour it
-		// wears), except a weapon or effect marked KIT_RIDER, which answers
-		// the live walker it rides, its owner, one hop (it goes with him);
+		// wears), except a walker marked KIT_RIDER (a weapon or an effect),
+		// which answers the live walker it rides, its owner, one hop;
 		// off the classic climb, which stops at a dead owner and at a
 		// possessed body. Defined in walker_specials.cpp.
 		walker* chain_next() const;

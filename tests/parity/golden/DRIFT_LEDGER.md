@@ -706,7 +706,7 @@ AY retires, `0cae0cd1` the riders). The old game carries it in six commits on to
 the table first (the rule's three new arena pairs and the pins it moved), so that each later capture shows what its
 commit moves; `98d05c56` reverts AY's port `3a21c890`; `ac32063a` and `d4a87048` revert the first AZ port's
 correction `fbcab638` and the first AZ port `bc75c886` (fix AW's lines stay); `fbefdccc` ports the stamps and
-`b1252282` the readers and the rider mark, behind `myscreen->gameplay_fixes`. Seven all-ids captures, each from an
+`b1252282` the readers and the rider mark, behind `myscreen->gameplay_fixes`. Six all-ids captures, each from an
 emptied `obj/` and none with a `using embedded fixture` line, prove what each commit moves (the rows above list
 them): the one at `9df7fc3a` against the committed goldens (all 378 `cmp` equal, and the six new ids), then each
 against the one before it. Only `d4a87048` (one row, which the next commit puts back), `fbefdccc` (six rows) and

@@ -33,7 +33,10 @@
 //                probe, the cheat's magic shield) and goes with him: while
 //                he lives it fights for whatever side he is on now
 //                (walker::alliance_head answers him for it). Set where the
-//                thing is made, with the setting on only.
+//                thing is made, with the setting on only. The mark is read
+//                on any walker: a pack that set it on a living would make
+//                that living follow its owner's side, so mark only things
+//                that sit on their owner.
 inline constexpr std::uint8_t KIT_HIDDEN = 1;
 inline constexpr std::uint8_t KIT_FEARLESS = 2;
 inline constexpr std::uint8_t KIT_WARD = 4;

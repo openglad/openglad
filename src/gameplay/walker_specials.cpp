@@ -834,14 +834,14 @@ const walker* walker::alliance_head() const
 	if (og::sim::session_gameplay_fixes() != 0)
 	{
 		const walker* const ridden = owner();
-		// rule: Gameplay Fixes AZ (#502): with the setting on a weapon or effect marked KIT_RIDER
-		//   (a ring of protection, a mace, a boomerang, a hook blade, a ghost's scare, IMMOLATE's
-		//   fire, a returning knife's probe, the F2 cheat's shield) is part of the walker it rides,
-		//   its owner, and answers for him while he lives: one hop, no further (a ring on a summon
-		//   goes with the summon, not its caster), so it fights for whatever side he is on now and
-		//   turns back with him when a charm ends. A rider whose walker is gone or dead, or that
-		//   owns itself, answers for itself, the colour it was made with. Classic: one owner chain
-		//   gives the rider its walker's head anyway.
+		// rule: Gameplay Fixes AZ (#502): with the setting on a walker marked KIT_RIDER (the game
+		//   marks only weapons and effects: a ring of protection, a mace, a boomerang, a hook blade,
+		//   a ghost's scare, IMMOLATE's fire, a returning knife's probe, the F2 cheat's shield) is
+		//   part of the walker it rides, its owner, and answers for him while he lives: one hop (a
+		//   ring on a summon goes with the summon, not its caster), so it fights for whatever side
+		//   he is on now and turns back with him when a charm ends. A rider whose walker is gone or
+		//   dead, or that owns itself, answers for itself, the colour it was made with. Classic:
+		//   one owner chain gives the rider its walker's head anyway.
 		// tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
 		// tests: GameplayFixesChain.a_ring_on_a_summon_goes_with_the_summon_not_its_charmed_caster
 		// tests: GameplayFixesChain.a_ring_whose_walker_died_answers_for_the_colour_it_was_made_with

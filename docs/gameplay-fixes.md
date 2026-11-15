@@ -609,8 +609,9 @@ Fixes X to BB, in play:
     new friends. A blow of one of them scores and counts for the charmer's
     team, and a post one of them strikes down in Onslaught flips to the
     charmer's colour. All of it turns back when the charm ends. A ring
-    whose walker has died fights for the colour it was made with again.
-    An ember IMMOLATE drops while its elemental is charmed wears the
+    whose walker has died fights for the colour it was made with again
+    (that a ring outlives its walker at all is an old fault of both games,
+    #557). An ember IMMOLATE drops while its elemental is charmed wears the
     charmer's colour; one dropped before keeps the colour it was dropped
     with.
   - Everything else a walker made meets him by its colour once he is
@@ -1525,8 +1526,11 @@ setting on unless two foes hunt the archmage), so a fact would be a number
 read off one run; the unit tests pin it. Nor can a row show a dead
 thrower's blast halving on his own side: with the setting on a living of
 the thrower's colour inside the blast stops the bot from dropping the bomb
-at all. Kits, possession, the modes and level scripts are not in the old
-game.
+at all. Nor does any row play a walker that is charmed while a ring, a
+mace or a boomerang sits on him: with the old game's rider rule taken out
+all 384 captures stay byte-identical, so that part rests on the unit tests
+here and on reading there (#558 asks for such a pair). Kits, possession,
+the modes and level scripts are not in the old game.
 
 Fix AZ moves four existing rows with the setting on, as measured in the
 current game before the port (each `_fixes_scen99`). In each only the team
