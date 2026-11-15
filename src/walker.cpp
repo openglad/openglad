@@ -2068,16 +2068,6 @@ short walker::attack(walker  *target)
     // Base exp from attack damage
 	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage_i);
 
-	// port of the current game's 94e6a744 (Gameplay Fixes AZ, #502): with the
-	// setting on, a blow's team score goes to the team its chain head wears,
-	// the head whose hero or colour opened the score gate above and who is
-	// credited with the kill. Its colour is read here, before the victim
-	// answers the blow, where the current game reads it. Off, each payment
-	// below reads the hitter's own colour where it pays, as always: a bomb's
-	// blast wears no colour (red), and a shot or summon keeps the colour it
-	// was made with after its caster changed sides.
-	unsigned char score_team = headguy->team_num;
-
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
 	if (order != ORDER_LIVING && owner)
@@ -2097,7 +2087,7 @@ short walker::attack(walker  *target)
             myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[myscreen->gameplay_fixes ? score_team : team_num] += tempdamage_i + target->stats->level;
+                myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level;
             }
 		}
 	}
@@ -2143,7 +2133,7 @@ short walker::attack(walker  *target)
 		{
 			if (getscore)
 			{
-				myscreen->save_data.m_score[myscreen->gameplay_fixes ? score_team : team_num] += tempdamage_i + target->stats->level; // / 2;
+				myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level; // / 2;
 			}
 			// port of the current game's c887e03a (Gameplay Fixes AW, #494): with
 			// the setting on only a summoned living's blow pays its hero here;
@@ -2178,7 +2168,7 @@ short walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						myscreen->save_data.m_score[myscreen->gameplay_fixes ? score_team : team_num] += tempdamage_i + (10 * target->stats->level);
+						myscreen->save_data.m_score[team_num] += tempdamage_i + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					// This arm is selected by the KILLER's team (`playerteam`,
