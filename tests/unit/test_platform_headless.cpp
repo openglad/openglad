@@ -35,6 +35,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_settings_file.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -68,7 +70,6 @@ int toInt(const std::string& s);
 void input_state_from_sdl(InputState& out);
 void emit_headless_unsupported_warnings_probe();
 std::string get_asset_path();
-bool save_settings();
 bool load_settings();
 void io_init(int argc, char* argv[]);
 void io_exit();
@@ -419,7 +420,6 @@ TEST(PlatformHeadless, io_init_installs_callable_headless_platform_bridge)
     EXPECT_TRUE(bridge.list_relay_rooms("http://relay", "campaign").empty());
 
     (void)load_settings();
-    (void)save_settings();
 
     std::filesystem::remove_all(config_dir, ec);
 }
@@ -1173,6 +1173,10 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 // session value is what the next visit's prompt states.
 TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
 {
+    // The page saves the settings file now (#525); this test's file is put
+    // back with the rest.
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
     struct RestorePref {
         std::string value;
@@ -1231,6 +1235,8 @@ TEST(PlatformHeadless, text_picker_new_specials_prompt_writes_cfg_and_session)
 // setting; blank keeps both; anything else is refused.
 TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_specials = cfg.get_setting("gameplay", "new_specials");
     const std::string saved_pref = cfg.get_setting("gameplay", "gameplay_fixes");
     struct RestorePrefs {
@@ -1302,6 +1308,8 @@ TEST(PlatformHeadless, text_picker_gameplay_fixes_prompt_writes_cfg_and_session)
 // leave the missing copy alone.
 TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref =
         cfg.get_setting("effects", "new_ability_select");
     struct RestorePref {
@@ -1349,6 +1357,130 @@ TEST(PlatformHeadless, text_picker_ability_select_prompt_writes_cfg_only)
     ASSERT_NE(std::string::npos, at) << printed;
     EXPECT_NE(std::string::npos, printed.find("New ability select: on. ", at));
     EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+}
+
+namespace {
+
+// One run of the text picker over `input`, printing captured.
+std::string drive_text_picker(const std::string& input)
+{
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    return stdout_capture.restore();
+}
+
+// The three Game Settings answers, all on, in memory and in the file.
+constexpr const char* kAllOnSettingsFile =
+    "# kept by hand: a rewrite drops this line\n"
+    "gameplay:\n"
+    "  new_specials: on\n"
+    "  gameplay_fixes: on\n"
+    "effects:\n"
+    "  new_ability_select: on\n";
+
+void set_all_three_on()
+{
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+    cfg.apply_setting("effects", "new_ability_select", "on");
+}
+
+} // namespace
+
+// #525: the Game Settings page writes the settings file when it is left
+// with an answer changed, as the SDL options screen writes it when it
+// closes, so the answer is there at the next start. Each setting changes on
+// a visit of its own, and after each visit the file is loaded fresh, into a
+// store of its own, never read back from the running game's memory.
+TEST(PlatformHeadless, text_picker_game_settings_answers_reach_the_settings_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+    const auto saved = [](const char* category, const char* setting) {
+        return og::test::ScopedSettingsFile::load_fresh().get_setting(
+            category, setting);
+    };
+    ASSERT_EQ("on", saved("gameplay", "new_specials"))
+        << "a fresh load reads the file this test wrote";
+
+    // Main is 8 items: 4=options, 6=quit. Options asks slot, seed, New
+    // Specials, Gameplay Fixes and New Ability Select.
+    (void)drive_text_picker("4\n\n\noff\n\n\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("on", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved("effects", "new_ability_select"));
+
+    (void)drive_text_picker("4\n\n\n\noff\n\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved("effects", "new_ability_select"));
+
+    (void)drive_text_picker("4\n\n\n\n\noff\n6\n");
+    EXPECT_EQ("off", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("off", saved("effects", "new_ability_select"));
+
+    // The input ends inside the page, right after an answer: the page is
+    // left there, and the answer is saved all the same.
+    (void)drive_text_picker("4\n\n\non\n");
+    EXPECT_EQ("on", saved("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved("gameplay", "gameplay_fixes"));
+}
+
+// #525: a visit that changes nothing leaves the settings file as it was,
+// byte for byte (a rewrite would drop the file's comment line): blank
+// answers, then answers that name the value each setting already has.
+TEST(PlatformHeadless, text_picker_game_settings_visit_without_a_change_leaves_the_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+
+    const std::string printed = drive_text_picker(
+        "4\n\n\n\n\n\n"
+        "4\n\n\non\non\non\n"
+        "6\n");
+    ASSERT_NE(std::string::npos,
+              printed.find("New ability select: on. Change (on/off, blank "
+                           "keeps current): "))
+        << "the page was visited:\n" << printed;
+    EXPECT_EQ(kAllOnSettingsFile, settings_file.bytes());
+}
+
+// #525: when the file cannot be written, the page says so in one plain line
+// (the SDL game only logs it), and the answer still holds for this run. A
+// value libyaml refuses to write (a Latin-1 sprite sheet name, see
+// gparser_save_settings_reports_a_value_libyaml_cannot_emit) makes the
+// write fail. A visit that changes nothing tries no write and says nothing.
+TEST(PlatformHeadless, text_picker_game_settings_failed_save_says_so)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    set_all_three_on();
+    cfg.apply_setting("graphics", "sprite_sheet", "caf\xE9");
+
+    const std::string kLine =
+        "Could not write the settings file; the answers last until you quit.\n";
+    std::string printed = drive_text_picker("4\n\n\noff\n\n\n6\n");
+    const std::size_t at = printed.find(
+        "New ability select: on. Change (on/off, blank keeps current): ");
+    ASSERT_NE(std::string::npos, at) << printed;
+    EXPECT_NE(std::string::npos, printed.find(kLine, at)) << printed;
+    EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+        << "the answer holds for this run";
+
+    printed = drive_text_picker("4\n\n\n\n\n\n6\n");
+    EXPECT_EQ(std::string::npos, printed.find(kLine)) << printed;
 }
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
@@ -1457,7 +1589,10 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     og::runtime::current_session->current_difficulty_ = 1;  // Battle
 
     // The options visits write the New Specials and Gameplay Fixes
-    // preferences; put them back.
+    // preferences, and the page saves them to the settings file (#525); put
+    // both back.
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
     struct RestorePref {
         std::string value;

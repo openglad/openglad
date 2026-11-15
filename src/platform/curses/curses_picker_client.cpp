@@ -1959,6 +1959,10 @@ std::string CursesPickerClient::show_campaign_select()
 
 void CursesPickerClient::show_options()
 {
+    // #525: the answers reach the settings file when the page is left,
+    // through the one rule both terminal pages call; a visit that changes
+    // nothing writes nothing.
+    const og::ui::PersistedSettings opened = cfg.data;
     Menu menu(term_, clock_);
 
     // Titled after the door that opened it (GAME SETTINGS on the main
@@ -2028,6 +2032,10 @@ void CursesPickerClient::show_options()
         else
             menu.show_text("Game Settings", {"Invalid value; on or off."});
     }
+
+    if (og::ui::save_settings_if_changed(cfg, opened) ==
+        og::ui::SettingsFileSave::Failed)
+        menu.show_text("Game Settings", {og::ui::kSettingsNotSavedLine});
 }
 
 void CursesPickerClient::show_help()

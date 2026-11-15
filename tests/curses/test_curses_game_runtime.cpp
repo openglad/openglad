@@ -38,6 +38,7 @@
 #include "curses_mount_restore.h"
 #include "test_ability_select_scope.h"
 #include "test_match_seed.h"
+#include "test_settings_file.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -1737,6 +1738,8 @@ void expect_next_mission_follows(bool on)
 // the copy taken at start.
 TEST(CursesGameRuntimeLocal, game_settings_ability_select_off_reaches_the_next_mission_at_once)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     ScopedAbilitySelect start(true);
     ASSERT_NO_FATAL_FAILURE(answer_ability_select_prompt("off"));
     EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
@@ -1745,6 +1748,8 @@ TEST(CursesGameRuntimeLocal, game_settings_ability_select_off_reaches_the_next_m
 
 TEST(CursesGameRuntimeLocal, game_settings_ability_select_on_reaches_the_next_mission_at_once)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     ScopedAbilitySelect start(false);
     ASSERT_NO_FATAL_FAILURE(answer_ability_select_prompt("on"));
     EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));

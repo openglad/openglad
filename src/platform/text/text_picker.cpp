@@ -364,6 +364,21 @@ public:
 
     void show_options() override
     {
+        // #525: the answers reach the settings file when the page is left,
+        // however it is left (the input may end at any prompt), through the
+        // one rule both terminal pages call; a visit that changes nothing
+        // writes nothing.
+        const og::ui::PersistedSettings opened = cfg.data;
+        ask_game_settings();
+        if (og::ui::save_settings_if_changed(cfg, opened) ==
+            og::ui::SettingsFileSave::Failed)
+            std::printf("%s\n", og::ui::kSettingsNotSavedLine);
+    }
+
+    // The Game Settings page's prompts, one after the other; the end of the
+    // input at any prompt leaves the page there.
+    void ask_game_settings()
+    {
         std::string line;
         // The page wears the name of the door that opened it: the main
         // menu row is GAME SETTINGS on every client, and a heading that

@@ -300,7 +300,9 @@ The curses client follows the same setting as the SDL client (cfg
 `effects/new_ability_select`, on by default; its Game Settings page asks
 `New ability select (on/off)`, and the answer takes effect at once: the
 keys, the status line and the PAUSED menu's ABILITIES and KEYS entries
-follow it in the next mission, with no restart). See
+follow it in the next mission, with no restart). Like the page's New
+Specials and Gameplay Fixes answers, it is written to the settings file
+when the page is left, so it holds at the next start (#525). See
 [ability-select-design.md](ability-select-design.md) for the design.
 
 - **On**: `1`, `2`, `3` cast the abilities on the followed hero's first row

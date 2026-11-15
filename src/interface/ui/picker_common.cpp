@@ -50,6 +50,7 @@
 #include <map>
 #include <set>
 #include <string_view>
+#include <type_traits>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -1047,6 +1048,18 @@ void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
     set_gameplay_fixes(save, config,
                        !config.is_on("gameplay", "gameplay_fixes"),
                        decides_session);
+}
+
+static_assert(std::is_same_v<decltype(cfg_store::data), PersistedSettings>,
+              "a page's copy must be what cfg_store::save_settings writes");
+
+SettingsFileSave save_settings_if_changed(cfg_store& config,
+                                          const PersistedSettings& opened)
+{
+    if (config.data == opened)
+        return SettingsFileSave::Unchanged;
+    return config.save_settings() ? SettingsFileSave::Saved
+                                  : SettingsFileSave::Failed;
 }
 
 void toggle_cross_control(SaveData& save)

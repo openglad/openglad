@@ -77,6 +77,7 @@
 
 #include "curses_mount_restore.h"
 #include "test_ability_select_scope.h"
+#include "test_settings_file.h"
 
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
@@ -2408,6 +2409,10 @@ TEST(CursesPickerClient, options_invalid_seed_keeps_current)
 // prompt is prefilled with the session value; accepting it changes nothing.
 TEST(CursesPickerClient, show_options_new_specials_prompt)
 {
+    // The page saves the settings file now (#525); this test's file is put
+    // back with the rest.
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_pref = cfg.get_setting("gameplay", "new_specials");
     struct RestorePref {
         std::string value;
@@ -2496,6 +2501,8 @@ TEST(CursesPickerClient, show_options_new_specials_prompt)
 // New Specials prompt above, its own preference and session field.
 TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     const std::string saved_specials = cfg.get_setting("gameplay", "new_specials");
     const std::string saved_pref = cfg.get_setting("gameplay", "gameplay_fixes");
     struct RestorePrefs {
@@ -2600,6 +2607,8 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
 // (#398).
 TEST(CursesPickerClient, show_options_ability_select_prompt)
 {
+    og::test::ScopedSettingsFile settings_file; // the page saves (#525)
+    ASSERT_TRUE(settings_file.ready());
     ScopedAbilitySelect on(true);
     {   // Prefilled "on"; "off" writes the preference and nothing else.
         HeadlessTerminal inner{40, 100};
@@ -2656,6 +2665,156 @@ TEST(CursesPickerClient, show_options_ability_select_prompt)
             << f.t().dump();
         EXPECT_TRUE(og::input::ability_select_on())
             << "the refused answer changes nothing";
+    }
+}
+
+namespace {
+
+// The three Game Settings answers, all on, in the file.
+constexpr const char* kAllOnSettingsFile =
+    "# kept by hand: a rewrite drops this line\n"
+    "gameplay:\n"
+    "  new_specials: on\n"
+    "  gameplay_fixes: on\n"
+    "effects:\n"
+    "  new_ability_select: on\n";
+
+// Keeps the prompts before the one to answer, then replaces that prompt's
+// prefilled "on" with `answer`; the prompts after it are kept by the end of
+// the input (a prompt with no key left keeps its value).
+void answer_settings_prompt(HeadlessTerminal& term, int keep_before,
+                            const char* answer)
+{
+    for (int i = 0; i < keep_before; ++i)
+        term.push_special(KeyCode::Enter);
+    for (int i = 0; i < 2; ++i) // erase the prefilled "on"
+        term.push_special(KeyCode::Backspace);
+    term.push_string(answer);
+    term.push_special(KeyCode::Enter);
+}
+
+std::string saved_setting(const char* category, const char* setting)
+{
+    return og::test::ScopedSettingsFile::load_fresh().get_setting(category,
+                                                                  setting);
+}
+
+} // namespace
+
+// #525: the Game Settings page writes the settings file when it is left
+// with an answer changed, as the SDL options screen writes it when it
+// closes, so the answer is there at the next start. Each setting changes on
+// a visit of its own, and after each visit the file is loaded fresh, into a
+// store of its own, never read back from the running game's memory.
+TEST(CursesPickerClient, show_options_answers_reach_the_settings_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ScopedAbilitySelect ability_select(true);
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+    ASSERT_EQ("on", saved_setting("gameplay", "new_specials"))
+        << "a fresh load reads the file this test wrote";
+
+    // The page asks slot, seed, New Specials, Gameplay Fixes and New
+    // Ability Select, each prefilled; the constructor seeds the session from
+    // the preferences, so each prompt opens on "on".
+    PickerFixture f;
+    answer_settings_prompt(f.t(), 2, "off");
+    f.client.show_options();
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ("off", saved_setting("gameplay", "new_specials"));
+    EXPECT_EQ("on", saved_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved_setting("effects", "new_ability_select"));
+
+    answer_settings_prompt(f.t(), 3, "off");
+    f.client.show_options();
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ("off", saved_setting("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("on", saved_setting("effects", "new_ability_select"));
+
+    answer_settings_prompt(f.t(), 4, "off");
+    f.client.show_options();
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ("off", saved_setting("gameplay", "new_specials"));
+    EXPECT_EQ("off", saved_setting("gameplay", "gameplay_fixes"));
+    EXPECT_EQ("off", saved_setting("effects", "new_ability_select"));
+}
+
+// #525: a visit that changes nothing leaves the settings file as it was,
+// byte for byte (a rewrite would drop the file's comment line): every
+// prefilled value accepted, then every prompt cancelled.
+TEST(CursesPickerClient, show_options_visit_without_a_change_leaves_the_file)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ScopedAbilitySelect ability_select(true);
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+
+    PickerFixture f;
+    for (int i = 0; i < 5; ++i)
+        f.t().push_special(KeyCode::Enter);
+    f.client.show_options();
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ(kAllOnSettingsFile, settings_file.bytes());
+
+    for (int i = 0; i < 5; ++i)
+        f.t().push_special(KeyCode::Escape);
+    f.client.show_options();
+    EXPECT_TRUE(f.t().input_exhausted());
+    EXPECT_EQ(kAllOnSettingsFile, settings_file.bytes());
+}
+
+// #525: when the file cannot be written, the page says so in one plain line
+// (the SDL game only logs it), and the answer still holds for this run. A
+// value libyaml refuses to write (a Latin-1 sprite sheet name, see
+// gparser_save_settings_reports_a_value_libyaml_cannot_emit) makes the
+// write fail. A visit that changes nothing tries no write and says nothing.
+TEST(CursesPickerClient, show_options_failed_save_says_so)
+{
+    og::test::ScopedSettingsFile settings_file;
+    ASSERT_TRUE(settings_file.ready());
+    ScopedAbilitySelect ability_select(true);
+    ASSERT_TRUE(settings_file.write(kAllOnSettingsFile));
+    cfg.apply_setting("gameplay", "new_specials", "on");
+    cfg.apply_setting("gameplay", "gameplay_fixes", "on");
+    cfg.apply_setting("graphics", "sprite_sheet", "caf\xE9");
+
+    const std::string kLine =
+        "Could not write the settings file; the answers last until you quit.";
+    {
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        answer_settings_prompt(inner, 2, "off");
+        for (int i = 0; i < 2; ++i) // keep Gameplay Fixes, New Ability Select
+            inner.push_special(KeyCode::Enter);
+        dismiss(inner);
+        client.show_options();
+        EXPECT_NE(std::string::npos, term.frames().find(kLine)) << inner.dump();
+        EXPECT_TRUE(inner.input_exhausted())
+            << "the line waits for its key like the page's other notices";
+        EXPECT_EQ("off", cfg.get_setting("gameplay", "new_specials"))
+            << "the answer holds for this run";
+    }
+    {
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        for (int i = 0; i < 5; ++i)
+            inner.push_special(KeyCode::Enter);
+        client.show_options();
+        EXPECT_EQ(std::string::npos, term.frames().find(kLine)) << inner.dump();
     }
 }
 

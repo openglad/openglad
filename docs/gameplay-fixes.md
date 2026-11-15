@@ -2049,13 +2049,20 @@ record differences kept on purpose (#484, #440, #491):
   like a branch build, because it is not the commit it counts. This game
   only.
 - **The terminal client's New Ability Select answer takes effect at once
-  (#398).** In the terminal client, answering `New ability select` on the
-  Game Settings page changed the setting but not the copy that the ability
-  keys, the status line and the PAUSED menu's ABILITIES and KEYS entries
-  read, so for the rest of that run they went on as before. The SDL row
-  and both terminal prompts now switch through one function,
-  `og::ui::set_ability_select_pref`, which refreshes that copy. This game
-  only (the old game has neither the setting nor a terminal client).
+  and is saved (#398, #525).** In the terminal client, answering
+  `New ability select` on the Game Settings page changed the setting but
+  not the copy that the ability keys, the status line and the PAUSED menu's
+  ABILITIES and KEYS entries read, so for the rest of that run they went on
+  as before. The SDL row and both terminal prompts now switch through one
+  function, `og::ui::set_ability_select_pref`, which refreshes that copy.
+  Neither terminal client's Game Settings page wrote the settings file
+  either, so its New Specials, Gameplay Fixes and New Ability Select
+  answers were gone at the next start. Both pages now write the file when
+  they are left with an answer changed, as the SDL options screen does
+  when it closes, through one function, `og::ui::save_settings_if_changed`;
+  a visit that changes nothing leaves the file alone, and a write that
+  fails says so on the page in one line. This game only (the old game has
+  neither the setting nor a terminal client).
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it

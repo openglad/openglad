@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -548,6 +549,31 @@ void set_gameplay_fixes(SaveData& save, cfg_store& config, bool on,
 // The Gameplay FX row: flips the preference.
 void apply_gameplay_fixes_toggle(SaveData& save, cfg_store& config,
                                  bool decides_session);
+
+// The terminal Game Settings pages save the settings file (#525). The SDL
+// game writes the file whenever its options screen closes (cfg.save_settings()
+// in main_options, which also commits that screen's sound, overscan and
+// control edits). The text and curses Game Settings pages commit only their
+// New Specials, Gameplay Fixes and New Ability Select answers, so each page
+// takes a copy of the settings when it opens and calls this when it is left,
+// however it is left: the file is written only when the visit changed a
+// setting the file holds (cfg_store::data, never the overrides), and a visit
+// that changes nothing leaves the file as it was.
+using PersistedSettings =
+    std::map<std::string, std::map<std::string, std::string>>;
+enum class SettingsFileSave
+{
+    Unchanged, // nothing the file holds changed: not written
+    Saved,     // written
+    Failed,    // could not be written (cfg_store::save_settings logs why)
+};
+[[nodiscard]] SettingsFileSave save_settings_if_changed(
+    cfg_store& config, const PersistedSettings& opened);
+// What a terminal page says when the write failed. The SDL game only logs
+// it; the page adds this one line, so the player knows the answers hold for
+// this run only.
+inline constexpr char kSettingsNotSavedLine[] =
+    "Could not write the settings file; the answers last until you quit.";
 
 // Toggle cross control: cross_control 0 (own seats) <-> 1 (all seats).
 // The pure save write behind change_cross_control()'s popup/sync tail, so

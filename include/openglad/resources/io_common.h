@@ -108,7 +108,6 @@ std::vector<int> list_levels_v();
 void restore_default_campaigns();
 void restore_default_settings();
 
-bool save_settings();
 bool load_settings();
 
 void delete_level(int id);

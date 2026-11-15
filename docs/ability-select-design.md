@@ -247,9 +247,11 @@ not change shape.
   old table, all on the new keys.
 - **Terminals**: the text client's and the curses client's settings pages
   ask `New ability select: on/off`, stored in the same cfg key by the same
-  switch. In the curses client the next mission's keys, status line and
-  PAUSED menu follow the answer at once. The text client keeps no copy: it
-  has no input hardware state and reads the cfg key where it needs it.
+  switch and written to the settings file when the page is left with an
+  answer changed (`og::ui::save_settings_if_changed`, #525). In the curses
+  client the next mission's keys, status line and PAUSED menu follow the
+  answer at once. The text client keeps no copy: it has no input hardware
+  state and reads the cfg key where it needs it.
 - **Tests** run with the setting on (the shipped default):
   `tests/integration/integration_main.cpp` sets it and re-sets it before
   every test. A test that pins the old output takes `ScopedAbilitySelect`
