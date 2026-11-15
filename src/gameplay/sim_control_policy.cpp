@@ -273,8 +273,6 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         for (auto& uptr : level.oblist)
         {
             walker* w = uptr.get();
-            // No test of the side a walker fights for here (fix AY): the arm takes the seat's
-            // own tagged hero whatever team byte the mode gave it, and a hero is no one's summon.
             // rule: In a scripted match a seat reclaims its OWN tagged fighter first, whatever team
             //   byte the mode reseated it on (FFA bands), so a team-0 prop never steals the seat.
             // tests: SimControlPolicy.scripted_owner_arm_reacquires_off_team_band_fighter
@@ -325,8 +323,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
     //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
     //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed walkers,
-    //   and (fixes on) walkers charmed onto the team or whose owner chain heads another team (fix
-    //   AY).
+    //   and (fixes on) walkers charmed onto the team.
     // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
@@ -338,8 +335,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
         //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
         //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed
-        //   walkers, and (fixes on) walkers charmed onto the team or whose owner chain heads
-        //   another team (fix AY).
+        //   walkers, and (fixes on) walkers charmed onto the team.
         // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
@@ -351,7 +347,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
             w->user() == -1 &&
             w->myguy &&
             w->team_num() == my_team && allowed(w) &&
-            seat_may_claim_for_team(level, *w, my_team))
+            seat_may_claim(level, *w))
         {
             TRACE("sim_control", "found player character '%s'",
                   w->stats()->name.c_str());
@@ -363,8 +359,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
     // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
     //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
     //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed walkers,
-    //   and (fixes on) walkers charmed onto the team or whose owner chain heads another team (fix
-    //   AY).
+    //   and (fixes on) walkers charmed onto the team.
     // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
     // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
     // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
@@ -376,8 +371,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
         // rule: When a seat loses its character it takes, in world order, first an unclaimed hero
         //   (roster character) of its team, then any unclaimed living of its team, skipping dead,
         //   dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed
-        //   walkers, and (fixes on) walkers charmed onto the team or whose owner chain heads
-        //   another team (fix AY).
+        //   walkers, and (fixes on) walkers charmed onto the team.
         // tests: SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds
         // tests: SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines
         // tests: SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain
@@ -388,7 +382,7 @@ walker* sim_find_next_control_owned(GameWorld& level, short my_team,
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team && allowed(w) &&
-            seat_may_claim_for_team(level, *w, my_team))
+            seat_may_claim(level, *w))
         {
             TRACE("sim_control", "found team member '%s'",
                   w->stats()->name.c_str());

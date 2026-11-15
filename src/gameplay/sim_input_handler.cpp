@@ -177,8 +177,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         walker* w = uptr.get();
         // rule: A seat that needs a body takes first a player character (a hero with a company
         //   record) of its own team that is alive, awake, visible, unpossessed and not held by
-        //   another seat (and, with Gameplay Fixes on, not a walker our side charmed, nor one
-        //   whose owner chain heads another team: fix AY, #496).
+        //   another seat (and, with Gameplay Fixes on, not a walker our side charmed).
         // tests: SimInputHandler.sim_find_next_control_player_first
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed
         // tests: GameplayFixesSeats.the_first_pass_takes_a_hero_of_its_colour_whoever_owns_it
@@ -188,7 +187,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
             w->user() == -1 &&
             w->myguy &&
             w->team_num() == my_team &&
-            og::sim::seat_may_claim_for_team(level, *w, my_team))
+            og::sim::seat_may_claim(level, *w))
         {
             TRACE("sim_input", "found player character '%s'", w->stats()->name.c_str());
             return w;
@@ -202,9 +201,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     {
         walker* w = uptr.get();
         // rule: With no player character left, a seat takes any eligible member of its own team
-        //   (with Gameplay Fixes on, not a walker our side charmed: #354, #450, nor one whose owner
-        //   chain heads another team, such as a summon whose caster's charm ran out: fix AY,
-        //   #496); it never takes a walker of another team (the 2002 'ANYONE' pass is gone).
+        //   (with Gameplay Fixes on, not a walker our side charmed: #354, #450); it never takes a
+        //   walker of another team (the 2002 'ANYONE' pass is gone).
         // tests: SimInputHandler.sim_find_next_control_team_fallback, SimInputHandler.sim_find_next_control_none, SimInputHandler.sim_find_next_control_never_claims_another_team
         // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_on_both_settings
         // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_dead_heros_seat_takes_the_first_body_of_its_colour, GameplayFixesSeats.a_charmed_druids_faerie_is_handed_over_on_both_settings
@@ -213,7 +211,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team &&
-            og::sim::seat_may_claim_for_team(level, *w, my_team))
+            og::sim::seat_may_claim(level, *w))
         {
             TRACE("sim_input", "found team member '%s'", w->stats()->name.c_str());
             return w;
@@ -381,9 +379,8 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // whose ghost rides it, and a bot's possession is the bot's.
         // rule: Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed
         //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses,
-        //   nor one whose owner chain heads another side than the live hero's (fights_alongside:
-        //   the question the death hand-off asks of the seat's team with Gameplay Fixes on, fix
-        //   AY).
+        //   nor one unfriendly to the hero it switches from (is_friendly: with Gameplay Fixes on
+        //   each walker's own colour, fix AZ; classic, the heads of both owner chains).
         // tests: SimInputHandler.sim_input_switch_char_skips_ineligible_candidates_then_selects_valid
         // tests: SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies
         // tests: SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
@@ -393,7 +390,7 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         return !w->dead() && !w->dormant() && !w->hidden() &&
                w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
-               og::sim::fights_alongside(*w, anchor) && w->team_num() == my_team &&
+               w->is_friendly(anchor) && w->team_num() == my_team &&
                w->real_team_num() == 255 && w->user() == -1 &&
                og::sim::control_claim_allowed(level, w, player_num); // §4.4 site 1
     };
