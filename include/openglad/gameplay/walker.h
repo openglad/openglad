@@ -536,9 +536,20 @@ class walker : public og::sim::SimEntity
 		// id, so that seat goes to the dead ghost at its next input tick and
 		// the ordinary death hand-off gives the player the next hero. Every
 		// end of a ride writes it (og::sim::end_ride: 0 unless the ghost is
-		// dead and the seat's tag went back to it); the seat redirect
-		// (og::sim::possession_seat_redirect) reads it and clears it. 0 =
-		// none.
+		// dead and the body wore a seat's tag, which goes back to the ghost).
+		// It is read only on an untagged body, by the seat whose tag the dead
+		// ghost wears (og::sim::possession_seat_to_dead_rider, from the seat
+		// redirect and for a seat parked by a dropped connection), and
+		// cleared when that seat goes to the ghost. When the ghost dies
+		// before its seat's input ever moved into the body (a script that
+		// possesses and kills in one tick) the seat is still on the dead
+		// ghost and hands off from there, and the id stays on the body until
+		// the body's next ride ends and writes it again. That does no harm:
+		// a seat sent to its own dead hero gets the hand-off that hero's
+		// death gives it anyway, and a seat holds an untagged body at its
+		// input only right after a ride ends (when the id is fresh) or when
+		// the control policy refused a body supplied to it; every other claim
+		// tags the body in the call that hands it to the seat. 0 = none.
 		[[nodiscard]] std::uint32_t seat_dead_rider() const noexcept
 		{
 			return seat_dead_rider_;

@@ -57,5 +57,11 @@ bool kit_on_death(GameWorld& world, walker& self);
 // ordinary death hand-off runs (#535).
 void possession_seat_redirect(GameWorld& world, walker*& control,
                               short player_num);
+// The #535 half of the redirect, which a seat parked by a dropped
+// connection asks too (GameServer::process_disconnected_players): a seat on
+// an untagged body whose ride ended with this seat's ghost dead goes to that
+// ghost and the body's id is cleared. Returns true when it moved `control`.
+bool possession_seat_to_dead_rider(GameWorld& world, walker*& control,
+                                   short player_num);
 
 }  // namespace og::sim

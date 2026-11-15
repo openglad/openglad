@@ -194,7 +194,7 @@ void end_ride(walker* host, walker* rider)
         // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
         // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
         // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
-        // tests: KitPossession.seat_redirect_follows_host_then_returns
+        // tests: KitPossession.seat_redirect_follows_host_then_returns, KitPossession.seat_follows_the_ghost_out_of_a_dying_host
         // tests: ModesMutant.a_ghost_mutant_that_decays_to_death_in_a_body_gets_its_seat_back_at_the_respawn
         host->set_seat_dead_rider(rider != nullptr && rider->dead() && host->user() != -1
                                       ? rider->entity_id()
@@ -502,33 +502,12 @@ void possession_seat_redirect(GameWorld& world, walker*& control,
         return;
     }
 
-    // The ride ended with the seat's ghost dead (end_ride kept the ghost's
-    // id on the body): the seat goes to the dead ghost, and
-    // sim_process_player_input runs the ordinary death hand-off on this same
-    // tick. Both values of New Specials: a level script's og.possess rides
-    // with it off. A body a seat has taken since (it wears a tag again) is
-    // that seat's, so the id is read only on an untagged body.
-    // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes to
-    //   that ghost (the id the body keeps, in the world or in dead_list), on both values of New
-    //   Specials; a seat whose tag the ghost does not wear stays where it is.
-    // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
-    // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
-    // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
-    // tests: KitPossession.a_seat_handed_the_freed_body_afterwards_keeps_it
-    if (control->user() == -1 && control->seat_dead_rider() != 0)
-    {
-        walker* const rider = linked_rider(world, control->seat_dead_rider());
-        // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes
-        //   to that ghost; a seat whose tag the ghost does not wear stays where it is.
-        // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
-        // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
-        if (rider != nullptr && rider->user() == player_num)
-        {
-            control->set_seat_dead_rider(0);
-            control = rider;
-            return;
-        }
-    }
+    // The ride ended with the seat's ghost dead: the seat goes to the dead
+    // ghost, and sim_process_player_input runs the ordinary death hand-off
+    // on this same tick.
+    // plumbing: the #535 half's own rules are in possession_seat_to_dead_rider
+    if (possession_seat_to_dead_rider(world, control, player_num))
+        return;
 
     // The body was let go (timer, Switch Character, its death): release
     // moved the seat's tag back to the hero, so the seat follows the tag.
@@ -561,6 +540,40 @@ void possession_seat_redirect(GameWorld& world, walker*& control,
             return;
         }
     }
+}
+
+bool possession_seat_to_dead_rider(GameWorld& world, walker*& control,
+                                   short player_num)
+{
+    // plumbing: null seat walker
+    if (control == nullptr)
+        return false;
+    // The ride ended with the seat's ghost dead (end_ride kept the ghost's
+    // id on the body). Both values of New Specials: a level script's
+    // og.possess rides with it off. A body a seat has taken since (it wears
+    // a tag again) is that seat's, so the id is read only on an untagged
+    // body.
+    // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes to
+    //   that ghost (the id the body keeps, in the world or in dead_list), on both values of New
+    //   Specials; a seat whose tag the ghost does not wear stays where it is. A seat parked by a
+    //   dropped connection goes there too, before its dead-control guard.
+    // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+    // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+    // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
+    // tests: KitPossession.a_seat_handed_the_freed_body_afterwards_keeps_it
+    if (control->user() != -1 || control->seat_dead_rider() == 0)
+        return false;
+    walker* const rider = linked_rider(world, control->seat_dead_rider());
+    // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes to
+    //   that ghost, once (the body's id is cleared); a seat whose tag the ghost does not wear stays
+    //   where it is.
+    // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+    // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
+    if (rider == nullptr || rider->user() != player_num)
+        return false;
+    control->set_seat_dead_rider(0);
+    control = rider;
+    return true;
 }
 
 }  // namespace og::sim

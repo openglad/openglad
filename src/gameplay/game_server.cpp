@@ -12,6 +12,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/sim_control_policy.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -1405,7 +1406,10 @@ void GameServer::update_disconnected_players(std::uint64_t now)
 // parked (see handle_transport_disconnect), and the guard below skips a null or
 // dead control, so the two branches of sim_process_player_input that rewrite
 // `control` or set control_hp_changed / endgame_requested are both out of
-// reach. The live copy of those rules is the connected-seat path in
+// reach. A parked seat on a body whose ride ended with this seat's ghost dead
+// (#535) is first sent to the dead ghost, as after any death of its hero, so
+// the guard skips it too: it waits on its dead hero and is handed no new one
+// while parked. The live copy of those rules is the connected-seat path in
 // apply_polled_inputs.
 void GameServer::process_disconnected_players(std::uint32_t expected_tick)
 {
@@ -1429,6 +1433,24 @@ void GameServer::process_disconnected_players(std::uint32_t expected_tick)
                 if (reclaimed->stats() != nullptr)
                     world_.control_hp = reclaimed->stats()->hitpoints();
             }
+        }
+
+        // #535: a parked seat whose ghost died riding a body goes to the dead
+        // ghost before the guard below, which then skips it as it skips a
+        // seat parked on any dead hero; every mirror hears the move.
+        // rule: #535: a seat parked by a dropped connection on a body whose ride ended with this
+        //   seat's ghost dead goes to that dead ghost and stays there while parked, as after any
+        //   death of its hero: it is handed no new hero.
+        // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        if (!disconnected.ai_control_enabled &&
+            disconnected.player_index < kMaxGlobalPlayers &&
+            og::sim::possession_seat_to_dead_rider(
+                world_, disconnected.control,
+                static_cast<short>(disconnected.player_index)))
+        {
+            player_controls_[disconnected.player_index] = disconnected.control;
+            maybe_send_control_change(disconnected.player_index,
+                                      disconnected.control);
         }
 
         if (disconnected.ai_control_enabled || disconnected.control == nullptr ||

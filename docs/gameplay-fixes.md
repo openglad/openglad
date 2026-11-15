@@ -2039,8 +2039,11 @@ record differences kept on purpose (#484, #440, #491):
   seat goes to the dead ghost, so the player is handed the next hero of the
   team as after any hero's death, or, in a mode that brings its fighters
   back (Mutant's decay can kill a ghost Mutant inside a body), waits for the
-  ghost to stand up and drives it again. No recording plays a ride, and the
-  old game has no possession.
+  ghost to stand up and drives it again. A seat parked by a dropped
+  connection goes to the dead ghost too and waits there while it is parked,
+  as it waits on any hero that died under it: it is handed no new hero to
+  steer with the dropped player's last input. No recording plays a ride,
+  and the old game has no possession.
 - **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
   On the isle a fifth of each college's spawns change sides at birth and
   are named Dreamkin. The bone tent keeps its spawns as its own: their

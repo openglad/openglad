@@ -83,6 +83,7 @@
 #include <array>
 #include <cstdint>
 #include <format>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -558,6 +559,9 @@ TEST(KitPossession, thief_charm_on_a_possessed_host_does_not_corrupt_release)
 // The seat follows its hero into the body and back out, by every release:
 // Switch Character, the countdown, and (below) the host's death. Driven
 // through sim_process_player_input, the function every client's seat runs.
+// A ride that ends with its ghost alive leaves the body no ghost's id (#535:
+// only a dead ghost's seat is sent there); break: end_ride writes the id for
+// a living ghost too.
 TEST(KitPossession, seat_redirect_follows_host_then_returns)
 {
     PossessionScene s;
@@ -591,6 +595,7 @@ TEST(KitPossession, seat_redirect_follows_host_then_returns)
     EXPECT_FALSE(s.ghost->hidden());
     EXPECT_EQ(0, s.ghost->user());
     EXPECT_EQ(kOrcTeam, s.orc->team_num());
+    EXPECT_EQ(0u, s.orc->seat_dead_rider()) << "the ghost is alive: the body keeps no id";
     // The next press cycles heroes as usual.
     input.clear();
     run();
@@ -611,16 +616,18 @@ TEST(KitPossession, seat_redirect_follows_host_then_returns)
     ASSERT_EQ(orc2, control);
     og::sim::possession_host_tick(s.tw.world(), *dynamic_cast<living*>(orc2));
     ASSERT_EQ(0u, orc2->possess_link());
+    EXPECT_EQ(0u, orc2->seat_dead_rider()) << "the ghost is alive: the body keeps no id";
     r = run();
     EXPECT_EQ(s.ghost, control) << "the timer hands the seat back";
     EXPECT_EQ(s.ghost, r.new_control);
     EXPECT_EQ(-1, orc2->user()) << "the seat did not claim the freed body";
 }
 
-// The host dies under the seat: the seat follows the ghost out. (When the
-// overkill kills the ghost too, the redirect passes the dead ghost, control
-// stays on the tagless dead host for that tick, and the usual death path
-// takes over from there.)
+// The host dies under the seat: the seat follows the ghost out, and the
+// body keeps no ghost's id (the ghost is alive; break: end_ride writes the id
+// for a living ghost too). (When the overkill kills the ghost too, the
+// redirect passes the dead ghost, control stays on the tagless dead host for
+// that tick, and the usual death path takes over from there.)
 TEST(KitPossession, seat_follows_the_ghost_out_of_a_dying_host)
 {
     PossessionScene s;
@@ -640,6 +647,7 @@ TEST(KitPossession, seat_follows_the_ghost_out_of_a_dying_host)
     s.orc->stats()->set_hitpoints(-4.0f);
     s.orc->set_dead(1);
     s.orc->death();
+    EXPECT_EQ(0u, s.orc->seat_dead_rider()) << "the ghost is alive: the body keeps no id";
     run();
     EXPECT_EQ(s.ghost, control) << "out of the corpse, back to the ghost";
     EXPECT_FALSE(s.ghost->dead());
@@ -1833,6 +1841,12 @@ TEST(KitPossession, a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_ne
 // step, after that step's input, so the step after hands over.
 // RED before #535: the server's seat stays on the orc. Break: end_ride keeps
 // no id.
+// Then a seat parked by a dropped connection while it drives the orc: as
+// after any death of its hero it goes to its dead ghost and stays there while
+// parked, handed no new hero, and the mirror still connected hears the move.
+// Break: process_disconnected_players without its dead-ghost move before the
+// guard (the parked seat is handed the next hero and drives it under the
+// dropped player's repeated input).
 TEST(KitPossession, a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero)
 {
     for (const short fixes : {short{0}, short{1}})
@@ -1890,6 +1904,81 @@ TEST(KitPossession, a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_han
                     return m.player_index == 0u && m.entity_id == mate->entity_id();
                 });
             EXPECT_TRUE(heard) << "the mirror is told the seat's new hero";
+        }
+
+    for (const short fixes : {short{0}, short{1}})
+        for (const bool death_runs : {true, false})
+        {
+            SCOPED_TRACE(std::format("parked, fixes {} {}", fixes,
+                                     death_runs ? "set_dead then death()" : "set_dead alone"));
+            og::test::ScopedPackStoreState pack_store;
+            PossessionScene s;
+            s.tw.world().gameplay_fixes = fixes;
+            walker* mate = add_living(s.tw, FAMILY_SOLDIER, kGhostTeam, 32, 160);
+            walker* other = add_living(s.tw, FAMILY_SOLDIER, kGhostTeam, 32, 32);
+            ASSERT_TRUE(mate && other);
+            mate->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            RecordingTransport transport;
+            og::sim::GameServer server(s.tw.world(), s.tw.events, transport);
+            transport.set_connected({91u, 92u});
+            server.poll_incoming_messages();
+            server.connect_client(91u);
+            server.connect_client(92u);
+            seat(*s.ghost, 0);
+            seat(*other, 1);
+            server.bind_player(91u, 0u, kGhostTeam, s.ghost);
+            server.bind_player(92u, 1u, kGhostTeam, other);
+            server.step();
+            for (const og::sim::PeerId peer : {91u, 92u})
+                transport.queue(peer, og::sim::serialize_client_ready_message(
+                                          {.last_applied_tick = 0u}));
+            server.step();
+            const auto step_with_input = [&](std::initializer_list<og::sim::PeerId> peers) {
+                const auto bytes = og::sim::serialize_input(
+                    s.tw.world().tick_count_ + 1u, InputState{});
+                for (const og::sim::PeerId peer : peers)
+                    transport.queue(peer, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+                server.step();
+            };
+
+            ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 0).ok);
+            step_with_input({91u, 92u});
+            ASSERT_EQ(s.orc, server.player_control(0)) << "premise: the seat drives the body";
+
+            // Seat 0 drops while it drives the orc and is parked there.
+            transport.set_connected({92u});
+            server.poll_incoming_messages();
+            ASSERT_EQ(1u, server.disconnected_players().size());
+            ASSERT_EQ(s.orc, server.disconnected_players().front().control)
+                << "premise: parked on the body";
+
+            transport.clear_sent();
+            s.ghost->set_dead(1);
+            if (death_runs)
+                s.ghost->death();
+            else
+            {
+                step_with_input({92u});
+                ASSERT_EQ(0u, s.orc->possess_link()) << "premise: the orc's act ended the ride";
+            }
+            step_with_input({92u});
+
+            EXPECT_EQ(s.ghost, server.disconnected_players().front().control)
+                << "the parked seat goes to its dead ghost";
+            EXPECT_EQ(s.ghost, server.player_control(0));
+            EXPECT_EQ(-1, mate->user()) << "and is handed no new hero";
+            EXPECT_EQ(-1, s.orc->user()) << "the freed orc is nobody's";
+            const auto changes = transport.control_changes(92u);
+            const bool heard = std::any_of(
+                changes.begin(), changes.end(), [&s](const og::sim::ControlChangeMessage& m) {
+                    return m.player_index == 0u && m.entity_id == s.ghost->entity_id();
+                });
+            EXPECT_TRUE(heard) << "the connected mirror hears the parked seat move";
+
+            step_with_input({92u});
+            EXPECT_EQ(s.ghost, server.disconnected_players().front().control)
+                << "it stays on the dead ghost while parked";
+            EXPECT_EQ(-1, mate->user());
         }
 }
 
