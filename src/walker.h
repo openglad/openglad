@@ -86,8 +86,11 @@ class walker : public pixieN
 		bool charmed_head();
 		// Gameplay Fixes AP (port of the current game's d7e20962): the head
 		// of the one owner-chain climb: up through every owner, a dead one
-		// included, stopping at a self-loop and at a charmed head. Read by
-		// is_friendly and is_friendly_to_team with the setting on.
+		// included, stopping at a self-loop and at a charmed head (the climb
+		// walker::attack takes for its score gate's hero walks the same way).
+		// Read with the setting on by sides_friendly and is_friendly_to_team
+		// for whose walker is a hero's (the allied mode); since Gameplay Fixes
+		// AZ no colour is read from it.
 		walker* chain_head();
 		// Gameplay Fixes T (port of the current game's d80a7faa, its
 		// packs/core/lib/corpses.lua raise_spot): the stain a raise takes and
@@ -174,6 +177,15 @@ class walker : public pixieN
 		virtual short facing(short x, short y);
 		unsigned char query_team_color();
 		Sint32 is_friendly(walker *target);
+		// port of the current game's 497a97652 (Gameplay Fixes AZ, #502): the
+		// side question of is_friendly without its null and dead tests, which a
+		// blast asks (it strikes from its own death).
+		Sint32 sides_friendly(walker *target);
+		// port of the current game's 0cae0cd11 (Gameplay Fixes AZ, #502, its
+		// walker::fights_for_team): the colour this walker fights for with the
+		// setting on, its own, or for a thing that rides a live walker
+		// (rides_owner) that walker's colour now. The one place the mark is read.
+		unsigned char fights_for_team();
 		Sint32 is_friendly_to_team(unsigned char team);
 		inline short query_type(char oval, char fval)
 		{
@@ -189,6 +201,7 @@ class walker : public pixieN
 		short shifter_down; // is our shifter/alternate key pressed?
 		short bonus_rounds; // used if an object has extra rounds this cycle
 		short death_called; // if death has already been called
+		short rides_owner; // Gameplay Fixes AZ (port of the current game's 497a97652 and 0cae0cd11, its KIT_RIDER): rides the walker who owns it and goes with him
 		short weapons_left;   // for fighter's blades
 		short yo_delay;
 		float lastx, lasty;

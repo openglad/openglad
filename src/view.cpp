@@ -791,6 +791,9 @@ short viewscreen::input(const SDL_Event& event)
 			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
 			newob->team_num = control->team_num;
+			// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the cheat's shield rides its hero and goes with him
+			if (myscreen->gameplay_fixes)
+				newob->rides_owner = 1;
 			newob->ani_type = 1; // dummy, non-zero value
 			newob->lifetime = 200;
 			//clear_key_code(SDLK_F2);

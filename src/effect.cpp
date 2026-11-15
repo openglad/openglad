@@ -332,6 +332,9 @@ short effect::act()
 				newob->owner = owner;
 				newob->team_num = team_num;
 				newob->death_called = 1; // to ensure no spawning of more ..
+				// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the returning knife's probe rides its thrower and goes with him
+				if (myscreen->gameplay_fixes)
+					newob->rides_owner = 1;
 				newob->setworldxy(worldx, worldy);
 				if (!myscreen->query_object_passable(xpos+xd, ypos+yd, newob))
 				{
@@ -716,7 +719,12 @@ short effect::death()
 						attack(w);
 						damage *= 4.0f;
 					}
-					else if (!owner->dead && owner->is_friendly(w))
+					// port of the current game's 497a97652 (Gameplay Fixes AZ, #502, #533):
+					// with the setting on the blast halves on its own side, what wears
+					// the bomb's or the shot's colour; it is dead, so it asks
+					// sides_friendly, which has no dead test (a blast is not marked, so
+					// it fights for its own colour).
+					else if (myscreen->gameplay_fixes ? sides_friendly(w) : (!owner->dead && owner->is_friendly(w)))
 					{
 						damage /= 2.0f;
 						attack(w);

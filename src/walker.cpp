@@ -68,6 +68,7 @@ walker::walker(const PixieData& data, bool detached_probe)
 	dead = 0; // we're alive
 
 	death_called = 0;
+	rides_owner = 0; // Gameplay Fixes AZ: unmarked until a making site marks it
 
 
 	bonus_rounds = 0;
@@ -147,6 +148,7 @@ walker::reset(void)
 	dead = 0; // we're alive
 
 	death_called = 0;
+	rides_owner = 0; // Gameplay Fixes AZ: a walker taken from the pool starts unmarked
 
 
 	//  bonus_rounds = 0;
@@ -1973,6 +1975,18 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     }
 }
 
+// The current game's award_score rule (src/gameplay/walker_combat.cpp,
+// is_valid_score_team), for the setting-on payments of Gameplay Fixes AZ
+// (port of 497a97652): a team the score table has no entry for is paid
+// nothing. Off, walker::attack keeps the classic statements, which pay
+// m_score[team_num] unchecked.
+static void pay_side_score(short side, Uint32 points)
+{
+	const size_t score_teams = sizeof(myscreen->save_data.m_score) / sizeof(myscreen->save_data.m_score[0]);
+	if (side >= 0 && (size_t) side < score_teams)
+		myscreen->save_data.m_score[side] += points;
+}
+
 short walker::attack(walker  *target)
 {
 	walker  *blood; // temporary stain
@@ -2010,7 +2024,12 @@ short walker::attack(walker  *target)
 	// Score and kill semantics follow the actual attacker's team. The legacy
 	// red-only checks made non-red company heroes deal damage without normal
 	// projectile score, and treated their red victims as friendly deaths.
-	playerteam = headguy->team_num;
+	// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ,
+	// #502, #533): with the setting on a blow's side is the colour the hitter
+	// fights for (its own; a rider's, its walker's now), read once here as the
+	// blow lands: the score gate's colour half, the "another team" tests and
+	// every payment read it; the gate's hero half still asks the head's record.
+	playerteam = myscreen->gameplay_fixes ? fights_for_team() : headguy->team_num;
 	if (headguy->myguy != NULL ||
 	    playerteam == myscreen->save_data.my_team)
 	{
@@ -2087,7 +2106,11 @@ short walker::attack(walker  *target)
             myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level;
+                // port of the current game's 497a97652 (Gameplay Fixes AZ): with the setting on the blow's side above is paid
+                if (myscreen->gameplay_fixes)
+                    pay_side_score(playerteam, tempdamage_i + target->stats->level);
+                else
+                    myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level;
             }
 		}
 	}
@@ -2133,7 +2156,11 @@ short walker::attack(walker  *target)
 		{
 			if (getscore)
 			{
-				myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level; // / 2;
+				// port of the current game's 497a97652 (Gameplay Fixes AZ): with the setting on the blow's side above is paid
+				if (myscreen->gameplay_fixes)
+					pay_side_score(playerteam, tempdamage_i + target->stats->level);
+				else
+					myscreen->save_data.m_score[team_num] += tempdamage_i + target->stats->level; // / 2;
 			}
 			// port of the current game's c887e03a (Gameplay Fixes AW, #494): with
 			// the setting on only a summoned living's blow pays its hero here;
@@ -2151,7 +2178,11 @@ short walker::attack(walker  *target)
 		{
 			if (playerteam > -1)
 			{
-				if (playerteam != target->team_num)
+				// port of the current game's 497a97652 (Gameplay Fixes AZ): with the
+				// setting on a death whose person behind the blow is the victim (a
+				// blast that kills its own charmed thrower) takes the same-team arm
+				// below: no kill, no kill experience, no kill score.
+				if (playerteam != target->team_num && (!myscreen->gameplay_fixes || headguy != target))
 				{
 					if (headguy->myguy)  // headguy can == this
 					{
@@ -2168,11 +2199,16 @@ short walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						myscreen->save_data.m_score[team_num] += tempdamage_i + (10 * target->stats->level);
+						// port of the current game's 497a97652 (Gameplay Fixes AZ): with the setting on the blow's side above is paid
+						if (myscreen->gameplay_fixes)
+							pay_side_score(playerteam, tempdamage_i + (10 * target->stats->level));
+						else
+							myscreen->save_data.m_score[team_num] += tempdamage_i + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					// This arm is selected by the KILLER's team (`playerteam`,
-					// set from headguy at the top), so an enemy killing one of
+					// set at the top: headguy's colour, with the setting on the
+					// colour the hitter fights for), so an enemy killing one of
 					// the player's OWN named NPCs lands here too -- and used to
 					// be announced as an "ENEMY DEATH". Classic hardcoded
 					// `playerteam = 0`, i.e. it compared the victim against the
@@ -2643,6 +2679,9 @@ short walker::special()
 					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_BOOMERANG);
 					newob->owner = this;
 					newob->team_num = team_num;
+					// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the boomerang rides its walker and goes with him
+					if (myscreen->gameplay_fixes)
+						newob->rides_owner = 1;
 					newob->ani_type = 1; // dummy, non-zero value
 					newob->lifetime = 30 + (stats->level)*12;
 					newob->stats->hitpoints += stats->level*12;
@@ -2852,6 +2891,9 @@ short walker::special()
 							return 0;
 						newob->owner = this;
 						newob->team_num = team_num;
+						// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the mace rides its walker and goes with him
+						if (myscreen->gameplay_fixes)
+							newob->rides_owner = 1;
 						// a summoned weapon starts centred on its caster, at its level, as the current game's og.summon does
 						newob->center_on(this);
 						newob->stats->level = stats->level;
@@ -3854,6 +3896,9 @@ short walker::special()
 			newob->owner = this;
 			newob->stats->level = stats->level;
 			newob->team_num = team_num; // so we scare OTHER teams
+			// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the scare rides its ghost and goes with him
+			if (myscreen->gameplay_fixes)
+				newob->rides_owner = 1;
 			// Actual scare effect done in scare's "death" in effect
 			special_rest_left = 96; // port of the current game's 54f5890f: SCARE rests 96 ticks
 			special_rest_slot = 1; // port of the current game's 54f5890f
@@ -4215,6 +4260,9 @@ short walker::special()
                                         alive->owner = newob;
                                         alive->center_on(newob);
                                         alive->team_num = newob->team_num;
+                                        // port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ, #502): the circle rides its walker and goes with him
+                                        if (myscreen->gameplay_fixes)
+                                            alive->rides_owner = 1;
                                         alive->stats->level = newob->stats->level;
                                         didheal++;
                                     } // end of target wasn't protected
@@ -5353,10 +5401,6 @@ Sint32 walker::is_friendly(walker *target)
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
-	//short allied_mode;
-	short has_myguy;
-	walker *headguy;
-	walker *headus, *headtarget;
 
 	// In case we're passed a null pointer somehow,
 	// we're always unfriendly :)
@@ -5366,12 +5410,49 @@ Sint32 walker::is_friendly(walker *target)
 	if (dead || target->dead)
 		return 0;
 
+	// port of the current game's 497a97652 (Gameplay Fixes AZ, #502): the side
+	// question is sides_friendly, which a blast asks without the dead test
+	// above.
+	return sides_friendly(target);
+}
+
+// port of the current game's 0cae0cd11 (Gameplay Fixes AZ, #502, its
+// walker::fights_for_team): with the setting on a walker fights for the
+// colour it wears, except a thing that rides the walker who owns it
+// (rides_owner: a circle of protection, a boomerang, a mace, the ghost's
+// scare, a returning knife's probe, the F2 cheat's shield), which goes with
+// him: while he lives it fights for his colour now, one hop, no further. A
+// rider whose walker is gone or dead, or that owns itself, fights for its own
+// colour. Read only with the setting on (the callers gate it); no mark is
+// written with the setting off.
+unsigned char walker::fights_for_team()
+{
+	if (rides_owner && owner && owner != this && !owner->dead)
+		return owner->team_num;
+	return team_num;
+}
+
+// port of the current game's 497a97652 (Gameplay Fixes AZ, #502): is_friendly's
+// side question without its dead test. With the setting on every walker fights
+// for the colour it wears, a rider for its walker's (fights_for_team): the heads
+// still decide the allied mode below (whose walker is a hero's is a question
+// about persons), and the colours compared are fights_for_team's. Off: the
+// classic climbs and compares, in the classic order.
+Sint32 walker::sides_friendly(walker *target)
+{
+	//short allied_mode;
+	short has_myguy;
+	walker *headguy;
+	walker *headus, *headtarget;
+
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	if (myscreen->gameplay_fixes)
 	{
 		// port of the current game's d7e20962 (Gameplay Fixes AP): friendliness
-		// reads the one climb's head, through a dead owner.
+		// reads the one climb's head, through a dead owner; since Gameplay Fixes
+		// AZ the head names only whose walker is a hero's, and the colours are
+		// the ones each walker fights for.
 		headus = chain_head();
 		headtarget = target->chain_head();
 	}
@@ -5387,6 +5468,12 @@ Sint32 walker::is_friendly(walker *target)
 			headguy = headguy->owner;
 		headtarget = headguy;
 	}
+
+	// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes AZ):
+	// the colours compared below; with the setting on the colour each walker
+	// fights for.
+	unsigned char usteam = myscreen->gameplay_fixes ? fights_for_team() : headus->team_num;
+	unsigned char targetteam = myscreen->gameplay_fixes ? target->fights_for_team() : headtarget->team_num;
 
 	// First, get our allied setting from screen ..
 	// 0 is "enemy," and non-zero is "friendly"
@@ -5407,16 +5494,16 @@ Sint32 walker::is_friendly(walker *target)
 	// we are not friendly
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == headtarget->team_num);
+		return (usteam == targetteam);
 	}
-	
+
 	// Allied
 	if(has_myguy == 2)
     {
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
         // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == NULL && headtarget->team_num == 0) || (headus->myguy == NULL && headus->team_num == 0);
+        return (headtarget->myguy == NULL && targetteam == 0) || (headus->myguy == NULL && usteam == 0);
     }
 
 	// If we're in 'friendly' mode, then everyone with
@@ -5472,7 +5559,10 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 	// If so, then our team number must match.
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == team);
+		// port of the current game's 497a97652 and 0cae0cd11 (Gameplay Fixes
+		// AZ): with the setting on the colour the walker fights for; the
+		// hired-guy branch below asks the head's record.
+		return ((myscreen->gameplay_fixes ? fights_for_team() : headus->team_num) == team);
 	}
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
