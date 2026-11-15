@@ -2019,7 +2019,8 @@ record differences kept on purpose (#484, #440, #491):
   when the ride ends the chain is what it was. Undead resist POSSESS, so
   the shipped bodies it reaches are an enemy caster's summons. No
   recording plays New Specials, and the old game has no possession.
-- **A ridden body goes home when a script kills its ghost (#499).** A ride
+- **A ridden body goes home when a script kills its ghost, and the player
+  gets the next hero (#499, #535).** A ride
   comes from POSSESS (New Specials) or from a level script's `og.possess`,
   which rides with New Specials off too. A ghost that dies while it rides
   frees its body, which goes back to its own side. A level script can also
@@ -2032,8 +2033,14 @@ record differences kept on purpose (#484, #440, #491):
   when a charm took it meanwhile), a seat's tag goes back to the ghost, as
   when the ghost dies, and neither is linked any more, so a later death of
   the ghost changes nothing. The ghost's body stays hidden: no burst, and it
-  blocks nothing. No recording plays a ride, and the old game has no
-  possession.
+  blocks nothing. Whichever way the script kills the ghost, the player whose
+  seat drove the body used to go on steering it, now a fighter for the
+  other side, until it died (#535). Now the body is left to itself and the
+  seat goes to the dead ghost, so the player is handed the next hero of the
+  team as after any hero's death, or, in a mode that brings its fighters
+  back (Mutant's decay can kill a ghost Mutant inside a body), waits for the
+  ghost to stand up and drives it again. No recording plays a ride, and the
+  old game has no possession.
 - **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
   On the isle a fifth of each college's spawns change sides at birth and
   are named Dreamkin. The bone tent keeps its spawns as its own: their

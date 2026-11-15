@@ -214,7 +214,8 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - The ghost dies while it rides (only a script can do that): the host goes
   free and home to its own team, also when the script only marks the ghost
   dead (`set_dead`) without its death running; the ghost's body then stays
-  hidden (#499).
+  hidden (#499). A player who drove the body is handed the next hero of the
+  team, as after any hero's death (#535).
 
 **Further rules.**
 

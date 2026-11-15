@@ -530,6 +530,23 @@ class walker : public og::sim::SimEntity
 		{
 			last_self_teleport_tick_ = tick;
 		}
+		// Server-only transient (#535, like the teleport stamp above: no
+		// dirty bit, not in EntitySnapshot): on a body whose ride ended with
+		// its ghost dead while a player's seat drove the body, the ghost's
+		// id, so that seat goes to the dead ghost at its next input tick and
+		// the ordinary death hand-off gives the player the next hero. Every
+		// end of a ride writes it (og::sim::end_ride: 0 unless the ghost is
+		// dead and the seat's tag went back to it); the seat redirect
+		// (og::sim::possession_seat_redirect) reads it and clears it. 0 =
+		// none.
+		[[nodiscard]] std::uint32_t seat_dead_rider() const noexcept
+		{
+			return seat_dead_rider_;
+		}
+		void set_seat_dead_rider(std::uint32_t id) noexcept
+		{
+			seat_dead_rider_ = id;
+		}
 
 		// Kill-attribution transients (server-only, like the teleport stamp
 		// above: no dirty bit, not in EntitySnapshot). The combat path stamps
@@ -705,6 +722,8 @@ class walker : public og::sim::SimEntity
 		std::int32_t special_rest_left_ = 0;
 		std::int32_t special_rest_slot_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
+		// #535 (see seat_dead_rider above): server-only, never replicated.
+		std::uint32_t seat_dead_rider_ = 0;
 		// Kill-attribution stamp (see the accessors above): server-only,
 		// never replicated.
 		std::uint32_t last_attacker_id_ = 0;

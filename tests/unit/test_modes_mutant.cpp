@@ -25,11 +25,14 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/script_host.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -206,14 +209,15 @@ struct MutantRig
     walker* c = nullptr;  // deployed on seat team 2
     walker* d = nullptr;  // deployed on seat team 3
 
-    explicit MutantRig(int level_id = kMutantLevelA, int act = ACT_CONTROL)
+    explicit MutantRig(int level_id = kMutantLevelA, int act = ACT_CONTROL,
+                       int a_family = FAMILY_SOLDIER)
         : fx(level_id)
     {
         fx.spawn_anchor(0, 96, 96);
         fx.spawn_anchor(1, 544, 96);
         fx.spawn_anchor(2, 96, 800);
         fx.spawn_anchor(3, 544, 800);
-        a = fx.spawn_hero(FAMILY_SOLDIER, 0, 200, 200, 1, act);
+        a = fx.spawn_hero(a_family, 0, 200, 200, 1, act);
         b = fx.spawn_hero(FAMILY_ORC, 1, 216, 200, 2, act);
         c = fx.spawn_hero(FAMILY_SOLDIER, 2, 200, 232, 3, act);
         d = fx.spawn_hero(FAMILY_ORC, 3, 216, 232, 4, act);
@@ -1107,6 +1111,83 @@ TEST_F(ModesMutant, decay_death_after_a_recent_chip_transfers_to_the_chipper)
         << "D3 recency: the chipper inherits the crown from a decay death";
     EXPECT_EQ(static_cast<std::int32_t>(rig.c->entity_id()), rig.mutant_id());
     EXPECT_EQ(1, rig.score(c_slot));
+}
+
+// #535 in a shipped script: the decay runs the Mutant's death when its last
+// hit point goes (run_mutant_upkeep: `mut.dead = 1` then `mut:death()`) and
+// does not ask whether the Mutant is a ghost riding a body. With New
+// Specials on, a player's ghost crowned Mutant possesses another competitor
+// (a bot) and decays to death inside it. The bot goes home to its own band,
+// the seat goes to the dead ghost, and since every competitor respawns
+// (on_entity_death schedules it at once) the seat waits on its ghost, as it
+// does after any death in this mode, and drives it again when it stands up.
+// RED before #535: the seat claimed the bot and steered it for the bot's
+// own band, and at the revive the ghost, its tag worn by the seat's body,
+// was turned into a bot (revive_player_walker). Break: end_ride keeps no id.
+TEST_F(ModesMutant, a_ghost_mutant_that_decays_to_death_in_a_body_gets_its_seat_back_at_the_respawn)
+{
+    MutantRig rig(kMutantLevelA, ACT_CONTROL, FAMILY_GHOST);
+    GameWorld& world = rig.fx.world();
+    world.new_specials = 1;
+    world.ctf_requested_respawn_ticks = 10;
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    ASSERT_EQ(FAMILY_GHOST, static_cast<int>(rig.a->family()));
+    rig.a->set_user(0);
+    const short my_team = rig.a->team_num();
+    rig.crown_a();
+    rig.a->stats()->set_heal_per_round(0.0f);
+    rig.a->stats()->set_current_heal_delay(0);
+
+    // The bot the ghost takes: c, handed to the AI.
+    rig.c->set_act_type(ACT_RANDOM);
+    const unsigned char c_band = rig.c->team_num();
+    ASSERT_NE(my_team, c_band);
+    ASSERT_TRUE(og::sim::possess(world, *rig.a, *rig.c, 0).ok);
+
+    walker* control = rig.a;
+    SimInputDebounce debounce{};
+    InputState input;
+    input.clear();
+    const auto run = [&]() {
+        return sim_process_player_input(input.players[0], control, world, 0,
+                                        my_team, debounce, &rig.fx.events);
+    };
+    run();
+    ASSERT_EQ(rig.c, control) << "premise: the seat drives the bot";
+
+    rig.a->stats()->set_hitpoints(1.0f);
+    for (int i = 0; i < 12 && !rig.a->dead(); ++i)
+    {
+        run();
+        rig.fx.tick(1);
+    }
+    ASSERT_TRUE(rig.a->dead()) << "premise: the decay killed the ghost";
+    ASSERT_EQ(1, rig.a->death_called()) << "premise: through its death";
+    ASSERT_EQ(0u, rig.c->possess_link()) << "premise: the ride is over";
+    ASSERT_EQ(c_band, rig.c->team_num()) << "premise: the bot is home on its band";
+    ASSERT_TRUE(queue_holds(world, rig.a)) << "premise: the ghost's respawn is scheduled";
+
+    const SimInputResult r = run();
+    EXPECT_EQ(rig.a, control) << "the seat waits on its dead ghost";
+    EXPECT_EQ(rig.a, r.new_control);
+    EXPECT_FALSE(r.endgame_requested);
+    EXPECT_EQ(0, rig.a->user());
+    EXPECT_EQ(-1, rig.c->user()) << "the bot is nobody's";
+    EXPECT_NE(ACT_CONTROL, rig.c->act_type()) << "and acts for itself";
+
+    for (int i = 0; i < 20 && rig.a->dead(); ++i)
+    {
+        run();
+        rig.fx.tick(1);
+    }
+    ASSERT_FALSE(rig.a->dead()) << "premise: the ghost stood up";
+    run();
+    EXPECT_EQ(rig.a, control) << "the seat drives its ghost again";
+    EXPECT_EQ(0, rig.a->user());
+    EXPECT_EQ(ACT_CONTROL, rig.a->act_type()) << "not turned into a bot";
+    EXPECT_FALSE(rig.a->hidden());
+    EXPECT_EQ(-1, rig.c->user());
 }
 
 // ===========================================================================

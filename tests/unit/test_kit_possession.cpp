@@ -27,6 +27,12 @@
 //   seat follows        each release, every path   seat_redirect_follows_host_then_returns,
 //                                                  seat_follows_the_ghost_out_of_a_dying_host,
 //                                                  seat_redirect_passes_an_earlier_hero_corpse
+//   seat hand-off       a script kills the ghost   a_seat_whose_ghost_a_script_kills_in_a_body_
+//                       in the body (#535)         is_handed_its_next_hero, a_networked_seat_...,
+//                                                  a_body_left_by_a_dead_ghost_sends_only_its_
+//                                                  own_seat_to_the_ghost, a_seat_handed_the_freed_
+//                                                  body_afterwards_keeps_it (and Mutant's decay:
+//                                                  test_modes_mutant.cpp)
 //   linked + charm      a thief charms the host    thief_charm_on_a_possessed_host_...
 //   seat redirect tick  consumes that tick's input possess_redirect_tick_consumes_...
 //   parked seat         redirect is broadcast      disconnected_seat_path_broadcasts_...
@@ -1713,4 +1719,263 @@ TEST(KitPossession, a_level_script_ghost_set_dead_without_its_death_gives_the_tr
                 EXPECT_EQ(0, count_family(*s.tw, Order::FX, FAMILY_GHOST_SCARE)) << "no burst";
             }
     EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// --- #535: a seat whose ghost a script kills inside a body ------------------
+//
+// A player's ghost rides an enemy orc and a level script kills the ghost
+// while the orc lives (only a script can: no blow lands on a hidden rider).
+// The ride ends: the orc goes home (#499) and the seat's tag goes back to
+// the dead ghost. The seat's control still named the orc, and its next input
+// tick claimed it again, so the player went on steering a body that fights
+// for the enemy. Now the orc keeps the dead ghost's id for that seat: the
+// seat's next input tick moves onto the dead ghost and runs the ordinary
+// death hand-off, as after any hero's death.
+
+// The seat takes the next hero of its team, or, with nobody left, asks for
+// the end of the game as after any hero's death; the freed orc is nobody's
+// and stays home. Three ways a script kills: set_dead then death() (the ride
+// ends at once), and set_dead alone with the ghost still in the world or
+// cleared to dead_list by the tick-end sweep (the ride ends at the orc's next
+// act, #499). Both values of Gameplay Fixes and of New Specials (a level
+// script's og.possess rides with New Specials off).
+// RED before #535: control is the orc, seated, on the orc's team. Breaks:
+// end_ride keeps no id (every way); the move onto the dead ghost spends the
+// tick (control is the dead ghost, nobody is handed over); the redirect
+// looks the ghost up in the world's index only (cleared away only).
+TEST(KitPossession, a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero)
+{
+    enum class Way { DeathRuns, SetDeadInTheWorld, SetDeadClearedAway };
+    for (const short fixes : {short{0}, short{1}})
+        for (const short ns : {short{0}, short{1}})
+            for (const Way way : {Way::DeathRuns, Way::SetDeadInTheWorld,
+                                  Way::SetDeadClearedAway})
+                for (const bool hero_left : {true, false})
+                {
+                    SCOPED_TRACE(std::format(
+                        "fixes {} new specials {} {} {}", fixes, ns,
+                        way == Way::DeathRuns            ? "set_dead then death()"
+                        : way == Way::SetDeadInTheWorld ? "set_dead, in the world"
+                                                        : "set_dead, cleared away",
+                        hero_left ? "a hero left" : "nobody left"));
+                    PossessionScene s;
+                    s.tw.world().gameplay_fixes = fixes;
+                    s.tw.world().new_specials = ns;
+                    walker* mate = nullptr;
+                    if (hero_left)
+                    {
+                        mate = add_living(s.tw, FAMILY_SOLDIER, kGhostTeam, 32, 160);
+                        ASSERT_NE(nullptr, mate);
+                        mate->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+                    }
+                    const auto orc_act = s.orc->act_type();
+                    ASSERT_NE(ACT_CONTROL, orc_act) << "premise: a bot orc";
+                    PlayerSeat seat0(s.tw, s.ghost, 0);
+                    ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 100).ok);
+                    seat0.run();
+                    ASSERT_EQ(s.orc, seat0.control) << "premise: the seat drives the body";
+
+                    s.ghost->set_dead(1);
+                    if (way == Way::DeathRuns)
+                    {
+                        s.ghost->death();
+                    }
+                    else
+                    {
+                        if (way == Way::SetDeadClearedAway)
+                        {
+                            s.tw.world().retire_corpse(s.ghost);
+                            ASSERT_EQ(nullptr, s.tw.world().find_by_id(s.ghost->entity_id()))
+                                << "premise: the id index no longer knows the ghost";
+                            ASSERT_TRUE(s.tw.world().tracks(s.ghost))
+                                << "premise: the ghost is in dead_list";
+                        }
+                        og::sim::possession_host_tick(s.tw.world(),
+                                                      *dynamic_cast<living*>(s.orc));
+                    }
+                    ASSERT_EQ(0u, s.orc->possess_link()) << "premise: the ride is over";
+                    ASSERT_EQ(kOrcTeam, s.orc->team_num()) << "premise: the orc is home (#499)";
+                    ASSERT_EQ(0, s.ghost->user()) << "premise: the seat's tag is on the dead ghost";
+                    ASSERT_EQ(s.orc, seat0.control) << "premise: the seat's control names the orc";
+
+                    const SimInputResult r = seat0.run();
+                    if (hero_left)
+                    {
+                        EXPECT_EQ(mate, seat0.control) << "the next hero of the seat's team";
+                        EXPECT_EQ(mate, r.new_control);
+                        EXPECT_EQ(0, mate->user());
+                        EXPECT_EQ(ACT_CONTROL, mate->act_type());
+                        EXPECT_FALSE(r.endgame_requested);
+                    }
+                    else
+                    {
+                        EXPECT_EQ(nullptr, seat0.control) << "nobody left: no body for the seat";
+                        EXPECT_TRUE(r.endgame_requested) << "and the end of the game is asked";
+                        EXPECT_EQ(1, r.endgame_type);
+                    }
+                    EXPECT_EQ(-1, s.orc->user()) << "the freed orc is nobody's";
+                    EXPECT_EQ(orc_act, s.orc->act_type()) << "and acts for itself";
+                    EXPECT_EQ(kOrcTeam, s.orc->team_num()) << "on its own team";
+
+                    if (hero_left)
+                    {
+                        seat0.run();
+                        EXPECT_EQ(mate, seat0.control) << "the seat stays on the hero";
+                        EXPECT_EQ(-1, s.orc->user());
+                    }
+                }
+}
+
+// The networked server runs the same code: a connected seat's next input
+// after the script's kill is handed the next hero, and its mirror is told.
+// set_dead then death() ends the ride at once, so the next step hands over;
+// set_dead alone ends it at the orc's act in the world tick of the next
+// step, after that step's input, so the step after hands over.
+// RED before #535: the server's seat stays on the orc. Break: end_ride keeps
+// no id.
+TEST(KitPossession, a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero)
+{
+    for (const short fixes : {short{0}, short{1}})
+        for (const bool death_runs : {true, false})
+        {
+            SCOPED_TRACE(std::format("fixes {} {}", fixes,
+                                     death_runs ? "set_dead then death()" : "set_dead alone"));
+            og::test::ScopedPackStoreState pack_store;
+            PossessionScene s;
+            s.tw.world().gameplay_fixes = fixes;
+            walker* mate = add_living(s.tw, FAMILY_SOLDIER, kGhostTeam, 32, 160);
+            ASSERT_NE(nullptr, mate);
+            mate->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            RecordingTransport transport;
+            og::sim::GameServer server(s.tw.world(), s.tw.events, transport);
+            transport.set_connected({91u});
+            server.poll_incoming_messages();
+            server.connect_client(91u);
+            seat(*s.ghost, 0);
+            server.bind_player(91u, 0u, kGhostTeam, s.ghost);
+            server.step();
+            transport.queue(91u, og::sim::serialize_client_ready_message(
+                                     {.last_applied_tick = 0u}));
+            server.step();
+            const auto step_with_input = [&]() {
+                const auto bytes = og::sim::serialize_input(
+                    s.tw.world().tick_count_ + 1u, InputState{});
+                transport.queue(91u, std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+                server.step();
+            };
+
+            ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 0).ok);
+            step_with_input();
+            ASSERT_EQ(s.orc, server.player_control(0)) << "premise: the seat drives the body";
+
+            transport.clear_sent();
+            s.ghost->set_dead(1);
+            if (death_runs)
+                s.ghost->death();
+            else
+            {
+                step_with_input();
+                ASSERT_EQ(0u, s.orc->possess_link()) << "premise: the orc's act ended the ride";
+            }
+            step_with_input();
+
+            EXPECT_EQ(mate, server.player_control(0)) << "the seat is handed the next hero";
+            EXPECT_EQ(0, mate->user());
+            EXPECT_EQ(-1, s.orc->user()) << "the freed orc is nobody's";
+            EXPECT_EQ(kOrcTeam, s.orc->team_num());
+            const auto changes = transport.control_changes(91u);
+            const bool heard = std::any_of(
+                changes.begin(), changes.end(),
+                [mate](const og::sim::ControlChangeMessage& m) {
+                    return m.player_index == 0u && m.entity_id == mate->entity_id();
+                });
+            EXPECT_TRUE(heard) << "the mirror is told the seat's new hero";
+        }
+}
+
+// At the redirect itself: the body sends the seat whose tag the dead ghost
+// wears to the ghost, once, and no other seat; a bot ghost's ride (no seat
+// drove the body) sends nobody anywhere.
+// Breaks: the redirect does not ask whose tag the ghost wears (seat 1 goes
+// to seat 0's ghost); the body keeps the id after the seat took it (the
+// second look sends seat 0 to the ghost again).
+TEST(KitPossession, a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost)
+{
+    for (const short ns : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(ns);
+        {
+            PossessionScene s;
+            s.tw.world().new_specials = ns;
+            seat(*s.ghost, 0);
+            ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 100).ok);
+            ASSERT_EQ(0, s.orc->user()) << "premise: seat 0 drives the body";
+            s.ghost->set_dead(1);
+            s.ghost->death();
+            ASSERT_EQ(-1, s.orc->user());
+
+            walker* control1 = s.orc;
+            og::sim::possession_seat_redirect(s.tw.world(), control1, 1);
+            EXPECT_EQ(s.orc, control1) << "seat 1 never drove the body: it stays";
+            walker* control0 = s.orc;
+            og::sim::possession_seat_redirect(s.tw.world(), control0, 0);
+            EXPECT_EQ(s.ghost, control0) << "seat 0 drove it: it goes to its dead ghost";
+            walker* again = s.orc;
+            og::sim::possession_seat_redirect(s.tw.world(), again, 0);
+            EXPECT_EQ(s.orc, again) << "once: the body keeps the id for that one move";
+        }
+        {
+            PossessionScene s;
+            s.tw.world().new_specials = ns;
+            ASSERT_EQ(-1, s.ghost->user()) << "premise: a bot ghost";
+            ASSERT_TRUE(og::sim::possess(s.tw.world(), *s.ghost, *s.orc, 100).ok);
+            s.ghost->set_dead(1);
+            s.ghost->death();
+            walker* control = s.orc;
+            og::sim::possession_seat_redirect(s.tw.world(), control, 0);
+            EXPECT_EQ(s.orc, control) << "no seat drove the body: nobody is sent to the ghost";
+        }
+    }
+}
+
+// The id the body keeps is read only on an untagged body: a body some seat
+// has taken since is that seat's. Here the script possesses and kills in one
+// tick, before the seat's input ever moved into the body, and the body is a
+// troop of the seat's own team (a script's og.possess takes any living). The
+// seat's next input hands off from the dead ghost as after any death, the
+// hand-off gives it the freed troop, and on the ticks after the seat keeps
+// that troop.
+// Break: the redirect reads the id on a tagged body too (the seat leaves the
+// troop it was handed for the dead ghost, finds nobody, and the end of the
+// game is asked).
+TEST(KitPossession, a_seat_handed_the_freed_body_afterwards_keeps_it)
+{
+    for (const short fixes : {short{0}, short{1}})
+        for (const short ns : {short{0}, short{1}})
+        {
+            SCOPED_TRACE(std::format("fixes {} new specials {}", fixes, ns));
+            TestGameWorld tw;
+            tw.world().gameplay_fixes = fixes;
+            tw.world().new_specials = ns;
+            walker* ghost = add_living(tw, FAMILY_GHOST, kGhostTeam, 64, 64);
+            walker* troop = add_living(tw, FAMILY_ORC, kGhostTeam, 96, 80);
+            ASSERT_TRUE(ghost && troop);
+            PlayerSeat seat0(tw, ghost, 0);
+            ASSERT_TRUE(og::sim::possess(tw.world(), *ghost, *troop, 100).ok);
+            ghost->set_dead(1);
+            ghost->death();
+            ASSERT_EQ(0u, troop->possess_link()) << "premise: the ride is over";
+            ASSERT_EQ(ghost, seat0.control) << "premise: the seat never moved into the body";
+
+            seat0.run();
+            ASSERT_EQ(troop, seat0.control) << "the ordinary hand-off gives the seat the troop";
+            ASSERT_EQ(0, troop->user());
+            for (int i = 0; i < 3; ++i)
+            {
+                const SimInputResult r = seat0.run();
+                EXPECT_EQ(troop, seat0.control) << "the seat keeps the troop it was handed";
+                EXPECT_FALSE(r.endgame_requested);
+            }
+            EXPECT_EQ(0, troop->user());
+        }
 }

@@ -29,6 +29,10 @@
 //                      without walker::death (#499) or the link names an
 //                      id no walker holds.
 //
+// A ride that ends with its ghost dead while a seat drove the host leaves the
+// ghost's id on the host (walker::seat_dead_rider): the seat's next input tick
+// goes to the dead ghost and the ordinary death hand-off runs (#535).
+//
 // A level that ends with a possession running drops the host like any other
 // walker and saves the rider's guy record like any other hero's. A snapshot
 // carries all three fields, so a snapshot-seeded world resumes the
@@ -179,6 +183,22 @@ void end_ride(walker* host, walker* rider)
             else
                 host->set_team_num(original);
         }
+        // #535: a seat that drove the body while its ghost died must leave
+        // the body, which is home on its own side again; its control still
+        // names the body, so the body keeps the dead ghost's id for it.
+        // rule: #535: when a ride ends with its ghost dead and a player's seat drove the body (its
+        //   tag goes back to the dead ghost below), the body keeps the ghost's id, so that seat's
+        //   next input tick moves onto the dead ghost and the ordinary death hand-off gives the
+        //   player the next hero; a ride that ends with its ghost alive, or with no seat on the
+        //   body, keeps none (the seat follows a living ghost's tag as before).
+        // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
+        // tests: KitPossession.seat_redirect_follows_host_then_returns
+        // tests: ModesMutant.a_ghost_mutant_that_decays_to_death_in_a_body_gets_its_seat_back_at_the_respawn
+        host->set_seat_dead_rider(rider != nullptr && rider->dead() && host->user() != -1
+                                      ? rider->entity_id()
+                                      : 0u);
         // rule: When a ride ends a seat's tag on the host goes back to the rider, also to a rider
         //   that died without walker::death, as a dying rider's death hands it back.
         // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
@@ -480,6 +500,34 @@ void possession_seat_redirect(GameWorld& world, walker*& control,
         if (host != nullptr && !host->dead() && host->user() == player_num)
             control = host;
         return;
+    }
+
+    // The ride ended with the seat's ghost dead (end_ride kept the ghost's
+    // id on the body): the seat goes to the dead ghost, and
+    // sim_process_player_input runs the ordinary death hand-off on this same
+    // tick. Both values of New Specials: a level script's og.possess rides
+    // with it off. A body a seat has taken since (it wears a tag again) is
+    // that seat's, so the id is read only on an untagged body.
+    // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes to
+    //   that ghost (the id the body keeps, in the world or in dead_list), on both values of New
+    //   Specials; a seat whose tag the ghost does not wear stays where it is.
+    // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+    // tests: KitPossession.a_networked_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+    // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
+    // tests: KitPossession.a_seat_handed_the_freed_body_afterwards_keeps_it
+    if (control->user() == -1 && control->seat_dead_rider() != 0)
+    {
+        walker* const rider = linked_rider(world, control->seat_dead_rider());
+        // rule: #535: a seat on an untagged body whose ride ended with this seat's ghost dead goes
+        //   to that ghost; a seat whose tag the ghost does not wear stays where it is.
+        // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        // tests: KitPossession.a_body_left_by_a_dead_ghost_sends_only_its_own_seat_to_the_ghost
+        if (rider != nullptr && rider->user() == player_num)
+        {
+            control->set_seat_dead_rider(0);
+            control = rider;
+            return;
+        }
     }
 
     // The body was let go (timer, Switch Character, its death): release

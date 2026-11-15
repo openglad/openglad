@@ -446,11 +446,11 @@ SimInputResult sim_process_player_input(
         og::sim::possession_seat_redirect(level, control, player_num);
         // rule: New Specials possession: a seat whose ghost rides a body is moved to drive the body
         //   (and back to the ghost on release); the tick the seat moves is spent on the move, so a
-        //   Special still held from the possessing cast casts nothing on the host.
-        // tests: KitPossession.seat_redirect_follows_host_then_returns
-        // tests: KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input
-        // tests: KitPossession.seat_follows_the_ghost_out_of_a_dying_host
-        if (control != before_redirect)
+        //   Special still held from the possessing cast casts nothing on the host. A seat sent to its
+        //   dead ghost (#535) spends nothing: the ordinary death hand-off below runs on this tick.
+        // tests: KitPossession.seat_redirect_follows_host_then_returns, KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input, KitPossession.seat_follows_the_ghost_out_of_a_dying_host
+        // tests: KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
+        if (control != before_redirect && !control->dead())
         {
             result.new_control = control;
             // rule: New Specials possession: a seat whose ghost rides a body is moved to drive the
@@ -519,7 +519,7 @@ SimInputResult sim_process_player_input(
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
-        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings
+        // tests: GameplayFixesSeats.a_dead_heros_seat_takes_a_summon_of_its_colour_on_both_settings, GameplayFixesSeats.a_summon_of_our_colour_keeps_the_seat_and_the_level_on_both_settings, KitPossession.a_seat_whose_ghost_a_script_kills_in_a_body_is_handed_its_next_hero
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
         if (control->user() == -1)

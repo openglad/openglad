@@ -52,7 +52,9 @@ void possession_host_tick(GameWorld& world, living& host);
 // instead. Returns true when the walker SURVIVES.
 bool kit_on_death(GameWorld& world, walker& self);
 // The seat redirect at the top of sim_process_player_input: rewrites
-// `control` across a possession link in either direction.
+// `control` across a possession link in either direction, and from a body
+// whose ride ended with the seat's ghost dead onto that dead ghost, so the
+// ordinary death hand-off runs (#535).
 void possession_seat_redirect(GameWorld& world, walker*& control,
                               short player_num);
 
