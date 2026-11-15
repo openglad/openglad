@@ -592,7 +592,7 @@ Fixes X to BB, in play:
     another team scores through his hero record while he lives, but once
     he is dead his shot or blast heads its own chain, the score gate is
     closed and the same blow pays nobody. That is the one case where the
-    maker's death changes the pay.
+    maker's death changes the pay; it is left for a later round (#560).
   - A summon fights for the colour it was summoned for: it fights its own
     caster once he is charmed, and a summon a charmed caster made for our
     side stays ours when the charm ends, so a seat whose hero died is
@@ -3326,7 +3326,14 @@ where an entry was only told to him, or is still open, it says so.
    IMMOLATE's fire) is the one exception: asked whether it should keep the
    colour it was cast in, the maintainer answered "obviously they should go
    with the walker". While its walker is charmed it fights for the charmer's
-   side, and it comes back with him when the charm ends.
+   side, and it comes back with him when the charm ends. Two more were
+   asked afterwards. In Free For All a charmed fighter killed by his own
+   bomb or his own summon gives his old band a frag (see fix AZ); the
+   maintainer: "leave it as built". And a team's score still follows the
+   maker in one case: a hero on a team other than the player's team scores
+   through his hero record, so once he is dead his shots and summons pay
+   nobody. The maintainer left that for later, in one round with #506: the
+   score test is to ask which teams people play (#560).
 4. **#505: a walker that dies charmed.** No change of its own, so there is
    no fix BA. With the setting on no side reads the owner chain any more
    (entry 3), so the question of who heads a dead charmed walker's chain
