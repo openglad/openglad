@@ -42,7 +42,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
-inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:906 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift. Game path: src/gameplay/sim_input_handler.cpp:903 `set_shifter_down(pi.is_held(InputAction::Shift)`; the harness sets shifter_down itself in scenario_runtime.cpp (apply_inputs_at_tick), so that game line is not on the harness path.
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -170,7 +170,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 //
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
-// Cycling gate: src/gameplay/sim_input_handler.cpp:356 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
+// Cycling gate: src/gameplay/sim_input_handler.cpp:354 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
 // Firing gate: src/gameplay/living.cpp:914 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
@@ -1236,7 +1236,7 @@ inline constexpr Mutation kMut_special_archmage_do_special = {
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
     "packs/core/families/living-05-cleric.lua", 258,
-    "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
+    "local mace = gf.rides(og.summon(self, \"fx\", FX_MAGIC_SHIELD))",
     "local mace = nil",
     "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. The live shield count WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1) falls from 1 to 0."
 };
@@ -3560,8 +3560,8 @@ inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
     "packs/core/families/living-00-soldier.lua", 38,
-    "local boomerang = og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
-    "local boomerang = nil and og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "local boomerang = gf.rides(og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
+    "local boomerang = nil and gf.rides(og.summon_configured(self, \"fx\", FX_BOOMERANG, {",
     "Short-circuits BOOMERANG's returning-blade summon; the 'nil and' keeps the multi-line argument table part of an unevaluated call so the chunk still parses. throw_boomerang takes its 'if not boomerang' exit and no FX_BOOMERANG ever flies or intercepts hostile projectiles, flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5900, 5900)."
 };
 
@@ -4099,7 +4099,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
     "packs/core/families/living-12-ghost.lua", 54,
-    "local scare = og.summon(self, \"fx\", FX_GHOST_SCARE)",
+    "local scare = gf.rides(og.summon(self, \"fx\", FX_GHOST_SCARE))",
     "local scare = nil",
     "Suppresses the scare carrier FX the ghost's special summons (its on_death is what actually frightens), so do_special takes its 'if not scare' exit. WalkerFamilyCount(FAMILY_GHOST, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_GHOST, 2100, 2100) both flip."
 };
@@ -4817,7 +4817,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
     "packs/core/families/living-13-druid.lua", 195,
-    "      local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
+    "      local circle = gf.rides(og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION))",
     "        do return false, 'MUTATION REFUSAL' end",
     "Replaces the PROTECTION circle summon with `do return false, 'MUTATION REFUSAL' end`, so protection_circle declines on the first uncircled friend before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole druid.lua load and takes plant-tree, the bolt, and summon faerie down with it; the row would then flip on collateral damage rather than on the circle. With the wrapper this is the only row in the corpus that moves."
 };
@@ -5094,7 +5094,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3756,
+    "src/gameplay/walker.cpp", 3773,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -11335,9 +11335,22 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
 // tick 167) and takes the thief's colour, but its owner is still the tent. The
 // classic alliance climbs the owner chain to the tent: the charmed skeleton is
 // still the thief's foe, keeps fighting it, and the thief is dead by the final
-// tick. With the setting on (fix AD) a charmed walker heads its own chain: the
-// skeleton fights for the thief, the tent falls (the level is won) and the
-// thief ends untouched.
+// tick. With the setting on (fix AD) a charmed walker heads its own chain, and
+// (fix AZ) every walker fights for the colour it wears: the skeleton fights for
+// the thief, the tent falls (the level is won) and the thief ends untouched.
+// With fix AZ the skeleton's side no longer depends on where its chain stops,
+// so AD's stop now decides only credit and experience, which no recording
+// carries: the setting-on row's mutation is the charm's own colour write.
+// Under fix AZ a bone a skeleton threw before its charm keeps the colour it
+// was thrown in and can strike a skeleton charmed since; whether one does is a
+// matter of the troops' cadence, which no fact here counts. Neither fact
+// depends on it. The thief ends untouched, so no charm was resisted (a
+// resisted charm gives the foe a free blow): each took on the first press
+// that found its troop within the 96 px reach, a skeleton steps 6 px, so each
+// was charmed no nearer than 90 px, and a bone reaches 36 px, so no bone in
+// the air at a charm reaches the thief. The tent's four blasts reach 23 px
+// (level 2): its troops die on their next act after it while each blast plays
+// its three frames, and the thief stands 100 px away, so they find nobody.
 // The setting-on twin has its own spawns: the tent at (160, 150) and the thief
 // 100 px east of it at (260, 150), inside the 320 x 200 view at (0, 0) that the
 // old game's recorder plays its sounds in. The tent's death plays
@@ -11380,10 +11393,10 @@ inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
         "consequence: the charmed skeleton brings the tent down and the level is won"),
 };
 inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 773,
-    "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
-    "return false;",
-    "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
+    "packs/core/families/living-11-thief.lua", 371,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "The charm never moves the skeleton onto the thief's team, so it keeps fighting the thief, which dies, and the tent stands: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
 };
 
 // --- elf_forest_haste (fix AG, #462: the forest penalty comes off the normal step) ---
@@ -11744,22 +11757,24 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
     "The gate is inverted, so the fixed row loses fix AT: at the re-plan the near branch's turn steps the orc a notch off the soldier although it faced him, and Gameplay Fixes BB then asks the pad along that new facing, which is clear, so no swing starts and no blow lands by tick 11: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
 };
 
-// --- thief_bomb_colour_score (fix AZ, #502: a blow's team score pays the team its chain head wears) ---
+// --- thief_bomb_colour_score (fix AZ, #502: everything fights for the colour it wears) ---
 // effect_bomb_bystander_scen99's arena, recoloured: the player thief stands on
 // team 1 (player_team 1) and the stationary level-1 TOWER1 on team 2. The
-// thief drops its bomb on tick 20. The blast it leaves wears no colour (team
-// 0, red): in both games a blast is spawned with its owner, level and damage
-// and no team. It lands its full tier on the tower and its owner's quarter on
-// the thief. A blow pays team score (its damage plus the victim's level) when
-// the head of the hitter's owner chain is a hero or stands on the player's
-// team: the head is the thief, on the player's team, so the blow on the tower
-// scores. With the setting off the tower loses 90 to 92 of its 130 hp (the
-// bystander row's tower fact) and is level 1, so the blow pays 91 to 93 (the
-// setting-on row's bands are below its facts). Classic, it pays the
-// blast's own colour, red; with the setting on, the team its chain head
-// wears, the thief's. The blast's blow on the thief is a blow on its own
-// head's team, and the tower's arrows have a team-2 head that is neither a
-// hero nor on the player's team: neither scores.
+// thief drops its bomb on tick 20. Classic, the bomb and the blast it leaves
+// wear no colour (team 0, red): in both games a blast is spawned with its
+// owner, level and damage and no team. With the setting on the bomb takes the
+// thief's colour when it is dropped, and the blast the bomb's. The blast lands
+// its full tier on the tower and its owner's quarter on the thief. A blow pays
+// team score (its damage plus the victim's level) when the head of the
+// hitter's owner chain is a hero or the blow's side stands on the player's
+// team (classic the head's colour, with the setting on the blast's own: the
+// thief's either way), so the blow on the tower scores. With the setting off
+// the tower loses 90 to 92 of its 130 hp (the bystander row's tower fact) and
+// is level 1, so the blow pays 91 to 93 (the setting-on row's bands are below
+// its facts). Classic, it pays the blast's own colour, red; with the setting
+// on, the blast's own colour too, which is now the thief's. The blast's blow on
+// the thief is a blow on its own side, and the tower's arrows have a team-2
+// head that is neither a hero nor on the player's team: neither scores.
 inline constexpr SpawnSpec kFamilySpawns_thief_bomb_colour_score_scen99[] = {
     { FAMILY_TOWER1, 2, kOrderLiving, 222, 196, 0, 0 },           // stationary team-2 level-1 bystander on effect_bomb_bystander's tile, inside the blast's reach
     { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // the player LAST, on team 1 (player_team 1); level 5: bomb damage 90 and a blast reach of 20
@@ -11774,10 +11789,10 @@ inline constexpr FactPredicate kFacts_thief_bomb_colour_score_scen99[] = {
         "the classic thief's own team is paid nothing for its bomb"),
 };
 inline constexpr Mutation kMut_thief_bomb_colour_score_scen99 = {
-    "src/gameplay/walker_combat.cpp", 509,
-    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
-    "gameplay_fixes != 0 ? headguy->team_num() : headguy->team_num();",
-    "The classic arm pays the chain head's team too, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
+    "src/gameplay/walker_combat.cpp", 510,
+    "gameplay_fixes != 0 ? playerteam : team_num()",
+    "gameplay_fixes != 0 ? playerteam : headguy->team_num()",
+    "The classic payments pay the chain head's team, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
 };
 // With the setting on the tower, a stationary shooter facing the thief, no
 // longer turns off it and back before it shoots (fix AT), so its arrows fly a
@@ -11792,15 +11807,15 @@ inline constexpr FactPredicate kFacts_thief_bomb_colour_score_fixes_scen99[] = {
         "the blast lands its full tier on the tower: 85 to 93 of its 130 hp"),
     // rng_drift: with fix AT the tower shoots a tick sooner, so the blast's roll on the bomb's 90 is another draw and the band is every value 85.26 + rng(9) allows; commit 7dd61d2d
     pred::ScoreDelta(/*team*/0, 0, 0,
-        "with the setting on red, the blast's own colour, is paid nothing"),
+        "with the setting on red is paid nothing: the blast wears the thief's colour"),
     pred::ScoreDelta(/*team*/1, 86, 94,
-        "consequence: with the setting on the blow's score goes to the team its chain head wears, the thief's: the 85 to 93 hp the tower lost plus its level 1"),
+        "consequence: with the setting on the blow's score goes to the colour the blast wears, the thief's, which the bomb took when it was dropped: the 85 to 93 hp the tower lost plus its level 1"),
 };
 inline constexpr Mutation kMut_thief_bomb_colour_score_fixes_scen99 = {
-    "src/gameplay/walker_combat.cpp", 509,
-    "gameplay_fixes != 0 ? headguy->team_num() : team_num();",
-    "gameplay_fixes != 0 ? team_num() : team_num();",
-    "The setting-on arm pays the hitter's own colour again, so the blast's blow on the tower pays red: ScoreDelta(1, 86, 94) reads 0 and ScoreDelta(0, 0, 0) reads 86 to 94."
+    "packs/core/lib/effect_bomb.lua", 54,
+    "gf.made_by(blast, self:owner(), self)",
+    "gf.made_by(blast, self:owner(), blast)",
+    "The blast keeps the team it was made with, red: it is not the player's team (1) and the thief has no record, so it pays nobody: ScoreDelta(1, 86, 94) reads 0."
 };
 
 // --- mage_bot_far_foe (fix BB, #497: a bot near its foe swings only when the blow can land) ---
@@ -11882,6 +11897,243 @@ inline constexpr Mutation kMut_mage_bot_far_foe_fixes_scen99 = {
     ": controller_->fire_check(xdelta, ydelta);",
     ": (static_cast<void>(xdelta), static_cast<void>(ydelta), true);",
     "The near branch's line check answers yes, so the mage facing the soldier 90 px off swings at the re-plan on tick 8 and throws a fireball at the air on tick 10, as the setting-on game did before fix BB: WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) reads 1."
+};
+
+// --- archer_charmed_arrow_in_flight (fix AZ, #502: a shot keeps the colour it was shot in) ---
+// A hostile level-1 archer bot stands 80 px straight above a level-20 player
+// thief (charm reach 16 + 4 * 20 = 96 px); a far stationary team-1 TOWER1
+// holds the level open after the charm. From tick 6 the archer looses its
+// FIRE ARROWS ring, on the same ticks on both settings, and the one aimed
+// straight down at the thief leaves on tick 13: with nothing in its way it
+// strikes him on tick 18. On tick 15, between the two, the thief (on slot 3
+// since tick 3) presses CHARM OPPONENT once, and the charm takes the archer,
+// its only foe in reach, onto the thief's team (a level-1 foe of a level-20
+// thief resists 1 time in 20; on this seed it takes on both rows, as the team
+// fact shows). The fire arrow in the air was shot in team 1's colour.
+// Classic, it fights for the head of its owner chain, the charmed archer,
+// now on the thief's side, so it passes the thief and flies on to its full
+// reach, and every arrow the archer looses after the charm wears the thief's
+// colour: the thief ends whole. With the setting on (fix AZ) the arrow keeps
+// the colour it was shot in and strikes the thief once. Its damage is the
+// table's 7 scaled by (level + 3) / 4 and by the level of a walker with no
+// record, both 1, so the blow is 7 - sqrt(7)/2 + rng(2) = 5.68 or 6.68 against
+// no armour (only set_difficulty gives a placed walker armour), rounded 6 or
+// 7: the thief ends at 68 or 69 hp. No other blow reaches him on either row:
+// the ring's other arrows fly away from him, the ones loosed after the charm
+// wear his colour, and the tower never comes within reach. No fact kind can
+// name one projectile among several (#552), so the classic row cannot read
+// its own premise, that an arrow aimed at the thief is in the air when the
+// charm lands: its pin carries it (without the charm the thief is hit), and
+// so does its setting-on twin, on the same inputs and ticks, whose thief
+// takes exactly that arrow's blow.
+inline constexpr InputEvent kInputs_archer_charmed_arrow_in_flight[] = {
+    {  1, 0, K_SPECIAL_SWITCH }, {  2, 0, K_NONE },        // slot 1 -> 2
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },        // slot 2 -> 3 (CHARM OPPONENT is slot 3's Shift arm)
+    { 15, 0, K_SPECIAL | K_SHIFT }, { 16, 0, K_NONE },     // the downward fire arrow is in the air (it leaves on tick 13 and strikes on 18)
+};
+inline constexpr SpawnSpec kFamilySpawns_archer_charmed_arrow_in_flight_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 560, 440, 0, 0 },          // far, never in reach: holds the level open after the charm
+    { FAMILY_ARCHER, 1, kOrderLiving, 120, 120, 0, 0, 1, 0 },    // hostile level-1 bot on open ground, 80 px above the thief
+    { FAMILY_THIEF,  0, kOrderLiving, 120, 200, 0, 0, 20, 600 }, // the player LAST: charm reach 96 px, 75 hp
+};
+inline constexpr FactPredicate kFacts_archer_charmed_arrow_in_flight_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
+    pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
+        "anchor: the archer looses at least one fire arrow (its FIRE ARROWS ring)"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the charm lands: the archer wears the thief's colour to the end"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500,
+        "consequence: classic, the fire arrow in the air when the charm lands fights for the charmed archer's side and passes the thief, who ends whole"),
+};
+inline constexpr Mutation kMut_archer_charmed_arrow_in_flight_scen99 = {
+    "packs/core/families/living-11-thief.lua", 371,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "The charm never moves the archer onto the thief's team, so its fire arrow and its later arrows strike the thief: WalkerOfTeamAlive(0, 2, 2) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) fail."
+};
+inline constexpr FactPredicate kFacts_archer_charmed_arrow_in_flight_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
+    pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
+        "anchor: the archer looses at least one fire arrow (its FIRE ARROWS ring)"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the charm lands: the archer wears the thief's colour to the end"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6800, 6900,
+        "consequence: with the setting on the fire arrow in the air keeps the colour it was shot in and strikes the thief once, for 6 or 7 (5.68 + rng(2) on its 7, no armour)"),
+    // rng_drift: the blow is compute_base_damage's roll on the fire arrow's 7, 5.68 + rng(2) against no armour, so the rule allows exactly 6 or 7 hp and the band is those two values; commit 497a97652
+};
+inline constexpr Mutation kMut_archer_charmed_arrow_in_flight_fixes_scen99 = {
+    "src/gameplay/walker_specials.cpp", 860,
+    "return this;",
+    "return chain_head();",
+    "Friendliness climbs the owner chain again for everything that does not ride a walker, so the fire arrow in the air follows the charmed archer onto the thief's side and passes him: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6800, 6900) reads 7500."
+};
+
+// --- thief_bomb_charmed_thrower (fix AZ, #502: a blast keeps the colour its bomb was dropped in) ---
+// A hostile level-3 thief bot stands point blank beside a level-20 player
+// thief (16 px apart), so both bomb gates are open (classic, its foe is
+// within 35 px; with the setting on, a foe is inside its blast and no ally
+// is), and a far stationary team-1 TOWER1 holds the level open. On this
+// seed the bot drops its bomb on its first act that rolls a special, tick 1
+// with the setting on and tick 2 classic (on its first act the bot has no
+// foe yet: the classic gate then bombs only with three foes within 110 px,
+// while the setting-on gate asks for a foe inside the blast), lands no blow
+// first, and flees its bomb. On tick 6 the player,
+// on slot 3 since tick 3, presses CHARM OPPONENT once and the charm takes
+// the bot (a level-3 foe resists 1 time in 20; on this seed it takes on both
+// rows, as the team fact shows): it wears the player's colour to the end
+// (its clock is soften(75 + 25 * 17, 375, 490) ticks). Its bomb,
+// bomb_damage(3) = 60, goes
+// off 50 ticks after the drop; the blast searches 15 + 4 * 3 = 27 px round
+// the bomb and strikes its owner at a quarter, its owner's side at half and
+// everyone else in full. Classic, the blast follows the head of its owner
+// chain, the charmed bot, now the player's friend: the half tier on the
+// player, 30 - sqrt(30)/2 + rng(5) = 27.26 to 31.26 against no armour,
+// rounded 27 to 31, so the player ends at 44 to 48 hp. With the setting on
+// (fix AZ) the bomb took the bot's colour when it was dropped and the blast
+// the bomb's, team 1, which the player does not wear: the full tier,
+// 60 - sqrt(60)/2 + rng(7) = 56.13 to 62.13, rounded 56 to 62, so the player
+// ends at 13 to 19 hp. Nothing else strikes the player on either row: the
+// charmed bot flees and then fights for him, and the tower never comes
+// within reach. WalkerHpRangeAtFinalTick passes when any walker of the
+// family is in its band, and both walkers are thieves: the bot ends at 75
+// if its flight took it out of the 27 px search, else at its own quarter,
+// 15 - sqrt(15)/2 + rng(3), rounded 13 to 15 (60 to 62 hp), outside both
+// bands, so each band can only be met by the player. The blast strikes on
+// tick 53 or 54, so the budget of 80 ends before any regeneration.
+inline constexpr InputEvent kInputs_thief_bomb_charmed_thrower[] = {
+    {  1, 0, K_SPECIAL_SWITCH }, {  2, 0, K_NONE },        // slot 1 -> 2
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },        // slot 2 -> 3 (CHARM OPPONENT is slot 3's Shift arm)
+    {  6, 0, K_SPECIAL | K_SHIFT }, {  7, 0, K_NONE },     // the bot's bomb is down on both rows (tick 1 on, tick 2 off)
+};
+inline constexpr SpawnSpec kFamilySpawns_thief_bomb_charmed_thrower_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 560, 440, 0, 0 },           // far, never in reach: holds the level open after the charm
+    { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 3, 300 },   // hostile level-3 bot: bomb 60, a 27 px blast search
+    { FAMILY_THIEF,  0, kOrderLiving, 216, 200, 0, 0, 20, 600 },  // the player LAST, point blank; charm reach 96
+};
+inline constexpr FactPredicate kFacts_thief_bomb_charmed_thrower_scen99[] = {
+    pred::TickReached(80),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the charm lands: the bot wears the player's colour to the end"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 4400, 4800,
+        "consequence: classic, the blast fights for the charmed bot's side and halves on the player: 27 to 31 of his 75"),
+    // rng_drift: the blow is compute_base_damage's roll on half the bomb's 60, 27.26 + rng(5) against no armour, so the rule allows exactly 27 to 31 hp and the band is those values; commit 497a97652
+};
+inline constexpr Mutation kMut_thief_bomb_charmed_thrower_scen99 = {
+    "packs/core/families/living-11-thief.lua", 371,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "The charm never moves the bot onto the player's team, so its blast strikes the player in full and its knives follow: WalkerOfTeamAlive(0, 2, 2) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 4400, 4800) fail."
+};
+inline constexpr FactPredicate kFacts_thief_bomb_charmed_thrower_fixes_scen99[] = {
+    pred::TickReached(80),
+    pred::EventKindExactly(/*notification*/2, 1,
+        "anchor: the charm takes (\"Thief charmed an opponent!\"), the only notice in the budget"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: the charm lands: the bot wears the player's colour to the end"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1300, 1900,
+        "consequence: with the setting on the blast wears the colour the bomb was dropped in, team 1's, and strikes the player in full: 56 to 62 of his 75"),
+    // rng_drift: the blow is compute_base_damage's roll on the bomb's 60, 56.13 + rng(7) against no armour, so the rule allows exactly 56 to 62 hp and the band is those values; commit 497a97652
+};
+inline constexpr Mutation kMut_thief_bomb_charmed_thrower_fixes_scen99 = {
+    "packs/core/families/living-11-thief.lua", 213,
+    "gf.made_by(bomb, self)",
+    "bomb:set_owner(self)",
+    "The bomb keeps the team it was made with, red, and so does its blast: the player wears the blast's colour and takes the half tier, so WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1300, 1900) reads 44 to 48 hp."
+};
+
+// --- thief_bomb_dead_thrower (fix AZ, #533: a dead thrower's blast keeps his colour) ---
+// A hostile level-1 thief bot stands with a team-2 TOWER1 16 px to its left,
+// inside its 19 px blast, and a level-7 player archer 100 px straight above
+// it; the tower is a foe of both. On this seed the bot drops its bomb on its
+// first act that rolls a special, tick 1 with the setting on and tick 2
+// classic (the classic gate refuses it on its first act, as in
+// thief_bomb_charmed_thrower), and flees it. The player steps
+// down once (a placed walker has no heading yet, so its first shot would only
+// turn it) and looses one arrow on tick 10, which meets the thief, on tick 14
+// with the setting on and tick 18 classic (its flight from the bomb decides
+// where), before the bomb goes off and before it can drop another. The arrow
+// does the table's 5 scaled by (7 + 3) / 4 and by the level, 7, of a walker
+// with no record: 87.5, so 82.82 + rng(9) against no armour, rounded 83 to 91,
+// more than the thief's 75 hp. The blow pays the player's team its damage plus
+// the thief's level and the kill its damage plus ten times the level: 177 to
+// 193 on both rows, on one tick. The bomb goes off 50 ticks after the drop.
+// Its thrower is dead, so the bomb owns itself and so does its blast, whose
+// reach is then the bomb's own level, 1: 15 + 4 = 19 px round the blast. That
+// reaches the tower (18 px) and nobody else, and strikes it in full on both
+// rows (the tower wears neither colour): 30 - sqrt(30)/2 + rng(5), rounded 27
+// to 31, which cannot bring it down (130 hp; the thief lands at most four
+// blows of 12 before it dies). Classic, the blast wears no colour (red) and
+// heads its own chain; red is the player's team, so the score gate opens and
+// the blast pays red its blow on the tower, 28 to 32 (damage plus the tower's
+// level), a second score change on its own tick: 205 to 225 in all (#533: a
+// dead thrower's blast pays red). With a live thrower the head would be the
+// thief, on team 1, and the blast would pay nobody, so this row shows its own
+// premise. With the setting on (fix AZ) the bomb took the thief's colour,
+// team 1, when it was dropped and the blast the bomb's: team 1 is not the
+// player's team and no hero stands behind the blast, so it pays nobody, one
+// score change in all. Nothing else pays team 0: the tower and the thief have
+// no record and are not on the player's team, and the arrow is the player's
+// only shot. Both rows share the inputs and the seed. The setting-on row's
+// score facts read only the arrow, so its tower fact anchors that the blast
+// went off: on this seed the thief's flight from its bomb takes it off the
+// tower before its first blow, and the blast's full 27 to 31 is the only
+// damage the tower takes (99 to 103 of its 130). The classic row needs no
+// such anchor: its second score change is its blast's own pay. No fact of
+// the setting-on row reads that the thief dies before its blast: no fact
+// kind reads a tick order (#552), and with the setting on the blast pays
+// nobody whether its thrower is alive or dead. That order rests on the
+// pinned staging, the seed and inputs this row shares with its classic
+// twin, whose pay does read it.
+inline constexpr InputEvent kInputs_thief_bomb_dead_thrower[] = {
+    {  1, 0, K_DOWN }, {  2, 0, K_NONE },     // one step down: the archer takes a heading
+    { 10, 0, K_FIRE }, { 11, 0, K_NONE },     // one arrow straight down at the thief, whose bomb is down on both rows
+};
+inline constexpr SpawnSpec kFamilySpawns_thief_bomb_dead_thrower_scen99[] = {
+    { FAMILY_TOWER1, 2, kOrderLiving, 184, 200, 0, 0 },          // team-2 bystander, 16 px left of the thief and 18 px from its blast
+    { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 1, 300 },  // hostile level-1 bot: bomb 30, a 19 px blast search
+    { FAMILY_ARCHER, 0, kOrderLiving, 200, 100, 0, 0, 7, 0 },    // the player LAST, level 7: an arrow of 87.5
+};
+inline constexpr FactPredicate kFacts_thief_bomb_dead_thrower_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerDiedByFinal(FAMILY_THIEF,
+        "anchor: the player's one arrow kills the thief, 83 to 91 on its 75 hp"),
+    pred::EventKindExactly(/*score_change*/9, 2,
+        "consequence: classic, two score changes: the arrow's blow and kill, then the dead thrower's red blast on the tower"),
+    pred::ScoreDelta(/*team*/0, 205, 225,
+        "consequence: classic, the dead thrower's blast is red, the player's team, and pays it its blow on the tower (28 to 32) beside the arrow's blow and kill (177 to 193)"),
+    // rng_drift: the arrow's two payments are 2d + 11 on its roll d = 82.82 + rng(9) and the blast's d + 1 on its roll 27.26 + rng(5), against no armour, so the rule allows exactly 205 to 225 and the band is those values; commit 497a97652
+};
+inline constexpr Mutation kMut_thief_bomb_dead_thrower_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 197,
+    "  if M.on() then",
+    "  if true then",
+    "The bomb and its blast take the thief's colour on the classic row too, so the dead thrower's blast is team 1's and pays nobody: EventKindExactly(score_change, 2) reads 1 and ScoreDelta(0, 205, 225) reads 177 to 193.",
+    "  -- tests: parity:thief_bomb_dead_thrower_scen99, parity:thief_bomb_dead_thrower_fixes_scen99"
+};
+inline constexpr FactPredicate kFacts_thief_bomb_dead_thrower_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerDiedByFinal(FAMILY_THIEF,
+        "anchor: the player's one arrow kills the thief, 83 to 91 on its 75 hp"),
+    pred::EventKindExactly(/*score_change*/9, 1,
+        "consequence: with the setting on one score change, the arrow's: the dead thrower's blast wears his colour and pays nobody"),
+    pred::ScoreDelta(/*team*/0, 177, 193,
+        "consequence: with the setting on the player's team is paid the arrow's blow and kill alone"),
+    // rng_drift: the arrow's two payments are 2d + 11 on its roll d = 82.82 + rng(9) against no armour, so the rule allows exactly 177 to 193 and the band is those values; commit 497a97652
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9900, 10300,
+        "anchor: the dead thrower's blast goes off and strikes the tower in full, 27 to 31 of its 130, the only damage it takes"),
+    // rng_drift: the blast's blow is compute_base_damage's roll on the bomb's 30, 27.26 + rng(5) against no armour, so the rule allows exactly 27 to 31 hp lost and the tower's band is 99 to 103; commit ed456f217
+};
+inline constexpr Mutation kMut_thief_bomb_dead_thrower_fixes_scen99 = {
+    "packs/core/families/living-11-thief.lua", 213,
+    "gf.made_by(bomb, self)",
+    "bomb:set_owner(self)",
+    "The bomb keeps the team it was made with, red, and so does its blast: the dead thrower's blast pays the player's team its blow on the tower again, so EventKindExactly(score_change, 1) reads 2 and ScoreDelta(0, 177, 193) reads 205 to 225."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -14975,6 +15227,48 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_mage_bot_far_foe_fixes_scen99, std::size(kFacts_mage_bot_far_foe_fixes_scen99),
       kMut_mage_bot_far_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_charmed_arrow_in_flight_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_charmed_arrow_in_flight, std::size(kInputs_archer_charmed_arrow_in_flight), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_charmed_arrow_in_flight_scen99, std::size(kFamilySpawns_archer_charmed_arrow_in_flight_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_charmed_arrow_in_flight_scen99, std::size(kFacts_archer_charmed_arrow_in_flight_scen99),
+      kMut_archer_charmed_arrow_in_flight_scen99 },
+    { "archer_charmed_arrow_in_flight_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_charmed_arrow_in_flight, std::size(kInputs_archer_charmed_arrow_in_flight), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_charmed_arrow_in_flight_scen99, std::size(kFamilySpawns_archer_charmed_arrow_in_flight_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_charmed_arrow_in_flight_fixes_scen99, std::size(kFacts_archer_charmed_arrow_in_flight_fixes_scen99),
+      kMut_archer_charmed_arrow_in_flight_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "thief_bomb_charmed_thrower_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_thief_bomb_charmed_thrower, std::size(kInputs_thief_bomb_charmed_thrower), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_charmed_thrower_scen99, std::size(kFamilySpawns_thief_bomb_charmed_thrower_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bomb_charmed_thrower_scen99, std::size(kFacts_thief_bomb_charmed_thrower_scen99),
+      kMut_thief_bomb_charmed_thrower_scen99 },
+    { "thief_bomb_charmed_thrower_fixes_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_thief_bomb_charmed_thrower, std::size(kInputs_thief_bomb_charmed_thrower), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_charmed_thrower_scen99, std::size(kFamilySpawns_thief_bomb_charmed_thrower_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bomb_charmed_thrower_fixes_scen99, std::size(kFacts_thief_bomb_charmed_thrower_fixes_scen99),
+      kMut_thief_bomb_charmed_thrower_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "thief_bomb_dead_thrower_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_thief_bomb_dead_thrower, std::size(kInputs_thief_bomb_dead_thrower), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_dead_thrower_scen99, std::size(kFamilySpawns_thief_bomb_dead_thrower_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bomb_dead_thrower_scen99, std::size(kFacts_thief_bomb_dead_thrower_scen99),
+      kMut_thief_bomb_dead_thrower_scen99 },
+    { "thief_bomb_dead_thrower_fixes_scen99", "scen/scen1.fss", 0x0000000Cu,
+      kInputs_thief_bomb_dead_thrower, std::size(kInputs_thief_bomb_dead_thrower), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_bomb_dead_thrower_scen99, std::size(kFamilySpawns_thief_bomb_dead_thrower_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_bomb_dead_thrower_fixes_scen99, std::size(kFacts_thief_bomb_dead_thrower_fixes_scen99),
+      kMut_thief_bomb_dead_thrower_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
