@@ -1293,10 +1293,11 @@ TEST_F(ScriptBindingPropsTest, kit_last_attacker_id_and_init_fire)
 // walkers of one colour: both true; the other one dead: is_friendly false,
 // sides_friendly still true; two colours: both false. A knife the soldier
 // owns, of another colour: marked KIT_RIDER, with the setting on the knife
-// and its owner are friends both ways (the rider clause); unmarked, foes.
+// goes with its owner, so the two are friends both ways; unmarked, foes.
 // With the setting off the one owner chain makes them friends either way.
 // Breaks: m_sides_friendly pushes `w->is_friendly(other)` (the dead leg
-// red); rider_pair's gate always `return false` (the marked leg on red).
+// red); alliance_head's rider line `return ridden;` -> `return this;` (the
+// marked leg on red).
 TEST_F(ScriptBindingPropsTest, sides_friendly_is_is_friendly_without_the_dead_test)
 {
     for (const short fixes : {short{0}, short{1}}) {
@@ -1338,6 +1339,50 @@ TEST_F(ScriptBindingPropsTest, sides_friendly_is_is_friendly_without_the_dead_te
         EXPECT_EQ(fixes != 0 ? std::string("unmarked\t0\t0") : std::string("unmarked\t1\t1"), log[4])
             << (fixes != 0 ? "setting on: unmarked, two colours"
                            : "setting off: one owner chain");
+    }
+}
+
+// walker:fights_for_team() (Gameplay Fixes AZ, #502) is the colour a walker
+// fights for (walker::fights_for_team). A team-1 soldier owns a team-3 knife.
+// Unmarked, with the setting on the knife fights for the colour it wears, 3;
+// classic for its owner chain's head, the soldier's 1. Marked KIT_RIDER, it
+// goes with the soldier: 1 on both settings, 2 once he wears team 2 (as a
+// charm puts it on him), and 3, its own colour, once he is dead. The soldier
+// answers his own.
+// Breaks: m_fights_for_team pushes `self_arg(L)->team_num()` (the marked legs
+// red); alliance_head's rider line `return ridden;` -> `return this;` (the
+// marked legs on red).
+TEST_F(ScriptBindingPropsTest, fights_for_team_is_the_colour_a_walker_fights_for)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* knife = w.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_TRUE(self && knife);
+        self->set_team_num(1);
+        knife->set_team_num(3);
+        knife->set_owner(self);
+        const std::string body =
+            "    local knife = og.find_by_id(" + std::to_string(knife->entity_id()) + ")\n"
+            "    og.log('unmarked', knife:fights_for_team(), self:fights_for_team())\n"
+            "    knife:set_kit_state(knife:kit_state() | og.C.KIT_RIDER)\n"
+            "    og.log('marked', knife:fights_for_team(), self:fights_for_team())\n"
+            "    self.team = 2\n"
+            "    og.log('charmed', knife:fights_for_team(), self:fights_for_team())\n"
+            "    self.dead = 1\n"
+            "    og.log('dead', knife:fights_for_team())\n"
+            "    self.dead = 0\n";
+        expect_ran_clean(run_do_special(body, self));
+        const std::vector<std::string> log = logged();
+        ASSERT_EQ(4u, log.size());
+        EXPECT_EQ(fixes != 0 ? std::string("unmarked\t3\t1") : std::string("unmarked\t1\t1"), log[0])
+            << (fixes != 0 ? "setting on: its own colour" : "setting off: its owner's");
+        EXPECT_EQ("marked\t1\t1", log[1]) << "a rider fights for its walker";
+        EXPECT_EQ("charmed\t2\t2", log[2]) << "and goes with him";
+        EXPECT_EQ("dead\t3", log[3]) << "a rider whose walker is dead answers for itself";
     }
 }
 

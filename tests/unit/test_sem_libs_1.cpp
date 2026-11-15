@@ -1643,17 +1643,19 @@ ScareRig cast_a_scare(GameWorld& w)
 
 }  // namespace
 
-// Gameplay Fixes AZ (#502): a scare frightens the foes of its own colour, and
-// never its ghost (it rides him: KIT_RIDER). A team-1 ghost casts SCARE with
-// a team-0 and a team-1 soldier inside its radius, and is charmed onto team 0
-// by hand before the scare goes off. With the setting on the scare (team 1)
-// frightens the team-0 soldier; classic it frightens the ghost's foes of the
-// moment, the team-1 soldier. Never the ghost.
-// Breaks: gf.foes_round's setting-on call made the classic one (on: the
-// team-1 soldier is frightened); rider_pair's gate always `return false` (on:
-// the ghost is frightened); the ghost's `gf.rides(...)` wrapper removed at
-// living-12-ghost.lua (on: the ghost is frightened, the mark is 0).
-TEST(SemLibsGhostScare, a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed)
+// Gameplay Fixes AZ (#502): a ghost's scare rides him (KIT_RIDER, with the
+// setting on) and goes with him (the maintainer: "obviously they should go
+// with the walker"): it frightens the ghost's foes of the moment, never the
+// ghost. A team-1 ghost casts SCARE with a team-0 and a team-1 soldier inside
+// its radius, and is charmed onto team 0 by hand before the scare goes off.
+// On both settings the scare frightens the team-1 soldier, his old side, and
+// neither the team-0 soldier, his side now, nor the ghost.
+// Breaks: the scare's search `og.find_foes_in_range("ob", ..., owner)` ->
+// `og.find_foes_in_range("ob", ..., self)` (the dying scare asks its own side,
+// and a dead walker is nobody's friend: everyone round it is frightened, the
+// ghost and his new side included); alliance_head's rider line `return
+// ridden;` -> `return this;` (on: the scare fights for team 1).
+TEST(SemLibsGhostScare, a_scare_frightens_its_ghosts_foes_of_the_moment)
 {
     og::test::mount_core_pack();
     og::test::ScopedHookFailureGuard guard;
@@ -1678,56 +1680,14 @@ TEST(SemLibsGhostScare, a_scare_frightens_the_foes_of_its_own_colour_after_its_g
         r.ghost->set_real_team_num(r.ghost->team_num());
         r.ghost->set_team_num(0);
         r.ghost->set_charm_left(30);
+        EXPECT_EQ(0, r.scare->fights_for_team()) << "the scare fights for his side now";
         for (walker* ob : {red, green, r.ghost})
             ob->stats()->clear_command();
         r.scare->set_dead(1);
         ASSERT_TRUE(og::test::on_death(efd_of(FAMILY_GHOST_SCARE), static_cast<effect*>(r.scare)));
-        EXPECT_EQ(fixed, red->stats()->has_commands()) << "the team-0 soldier";
-        EXPECT_EQ(!fixed, green->stats()->has_commands()) << "the team-1 soldier";
+        EXPECT_TRUE(green->stats()->has_commands()) << "the team-1 soldier, his old side";
+        EXPECT_FALSE(red->stats()->has_commands()) << "the team-0 soldier, his side now";
         EXPECT_FALSE(r.ghost->stats()->has_commands()) << "never its ghost";
-    }
-    EXPECT_EQ(0u, guard.count()) << guard.message();
-}
-
-// Gameplay Fixes AZ (#502), the finder's rule written once: gf.foes_round asks
-// og.find_foes_in_range of the owner classic and of the owner with the
-// effect as the side with the setting on. While the owner still wears the
-// effect's colour the two answer the same list in the same order, so a
-// scare of an uncharmed ghost frightens what it always frightened. A team-1
-// ghost's real SCARE; round it a team-0 soldier, a team-1 soldier, a team-2
-// orc, a team-0 tent and a team-3 soldier, and a team-0 soldier out of reach:
-// both calls answer the team-0 soldier, the orc, the tent and the team-3
-// soldier, in the world's order, on both settings.
-// Break: the finder's side test `side ? side->sides_friendly(w) : ...` ->
-// `side ? 0 : ...` (with a side everything is a foe: the lists differ).
-TEST(SemLibsGhostScare, an_uncharmed_ghosts_scare_finds_its_foes_in_the_same_order_on_both_settings)
-{
-    og::test::mount_core_pack();
-    og::test::ScopedHookFailureGuard guard;
-    for (const short fixes : {short{0}, short{1}}) {
-        SCOPED_TRACE(testing::Message() << "setting " << fixes);
-        TestGameWorld tw;
-        GameWorld& w = tw.world();
-        w.gameplay_fixes = fixes;
-        w.new_specials = 0;
-        walker* red = put_living(w, FAMILY_SOLDIER, 120, 100, 0);
-        walker* mate = put_living(w, FAMILY_SOLDIER, 130, 100, 1);
-        walker* orc = put_living(w, FAMILY_ORC, 100, 130, 2);
-        walker* tent = put(w, Order::Generator, FAMILY_TENT, 140, 130, 0);
-        walker* blue = put_living(w, FAMILY_SOLDIER, 90, 90, 3);
-        walker* far = put_living(w, FAMILY_SOLDIER, 400, 400, 0);
-        ASSERT_TRUE(red && mate && orc && tent && blue && far);
-        ScareRig r = cast_a_scare(w);
-        ASSERT_TRUE(r.ghost && r.scare);
-        std::int32_t n_owner = -1;
-        std::int32_t n_side = -1;
-        const std::list<walker*> by_owner = w.find_foes_in_range(w.oblist, 100, &n_owner, r.ghost);
-        const std::list<walker*> by_side =
-            w.find_foes_in_range(w.oblist, 100, &n_side, r.ghost, r.scare);
-        EXPECT_EQ((std::list<walker*>{red, orc, tent, blue}), by_owner);
-        EXPECT_EQ(by_owner, by_side) << "the same list in the same order";
-        EXPECT_EQ(4, n_owner);
-        EXPECT_EQ(n_owner, n_side);
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

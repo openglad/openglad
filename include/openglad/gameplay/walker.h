@@ -279,20 +279,12 @@ class walker : public og::sim::SimEntity
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
 		// is_friendly without its null and dead tests: the side question. A
-		// thing that acts from its own death (a blast, the ghost's scare)
-		// asks it (the Lua walker:sides_friendly). With Gameplay Fixes AZ a
-		// thing marked KIT_RIDER and the walker who owns it are never foes
-		// (rider_pair), and otherwise each walker fights for the colour it
-		// wears. `target` must not be null. Defined in walker.cpp.
+		// thing that acts from its own death (a blast) asks it (the Lua
+		// walker:sides_friendly). It compares the colours of the two
+		// alliance heads: with Gameplay Fixes AZ each walker's own, a thing
+		// marked KIT_RIDER its walker's. `target` must not be null. Defined
+		// in walker.cpp.
 		std::int32_t sides_friendly(const walker *target) const;
-		// Gameplay Fixes AZ (#502), the rider clause, in this one function:
-		// true, with the setting on, when one of the two is a weapon or
-		// effect marked KIT_RIDER that the other owns (it rides him: a ring
-		// of protection, a mace, a boomerang, a hook blade, a scare,
-		// IMMOLATE's fire, a returning knife's probe, the cheat's magic
-		// shield). Two other things of one owner are not joined. Always false
-		// with the setting off. Defined in walker_specials.cpp.
-		bool rider_pair(const walker *other) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
 		// Gameplay Fixes AD (#412): true while this walker's charm runs
 		// (charm_left() > 0) with the setting on; New Specials (#430): true
@@ -308,12 +300,23 @@ class walker : public og::sim::SimEntity
 		// behind a blow (the score gate's hero, experience, credit);
 		// alliance_head is the head is_friendly reads: with the setting on
 		// the walker itself (fix AZ, every walker fights for the colour it
-		// wears); off the classic climb, which stops at a dead owner and at
-		// a possessed body. Defined in walker_specials.cpp.
+		// wears), except a weapon or effect marked KIT_RIDER, which answers
+		// the live walker it rides, its owner, one hop (it goes with him);
+		// off the classic climb, which stops at a dead owner and at a
+		// possessed body. Defined in walker_specials.cpp.
 		walker* chain_next() const;
 		walker* chain_head();
 		const walker* chain_head() const;
 		const walker* alliance_head() const;
+		// Gameplay Fixes AZ (#502): the colour this walker fights for, the
+		// one its alliance head wears: with the setting on its own colour,
+		// or for a thing that rides a live walker that walker's colour now;
+		// off, the colour of the classic friendliness head. With the setting
+		// on walker::attack reads it as the side of a blow (the score gate's
+		// colour half, the payments), kill_stamp_team as the kill's team, and
+		// the modes (the Lua walker:fights_for_team) as the colour a striking
+		// thing plays for. Defined in walker_specials.cpp.
+		unsigned char fights_for_team() const;
 		// #503: the one owner-chain walk. climb goes up from this walker
 		// while `step` names a next link (chain_next, or the classic
 		// friendliness step alliance_next_classic) and returns the walker it
@@ -563,8 +566,8 @@ class walker : public og::sim::SimEntity
 		// above: no dirty bit, not in EntitySnapshot). The combat path stamps
 		// the OWNER-CHAIN-ROOT Living that last landed a positive-damage hit
 		// on this walker, plus a team (kill_stamp_team: with Gameplay Fixes
-		// AZ the colour of the thing that struck, stamped also with no living
-		// behind it) and the world tick. on_entity_death
+		// AZ the colour the thing that struck fights for, stamped also with no
+		// living behind it) and the world tick. on_entity_death
 		// passes the killer to Lua only while the stamp is fresh
 		// (og::sim::kKillAttributionTicks); non-combat deaths (drowning,
 		// lifetime expiry, pit falls) never stamp, so they read as
@@ -586,7 +589,7 @@ class walker : public og::sim::SimEntity
 		{
 			// rule: A blow's kill-attribution stamp is the walker credited (the topmost LIVING on the
 			//   attacker's owner chain, credit_head) and the team walker::kill_stamp_team names (the
-			//   hitter's own colour with Gameplay Fixes AZ, the credited walker's classic). A blow
+			//   colour the hitter fights for with Gameplay Fixes AZ, the credited walker's classic). A blow
 			//   with neither (classic: no living on the chain, an orphaned weapon whose thrower is
 			//   gone, a scripted ball fx) writes nothing, so a death from it reads as an environment
 			//   death; with Gameplay Fixes AZ a blow with no living on its chain stamps its colour
@@ -611,8 +614,9 @@ class walker : public og::sim::SimEntity
 		walker* credit_head();
 		// Gameplay Fixes AZ (#502): the team a blow's kill stamp records (the
 		// team a mode's kill ledger pays): with the setting on the colour this
-		// hitter wears, also when no living is on its chain; classic, the colour
-		// of `credit`, -1 with none. Defined in walker_specials.cpp.
+		// hitter fights for (fights_for_team), also when no living is on its
+		// chain; classic, the colour of `credit`, -1 with none. Defined in
+		// walker_specials.cpp.
 		std::int16_t kill_stamp_team(const walker* credit) const;
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing

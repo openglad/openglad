@@ -5094,7 +5094,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3781,
+    "src/gameplay/walker.cpp", 3773,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -7832,7 +7832,7 @@ inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
 // Spawns prepend, so oblist order is the reverse of this array: the player orc is the
 // head (ACT_CONTROL), then the FAMILY_TOWER generator, then the skeleton. Harness-spawned
 // generators have hitpoints == 0, so trunc(hp/30) == 0 and og.rand0(0 * mult) must answer
-// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2770 `if (n <= 0) {` == master screen.cpp:66). The
+// 0 WITHOUT advancing the stream (src/gameplay/script/bindings_entity.cpp:2769 `if (n <= 0) {` == master screen.cpp:66). The
 // skeleton is iterated second with con == 2, so any spurious draw at the tower shifts its
 // stun roll and every downstream draw for the rest of the run.
 inline constexpr SpawnSpec kFamilySpawns_orc_yell_zero_constitution_scen99[] = {
@@ -11966,10 +11966,10 @@ inline constexpr FactPredicate kFacts_archer_charmed_arrow_in_flight_fixes_scen9
     // rng_drift: the blow is compute_base_damage's roll on the fire arrow's 7, 5.68 + rng(2) against no armour, so the rule allows exactly 6 or 7 hp and the band is those two values; commit 497a97652
 };
 inline constexpr Mutation kMut_archer_charmed_arrow_in_flight_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 835,
+    "src/gameplay/walker_specials.cpp", 860,
     "return this;",
     "return chain_head();",
-    "Friendliness climbs the owner chain again, so the fire arrow in the air follows the charmed archer onto the thief's side and passes him: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6800, 6900) reads 7500."
+    "Friendliness climbs the owner chain again for everything that does not ride a walker, so the fire arrow in the air follows the charmed archer onto the thief's side and passes him: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 6800, 6900) reads 7500."
 };
 
 // --- thief_bomb_charmed_thrower (fix AZ, #502: a blast keeps the colour its bomb was dropped in) ---

@@ -403,8 +403,8 @@ end
 
 -- Owner-chain root of a weapon, when that root is a Living — swat credit
 -- and the goaltend side test read it (§3.5); with the Gameplay Fixes
--- setting on they read the weapon's own colour instead and the root only
--- names the toucher. Bounded walk; owner chains are shallow and acyclic,
+-- setting on they read the colour the weapon fights for instead and the
+-- root only names the toucher. Bounded walk; owner chains are shallow and acyclic,
 -- the bound is a tripwire.
 local function owner_root(w)
   local node = w
@@ -1226,12 +1226,13 @@ local function run_swat(ball)
       if dist_l1(gx, gy, sx, sy) <= T.swat_radius then
         local root = owner_root(swat)
         -- Gameplay Fixes AZ (#502): with the setting on a swat plays for the
-        -- colour the weapon wears (the colour it was made with, whatever
-        -- became of its maker); classic, the colour of the living at the root
-        -- of its owner chain, none without one.
+        -- colour the weapon fights for (the colour it was made with, whatever
+        -- became of its maker; a thing that rides a walker, his colour now);
+        -- classic, the colour of the living at the root of its owner chain,
+        -- none without one.
         local swat_side = -1
         if og.match_setting("gameplay_fixes") ~= 0 then
-          swat_side = swat:team_num()
+          swat_side = swat:fights_for_team()
         elseif root ~= nil then
           swat_side = root:team_num()
         end

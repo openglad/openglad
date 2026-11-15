@@ -466,11 +466,11 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             
             // Let our own team's weapons pass over us
             // rule: A weapon and anything friendly to it (walker::is_friendly: with Gameplay Fixes AZ
-            //   the same colour, and a ring or a returning knife's probe and the walker it rides;
+            //   the same colour, a ring or a returning knife's probe fighting for the walker it rides;
             //   classic, one team at the heads of both owner chains: its thrower, allies, allied
             //   weapons) pass through each other: you never block or are blocked by your own side's
             //   projectiles.
-            // tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
+            // tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
             // tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
             // tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing

@@ -192,7 +192,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 			newob->set_ani_type(1);
 			newob->set_lifetime(200);
 			// Gameplay Fixes AZ (#502): the shield rides the hero, as the
-			// cleric's mace does (KIT_RIDER), so it never turns on him.
+			// cleric's mace does (KIT_RIDER), so it goes with him: it fights
+			// for whatever side he is on now.
 			if (game.world().gameplay_fixes != 0)
 				newob->set_kit_state(static_cast<std::uint8_t>(newob->kit_state() | KIT_RIDER));
 		});

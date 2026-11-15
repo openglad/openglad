@@ -2627,3 +2627,50 @@ TEST_F(ModesOnslaught, a_post_struck_down_by_a_shot_flips_to_the_shots_colour_wi
         }
     }
 }
+
+// Gameplay Fixes AZ (#502): a thing that rides a walker fights for his
+// colour of the moment, so a post it strikes down flips to that colour. A red
+// soldier's magic shield (a mace: red as the cast stamps it, owned by him,
+// marked KIT_RIDER with the setting on as gf.rides marks it) and the soldier
+// charmed green; the shield strikes the red post at 1 hp. On both settings
+// the post flips to green and green is paid the capture: with the setting on
+// the capture reads the colour the shield fights for, classic the colour of
+// the living behind the blow.
+// Breaks: the capture's setting-on `team = striker:fights_for_team()` ->
+// `striker:team_num()` (on: red, the post's own colour: no flip, the floor
+// cancels the blow); alliance_head's rider line `return ridden;` -> `return
+// this;` (on: the shield fights for red and its blow on the red post is
+// refused).
+TEST_F(ModesOnslaught, a_post_struck_down_by_a_rider_flips_to_its_walkers_colour_of_the_moment)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        OnsWorld fx;
+        fx.world().gameplay_fixes = fixes;
+        fx.world().new_specials = 0;
+        walker* soldier = fx.spawn_living(FAMILY_SOLDIER, 0, 400, 400);
+        ASSERT_NE(nullptr, soldier);
+        fx.tick(1);
+        ASSERT_TRUE(fx.ons_active());
+        walker* shield = fx.world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+        ASSERT_NE(nullptr, shield);
+        shield->set_team_num(0);
+        shield->set_owner(soldier);
+        if (fixes != 0)
+            shield->set_kit_state(static_cast<std::uint8_t>(shield->kit_state() | KIT_RIDER));
+        shield->setxy(140, 340);
+        soldier->set_real_team_num(soldier->team_num());
+        soldier->set_team_num(1);
+        soldier->set_charm_left(30);
+        ASSERT_EQ(1, shield->fights_for_team());
+        fx.red_gen_a->stats()->set_hitpoints(1.0f);
+        const std::uint32_t green_before = fx.world().m_score[1];
+        shield->set_damage(5000.0f);
+        shield->attack(fx.red_gen_a);
+        EXPECT_FALSE(fx.red_gen_a->dead()) << "a post never dies";
+        EXPECT_EQ(1, fx.red_gen_a->team_num()) << "flipped to green, the charmed soldier's colour now";
+        EXPECT_EQ(fx.red_gen_a->stats()->max_hitpoints(), fx.red_gen_a->stats()->hitpoints());
+        EXPECT_EQ(green_before + 300u, fx.world().m_score[1]) << "green is paid the capture";
+    }
+}

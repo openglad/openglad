@@ -351,21 +351,25 @@ TEST(SemLibsKnife, a_classic_orphaned_knife_returns_owned_by_itself)
 // re-owns itself on its next act). With the setting on the blade is team 1
 // all three times; classic it stays on team 0, the team it was made with.
 // The charmed leg tells the knife's number from the soldier's number now.
-// Then the flight home (the blade's probe rides the
-// soldier, KIT_RIDER with the setting on): the soldier charmed onto team 0,
-// the blade's next step meets a team-0 walker. With the setting on the probe
-// (team 1, copied from the blade) strikes it, stamped team 1 and credited to
-// the soldier; classic the probe answers for the charmed soldier, team 0, and
-// passes. Then the blade flies into the soldier himself: on both settings the
-// probe passes him (with the setting on by the rider clause, classic by one
-// owner chain) and he catches it (weapons_left + 1).
+// Then the flight home: the blade's probe rides the soldier (KIT_RIDER with
+// the setting on) and goes with him, so it fights for his side of the moment
+// (team 1, copied from the blade, is only the colour it wears). The soldier
+// is charmed onto team 0 (my_team), and the blade's next step meets a team-1
+// walker, his old side: on both settings the probe cuts it, credited to the
+// soldier, stamped team 0, and pays team 0 the cut and its level; a team-0
+// walker there, his side now, is passed. Then the blade flies into the
+// soldier himself: the probe passes him and he catches it (weapons_left + 1).
 // Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
-// (every setting-on leg red); made_by's `from or owner` -> `owner` (the
-// charmed leg red: team 2); the knife's `gf.made_by(blade, self:owner(),
-// self)` -> `blade:set_owner(self:owner())` (every setting-on leg red);
-// rider_pair's gate always `return false` (on: the probe cuts the soldier);
+// (every setting-on colour leg red); made_by's `from or owner` -> `owner`
+// (the charmed leg red: team 2); the knife's `gf.made_by(blade, self:owner(),
+// self)` -> `blade:set_owner(self:owner())` (every setting-on colour leg
+// red); alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the probe keeps team 1: it passes his old side, cuts his new side and
+// him); kill_stamp_team's `fights_for_team()` -> `team_num()` (on: stamped
+// team 1); walker::attack's `playerteam = ... fights_for_team() ...` ->
+// `team_num()` (on: the side is team 1, not the player's: nobody is paid);
 // the probe's `gf.rides(...)` wrapper removed at effect_knife_back.lua (on:
-// the probe cuts the soldier).
+// the probe keeps team 1).
 TEST(SemLibsKnife, a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on)
 {
     og::test::mount_core_pack();
@@ -435,25 +439,36 @@ TEST(SemLibsKnife, a_returning_knife_wears_the_knifes_colour_only_with_the_setti
         soldier->set_real_team_num(soldier->team_num());
         soldier->set_team_num(0);
         soldier->set_charm_left(30);
+        ASSERT_EQ(0, tw.world().my_team);
 
         // The blade 30 px east of the soldier's box; its first step takes it
-        // 4 px west and its probe looks one more step on, where a team-0
-        // walker stands.
+        // 4 px west and its probe looks one more step on, where a team-1
+        // walker, his old side, stands; then a team-0 walker, his side now.
         const int bx = soldier->xpos() + soldier->sizex() + 30;
+        blade->setxy(static_cast<short>(bx), soldier->ypos());
+        walker* green = add_living(tw, FAMILY_SOLDIER, 1, static_cast<short>(bx - 8),
+                                   static_cast<short>(soldier->ypos()));
+        ASSERT_NE(nullptr, green);
+        const float green_hp = green->stats()->hitpoints();
+        const std::uint32_t paid_before = tw.world().m_score[0];
+        blade->act();
+        const float cut = green_hp - green->stats()->hitpoints();
+        EXPECT_GT(cut, 0.0f) << "the probe cuts his old side, his foe now";
+        EXPECT_EQ(0, green->last_attacker_team()) << "stamped with his side now";
+        EXPECT_EQ(soldier->entity_id(), green->last_attacker_id()) << "credited to the soldier";
+        EXPECT_EQ(paid_before + static_cast<std::uint32_t>(cut)
+                      + static_cast<std::uint32_t>(green->stats()->level()),
+                  tw.world().m_score[0])
+            << "his side now is paid the cut";
+        green->setxy(500, 500);
+
         blade->setxy(static_cast<short>(bx), soldier->ypos());
         walker* red = add_living(tw, FAMILY_SOLDIER, 0, static_cast<short>(bx - 8),
                                  static_cast<short>(soldier->ypos()));
         ASSERT_NE(nullptr, red);
         const float red_hp = red->stats()->hitpoints();
         blade->act();
-        const bool fixed = fixes != 0;
-        if (fixed) {
-            EXPECT_LT(red->stats()->hitpoints(), red_hp) << "the probe cuts a foe of its colour";
-            EXPECT_EQ(1, red->last_attacker_team()) << "stamped with the blade's colour";
-            EXPECT_EQ(soldier->entity_id(), red->last_attacker_id()) << "credited to the soldier";
-        } else {
-            EXPECT_FLOAT_EQ(red_hp, red->stats()->hitpoints()) << "the charmed soldier's friend";
-        }
+        EXPECT_FLOAT_EQ(red_hp, red->stats()->hitpoints()) << "his side now is passed";
 
         red->setxy(500, 500);
         const float soldier_hp = soldier->stats()->hitpoints();

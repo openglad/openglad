@@ -69,7 +69,7 @@ end
 -- fire, is a melee attacker and burns double (hit_response cannot do this:
 -- it never fires for a player-driven victim).
 local function burn_contacts(marker, owner, t)
-  local foes = foes_touching(owner, 4, marker)
+  local foes = foes_touching(owner, 4)
   local striker = owner:last_attacker_id()
   -- rule: IMMOLATE burns every living foe on the elemental's floor touching its box grown by 4 px
   --   for immolate_contact + level each tick; the foe that last struck it burns double.
@@ -137,10 +137,11 @@ end
 
 -- A burning footprint at the owner's feet (bottom centre of its box), unless
 -- one still burns there: a standing elemental keeps one ember under it
--- instead of piling them up. With the setting on the ember takes the colour of
--- the fire that drops it (IMMOLATE's marker), so an elemental charmed while it
--- burns keeps laying embers of the side it lit them for (Gameplay Fixes AZ).
-local function drop_ember(owner, t, marker)
+-- instead of piling them up. The ember wears the elemental's colour at the
+-- drop; with Gameplay Fixes AZ it fights for that colour from then on, and as
+-- IMMOLATE's fire goes with its elemental, an ember dropped while he is
+-- charmed wears the charmer's colour.
+local function drop_ember(owner, t)
   -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks,
   --   but never a second one on a spot where one of its own still burns.
   -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
@@ -157,7 +158,6 @@ local function drop_ember(owner, t, marker)
   if ember then
     ember:set_owner(owner)
     ember.team = owner.team
-    gf.take_team(ember, marker)  -- with the setting on an ember wears IMMOLATE's colour, not the elemental's now (Gameplay Fixes AZ)
     ember:set_floor(owner:floor())
     ember.lifetime = t.ember_ticks
     ember.damage = t.ember_damage + og.div(owner.level, 2)
@@ -204,7 +204,7 @@ local function immolation_act(marker)
   marker:center_on(owner)
   burn_contacts(marker, owner, t)
   if og.mod(marker:lifetime(), t.ember_step) == 0 then
-    drop_ember(owner, t, marker)
+    drop_ember(owner, t)
   end
 end
 

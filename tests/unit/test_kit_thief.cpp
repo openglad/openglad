@@ -322,10 +322,10 @@ TEST(KitThief, mine_detonates_under_a_foe_not_an_ally)
 // Breaks: take_team's `made.team = from.team` -> `made.team = made.team`
 // (the setting-on stamp and halving legs red); made_by's `from or owner` ->
 // `owner` (the charmed leg red: team 2); the blast's `gf.made_by(blast,
-// self:owner(), self)` -> `blast:set_owner(self:owner())` (likewise); the
-// rider clause widened to every owned thing, `(kit_state() & KIT_RIDER) != 0
-// &&` dropped from both arms of rider_pair (the trip leg on red: the mine
-// spares its thief).
+// self:owner(), self)` -> `blast:set_owner(self:owner())` (likewise); a
+// rider's head widened to every owned thing, `(kit_state() & KIT_RIDER) != 0
+// &&` dropped from alliance_head's rider test (the trip leg on red: the mine
+// goes with its thief and spares him).
 TEST(KitThief, a_mines_blast_wears_the_mines_colour_only_with_the_setting_on)
 {
     og::test::mount_core_pack();

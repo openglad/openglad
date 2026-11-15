@@ -986,7 +986,7 @@ TEST(MassCoverage, screen_find_foe_weapons_in_range_keeps_hostile_weapons_in_ran
 // decides: the team-1 projectile of the team-2 orc's relay is the foe. With
 // the setting on (fix AZ) every weapon fights for the colour it wears, so the
 // team-2 projectile of the searcher's own team-1 ally is the foe. Neither is
-// marked KIT_RIDER, so the rider clause plays no part.
+// marked KIT_RIDER, so neither goes with its owner.
 // Break: alliance_head's `return this;` -> `return chain_head();` (on: the
 // owner chain decides again).
 TEST(MassCoverage, screen_foe_weapon_finder_reads_each_weapons_colour_with_the_setting_on_and_its_owner_chain_off) {

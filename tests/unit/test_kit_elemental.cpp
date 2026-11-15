@@ -576,30 +576,28 @@ TEST(KitElemental, standing_burner_keeps_one_ember_underfoot)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502): an ember takes the colour of the fire that drops
-// it, IMMOLATE's marker, which wears the elemental's colour from the cast
-// (og.summon). A team-1 elemental lights IMMOLATE and is then charmed by hand
-// onto team 2 (the charm's own writes); the fire burns on and drops its first
-// ember on the fourth tick. With the setting on that ember wears the fire's
-// colour, team 1; classic it wears the elemental's colour now, team 2.
-// Then the burn (only a thing that rides its owner is spared him, and an
-// ember does not ride its elemental; IMMOLATE's fire, which does, is the
-// next test): the same staging charmed
-// onto team 0, the ember's first pulse with the elemental, a team-0 and a
-// team-1 soldier standing on it. With the setting on the ember (team 1)
-// burns the team-0 soldier and the elemental (6, its 4 + level / 2) and
-// spares the team-1 soldier; classic the ember answers for the elemental,
-// team 0 now: it burns the team-1 soldier and spares the other two.
-// Breaks: the `gf.take_team(ember, marker)` line removed (setting-on legs
-// red: team 2, and the ember of team 0 burns the team-1 soldier and spares
-// the elemental); take_team's `made.team = from.team` -> `made.team =
-// made.team` (likewise); the rider clause widened to every owned thing,
-// `(kit_state() & KIT_RIDER) != 0 &&` dropped from both arms of rider_pair
-// (on: the ember spares its elemental).
-TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire)
+// Gameplay Fixes AZ (#502): an ember wears the colour of the elemental that
+// drops it at the drop and, with the setting on, keeps it (an ember does not
+// ride; IMMOLATE's fire, which does, is the next test, and goes with its
+// elemental). A team-1 elemental lights IMMOLATE.
+// - It is charmed by hand onto team 2 (the charm's own writes) and the fire
+//   burns on and drops its first ember on the fourth tick: the ember wears
+//   team 2, the charmed elemental's colour at the drop, on both settings.
+// - The burn of an ember dropped before the charm: the fire's fourth tick
+//   drops it (team 1), then the elemental is charmed onto team 0; the ember's
+//   first pulse with the elemental, a team-0 and a team-1 soldier standing on
+//   it. With the setting on the ember keeps team 1: it burns the team-0
+//   soldier and the charmed elemental (6, its 4 + level / 2) and spares the
+//   team-1 soldier. Classic the ember answers for the elemental, team 0 now:
+//   it burns the team-1 soldier and spares the other two.
+// Breaks: drop_ember's ember made with `gf.rides(og.add_ob("fx", FX_EMBER))`
+// (on: the ember goes with the elemental, spares him and burns the team-1
+// soldier); `gf.take_team(ember, marker)` put back after `ember.team =
+// owner.team` (on: the ember dropped after the charm wears team 1).
+TEST(KitElemental, a_charmed_elementals_embers_keep_the_colour_they_were_dropped_with)
 {
     for (const short fixes : {short{0}, short{1}}) {
-        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        SCOPED_TRACE(testing::Message() << "an ember dropped after the charm, setting " << fixes);
         og::test::ScopedHookFailureGuard guard;
         ElementalWorld w(1);
         w.world().gameplay_fixes = fixes;
@@ -617,17 +615,17 @@ TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_it
         e->set_real_team_num(e->team_num());
         e->set_team_num(2);
         e->set_charm_left(30);
+        EXPECT_EQ(2, marker->fights_for_team()) << "the fire fights for the charmed elemental's side";
         for (int tick = 1; tick <= 4; ++tick)
             ASSERT_TRUE(marker->act());
         const auto es = embers(w);
         ASSERT_EQ(1u, es.size()) << "an ember on the fourth tick";
         EXPECT_EQ(e, es[0]->owner());
-        EXPECT_EQ(fixes != 0 ? 1 : 2, es[0]->team_num())
-            << "the ember: the fire's team with the setting on, the elemental's now classic";
+        EXPECT_EQ(2, es[0]->team_num()) << "the ember: the elemental's colour at the drop";
         EXPECT_EQ(0u, guard.count()) << guard.message();
     }
     for (const short fixes : {short{0}, short{1}}) {
-        SCOPED_TRACE(testing::Message() << "the burn, setting " << fixes);
+        SCOPED_TRACE(testing::Message() << "the burn of an ember dropped before the charm, setting " << fixes);
         og::test::ScopedHookFailureGuard guard;
         ElementalWorld w(1);
         w.world().gameplay_fixes = fixes;
@@ -636,14 +634,14 @@ TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_it
         e->set_team_num(1);
         ASSERT_TRUE(cast(e).ok);
         walker* marker = markers(w).at(0);
-        e->set_real_team_num(e->team_num());
-        e->set_team_num(0);
-        e->set_charm_left(30);
         for (int tick = 1; tick <= 4; ++tick)
             ASSERT_TRUE(marker->act());
         ASSERT_EQ(1u, embers(w).size());
         walker* ember = embers(w)[0];
-        ASSERT_EQ(fixes != 0 ? 1 : 0, ember->team_num());
+        ASSERT_EQ(1, ember->team_num()) << "dropped before the charm";
+        e->set_real_team_num(e->team_num());
+        e->set_team_num(0);
+        e->set_charm_left(30);
         e->stats()->set_magicpoints(0.0f);  // struck dry: casts nothing of its own
         e->stats()->set_hitpoints(100.0f);
         living* red = add_living(w, FAMILY_SOLDIER, 0, 0, 0);
@@ -668,17 +666,17 @@ TEST(KitElemental, a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_it
 }
 
 // Gameplay Fixes AZ (#502): IMMOLATE's fire rides the elemental (KIT_RIDER,
-// with the setting on), so it never burns him, and searches round him for the
-// foes of its own side. A team-1 elemental lights IMMOLATE and is charmed by
-// hand onto team 0; a team-0 and a team-1 soldier touch it; the fire's first
-// tick drops no ember. With the setting on the fire (team 1) burns the team-0
-// soldier (6 + level), spares the team-1 one and never burns its elemental;
-// classic it burns the elemental's foes, the team-1 soldier.
-// Breaks: gf.foes_round's setting-on call made the classic one (on: the
-// team-1 soldier is found and the fire's blow on it is refused, the team-0
-// soldier is not found); the IMMOLATE `gf.rides(...)` wrapper removed at
-// kit_elemental.lua (on: the elemental burns in its own fire).
-TEST(KitElemental, a_charmed_elementals_fire_burns_the_foes_of_its_own_colour)
+// with the setting on) and goes with him (the maintainer: "obviously they
+// should go with the walker"): it burns his foes of the moment and never him.
+// A team-1 elemental lights IMMOLATE and is charmed by hand onto team 0; a
+// team-0 and a team-1 soldier touch it; the fire's first tick drops no ember.
+// On both settings the fire burns the team-1 soldier, his old side (6 +
+// level), and spares the team-0 one, his side now, and the elemental.
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the fire keeps team 1, and its blow on the team-1 soldier the burn search
+// found is refused); the IMMOLATE `gf.rides(...)` wrapper removed at
+// kit_elemental.lua (the same, and the mark is 0).
+TEST(KitElemental, a_charmed_elementals_fire_burns_his_foes_of_the_moment)
 {
     for (const short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(testing::Message() << "setting " << fixes);
@@ -695,6 +693,7 @@ TEST(KitElemental, a_charmed_elementals_fire_burns_the_foes_of_its_own_colour)
         e->set_real_team_num(e->team_num());
         e->set_team_num(0);
         e->set_charm_left(30);
+        EXPECT_EQ(0, marker->fights_for_team()) << "the fire fights for his side now";
         const int ex = e->xpos();
         const int ey = e->ypos();
         living* red = add_living(w, FAMILY_SOLDIER, 0, ex + e->sizex(), ey);
@@ -702,14 +701,8 @@ TEST(KitElemental, a_charmed_elementals_fire_burns_the_foes_of_its_own_colour)
         ASSERT_TRUE(red && green);
         ASSERT_TRUE(marker->act());
         EXPECT_TRUE(embers(w).empty()) << "no ember on the first tick";
-        const bool fixed = fixes != 0;
-        if (fixed) {
-            EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(red))) << "a foe of the fire's colour";
-            EXPECT_FLOAT_EQ(100.0f, hp(green)) << "the fire's own colour";
-        } else {
-            EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(green))) << "the elemental's foe";
-            EXPECT_FLOAT_EQ(100.0f, hp(red)) << "the elemental's friend";
-        }
+        EXPECT_TRUE(lost_one_hit_of(10.0f, 100.0f, hp(green))) << "his old side, his foe now";
+        EXPECT_FLOAT_EQ(100.0f, hp(red)) << "his side now";
         EXPECT_FLOAT_EQ(100.0f, hp(e)) << "never its own elemental";
         EXPECT_EQ(0u, guard.count()) << guard.message();
     }

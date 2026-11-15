@@ -781,7 +781,7 @@ bool walker::charmed_head() const
 // and its shots (the tick's end drops every link to the dead). chain_head is the
 // top of the climb, the person behind a blow (the score gate's hero, experience, credit);
 // alliance_head is the head friendliness reads with the setting off (with it
-// on every walker is its own, fix AZ); credit_head (walker.cpp) is the topmost
+// on every walker is its own and a rider its walker's, fix AZ); credit_head (walker.cpp) is the topmost
 // living on the climb. Appended at the end of the file so the parity canary
 // pins above stay where they are.
 walker* walker::chain_next() const
@@ -819,11 +819,11 @@ const walker* walker::alliance_head() const
 	// rule: Gameplay Fixes AZ (#502): with the setting on every walker fights for the colour it
 	//   wears, so friendliness and alliance (walker::sides_friendly, is_friendly_to_team) read the
 	//   walker itself: a shot, a blast, a spell effect, a summon and a troop keep the colour they
-	//   were made with, whatever their maker wears now or whether it lives. The one climb,
-	//   chain_head, still names the person behind a blow (the score gate's hero, experience,
-	//   credit). Classic: the friendliness climb stops at a dead owner (the walker then stands for
-	//   itself), at a self-loop and at a possessed body (#430: charmed_head names one on both
-	//   values), and passes through a charm.
+	//   were made with, whatever their maker wears now or whether it lives; only a thing that
+	//   rides a walker answers for him (below). The one climb, chain_head, still names the person
+	//   behind a blow (the score gate's hero, experience, credit). Classic: the friendliness climb
+	//   stops at a dead owner (the walker then stands for itself), at a self-loop and at a
+	//   possessed body (#430: charmed_head names one on both values), and passes through a charm.
 	// tests: GameplayFixesChain.a_dead_charmed_casters_summon_and_knife_fight_for_the_colour_they_wear_with_the_setting_on
 	// tests: GameplayFixesChain.a_live_charmed_casters_summon_fights_for_its_own_colour_with_the_setting_on
 	// tests: GameplayFixesChain.a_summon_of_a_caster_that_died_charmed_fights_for_its_own_colour
@@ -832,8 +832,41 @@ const walker* walker::alliance_head() const
 	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	// tests: parity:archer_charmed_arrow_in_flight_fixes_scen99
 	if (og::sim::session_gameplay_fixes() != 0)
+	{
+		const walker* const ridden = owner();
+		// rule: Gameplay Fixes AZ (#502): with the setting on a weapon or effect marked KIT_RIDER
+		//   (a ring of protection, a mace, a boomerang, a hook blade, a ghost's scare, IMMOLATE's
+		//   fire, a returning knife's probe, the F2 cheat's shield) is part of the walker it rides,
+		//   its owner, and answers for him while he lives: one hop, no further (a ring on a summon
+		//   goes with the summon, not its caster), so it fights for whatever side he is on now and
+		//   turns back with him when a charm ends. A rider whose walker is gone or dead, or that
+		//   owns itself, answers for itself, the colour it was made with. Classic: one owner chain
+		//   gives the rider its walker's head anyway.
+		// tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
+		// tests: GameplayFixesChain.a_ring_on_a_summon_goes_with_the_summon_not_its_charmed_caster
+		// tests: GameplayFixesChain.a_ring_whose_walker_died_answers_for_the_colour_it_was_made_with
+		// tests: SemShield.a_boomerang_goes_with_its_charmed_soldier_and_spares_his_new_knives
+		// tests: SemShield.a_mace_goes_with_its_charmed_cleric
+		// tests: KitCaptain.a_hook_blade_goes_with_its_charmed_captain
+		// tests: KitElemental.a_charmed_elementals_fire_burns_his_foes_of_the_moment
+		// tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
+		// tests: SemLibsGhostScare.a_scare_frightens_its_ghosts_foes_of_the_moment
+		// tests: GameLoop.the_magic_shield_cheat_guards_the_hero
+		// tests: ScriptBindingPropsTest.fights_for_team_is_the_colour_a_walker_fights_for
+		// tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
+		// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
+		if ((kit_state() & KIT_RIDER) != 0 && ridden != nullptr && ridden != this && ridden->dead() == 0)
+			return ridden;
 		return this;
+	}
 	return climb(&walker::alliance_next_classic);
+}
+
+// Gameplay Fixes AZ (#502): the colour this walker fights for, the one its
+// alliance head wears (walker.h says who reads it).
+unsigned char walker::fights_for_team() const
+{
+	return alliance_head()->team_num();
 }
 
 // The classic friendliness step (Gameplay Fixes off): chain_next, stopping
@@ -933,39 +966,16 @@ bool walker::cut_owner_loop() const
 std::int16_t walker::kill_stamp_team(const walker* credit) const
 {
 	// rule: Gameplay Fixes AZ (#502): with the setting on a blow's kill stamp records the colour
-	//   the hitter wears (a shot's, a blast's, a summon's own), whoever is credited, and a blow with
-	//   no living on its chain (a dead archer's arrow, a blast whose thrower is gone) still records
-	//   it, with no walker; classic, the credited walker's colour, and nothing without one.
+	//   the hitter fights for (walker::fights_for_team: a shot's, a blast's, a summon's own; a
+	//   rider's, its walker's now), whoever is credited, and a blow with no living on its chain (a
+	//   dead archer's arrow, a blast whose thrower is gone) still records it, with no walker;
+	//   classic, the credited walker's colour, and nothing without one.
 	// tests: SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
 	// tests: GameplayFixesChain.a_shot_thrown_before_its_caster_was_charmed_hits_and_pays_its_own_colour
 	// tests: ModesTdm.a_frag_counts_for_the_colour_of_the_arrow_with_the_setting_on
+	// tests: GameplayFixesChain.a_riders_blow_after_the_charm_pays_and_kills_for_the_charmers_team
+	// tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
 	if (og::sim::session_gameplay_fixes() != 0)
-		return static_cast<std::int16_t>(team_num());
+		return static_cast<std::int16_t>(fights_for_team());
 	return credit != nullptr ? static_cast<std::int16_t>(credit->team_num()) : std::int16_t{-1};
-}
-
-// Gameplay Fixes AZ (#502): the rider clause, kept in this one function so
-// that every side question (walker::sides_friendly, and through it is_friendly,
-// the obmap pass rule, the foe searches, the Lua walker:sides_friendly) reads
-// it the same way. A thing that rides the walker who owns it is marked
-// KIT_RIDER where it is made (the core pack's gf.rides; the F2 cheat's shield);
-// it and that walker are never foes, by identity, the way a blast knows its own
-// thrower. Appended at the end of the file so the parity canary pins above stay
-// where they are.
-bool walker::rider_pair(const walker* other) const
-{
-	// rule: Gameplay Fixes AZ (#502): with the setting on a weapon or effect marked KIT_RIDER and
-	//   the walker who owns it (it rides him) are never foes; nothing else is joined by it: a shot,
-	//   a mine, a cloud, an ember, a banner, a tree or a wall meets its own maker by colour, and two
-	//   things of one owner meet each other by colour. Classic: no mark, the owner chain decides.
-	// tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
-	// tests: SemShield.a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives
-	// tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
-	// tests: KitElemental.a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire
-	// tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
-	if (og::sim::session_gameplay_fixes() == 0)
-		return false;
-	const bool this_rides_other = (kit_state() & KIT_RIDER) != 0 && owner() == other;
-	const bool other_rides_this = (other->kit_state() & KIT_RIDER) != 0 && other->owner() == this;
-	return this_rides_other || other_rides_this;
 }

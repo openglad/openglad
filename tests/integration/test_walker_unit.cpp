@@ -572,8 +572,8 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     // walker we own is friendly to us even though its own team colour
     // differs, and stops being so the moment the chain is cut. With the
     // setting on (fix AZ) each walker fights for the colour it wears (a
-    // hand-made walker carries no KIT_RIDER, so the rider clause plays no
-    // part).
+    // hand-made walker carries no KIT_RIDER, so it does not go with its
+    // owner).
     GameWorld* const session_world = current_game != nullptr ? current_game->world : nullptr;
     ASSERT_NE(nullptr, session_world) << "the world the setting is read from";
     const short fixes_before = session_world->gameplay_fixes;

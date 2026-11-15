@@ -30,9 +30,10 @@
 //   KIT_RIDER    Gameplay Fixes AZ: this weapon or effect rides the walker
 //                who owns it (a circle of protection, a mace, a boomerang, a
 //                hook blade, a scare, IMMOLATE's fire, a returning knife's
-//                probe, the cheat's magic shield): whatever colours the
-//                two wear, they are never foes (walker::rider_pair). Set
-//                where the thing is made, with the setting on only.
+//                probe, the cheat's magic shield) and goes with him: while
+//                he lives it fights for whatever side he is on now
+//                (walker::alliance_head answers him for it). Set where the
+//                thing is made, with the setting on only.
 inline constexpr std::uint8_t KIT_HIDDEN = 1;
 inline constexpr std::uint8_t KIT_FEARLESS = 2;
 inline constexpr std::uint8_t KIT_WARD = 4;

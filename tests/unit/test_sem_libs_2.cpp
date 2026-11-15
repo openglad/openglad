@@ -752,21 +752,20 @@ void charm_by_hand(walker* w, unsigned char onto)
 
 }  // namespace
 
-// Gameplay Fixes AZ (#502): a boomerang rides the
-// soldier who threw it (KIT_RIDER, with the setting on) and never turns on
-// him; it fights everyone else for the colour it was thrown in. A team-1
-// level-4 soldier throws BOOMERANG (its first act holds it 2 px off his
-// centre: drawcycle 0) and is charmed onto team 0 by hand; he throws a knife
-// for his new side (team 0); a team-0 and a team-1 soldier stand on him; one
-// act of the boomerang. On both settings he is not struck. With the setting on
-// the boomerang (team 1) strikes the team-0 soldier, spares the team-1 one and
-// destroys the knife (a foe's weapon to it: two things of one owner are not
-// joined); classic it answers for its charmed thrower: it strikes the team-1
-// soldier, spares the team-0 one and keeps the knife.
-// Breaks: rider_pair's gate always `return false` (on: the soldier is
-// struck); the soldier's `gf.rides(...)` wrapper removed at
-// living-00-soldier.lua (on: the soldier is struck, the mark is 0).
-TEST(SemShield, a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives)
+// Gameplay Fixes AZ (#502): a boomerang rides the soldier who threw it
+// (KIT_RIDER, with the setting on) and goes with him (the maintainer:
+// "obviously they should go with the walker"). A team-1 level-4 soldier
+// throws BOOMERANG (its first act holds it 2 px off his centre: drawcycle 0)
+// and is charmed onto team 0 by hand; he throws a knife for his new side
+// (team 0); a team-0 and a team-1 soldier stand on him; one act of the
+// boomerang. On both settings it strikes the team-1 soldier, his old side,
+// spares the team-0 one, his side now, keeps his new knife (a friend's
+// weapon) and never strikes him (classic one owner chain gives the same).
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the boomerang keeps team 1: it strikes the team-0 soldier and him and cuts
+// his knife); the soldier's `gf.rides(...)` wrapper removed at
+// living-00-soldier.lua (the same, and the mark is 0).
+TEST(SemShield, a_boomerang_goes_with_its_charmed_soldier_and_spares_his_new_knives)
 {
     og::test::ScopedHookFailureGuard guard;
     og::test::mount_core_pack();
@@ -804,29 +803,26 @@ TEST(SemShield, a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_
         ASSERT_EQ(0, boomerang->drawcycle());
         ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(boomerang)));
         EXPECT_FLOAT_EQ(soldier_hp, soldier->stats()->hitpoints()) << "never its thrower";
-        if (fixed) {
-            EXPECT_LT(red->stats()->hitpoints(), 200.0f) << "a foe of its colour";
-            EXPECT_FLOAT_EQ(200.0f, green->stats()->hitpoints()) << "its own colour";
-            EXPECT_EQ(1, knife->dead()) << "his new knife is a foe's weapon to it";
-        } else {
-            EXPECT_LT(green->stats()->hitpoints(), 200.0f) << "its thrower's foe";
-            EXPECT_FLOAT_EQ(200.0f, red->stats()->hitpoints()) << "its thrower's friend";
-            EXPECT_EQ(0, knife->dead()) << "its thrower's own knife";
-        }
+        EXPECT_LT(green->stats()->hitpoints(), 200.0f) << "his old side, his foe now";
+        EXPECT_FLOAT_EQ(200.0f, red->stats()->hitpoints()) << "his side now";
+        EXPECT_EQ(0, knife->dead()) << "his new knife is a friend's weapon";
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// Gameplay Fixes AZ (#502): the cleric's MYSTIC MACE
-// rides him (KIT_RIDER, with the setting on). A team-1 cleric casts it (slot
-// 1 with Shift) and is charmed onto team 0 by hand; on both settings the mace
-// and he are friends. A team-0 soldier stands on the mace's orbit spot (drawcycle
-// 0: 24 px above the cleric, where its first act put it): with the setting on
-// the mace (team 1) strikes him on its next act; classic it answers for the
-// charmed cleric, team 0 now, and spares him.
-// Break: the cleric's `gf.rides(...)` wrapper removed at living-05-cleric.lua
-// (on: the mace and the charmed cleric are foes, the mark is 0).
-TEST(SemShield, a_mace_never_turns_on_its_charmed_cleric)
+// Gameplay Fixes AZ (#502): the cleric's MYSTIC MACE rides him (KIT_RIDER,
+// with the setting on) and goes with him. A team-1 cleric casts it (slot 1
+// with Shift) and is charmed onto team 0 by hand; the mace and he are friends,
+// and it fights for team 0. A team-1 and a team-0 soldier stand on the mace's
+// orbit spot (drawcycle 0: 24 px above the cleric, where its first act put
+// it), with a glow the cleric fired for his new side: on its next act the
+// mace strikes the team-1 soldier, his old side, spares the team-0 one, keeps
+// the glow and never strikes him, on both settings (classic one owner chain).
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the mace keeps team 1: it strikes the team-0 soldier and cuts the glow);
+// the cleric's `gf.rides(...)` wrapper removed at living-05-cleric.lua (the
+// same, and the mark is 0).
+TEST(SemShield, a_mace_goes_with_its_charmed_cleric)
 {
     og::test::ScopedHookFailureGuard guard;
     og::test::mount_core_pack();
@@ -851,6 +847,7 @@ TEST(SemShield, a_mace_never_turns_on_its_charmed_cleric)
         charm_by_hand(cleric, 0);
         EXPECT_EQ(1, mace->is_friendly(cleric)) << "the mace rides him";
         EXPECT_EQ(1, cleric->is_friendly(mace));
+        EXPECT_EQ(0, mace->fights_for_team()) << "it fights for his side now";
         // The orbit step is the drawcycle's (effect::act advances it each
         // tick); the Lua act is driven at drawcycle 0 both times, so the mace
         // stands on the same spot.
@@ -859,11 +856,19 @@ TEST(SemShield, a_mace_never_turns_on_its_charmed_cleric)
         ASSERT_EQ(0, mace->drawcycle());
         ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(mace)));  // onto its orbit spot, nobody near
         walker* red = add_living(tw, FAMILY_SOLDIER, 0, mace->xpos(), mace->ypos());
-        ASSERT_NE(nullptr, red);
+        walker* green = add_living(tw, FAMILY_SOLDIER, 1, mace->xpos(), mace->ypos());
+        ASSERT_TRUE(red && green);
+        cleric->set_lastx(1.0f);
+        cleric->set_lasty(0.0f);
+        walker* glow = cleric->fire();
+        ASSERT_NE(nullptr, glow);
+        ASSERT_EQ(0, glow->team_num()) << "fired after the charm";
+        glow->setxy(mace->xpos(), mace->ypos());
         const float cleric_hp = cleric->stats()->hitpoints();
         ASSERT_TRUE(og::test::on_act(*efd, static_cast<effect*>(mace)));
-        EXPECT_EQ(fixed, red->stats()->hitpoints() < 200.0f)
-            << (fixed ? "setting on: a foe of the mace's colour" : "setting off: the cleric's friend");
+        EXPECT_LT(green->stats()->hitpoints(), 200.0f) << "his old side, his foe now";
+        EXPECT_FLOAT_EQ(200.0f, red->stats()->hitpoints()) << "his side now";
+        EXPECT_EQ(0, glow->dead()) << "his new glow is a friend's weapon";
         EXPECT_FLOAT_EQ(cleric_hp, cleric->stats()->hitpoints()) << "never its cleric";
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();

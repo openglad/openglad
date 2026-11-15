@@ -1288,16 +1288,15 @@ int og_find_nearest_blood(lua_State* L)
     return 1;
 }
 
-// og.find_foes_in_range(list_sel, range, self [, side]) → array, count; with side, the foes of side's side (walker:sides_friendly).
+// og.find_foes_in_range(list_sel, range, self) → array, count
 int og_find_foes_in_range(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const auto& list = list_from_selector(L, 1);
     const auto range = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    const walker* side = resolve_walker_or_nil(L, 4);
     std::int32_t howmany = 0;
-    push_walker_list(L, world->find_foes_in_range(list, range, &howmany, w, side));
+    push_walker_list(L, world->find_foes_in_range(list, range, &howmany, w));
     lua_pushinteger(L, howmany);
     return 2;
 }
@@ -4009,14 +4008,24 @@ W_GET_REF(chain_head)
 
 // walker:sides_friendly(w) is walker:is_friendly(w) without its dead test.
 // (Gameplay Fixes AZ, #502: a thing that acts from its own death, a blast's
-// half tier, asks it; with the setting on a thing marked KIT_RIDER and the
-// walker who owns it always answer true.)
+// half tier, asks it; with the setting on a thing marked KIT_RIDER answers
+// for the live walker it rides, so the two always answer true.)
 int m_sides_friendly(lua_State* L)
 {
     walker* w = self_arg(L);
     walker* other = resolve_walker(L, 2, /*required=*/true);
     // plumbing: bool -> Lua boolean conversion of the C++ answer, as is_friendly's.
     lua_pushboolean(L, w->sides_friendly(other) ? 1 : 0);
+    return 1;
+}
+
+// walker:fights_for_team() → the colour this walker fights for (walker::fights_for_team).
+// (Gameplay Fixes AZ, #502: with the setting on a thing's own colour, a thing
+// marked KIT_RIDER its live walker's; a mode that asks whose blow it was by
+// colour reads it.)
+int m_fights_for_team(lua_State* L)
+{
+    lua_pushinteger(L, self_arg(L)->fights_for_team());
     return 1;
 }
 
@@ -4140,6 +4149,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"spaces_clear", m_spaces_clear},
     {"is_friendly", m_is_friendly},
     {"sides_friendly", m_sides_friendly},
+    {"fights_for_team", m_fights_for_team},
     {"set_frame", m_set_frame},
     {"animate", m_animate},
     {"collide", m_collide_check},

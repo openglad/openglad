@@ -497,7 +497,7 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
 
     // With the setting on (fix AZ) each walker fights for the colour it
     // wears: the owners decide nothing (neither walker is a KIT_RIDER thing,
-    // so the rider clause plays no part).
+    // so neither goes with its owner).
     // Break: alliance_head's `return this;` -> `return chain_head();`.
     world.gameplay_fixes = 1;
     ASSERT_EQ(owner_a->team_num(), owner_b->team_num()) << "one colour at both heads";

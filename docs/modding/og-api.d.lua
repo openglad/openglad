@@ -99,6 +99,7 @@
 ---@field drawcycle fun(self: og.Walker): integer
 ---@field facing fun(self: og.Walker, x: integer, y: integer): integer
 ---@field family fun(self: og.Walker): integer
+---@field fights_for_team fun(self: og.Walker): integer # walker:fights_for_team() → the colour this walker fights for (walker::fights_for_team).
 ---@field find_teleport_target fun(self: og.Walker): og.Walker?
 ---@field fire fun(self: og.Walker): og.Walker?
 ---@field fire_frequency fun(self: og.Walker): number
@@ -750,7 +751,7 @@
 ---@field fearless fun(entity: og.Walker): boolean # og.fearless(ent) -> boolean (og::sim::fearless: the kit mark, or a friendly banner's rally aura with the setting on)
 ---@field find_by_id fun(id: integer): og.Walker? # og.find_by_id(id) — entity id -> handle; nil for 0, absent, or dead-and-swept ids.
 ---@field find_foe_weapons_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foe_weapons_in_range(list, range, self) returns live hostile weapons; normal projectiles use list "weap"; allegiance is walker:is_friendly's.
----@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker, side: og.Walker?): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self [, side]) → array, count; with side, the foes of side's side (walker:sides_friendly).
+---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
 ---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 ---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
 ---@field find_near_foe fun(entity: og.Walker): og.Walker? # og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.

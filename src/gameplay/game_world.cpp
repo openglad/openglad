@@ -2202,7 +2202,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
 
 std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany,
-                                                 walker* ob, const walker* side)
+                                                 walker* ob)
 {
     std::list<walker*> result;
     // plumbing: range finders: zero the count, null searcher or null count pointer -> empty result
@@ -2217,15 +2217,15 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        // rule: find_foes_in_range returns the live, awake, visible Livings and Generators within range (inclusive)
-        //   not friendly to the searcher, or, with `side` given, not on that walker's side (sides_friendly: Gameplay Fixes AZ, an effect asks for its own side, also from its own death); no cloak roll.
-        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches, SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
-        // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder, SemLibsGhostScare.an_uncharmed_ghosts_scare_finds_its_foes_in_the_same_order_on_both_settings
+        // rule: find_foes_in_range returns the live, awake, visible, non-friendly Livings and
+        //   Generators within range (inclusive); no cloak roll, so an invisible foe IS found here.
+        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
+        // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
         // tests: SemWorld.find_foes_in_range_keeps_hostile_livings_and_generators_only
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
-            ((side ? side->sides_friendly(w) : ob->is_friendly(w)) == 0) &&
+            (ob->is_friendly(w) == 0) &&
             ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);

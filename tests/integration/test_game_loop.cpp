@@ -1629,10 +1629,13 @@ TEST(GameLoop, the_shape_change_cheat_turns_the_hero_into_the_next_family)
 
 // Cheat+F2: one magic shield in the game, the hero's, on its team, for 200
 // ticks. With the Gameplay Fixes setting on (the integration game's) it rides
-// the hero (KIT_RIDER, fix AZ), as the cleric's mace does, so it never turns
-// on him, and the mark reaches the display with the snapshot.
-// Break: the cheat's `set_kit_state(... | KIT_RIDER)` line removed (both mark
-// checks fail).
+// the hero (KIT_RIDER, fix AZ), as the cleric's mace does, and the mark
+// reaches the display with the snapshot. It goes with him: charmed by hand
+// onto another team, the hero and his shield are friends and the shield
+// fights for his new colour.
+// Breaks: the cheat's `set_kit_state(... | KIT_RIDER)` line removed (both mark
+// checks and the charm leg fail); alliance_head's rider line `return ridden;`
+// -> `return this;` (the charm leg fails: the shield keeps his old colour).
 TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
 {
     CheatGame game;
@@ -1674,6 +1677,20 @@ TEST(GameLoop, the_magic_shield_cheat_guards_the_hero)
     EXPECT_NE(0, shown->kit_state() & KIT_RIDER) << "the mark reaches the display with the snapshot";
     ASSERT_EQ(hero, game.hero());
     EXPECT_EQ(game.shown(hero), shown->owner());
+
+    walker* const shield_now = world.find_by_id(shield_id);
+    ASSERT_NE(nullptr, shield_now);
+    const unsigned char colour = hero->team_num();
+    const unsigned char charmer = static_cast<unsigned char>(colour == 1 ? 2 : 1);
+    hero->set_real_team_num(colour);
+    hero->set_team_num(charmer);
+    hero->set_charm_left(30);
+    EXPECT_EQ(charmer, shield_now->fights_for_team()) << "the shield goes with its charmed hero";
+    EXPECT_EQ(1, shield_now->is_friendly(hero));
+    EXPECT_EQ(1, hero->is_friendly(shield_now));
+    hero->set_charm_left(0);
+    hero->set_team_num(colour);
+    hero->set_real_team_num(255);
 }
 
 // Cheat+F12 kills every living foe of the hero in the game, each by the

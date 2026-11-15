@@ -184,9 +184,9 @@ end
 -- The D5 flip: a generator never dies. A lethal hit from a living on an
 -- active score team re-teams the intact generator (team + real team, full
 -- HP) and cancels the damage. With the Gameplay Fixes setting on the hit's
--- colour is the striking thing's own (the shot, the blast or the spell,
--- whatever became of its maker), so a dead maker's shot can take a post
--- too. Any other lethal source (environment, weapons without a living owner
+-- colour is the one the striking thing fights for (the shot's, the blast's
+-- or the spell's own, whatever became of its maker; a rider's, its walker's
+-- now), so a dead maker's shot can take a post too. Any other lethal source (environment, weapons without a living owner
 -- (classic), non-score attackers, the generator's own team: no free
 -- self-heal) is floored at 1 hp instead. A generator
 -- that flipped within the last flip_guard_ticks shares that floor arm
@@ -211,12 +211,13 @@ local function on_damage(target, attacker, amount, striker)
   local team = -1
   if og.match_setting("gameplay_fixes") ~= 0 then
     -- Gameplay Fixes AZ (#502): with the setting on a post struck down flips
-    -- to the colour of the thing that struck it (the shot, the blast, the
-    -- spell, or the living itself in melee), the colour it was made with,
-    -- also when its maker has been charmed or killed since (a dead maker's
-    -- shot owns itself). Classic: the colour of the living behind the blow,
-    -- and no flip without one.
-    team = striker:team_num()
+    -- to the colour the thing that struck it fights for (the shot, the
+    -- blast, the spell, or the living itself in melee: the colour it was made
+    -- with, also when its maker has been charmed or killed since, a dead
+    -- maker's shot owning itself; a thing that rides a walker, a boomerang or
+    -- a mace, fights for his colour now). Classic: the colour of the living
+    -- behind the blow, and no flip without one.
+    team = striker:fights_for_team()
   elseif attacker ~= nil then
     if attacker:order() == C.ORDER_LIVING then
       team = attacker:team_num()

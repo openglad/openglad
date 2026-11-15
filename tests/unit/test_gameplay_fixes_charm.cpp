@@ -639,6 +639,15 @@ void charm_by_hand(walker* w, unsigned char onto)
     w->set_charm_left(30);
 }
 
+// The charm's end, with living::act's own writes when the clock runs out
+// (living.cpp, "Charmed-ness"): back to the colour remembered.
+void uncharm_by_hand(walker* w)
+{
+    w->set_charm_left(0);
+    w->set_team_num(w->real_team_num());
+    w->set_real_team_num(255);
+}
+
 // A green caster with magic to spare, seated so its cast draws nothing extra.
 walker* add_green_caster(CharmScene& s, int family, short level, char slot, int x, int y)
 {
@@ -808,43 +817,63 @@ TEST(GameplayFixesChain, an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// A thing that rides the walker who owns it never blocks or strikes him. A
-// green level-6 druid casts CIRCLE OF PROTECTION (slot 4) on the one green
-// soldier within its 60 px; the ring is the soldier's (owner and colour)
-// and, with the setting on, carries KIT_RIDER.
-// The soldier is charmed red and steps away (the ring stays where it was, no
-// tick re-centres it). Whom the ring blocks (the obmap's weapon pass rule):
-// its own wearer never, on both settings; with the setting on a red walker,
-// not a green one (it fights for green, the colour it was cast in); classic,
-// a green walker, not a red one (it follows its wearer's colour). Whom its
-// blow lands on (the ring deals no damage, so only attack's answer is read):
-// never its wearer; with the setting on red, not green; classic the
-// reverse. A knife the charmed soldier throws for his new side meets the ring
-// as a foe's weapon with the setting on (two things of one owner are not
-// joined), as a friend's classic.
-// Breaks: rider_pair's gate `session_gameplay_fixes() == 0` -> always
-// `return false` (on: the ring blocks and strikes its wearer); the druid's
-// `gf.rides(...)` wrapper removed at living-13-druid.lua:195 (the same, and
-// the mark is 0).
-TEST(GameplayFixesChain, a_ring_of_protection_never_turns_on_the_walker_it_rides)
+namespace {
+
+// A green level-6 druid at (200, 200) casts CIRCLE OF PROTECTION (slot 4) on
+// the one green walker within its 60 px, `friend_` (red and green are sent
+// far off first). Answers the one ring, or nullptr.
+walker* ring_on(CharmScene& s, walker* druid, walker* friend_)
+{
+    s.red->setxy(500, 500);
+    s.green->setxy(600, 500);
+    druid->set_busy(0);
+    druid->set_current_special(4);
+    if (!druid->special(nullptr, nullptr))
+        return nullptr;
+    const auto rings = live(s.world(), Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    if (rings.size() != 1 || rings.front()->owner() != friend_)
+        return nullptr;
+    return rings.front();
+}
+
+// Whether `w` may stand on the ring's spot (rx, ry): the obmap's weapon pass
+// rule asks the ring's side (it blocks a foe, lets a friend pass).
+bool passes(CharmScene& s, float rx, float ry, walker* w)
+{
+    return s.world().query_object_passable(rx, ry, w);
+}
+
+}  // namespace
+
+// Gameplay Fixes AZ (#502): a thing that rides a walker goes with him (the
+// maintainer: "obviously they should go with the walker"). A green level-6
+// druid casts CIRCLE OF PROTECTION on the one green soldier within its 60 px;
+// the ring is the soldier's (owner and colour) and, with the setting on,
+// carries KIT_RIDER. The soldier is charmed red and steps away (the ring
+// stays where it was, no tick re-centres it). Whom the ring blocks (the
+// obmap's weapon pass rule; the ring deals no damage, so no hit point is
+// read): never its walker; it lets red pass and blocks green, the soldier's
+// side of the moment, and so does attack's answer (it may strike green, never
+// red or its walker). A knife the charmed soldier throws for his new side is
+// the ring's friend. When the charm ends the ring turns back with him: green
+// passes and red is blocked. Classic one owner chain gives the same answers.
+// Breaks: alliance_head's rider line `return ridden;` -> `return this;` (on:
+// the ring keeps green after the charm: it blocks red and its walker and lets
+// green pass); the druid's `gf.rides(...)` wrapper removed at
+// living-13-druid.lua (the same, and the mark is 0).
+TEST(GameplayFixesChain, a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him)
 {
     og::test::ScopedHookFailureGuard guard;
     for (const short fixes : {short{0}, short{1}})
     {
         SCOPED_TRACE(fixes);
         CharmScene s(fixes);
-        s.red->setxy(500, 500);
-        s.green->setxy(600, 500);
         walker* druid = add_green_caster(s, FAMILY_DRUID, 6, 4, 200, 200);
         ASSERT_NE(nullptr, druid);
         walker* soldier = s.add(FAMILY_SOLDIER, kGreen, 220, 200);
         ASSERT_NE(nullptr, soldier);
-        std::string reason;
-        ASSERT_TRUE(druid->special(nullptr, &reason)) << reason;
-        const auto rings = live(s.world(), Order::Weapon, FAMILY_CIRCLE_PROTECTION);
-        ASSERT_EQ(1u, rings.size()) << "one friend in reach, one ring";
-        walker* ring = rings.front();
-        ASSERT_EQ(soldier, ring->owner());
+        walker* ring = ring_on(s, druid, soldier);
+        ASSERT_NE(nullptr, ring) << "one friend in reach, one ring, his";
         ASSERT_EQ(kGreen, ring->team_num());
         const bool fixed = fixes != 0;
         EXPECT_EQ(fixed ? KIT_RIDER : 0, ring->kit_state() & KIT_RIDER);
@@ -855,18 +884,19 @@ TEST(GameplayFixesChain, a_ring_of_protection_never_turns_on_the_walker_it_rides
         soldier->setxy(400, 200);
         druid->setxy(100, 400);
 
+        EXPECT_EQ(kRed, ring->fights_for_team()) << "charmed: the ring fights for red";
         EXPECT_EQ(1, ring->is_friendly(soldier));
         EXPECT_EQ(1, soldier->is_friendly(ring));
-        EXPECT_TRUE(s.world().query_object_passable(rx, ry, soldier)) << "its wearer is never blocked";
-        EXPECT_EQ(!fixed, s.world().query_object_passable(rx, ry, s.red)) << "a red walker";
-        EXPECT_EQ(fixed, s.world().query_object_passable(rx, ry, s.green)) << "a green walker";
+        EXPECT_TRUE(passes(s, rx, ry, soldier)) << "its walker is never blocked";
+        EXPECT_TRUE(passes(s, rx, ry, s.red)) << "charmed: red, his side now, passes";
+        EXPECT_FALSE(passes(s, rx, ry, s.green)) << "charmed: green, his old side, is blocked";
 
         ring->set_damage(0.0f);
-        EXPECT_FALSE(ring->attack(soldier)) << "never its wearer";
+        EXPECT_FALSE(ring->attack(soldier)) << "never its walker";
         ring->set_damage(0.0f);
-        EXPECT_EQ(fixed, ring->attack(s.red));
+        EXPECT_FALSE(ring->attack(s.red)) << "charmed: red is a friend";
         ring->set_damage(0.0f);
-        EXPECT_EQ(!fixed, ring->attack(s.green));
+        EXPECT_TRUE(ring->attack(s.green)) << "charmed: green is a foe";
 
         soldier->stats()->set_max_magicpoints(100.0f);
         soldier->stats()->set_magicpoints(100.0f);
@@ -875,7 +905,162 @@ TEST(GameplayFixesChain, a_ring_of_protection_never_turns_on_the_walker_it_rides
         walker* knife = soldier->fire();
         ASSERT_NE(nullptr, knife);
         ASSERT_EQ(kRed, knife->team_num()) << "thrown after the charm";
-        EXPECT_EQ(fixed ? 0 : 1, knife->is_friendly(ring)) << "two things of one owner are not joined";
+        EXPECT_EQ(1, knife->is_friendly(ring)) << "his new knife is the ring's friend";
+        knife->set_dead(1);
+
+        uncharm_by_hand(soldier);
+        ASSERT_EQ(kGreen, soldier->team_num());
+        EXPECT_EQ(kGreen, ring->fights_for_team()) << "the charm over: the ring fights for green again";
+        EXPECT_TRUE(passes(s, rx, ry, soldier)) << "its walker is never blocked";
+        EXPECT_TRUE(passes(s, rx, ry, s.green)) << "the charm over: green passes again";
+        EXPECT_FALSE(passes(s, rx, ry, s.red)) << "the charm over: red is blocked again";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502): a rider goes with the walker it rides, one hop
+// and no further. A green level-6 druid summons a faerie (slot 2) and then
+// rings it (slot 4): the ring's walker is the faerie, the druid's summon. The
+// druid is charmed red. With the setting on the faerie fights for green, the
+// colour it was summoned for, and so does its ring: it lets green pass and
+// blocks red, never its faerie. Classic the faerie follows its charmed druid
+// and so does the ring: red passes and green is blocked.
+// Break: alliance_head's rider line `return ridden;` -> `return
+// chain_head();` (on: the ring climbs past its faerie to the charmed druid
+// and blocks green).
+TEST(GameplayFixesChain, a_ring_on_a_summon_goes_with_the_summon_not_its_charmed_caster)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        walker* druid = add_green_caster(s, FAMILY_DRUID, 6, 2, 200, 200);
+        ASSERT_NE(nullptr, druid);
+        std::string reason;
+        ASSERT_TRUE(druid->special(nullptr, &reason)) << reason;
+        const auto faeries = live(s.world(), Order::Living, FAMILY_FAERIE);
+        ASSERT_EQ(1u, faeries.size());
+        walker* faerie = faeries.front();
+        ASSERT_EQ(druid, faerie->owner());
+        faerie->setxy(220, 200);
+        walker* ring = ring_on(s, druid, faerie);
+        ASSERT_NE(nullptr, ring) << "one friend in reach, one ring, the faerie's";
+
+        charm_by_hand(druid, kRed);
+        const float rx = static_cast<float>(ring->xpos());
+        const float ry = static_cast<float>(ring->ypos());
+        faerie->setxy(400, 200);
+        druid->setxy(100, 400);
+
+        const bool fixed = fixes != 0;
+        const unsigned char side = fixed ? kGreen : kRed;
+        EXPECT_EQ(side, ring->fights_for_team());
+        EXPECT_EQ(1, ring->is_friendly(faerie));
+        EXPECT_TRUE(passes(s, rx, ry, faerie)) << "its faerie is never blocked";
+        EXPECT_EQ(fixed, passes(s, rx, ry, s.green)) << "a green walker";
+        EXPECT_EQ(!fixed, passes(s, rx, ry, s.red)) << "a red walker";
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502): a rider whose walker died answers for itself,
+// the colour it was made with. A green druid rings a green soldier, the
+// soldier is charmed red and then dies. In the rest of that tick (the ring
+// still names him) and after the ring's next act (weap::act makes a weapon
+// whose owner died its own owner; the ring then lives on where he fell, as in
+// the old game) the ring fights for green: green passes, red is blocked.
+// Classic the friendliness climb stops at a dead owner: the same answers.
+// Break: alliance_head's rider test without `ridden->dead() == 0` (on: in the
+// tick he died the ring still answers red).
+TEST(GameplayFixesChain, a_ring_whose_walker_died_answers_for_the_colour_it_was_made_with)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        walker* druid = add_green_caster(s, FAMILY_DRUID, 6, 4, 200, 200);
+        ASSERT_NE(nullptr, druid);
+        walker* soldier = s.add(FAMILY_SOLDIER, kGreen, 220, 200);
+        ASSERT_NE(nullptr, soldier);
+        walker* ring = ring_on(s, druid, soldier);
+        ASSERT_NE(nullptr, ring);
+        charm_by_hand(soldier, kRed);
+        ASSERT_EQ(kRed, ring->fights_for_team());
+        const float rx = static_cast<float>(ring->xpos());
+        const float ry = static_cast<float>(ring->ypos());
+        soldier->setxy(400, 200);
+        druid->setxy(100, 400);
+
+        soldier->set_dead(1);
+        ASSERT_EQ(soldier, ring->owner()) << "the tick he died: the ring still names him";
+        EXPECT_EQ(kGreen, ring->fights_for_team()) << "his ring answers for itself";
+        EXPECT_TRUE(passes(s, rx, ry, s.green));
+        EXPECT_FALSE(passes(s, rx, ry, s.red));
+
+        (void)ring->act();
+        ASSERT_FALSE(ring->dead()) << "the ring outlives its walker";
+        EXPECT_EQ(ring, ring->owner()) << "weap::act: a dead maker's weapon owns itself";
+        EXPECT_EQ(kGreen, ring->fights_for_team()) << "a ring that owns itself answers for itself";
+        const float sx = static_cast<float>(ring->xpos());
+        const float sy = static_cast<float>(ring->ypos());
+        EXPECT_TRUE(passes(s, sx, sy, s.green));
+        EXPECT_FALSE(passes(s, sx, sy, s.red));
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes AZ (#502): the colour a rider's blow pays and its kill
+// counts for is the side it fights for, its walker's now. A green soldier
+// throws BOOMERANG (slot 2), a rider, and is charmed red (my_team is red).
+// The boomerang strikes green, a foe now: with the setting on red is paid
+// d + L, the stamp is red and the soldier is credited; then a lethal blow on
+// green pays red d + L and the kill's d + 10 L and stamps red. Classic the
+// gate reads the head's colour, red, and every payment the hitter's own
+// colour, the boomerang's green; the stamp is the credited soldier's, red.
+// Breaks: walker::attack's `playerteam = ... fights_for_team() ...` ->
+// `team_num()` (on: the side is green, not the player's: nobody is paid);
+// kill_stamp_team's `fights_for_team()` -> `team_num()` (on: stamped green).
+TEST(GameplayFixesChain, a_riders_blow_after_the_charm_pays_and_kills_for_the_charmers_team)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        walker* soldier = add_green_caster(s, FAMILY_SOLDIER, 4, 2, 200, 200);
+        ASSERT_NE(nullptr, soldier);
+        std::string reason;
+        ASSERT_TRUE(soldier->special(nullptr, &reason)) << reason;
+        const auto boomerangs = live(s.world(), Order::FX, FAMILY_BOOMERANG);
+        ASSERT_EQ(1u, boomerangs.size());
+        walker* boomerang = boomerangs.front();
+        ASSERT_EQ(soldier, boomerang->owner());
+        ASSERT_EQ(kGreen, boomerang->team_num());
+        charm_by_hand(soldier, kRed);
+
+        const bool fixed = fixes != 0;
+        const unsigned char paid = fixed ? kRed : kGreen;
+        const auto L = static_cast<std::uint32_t>(s.green->stats()->level());
+        auto expected = scores(s);
+        const Blow blow = strike(boomerang, s.green, 40.0f);
+        ASSERT_TRUE(blow.landed) << "green is the charmed soldier's foe";
+        ASSERT_GT(blow.hp_lost, 0.0f);
+        expected[paid] += static_cast<std::uint32_t>(blow.hp_lost) + L;
+        EXPECT_EQ(expected, scores(s));
+        EXPECT_EQ(std::int16_t{kRed}, s.green->last_attacker_team());
+        EXPECT_EQ(soldier->entity_id(), s.green->last_attacker_id());
+
+        s.green->stats()->set_hitpoints(1.0f);
+        boomerang->set_damage(40.0f);
+        ASSERT_TRUE(boomerang->attack(s.green));
+        ASSERT_TRUE(s.green->dead());
+        const auto d = static_cast<std::uint32_t>(1.0f - s.green->stats()->hitpoints());
+        ASSERT_GT(d, 0u);
+        expected[paid] += (d + L) + (d + 10 * L);
+        EXPECT_EQ(expected, scores(s)) << "the blow and the kill";
+        EXPECT_EQ(std::int16_t{kRed}, s.green->last_attacker_team()) << "the kill counts for red";
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

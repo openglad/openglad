@@ -175,14 +175,15 @@ function M.made_by(made, owner, from)
 end
 
 -- The team half of made_by, for a thing whose owner is set apart: a wail's
--- fork takes the bolt it forks from, a meteor its rain, an ember its fire.
--- Draws nothing.
+-- fork takes the bolt it forks from, a meteor the rain it falls from. (An
+-- ember needs no call: IMMOLATE's fire rides its elemental, so an ember takes
+-- the elemental's colour at the drop on both settings.) Draws nothing.
 function M.take_team(made, from)
   -- rule: Gameplay Fixes AZ (#502, #533): with the setting on a thing takes, when it is made, the
   --   team number of the thing it comes from (a thief's bomb, a mage's ENERGY WAVE, a barbarian's
   --   boulder; a blast from its bomb, mine or exploding shot; a returning knife from its knife; a
-  --   wail's fork from its bolt; a meteor from its rain; an ember from IMMOLATE's fire) and keeps
-  --   it. Classic: the team it was made with.
+  --   wail's fork from its bolt; a meteor from its rain) and keeps it. Classic: the team it was
+  --   made with.
   -- tests: SemLibsBomb.a_bomb_and_its_blast_wear_the_thiefs_colour_only_with_the_setting_on
   -- tests: SemLibsProjectiles.an_exploding_shots_blast_wears_the_shots_colour_only_with_the_setting_on
   -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
@@ -190,7 +191,6 @@ function M.take_team(made, from)
   -- tests: SemBarbarian.a_boulder_wears_the_barbarians_colour_only_with_the_setting_on
   -- tests: SemWail.a_wail_fork_wears_the_colour_of_the_bolt_it_forks_from_with_the_setting_on
   -- tests: KitElemental.a_meteor_wears_its_rains_colour_with_the_setting_on
-  -- tests: KitElemental.a_charmed_elemental_is_burned_by_its_own_embers_but_not_by_its_fire
   -- tests: KitThief.a_mines_blast_wears_the_mines_colour_only_with_the_setting_on
   -- tests: parity:thief_bomb_colour_score_fixes_scen99
   -- tests: parity:thief_bomb_dead_thrower_scen99, parity:thief_bomb_dead_thrower_fixes_scen99
@@ -201,49 +201,27 @@ end
 
 -- Gameplay Fixes AZ (#502): marks a weapon or effect that rides the walker
 -- who owns it (a circle of protection, a mace, a boomerang, a hook blade, a
--- scare, IMMOLATE's fire, a returning knife's probe). With the setting on the
--- two are never foes, whatever colours they wear later (walker::rider_pair,
--- the one place the clause lives). Answers `thing`, so it wraps the call that
--- makes it; nil (a full world) stays nil. Draws nothing.
+-- scare, IMMOLATE's fire, a returning knife's probe). With the setting on it
+-- is part of that walker and goes with him: while he lives it fights for
+-- whatever side he is on now (walker::alliance_head answers him for it).
+-- Unmarked, a thing keeps the colour it was made with. Answers `thing`, so it
+-- wraps the call that makes it; nil (a full world) stays nil. Draws nothing.
 function M.rides(thing)
   -- rule: Gameplay Fixes AZ (#502): with the setting on a thing that rides its owner is marked
-  --   KIT_RIDER when it is made, so it never blocks, strikes or frightens him, even after a charm
-  --   changed his colour. Classic: no mark (one owner chain gives one head anyway).
-  -- tests: GameplayFixesChain.a_ring_of_protection_never_turns_on_the_walker_it_rides
-  -- tests: SemShield.a_boomerang_never_turns_on_its_charmed_soldier_but_cuts_his_new_knives
-  -- tests: SemShield.a_mace_never_turns_on_its_charmed_cleric
-  -- tests: KitCaptain.a_hook_blade_never_snags_its_charmed_captain
-  -- tests: SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
-  -- tests: KitElemental.a_charmed_elementals_fire_burns_the_foes_of_its_own_colour
+  --   KIT_RIDER when it is made, so it goes with him: it fights for his side of the moment, never
+  --   against him, and turns back with him when a charm ends. Classic: no mark (one owner chain
+  --   gives it his head anyway).
+  -- tests: GameplayFixesChain.a_ring_of_protection_goes_with_its_walker_and_turns_back_with_him
+  -- tests: SemShield.a_boomerang_goes_with_its_charmed_soldier_and_spares_his_new_knives
+  -- tests: SemShield.a_mace_goes_with_its_charmed_cleric
+  -- tests: KitCaptain.a_hook_blade_goes_with_its_charmed_captain
+  -- tests: SemLibsGhostScare.a_scare_frightens_its_ghosts_foes_of_the_moment
+  -- tests: KitElemental.a_charmed_elementals_fire_burns_his_foes_of_the_moment
   -- tests: SemLibsKnife.a_returning_knife_wears_the_knifes_colour_only_with_the_setting_on
   if thing and M.on() then
     thing:set_kit_state(thing:kit_state() | C.KIT_RIDER)
   end
   return thing
-end
-
--- Gameplay Fixes AZ (#502): the foes an effect that searches round its owner
--- finds (the ghost's SCARE, IMMOLATE's contact burn): measured from the owner,
--- who gives the place and the reach, and with the setting on asked of the
--- effect's own side (og.find_foes_in_range's fourth argument, which asks
--- walker:sides_friendly, so an effect can ask from its own death; both effects
--- ride their owner, KIT_RIDER, so he is never their foe). Classic, the owner's
--- own foes. While the owner still wears the effect's colour both answers are
--- the same list in the same order. Answers the list and its length. Draws
--- nothing.
-function M.foes_round(effect, range)
-  local near = effect:owner()
-  -- rule: Gameplay Fixes AZ (#502): with the setting on an effect that searches round its owner
-  --   (the ghost's SCARE, IMMOLATE's burn) finds the livings and generators within reach of the
-  --   owner that are not on the effect's side, the side of the colour it was made with; classic,
-  --   the owner's foes.
-  -- tests: SemLibsGhostScare.a_scare_frightens_the_foes_of_its_own_colour_after_its_ghost_is_charmed
-  -- tests: KitElemental.a_charmed_elementals_fire_burns_the_foes_of_its_own_colour
-  -- tests: SemLibsGhostScare.an_uncharmed_ghosts_scare_finds_its_foes_in_the_same_order_on_both_settings
-  if M.on() then
-    return og.find_foes_in_range("ob", range, near, effect)
-  end
-  return og.find_foes_in_range("ob", range, near)
 end
 
 return M

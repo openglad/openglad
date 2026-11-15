@@ -384,11 +384,11 @@ bool walker::attack(walker  *target)
     // Score and kill semantics follow the actual attacker's team. The legacy
     // red-only checks made non-red company heroes deal damage without normal
     // projectile score, and treated their red victims as friendly deaths.
-    // rule: Gameplay Fixes AZ (#502, #533): with the setting on a blow's side, which the score
-    //   gate's colour half, the "another team" tests and every payment read, is the colour the
-    //   hitter wears, read once here as the blow lands; classic, the colour its chain head wears.
-    // tests: GameplayFixesChain.a_shot_thrown_before_its_caster_was_charmed_hits_and_pays_its_own_colour
-    playerteam = static_cast<short>(current_game->world->gameplay_fixes != 0 ? team_num() : headguy->team_num());
+    // rule: Gameplay Fixes AZ (#502, #533): with the setting on a blow's side (the score gate's colour
+    //   half, the "another team" tests, every payment) is the colour the hitter fights for, read once
+    //   as the blow lands (fights_for_team: its own, a rider's walker's now); classic, its chain head's.
+    // tests: GameplayFixesChain.a_shot_thrown_before_its_caster_was_charmed_hits_and_pays_its_own_colour, GameplayFixesChain.a_riders_blow_after_the_charm_pays_and_kills_for_the_charmers_team
+    playerteam = static_cast<short>(current_game->world->gameplay_fixes != 0 ? fights_for_team() : headguy->team_num());
     // rule: Team score is paid only for blows whose chain head is a saved hero or whose side
     //   (above) is the player's team; other NPC fights deal damage but score nothing.
     // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
@@ -486,8 +486,8 @@ bool walker::attack(walker  *target)
     walker* const credit = credit_head();  // kill attribution (server-only transients)
     // rule: Only a blow that lands positive damage stamps the victim's last attacker for the modes'
     //   kill attribution: the walker is the topmost living on the hitter's chain (credit_head: a
-    //   weapon's thrower, a summon's caster, a tent's troop itself); the team is the hitter's own
-    //   colour with Gameplay Fixes AZ, stamped also with no living on the chain, classic the
+    //   weapon's thrower, a summon's caster, a tent's troop itself); the team is the colour the
+    //   hitter fights for with Gameplay Fixes AZ, stamped also with no living on the chain, classic the
     //   walker's colour and no stamp without one. A 0-damage blow leaves the previous stamp.
     // tests: ModeTick.damage_gate_negative_replacement_clamps_to_zero, ModeTick.weapon_kill_attributes_to_owner_chain_root
     // tests: SemWalker3.a_zero_damage_blow_keeps_the_earlier_attacker_stamp, SemWalker3.a_blow_with_no_living_on_its_chain_credits_no_walker_and_with_the_setting_on_its_colour
@@ -499,7 +499,7 @@ bool walker::attack(walker  *target)
     short attack_exp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
 
     // rule: Gameplay Fixes AZ (#502, #533): with the setting on every payment of the blow's team score
-    //   goes to its side read above, the colour the hitter wore as the blow landed. Classic: to the
+    //   goes to its side read above, the colour the hitter fought for as the blow landed. Classic: to the
     //   colour the hitter wears where each payment is made, after the victim's answer (a struck
     //   thief's CHARM OPPONENT can take the striker onto the thief's team), while the gate and the
     //   "another team" tests read its chain head's colour.
@@ -588,7 +588,7 @@ bool walker::attack(walker  *target)
 
     // Positive score for hurting enemies, negative for us.
     // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of another
-    //   team than its side (its own colour with Gameplay Fixes AZ, its chain head's classic) scores
+    //   team than its side (the colour it fights for with Gameplay Fixes AZ, its chain head's classic) scores
     //   for the blow's score team (that side with the setting on, its own colour at the payment
     //   classic; damage + victim level, generators included); a summoned living's blow also gives
     //   its chain head's hero the attack XP (every non-living owned hitter's XP was paid in the
@@ -681,8 +681,8 @@ bool walker::attack(walker  *target)
             // tests: WalkerCombat.named_ally_death_is_not_announced_as_enemy_death
             if (playerteam > -1)
             {
-                // rule: Killing a living of another team than the killer's side (its own colour
-                //   with Gameplay Fixes AZ, its chain head's classic) credits the head's hero with
+                // rule: Killing a living of another team than the killer's side (the colour it
+                //   fights for with Gameplay Fixes AZ, its chain head's classic) credits the head's hero with
                 //   kill XP (kill XP only; the hit's attack XP was paid once already), kills+1,
                 //   scen_kills+1, level_kills += victim level; a scoring kill adds damage + 10 x
                 //   victim level to the killer's side with Gameplay Fixes AZ, to the killer's own
@@ -732,7 +732,7 @@ bool walker::attack(walker  *target)
                                                 + static_cast<std::uint32_t>(10 * target->stats()->level()));
                     // If named, alert us of the death. This arm is selected by
                     // the KILLER's team (`playerteam`, set at the top: its chain
-                    // head's colour classic, its own with Gameplay Fixes AZ), so
+                    // head's colour classic, the one it fights for with Gameplay Fixes AZ), so
                     // an enemy killing one of the player's OWN named
                     // NPCs lands here too -- and used to be announced as an
                     // "ENEMY DEATH". Classic hardcoded `playerteam = 0`, i.e.

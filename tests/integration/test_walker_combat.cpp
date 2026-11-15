@@ -1669,7 +1669,7 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     // wording lives in the same-team arm that a team-1 killer of a team-0
     // victim never reaches. With the setting on (fix AZ) the orc fights for
     // the colour it wears, team 0, and is the attacker's foe (both are
-    // livings, so the rider clause plays no part); it is not struck here, the
+    // livings, so neither rides the other); it is not struck here, the
     // rest of the test needs it alive.
     // Break: alliance_head's `return this;` -> `return chain_head();` (on: the
     // orc is friendly again).

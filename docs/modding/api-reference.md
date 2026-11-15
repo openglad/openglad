@@ -519,8 +519,7 @@ The core pack's helpers for these fixes live in one lib module,
 | `gf.scale_summon(summon, caster)` | Scales `summon` for the difficulty at its level (`summon:set_difficulty(summon.level)`); with the setting on it first gives `summon` the team of `caster`, so a foe's summon takes the difficulty percent. The caller writes the team afterwards as before. Draws nothing. |
 | `gf.made_by(made, owner [, from])` | Gives `made` the owner `owner` and, with the setting on, the team of `from` (`owner`'s when `from` is `nil`): a thing a walker makes with `og.add_ob` keeps that team whatever happens to its maker (fix AZ). Draws nothing. |
 | `gf.take_team(made, from)` | With the setting on, gives `made` the team of `from` (a child of a thing takes its parent's, never its owner's current one). Draws nothing. |
-| `gf.rides(thing)` | With the setting on, marks a weapon or effect that rides the walker who owns it (`KIT_RIDER`), so the two are never foes; answers `thing`, so it wraps the call that makes it (`nil` stays `nil`). |
-| `gf.foes_round(effect, range)` | The foes round `effect`'s owner within `range`, and how many: with the setting off the owner's foes (`og.find_foes_in_range("ob", range, owner)`), with it on the livings and generators there that are not on `effect`'s side (the same call with `effect` as its side). |
+| `gf.rides(thing)` | With the setting on, marks a weapon or effect that rides the walker who owns it (`KIT_RIDER`), so that it goes with him: while he lives it fights for whatever side he is on now, and it turns back with him when a charm ends. A pack's guard that rides its owner is marked so; unmarked, it keeps the colour it was made with. Answers `thing`, so it wraps the call that makes it (`nil` stays `nil`). |
 
 ### Duplicate registration: last one wins
 
@@ -659,8 +658,13 @@ census; waking it is the engine's decision)
 `sides_friendly(other) → bool` (`is_friendly` without its dead test, so a
 walker that acts from its own death, a blast going off, can ask it; with
 the Gameplay Fixes setting on it answers whether the two fight for one
-colour, and a thing marked `KIT_RIDER` and the walker who owns it always
-do, fix AZ)
+colour, fix AZ)
+`fights_for_team() → int` (read-only: the colour this walker fights for.
+With the Gameplay Fixes setting on that is the colour it wears, except for
+a weapon or effect marked `KIT_RIDER` (`gf.rides`) whose walker lives: it
+fights for its walker's colour of the moment, fix AZ. With the setting off,
+the colour of the head of its owner chain. A mode that asks whose blow it
+was by colour reads it from the striking thing.)
 `seat_driven() → bool` (read-only: a seat drives this body, by a user tag
 or the player-control act; `og::sim::seat_driven`, the one rule POSSESS
 and the Gameplay Fixes charm casts refuse a hero by).
@@ -692,7 +696,7 @@ physical Shift key (see "Abilities on keys" above).
 
 | Method | Result |
 |---|---|
-| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one), `KIT_NOVA` 32 (on an explosion: a SUPERNOVA blast, which spares its own team half the damage by team colour), `KIT_RIDER` 64 (on a weapon or effect: with the Gameplay Fixes setting on it rides the walker who owns it and the two are never foes, whatever colours they wear; the core pack sets it with `gf.rides` where it makes a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire or a returning knife's probe, and the F2 cheat on its shield; a pack class's guard that rides its owner must be marked too, or with the setting on it turns on its owner once he is charmed). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
+| `kit_state() → int` | The walker's kit marks, a byte of `og.C.KIT_*` bits: `KIT_HIDDEN` 1, `KIT_FEARLESS` 2, `KIT_WARD` 4, `KIT_CHANNEL` 8, `KIT_QUARTER_FREEZE` 16 (on a weapon: the freeze it lays is a quarter of the rolled one), `KIT_NOVA` 32 (on an explosion: a SUPERNOVA blast, which spares its own team half the damage by team colour), `KIT_RIDER` 64 (on a weapon or effect: with the Gameplay Fixes setting on it rides the walker who owns it and goes with him: while he lives it fights for whatever side he is on now; the core pack sets it with `gf.rides` where it makes a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire or a returning knife's probe, and the F2 cheat on its shield; a pack class's guard that rides its owner is marked so that it goes with him, and unmarked it keeps the colour it was made with, so with the setting on it turns on its owner once he is charmed). Separate from the classic bit flags: a corpse stain never inherits it and a transform never wipes it. Rides every snapshot. |
 | `set_kit_state(n)` | Writes the byte. A change of the HIDDEN bit goes through `set_hidden`, so it may be turned away (a possessed body never hides); the other bits land as written. |
 | `hidden() → bool` | The HIDDEN bit: the walker does not act, is out of the collision table, is skipped by every finder and target scan, cannot be hit, and is drawn only to its own team. It stays in snapshots. |
 | `set_hidden(v)` | `v` is a boolean or `0`/`1`. Hides or reveals (a revealed walker rejoins the collision table unless it is ignored or dormant). Refused for a walker whose possession partner is hidden. |
@@ -884,7 +888,7 @@ which accepts either a guy handle or a walker.
 | `og.find_nearest_blood(self)` | Handle or `nil`: the nearest live blood stain on `self`'s floor whose squared centre distance from `self` is under 800 (about 28 px). A stain on another floor is never answered. Draw-free. |
 | `og.blood_in_reach(self)` | Array — every stain `og.find_nearest_blood` would consider (a live stain whose squared centre distance from `self` is under 800, about 28 px), on `self`'s floor, nearest first; equal distances keep fx-list order. Draw-free. |
 | `og.foes_in_range(self, range)` | Array — the `for_each_foe_in_range` traversal. |
-| `og.find_foes_in_range(list, range, self [, side])` | Array, count: the live, awake, visible livings and generators within `range` of `self` that are not its friends. With `side` (a walker), those not on `side`'s side, asked by `side:sides_friendly`, which has no dead test, so an effect can search round its owner for its own side, also from its own death (the core pack's `gf.foes_round`, Gameplay Fixes AZ). |
+| `og.find_foes_in_range(list, range, self)` | Array, count. |
 | `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
 | `og.find_in_range(list, range, self)` | Array, count. |
 | `og.find_foe_weapons_in_range(list, range, self)` | Array, count. Live hostile weapons in range; normal projectiles use list `"weap"`. With the Gameplay Fixes setting off allegiance follows the owner chain; with it on each weapon's own colour decides (fix AZ). |
@@ -1195,9 +1199,10 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   environment damage, and only the first return value is read. `striker` is
   the walker the blow comes from: the shot, the blast or the spell effect, or
   `attacker` itself for a melee blow. With the Gameplay Fixes setting on a
-  thing fights for the colour it wears (fix AZ), so a mode that asks whose
-  blow it was by colour reads `striker`'s team; `attacker`, the owner one hop
-  up, is the person behind it.
+  thing fights for the colour it wears, or a thing that rides a walker for
+  his (fix AZ), so a mode that asks whose blow it was by colour reads
+  `striker:fights_for_team()`; `attacker`, the owner one hop up, is the
+  person behind it.
 
   **`return 0` is not a cancel.** Zero is a replacement amount: the hit still
   lands for zero damage, the target still retaliates, and the engine still
