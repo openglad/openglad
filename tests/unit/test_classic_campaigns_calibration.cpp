@@ -124,10 +124,7 @@ int crew_markers(int level_id)
     int markers = 0;
     for (const auto& entity : fx.world().oblist)
     {
-        const walker* const m = entity.get();
-        if (m != nullptr && !m->dead() &&
-            m->query_order() == Order::Special &&
-            m->family() == FAMILY_RESERVED_TEAM)
+        if (westlands_fixture::is_crew_start_marker(entity.get()))
             ++markers;
     }
     return std::min(markers, kCrewSize);

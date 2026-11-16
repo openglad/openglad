@@ -162,6 +162,16 @@ struct LoadedWestlandsLevel
     GameWorld& world() { return level.world(); }
 };
 
+// A start marker deploy_crew can put a crew member on: a live
+// FAMILY_RESERVED_TEAM special of any team. deploy_crew below and the
+// classic campaigns' measure mode, which prints how many markers a level
+// holds (test_classic_campaigns_calibration.cpp), both ask this one test.
+inline bool is_crew_start_marker(const walker* m)
+{
+    return m != nullptr && !m->dead() && m->query_order() == Order::Special &&
+           m->family() == FAMILY_RESERVED_TEAM;
+}
+
 // Mirrors src/platform/text/text_protocol.cpp's playtest crew spawn+deploy:
 // derived stats for placed walkers, family-ctor guys leveled to team_level,
 // deployed onto the authored FAMILY_RESERVED_TEAM start markers.
@@ -203,10 +213,7 @@ inline std::vector<walker*> deploy_crew(LevelRuntimeData& level,
         for (const auto& entity : world.oblist)
         {
             walker* const m = entity.get();
-            if (m == nullptr || m->dead())
-                continue;
-            if (m->query_order() != Order::Special ||
-                m->family() != FAMILY_RESERVED_TEAM)
+            if (!is_crew_start_marker(m))
                 continue;
             if (team != -1 && m->team_num() != team)
                 continue;
