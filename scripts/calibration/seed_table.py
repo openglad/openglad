@@ -158,6 +158,9 @@ class Table:
                 raise TableError(f"{where}: {key!r} has a damage line and no survivor line")
             if need_taken and "taken" not in row:
                 raise TableError(f"{where}: {key!r} has no CALIBN-TAKEN line")
+            if any(v < 0 for v in row["alive"]):
+                raise TableError(f"{where}: {key!r} holds a negative survivor count: "
+                                 "the level did not load or the crew did not deploy")
             for kind, values in row.items():
                 if len(values) != len(self.seeds):
                     raise TableError(
@@ -608,6 +611,15 @@ def self_test():
     c.equal("not back", "not back",
             pooled_word(Paired([4] * 8, [2, 3, 4, 4, 3, 4, 5, 3])))
 
+    # The floor is the mean BEFORE, never the mean after. Every seed falls
+    # from 5 to 0: m = -5, se 0, a fall, although the mean after is under 1.0.
+    c.equal("a fall to under 1.0 reads fell, not floor", "fell",
+            pooled_word(Paired([5] * 4, [0] * 4)))
+    # The other way: 0.5 before, 3 on every seed after. The level sat on its
+    # floor before, so the count cannot judge it, whatever it reads after.
+    c.equal("a rise from under 1.0 reads floor", "floor",
+            pooled_word(Paired([0, 1, 0, 1], [3] * 4)))
+
     # The words on their boundaries, each exact.
     # d = -1 on five seeds of ten, 0 on five: m = -1/2; squared deviations
     # 10 * 1/4 = 5/2; variance 5/2 / 9 = 5/18; se^2 = 5/18 / 10 = 1/36,
@@ -685,6 +697,33 @@ def self_test():
     c.equal("two lists, list A under 1.0 reads floor", "floor",
             two_lists(xs_low_a, list(xs_low_a)))
 
+    # The two-lists floor is list A's mean BEFORE as well.
+    c.equal("two lists, a fall to under 1.0 on both lists reads fell", "fell",
+            two_lists(xs, [0] * 40))
+    c.equal("two lists, list A under 1.0 before and 3 after reads floor", "floor",
+            two_lists(xs_low_a, [3] * 40))
+
+    # What verdict prints under --rule two-lists, on the forty seeds, token
+    # by token. One survivor lost on ten seeds of a list of twenty: m = -1/2,
+    # se^2 = 1/76 (se 0.11), past two errors (the case above).
+    #   level=1: list A falls, list B does not: fell(A).
+    #   level=2: list B falls, list A does not: judged on list A, back.
+    #   level=3: both lists fall: fell.
+    tbefore = Table({"suite": "x"}, seeds)
+    tafter = Table({"suite": "x"}, seeds)
+    for level, after_alive in ((1, [4] * 10 + [5] * 30),
+                               (2, [5] * 20 + [4] * 10 + [5] * 10),
+                               (3, ([4] * 10 + [5] * 10) * 2)):
+        tbefore.rows[f"level={level} cl=3"] = {"alive": [5] * 40, "taken": [0] * 40}
+        tafter.rows[f"level={level} cl=3"] = {"alive": after_alive, "taken": [0] * 40}
+    printed = [line.split() for line in verdict_lines(tbefore, tafter, "two-lists")]
+    c.equal("verdict, two lists: list A alone fell",
+            "level=1 cl=3 20 5.00 4.50 -0.50 0.11 20 0.00 0.00 fell(A)".split(), printed[3])
+    c.equal("verdict, two lists: list B alone fell",
+            "level=2 cl=3 20 5.00 5.00 0.00 0.00 20 -0.50 0.11 back".split(), printed[4])
+    c.equal("verdict, two lists: both lists fell",
+            "level=3 cl=3 20 5.00 4.50 -0.50 0.11 20 -0.50 0.11 fell".split(), printed[5])
+
     # The lines a run writes, read back; the old three-seed line is not ours.
     output = "\n".join([
         "[ RUN      ] WestlandsCampaignTest.curve_levels_x",
@@ -713,6 +752,27 @@ def self_test():
     other.rows = dict(table.rows)
     c.raises("two files of different seeds are refused",
              lambda: verdict_lines(table, other, "pooled"))
+
+    # A table file read back: the header's seed order is the columns' order,
+    # and a file without the header line is refused.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "table.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(header_line({"suite": "x", "seeds": "42,101,1", "fixes": "1"}) + "\n")
+            handle.write("CALIBN level=7 cl=4 survivors@600: 3 4 5\n")
+            handle.write("CALIBN-TAKEN level=7 cl=4 taken@600: 10 20 30\n")
+        read_back = read_table(path)
+        bare = os.path.join(tmp, "bare.txt")
+        with open(bare, "w", encoding="utf-8") as handle:
+            handle.write("CALIBN level=7 cl=4 survivors@600: 3 4 5\n")
+        c.raises("a table file without its header line is refused", lambda: read_table(bare))
+    c.equal("a table file read back: seeds in the header's order", [42, 101, 1], read_back.seeds)
+    c.equal("a table file read back: its row",
+            {"alive": [3, 4, 5], "taken": [10, 20, 30]}, read_back.rows["level=7 cl=4"])
+    c.equal("a table file read back: its header", "1", read_back.header["fixes"])
+    c.raises("a row of minus one survivors is refused: that battle did not happen",
+             lambda: table_from_lines(["CALIBN level=7 cl=4 survivors@600: 3 -1"], [1, 2], {},
+                                      "sample", False))
 
     # What verdict prints, on two three-seed files. Seeds 42 and 1 are of
     # list A, 101 is not, so the list-A columns and the SUM's "| A:" part
