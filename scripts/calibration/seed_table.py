@@ -552,6 +552,10 @@ class Checks:
             call()
         except TableError:
             return
+        except Exception as error:  # a crash is not a refusal
+            self.failed += 1
+            print(f"FAIL {name}: expected a refusal, got {type(error).__name__}: {error}")
+            return
         self.failed += 1
         print(f"FAIL {name}: expected a refusal, got none")
 
@@ -604,6 +608,34 @@ def self_test():
     c.equal("not back", "not back",
             pooled_word(Paired([4] * 8, [2, 3, 4, 4, 3, 4, 5, 3])))
 
+    # The words on their boundaries, each exact.
+    # d = -1 on five seeds of ten, 0 on five: m = -1/2; squared deviations
+    # 10 * 1/4 = 5/2; variance 5/2 / 9 = 5/18; se^2 = 5/18 / 10 = 1/36,
+    # se = 1/6: m is exactly -3 se, which is a fall.
+    p = Paired([5] * 10, [4] * 5 + [5] * 5)
+    c.equal("exactly -3 se: se^2", Fraction(1, 36), p.se2)
+    c.equal("exactly -3 se reads fell", "fell", pooled_word(p))
+    # d = -1 on three seeds of nine, 0 on six: m = -1/3; squared deviations
+    # 3 * 4/9 + 6 * 1/9 = 2; variance 2 / 8 = 1/4; se^2 = 1/4 / 9 = 1/36,
+    # se = 1/6: m is exactly -2 se.
+    p = Paired([5] * 9, [4] * 3 + [5] * 6)
+    c.equal("exactly -2 se: se^2", Fraction(1, 36), p.se2)
+    c.equal("exactly -2 se reads fell<3", "fell<3", pooled_word(p))
+    # The mirror: d = +1 on three seeds of nine: m = 1/3, se = 1/6, exactly
+    # +2 se, which is too far.
+    c.equal("exactly +2 se reads too far", "too far",
+            pooled_word(Paired([5] * 9, [6] * 3 + [5] * 6)))
+    # d = +1 on two seeds of nine, 0 on seven: m = 2/9; squared deviations
+    # 2 * 49/81 + 7 * 4/81 = 126/81 = 14/9; variance 14/9 / 8 = 7/36;
+    # se^2 = 7/36 / 9 = 7/324 (se 0.147): m / se = 1.51, a rise of less than
+    # two errors, which is back.
+    p = Paired([5] * 9, [6] * 2 + [5] * 7)
+    c.equal("+1.5 se: se^2", Fraction(7, 324), p.se2)
+    c.equal("+1.5 se reads back", "back", pooled_word(p))
+    # A mean before of exactly 1.0 is not the floor (the floor is under 1.0).
+    c.equal("mean before exactly 1.0 reads back", "back",
+            pooled_word(Paired([1] * 4, [1] * 4)))
+
     # Two lists that disagree: list A loses one survivor on ten of its
     # twenty seeds, list B changes nothing. Pooled over the forty:
     # m = -0.25, se^2 = (7.5 / 39) / 40 = 1/208, m/se = -3.6: fell. List A
@@ -620,6 +652,38 @@ def self_test():
     ys_both = [4] * 10 + [5] * 10 + [4] * 10 + [5] * 10
     pb_both = Paired(subset(xs, seeds, LIST_B), subset(ys_both, seeds, LIST_B))
     c.equal("two lists that agree", "fell", two_lists_word(pa, pb_both))
+
+    def two_lists(xs, ys):
+        return two_lists_word(Paired(subset(xs, seeds, LIST_A), subset(ys, seeds, LIST_A)),
+                              Paired(subset(xs, seeds, LIST_B), subset(ys, seeds, LIST_B)))
+
+    # Each list of twenty loses one survivor on four seeds: on each list
+    # m = -4/20 = -1/5; squared deviations 4 * 16/25 + 16 * 1/25 = 16/5;
+    # variance 16/5 / 19 = 16/95; se^2 = 16/95 / 20 = 4/475 (se 0.092):
+    # m / se = -2.18 on each list, past two errors on both, so fell (it
+    # would be no fall at three errors).
+    ys_four = ([4] * 4 + [5] * 16) * 2
+    c.equal("two lists, four seeds lower on each: list A se^2", Fraction(4, 475),
+            Paired(subset(xs, seeds, LIST_A), subset(ys_four, seeds, LIST_A)).se2)
+    c.equal("two lists, 2.18 errors on each list reads fell", "fell",
+            two_lists(xs, ys_four))
+    # The mirror on list A only (list B unchanged): +2.18 errors, too far.
+    c.equal("two lists, list A 2.18 errors higher reads too far", "too far",
+            two_lists(xs, [6] * 4 + [5] * 16 + [5] * 20))
+    # List A loses one on two seeds: m = -1/10; squared deviations
+    # 2 * 81/100 + 18 * 1/100 = 9/5; variance 9/5 / 19 = 9/95; se^2 = 9/1900
+    # (se 0.069): m / se = -1.45, between one and two errors: not back.
+    c.equal("two lists, list A 1.45 errors lower reads not back", "not back",
+            two_lists(xs, [4] * 2 + [5] * 18 + [5] * 20))
+    c.equal("two lists, no change reads back", "back", two_lists(xs, list(xs)))
+    # The floor is list A's mean before: list A averages 0.5 and list B 2.0,
+    # so the forty average 1.25 and the pooled rule judges the level (back),
+    # while the two-lists rule reads floor.
+    xs_low_a = [1, 0] * 10 + [2] * 20
+    c.equal("pooled, list A under 1.0 but forty at 1.25, reads back", "back",
+            pooled_word(Paired(xs_low_a, list(xs_low_a))))
+    c.equal("two lists, list A under 1.0 reads floor", "floor",
+            two_lists(xs_low_a, list(xs_low_a)))
 
     # The lines a run writes, read back; the old three-seed line is not ours.
     output = "\n".join([
@@ -650,6 +714,68 @@ def self_test():
     c.raises("two files of different seeds are refused",
              lambda: verdict_lines(table, other, "pooled"))
 
+    # What verdict prints, on two three-seed files. Seeds 42 and 1 are of
+    # list A, 101 is not, so the list-A columns and the SUM's "| A:" part
+    # read seeds 42 and 1 only. Compared token by token (the column widths
+    # are not the rule).
+    #   level=1: survivors 8 8 8 -> 7 7 7, d = -1 on every seed: m = -1,
+    #     se 0, so fell; damage 10 20 30 -> 40 50 60, means 20 and 50.
+    #   level=2: 3 5 4 -> 4 5 4, d = 1 0 0: m = 1/3; squared deviations
+    #     4/9 + 1/9 + 1/9 = 2/3, variance 1/3, se^2 = 1/9, se = 1/3, m/se 1.0:
+    #     back. Before: mean 4, deviations 1 1 0, variance 1, se^2 1/3 (se
+    #     0.58); after: mean 13/3 = 4.33, deviations 1/9 4/9 1/9, variance
+    #     1/3, se^2 1/9 (se 0.33). List A: 3 and 4 -> 4 and 4, 3.50 -> 4.00.
+    #   SUM x (the two rows): per seed 11 13 12 -> 11 12 11, mean 12 (se
+    #     0.58) -> 34/3 = 11.33 (se 0.33); d = 0 -1 -1, m = -2/3, squared
+    #     deviations 4/9 + 1/9 + 1/9 = 2/3, variance 1/3, se 1/3, m/se -2.0.
+    #     List A: 11 12 -> 11 11, means 11.50 (se 0.50) and 11.00 (0.00);
+    #     d = 0 -1, m = -1/2, variance 1/2, se^2 1/4, se 0.50, m/se -1.0.
+    #   SUM gladiator (its own campaign, one row of 2 2 2 both times).
+    vseeds = [42, 101, 1]
+    vbefore = Table({"suite": "x", "seeds": "42,101,1"}, vseeds)
+    vafter = Table({"suite": "x", "seeds": "42,101,1"}, vseeds)
+    vbefore.rows = {"level=1 cl=3": {"alive": [8, 8, 8], "taken": [10, 20, 30]},
+                    "level=2 cl=3": {"alive": [3, 5, 4], "taken": [6, 0, 0]},
+                    "campaign=gladiator level=3 cl=2 markers=8":
+                        {"alive": [2, 2, 2], "taken": [0, 0, 0]}}
+    vafter.rows = {"level=1 cl=3": {"alive": [7, 7, 7], "taken": [40, 50, 60]},
+                   "level=2 cl=3": {"alive": [4, 5, 4], "taken": [30, 0, 0]},
+                   "campaign=gladiator level=3 cl=2 markers=8":
+                       {"alive": [2, 2, 2], "taken": [0, 0, 0]}}
+    printed = [line.split() for line in verdict_lines(vbefore, vafter, "pooled")]
+    c.equal("verdict: level 1 row",
+            "level=1 cl=3 3 8.00 (0.00) 7.00 (0.00) -1.00 0.00 - 8.00 7.00 "
+            "20.00 50.00 fell".split(), printed[3])
+    c.equal("verdict: level 2 row",
+            "level=2 cl=3 3 4.00 (0.58) 4.33 (0.33) 0.33 0.33 1.0 3.50 4.00 "
+            "2.00 10.00 back".split(), printed[4])
+    c.equal("verdict: the campaign's own row",
+            "campaign=gladiator level=3 cl=2 markers=8 3 2.00 (0.00) 2.00 (0.00) "
+            "0.00 0.00 - 2.00 2.00 0.00 0.00 back".split(), printed[5])
+    c.equal("verdict: SUM of the rows without a campaign",
+            "SUM x rows=2 n=3 before=12.00 (0.58) after=11.33 (0.33) m=-0.67 "
+            "se=0.33 m/se=-2.0 | A: n=2 before=11.50 (0.50) after=11.00 (0.00) "
+            "m=-0.50 se=0.50 m/se=-1.0".split(), printed[6])
+    c.equal("verdict: SUM of the campaign",
+            "SUM gladiator rows=1 n=3 before=2.00 (0.00) after=2.00 (0.00) m=0.00 "
+            "se=0.00 m/se=- | A: n=2 before=2.00 (0.00) after=2.00 (0.00) "
+            "m=0.00 se=0.00 m/se=-".split(), printed[7])
+    c.equal("verdict: nothing after the SUM lines", 8, len(printed))
+    fewer = Table(vafter.header, vseeds)
+    fewer.rows = {k: v for k, v in vafter.rows.items() if k != "level=2 cl=3"}
+    c.raises("two files of different levels are refused",
+             lambda: verdict_lines(vbefore, fewer, "pooled"))
+    renamed = Table(vafter.header, vseeds)
+    renamed.rows = dict(vafter.rows)
+    renamed.rows["level=2 cl=4"] = renamed.rows.pop("level=2 cl=3")
+    c.raises("a row of another crew level is another row",
+             lambda: verdict_lines(vbefore, renamed, "pooled"))
+    more = Table(vafter.header, vseeds)
+    more.rows = dict(vafter.rows)
+    more.rows["level=9 cl=1"] = {"alive": [1, 1, 1], "taken": [0, 0, 0]}
+    c.raises("an after file with a level the before file lacks is refused",
+             lambda: verdict_lines(vbefore, more, "pooled"))
+
     # The playtest reader on a three-line file: on level 1 the second seed
     # turns from a lost hero and a wiped crew into a clear with two alive.
     with tempfile.TemporaryDirectory() as tmp:
@@ -674,6 +800,41 @@ def self_test():
     c.equal("playtest totals",
             "playtest: 2 levels, 1 differ; totals: cleared 2->3, crew alive 12->14, "
             "hero lost 1->0, failed runs 0->0", report[-1])
+
+    # Each count alone: on level 3 only the clear changes, on level 4 only
+    # the crew alive, on level 5 only the lost hero, on level 7 only a run
+    # that failed; level 6 changes nothing and is not printed.
+    def runs_of(text):
+        runs = {}
+        for line in text:
+            record = json.loads(line)
+            runs[(record["level"], record["seed"])] = record
+        return runs
+
+    alone_before = runs_of([
+        '{"level":3,"seed":42,"level_done":0,"crew_alive":0,"save_all_loss":false}',
+        '{"level":4,"seed":42,"level_done":1,"crew_alive":3,"save_all_loss":false}',
+        '{"level":5,"seed":42,"level_done":1,"crew_alive":2,"save_all_loss":false}',
+        '{"level":6,"seed":42,"level_done":1,"crew_alive":4,"save_all_loss":false}',
+        '{"level":7,"seed":42,"level_done":0,"crew_alive":0,"save_all_loss":false}'])
+    alone_after = runs_of([
+        '{"level":3,"seed":42,"level_done":1,"crew_alive":0,"save_all_loss":false}',
+        '{"level":4,"seed":42,"level_done":1,"crew_alive":1,"save_all_loss":false}',
+        '{"level":5,"seed":42,"level_done":1,"crew_alive":2,"save_all_loss":true}',
+        '{"level":6,"seed":42,"level_done":1,"crew_alive":4,"save_all_loss":false}',
+        '{"level":7,"seed":42,"crew_level":1,"error":"run failed or timed out"}'])
+    report = [line.split() for line in playtest_lines(alone_before, alone_after)]
+    c.equal("playtest, one count at a time: the rows printed", [
+        "3 1 0->1 0->0 0->0 0->0".split(),
+        "4 1 1->1 3->1 0->0 0->0".split(),
+        "5 1 1->1 2->2 0->1 0->0".split(),
+        "7 1 0->0 0->0 0->0 0->1".split()], report[1:-1])
+    c.equal("playtest, one count at a time: totals",
+            "playtest: 5 levels, 4 differ; totals: cleared 3->4, crew alive 9->7, "
+            "hero lost 0->1, failed runs 0->1".split(), report[-1])
+    c.raises("two sweeps of different runs are refused",
+             lambda: playtest_lines(alone_before,
+                                    {k: v for k, v in alone_after.items() if k[0] != 6}))
 
     if c.failed:
         print(f"seed_table self-test: {c.failed} of {c.count} checks failed")
