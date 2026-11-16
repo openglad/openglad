@@ -793,7 +793,13 @@ inline const LevelDataHooks& modes_test_level_hooks()
 // where a mode game's world is built: ModesCtfWorld below, and the shipped
 // basketball courts' LoadedRealCourt (test_modes_basketball.cpp), which
 // load a real level instead. A test that sets the setting itself after
-// that still wins.
+// that still wins. The variable is meant for the mode bot games run by
+// name: over a whole test binary, 1 also reaches the tests that state a
+// setting-off rule without setting the setting, and those turn red (five
+// on 2026-11-16: ModesBasketball.block_window_by_height, three soccer
+// tests and one Onslaught test). That is no fault of the game: each states
+// the setting-off half of Gameplay Fixes AZ (a hit plays for the colour its
+// weapon wears), whose setting-on half has tests of its own.
 inline void apply_modes_gameplay_fixes_override(GameWorld& world)
 {
     const char* value = std::getenv("OG_MODES_GAMEPLAY_FIXES");
