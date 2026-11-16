@@ -1116,6 +1116,7 @@ og_add_unit_group(og_unit_sim NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_calibration.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_calibration.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_campaigns_calibration.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_twitchers.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
@@ -2342,6 +2343,36 @@ else()
     )
 endif()
 set_tests_properties(lint_scenario_facts_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
+# The campaign seed tables (scripts/calibration/seed_table.py) judge a
+# level's change by the mean of its per-seed differences and their paired
+# standard error. `--self-test` runs those formulas on fixed lists with
+# hand-worked answers, the two-lists rule on lists that disagree, and the
+# playtest reader on a three-line file, and fails on any mismatch. The
+# same interpreter guard as the parity lint's self-test above: a bare
+# script path as the command hangs the Windows lane, and an empty
+# ${Python3_EXECUTABLE} fails naming the missing interpreter.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME calibration_seed_table_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/calibration/seed_table.py
+            --self-test
+    )
+else()
+    add_test(NAME calibration_seed_table_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "calibration_seed_table_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(calibration_seed_table_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(calibration_seed_table_selftest PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )

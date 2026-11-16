@@ -1079,7 +1079,8 @@ TEST_F(ModesTdm, hud_rows_carry_per_team_frag_lines)
 
 namespace {
 
-std::string run_tdm_bot_match_digest(int ticks)
+std::string run_tdm_bot_match_digest(int ticks,
+                                     std::string* modegame = nullptr)
 {
     ModesCtfWorld fx(302);
     fx.spawn_anchor(0, 96, 96);
@@ -1095,6 +1096,9 @@ std::string run_tdm_bot_match_digest(int ticks)
     fx.world().ctf_requested_respawn_ticks = 30;
     fx.tick(ticks);
     EXPECT_EQ(kModeIdTdm, fx.var(kTdmSlotModeId));
+    if (modegame != nullptr)
+        *modegame = modegame_line(
+            fx.world(), modegame_slots(fx.world(), "kills", kTdmSlotKills, 2));
     return digest_world(fx.world());
 }
 
@@ -1102,8 +1106,10 @@ std::string run_tdm_bot_match_digest(int ticks)
 
 TEST_F(ModesTdm, tdm_bot_match_is_deterministic_across_runs)
 {
-    const std::string first = run_tdm_bot_match_digest(300);
+    std::string modegame;
+    const std::string first = run_tdm_bot_match_digest(300, &modegame);
     const std::string second = run_tdm_bot_match_digest(300);
+    print_modegame_line(modegame);
     ASSERT_EQ(first, second)
         << "same seed + same arena must replay identically (director, "
            "caps, respawns included)";

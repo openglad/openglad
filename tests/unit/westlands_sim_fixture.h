@@ -6,12 +6,15 @@
  * walkers, family-ctor guys leveled to team_level, deployment onto the
  * authored FAMILY_RESERVED_TEAM start markers). Since the text client's
  * context-before-load fix (F4), openglad_text --protocol runs and this
- * fixture produce bit-identical simulations for the same level/seed/crew,
- * so CI pins measured here hold for the playtest harness too.
+ * fixture produce bit-identical simulations for the same level/seed/crew:
+ * a battle measured here is the battle openglad_text plays with that
+ * level, seed and crew (the playtest scripts, scripts/westlands_playtest.sh
+ * and its siblings, drive it with a crew of their own).
  *
  * Used by test_melee_standoff.cpp (the L2 wedge pin) and the campaign
  * calibration suites (test_westlands_calibration.cpp and its Long Season,
- * Imaginations and Tower siblings: the curve-level battle sanity).
+ * Imaginations, Tower and classic-campaign siblings: the curve-level battle
+ * sanity, and the measure modes scripts/calibration/seed_table.py runs).
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -42,6 +45,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <memory>
@@ -255,6 +259,63 @@ inline short calibration_setting(const char* name)
 {
     const char* v = std::getenv(name);
     return (v != nullptr && v[0] == '0') ? 0 : 1;
+}
+
+// The seeds of a many-seed measuring run: OG_CALIBRATION_SEEDS holds
+// comma-separated numbers ("42,1337,2025,1,2"), and each calibration
+// suite's measure mode plays every one of them (the Tower: layout seeds)
+// in that order. Unset or empty, the list is empty and the measure modes
+// print what they always printed. Anything else (a word, an empty item, a
+// number past 32 bits) fails the running test, so a typo can never
+// measure some other list in silence. No test sets it; CI never does.
+inline std::vector<std::uint32_t> calibration_seeds()
+{
+    std::vector<std::uint32_t> seeds;
+    const char* text = std::getenv("OG_CALIBRATION_SEEDS");
+    if (text == nullptr || text[0] == '\0')
+        return seeds;
+    const std::string list(text);
+    std::size_t start = 0;
+    while (true)
+    {
+        const std::size_t comma = list.find(',', start);
+        const std::string item = list.substr(
+            start, comma == std::string::npos ? std::string::npos
+                                              : comma - start);
+        bool number = !item.empty() && item.size() <= 10;
+        for (const char c : item)
+            number = number && c >= '0' && c <= '9';
+        if (!number || std::stoull(item) > 0xFFFFFFFFull)
+        {
+            ADD_FAILURE() << "OG_CALIBRATION_SEEDS=\"" << list
+                          << "\" is not a comma-separated list of numbers "
+                             "(item \"" << item << "\")";
+            return {};
+        }
+        seeds.push_back(static_cast<std::uint32_t>(std::stoull(item)));
+        if (comma == std::string::npos)
+            return seeds;
+        start = comma + 1;
+    }
+}
+
+// The two lines a many-seed measuring run prints per row, in the seed
+// list's order: the crew members standing at tick 600 on each seed, and
+// the hit points the crew lost on each. `prefix` is "" or "TOWER ";
+// `keys` names the row ("level=7 cl=4"). scripts/calibration/seed_table.py
+// reads exactly these forms.
+inline void print_calibn_lines(const char* prefix, const std::string& keys,
+                               const std::vector<int>& alive,
+                               const std::vector<float>& taken)
+{
+    std::printf("%sCALIBN %s survivors@600:", prefix, keys.c_str());
+    for (const int a : alive)
+        std::printf(" %d", a);
+    std::printf("\n%sCALIBN-TAKEN %s taken@600:", prefix, keys.c_str());
+    for (const float t : taken)
+        std::printf(" %.0f", static_cast<double>(t));
+    std::printf("\n");
+    std::fflush(stdout);
 }
 
 // What a curve battle did: the battle-sanity halves the calibration suites

@@ -1,0 +1,722 @@
+#!/usr/bin/env python3
+"""Seed tables of the campaign calibration suites: run them, compare them.
+
+The calibration suites of Westlands, The Long Season, Imaginations and the
+Tower, and the classic campaigns' suite, each have a measure mode that plays
+the stand-in crew of eight for 600 ticks on every seed of
+OG_CALIBRATION_SEEDS and prints, per level, the crew members standing and
+the crew's damage taken on each seed (tests/unit/westlands_sim_fixture.h:
+calibration_seeds() and print_calibn_lines()). This script runs those modes
+and compares two runs.
+
+  run       plays one suite in measure mode for a seed list and a value of
+            the Gameplay Fixes setting, and writes its lines to a file.
+  verdict   compares two such files level by level, by the rule below.
+  playtest  compares two sweeps of the playtest scripts
+            (scripts/westlands_playtest.sh and its two siblings).
+  --self-test  checks the formulas on fixed lists (a CTest entry).
+
+The rule, for one level over n seeds, x the survivors before and y after on
+each seed (both runs play the same seeds, so the comparison is paired):
+d = y - x per seed, m = the mean of d, se = sqrt(sample variance of d / n),
+with the variance divided by n - 1. One word per level:
+
+  floor     the mean before is under 1.0: the count sits on its floor and
+            cannot judge the level;
+  fell      m < 0 and m <= -3 se;
+  fell<3    m < 0 and m <= -2 se: a fall the measure cannot prove;
+  too far   m > 0 and m >= 2 se;
+  back      m >= -se (with se 0: m >= 0);
+  not back  anything else.
+
+--rule two-lists judges list A and list B apart at two errors: "fell" when
+both lists fell, "fell(A)" when only list A did; "too far" and "back" are
+judged on list A. Every comparison is made in exact fractions, so a level
+that sits exactly on a boundary reads the same on every machine.
+
+Seed lists: A is 42, 1337, 2025 and 1 to 17 (the twenty of the docs), B is
+101 to 120, AB is A then B.
+
+The script starts no build and takes no lock: run it from the repository's
+build environment (`nix develop`), under whatever lock the caller holds.
+Python 3.9 or newer, standard library only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from fractions import Fraction
+
+LIST_A = [42, 1337, 2025] + list(range(1, 18))
+LIST_B = list(range(101, 121))
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# suite -> (test binary under build/ci-test, gtest filter, its measure switch)
+SUITES = {
+    "westlands": ("og_unit_sim", "WestlandsCampaignTest.curve_levels_*",
+                  "WESTLANDS_CALIBRATION_MEASURE"),
+    "longseason": ("og_unit_sim", "LongSeasonCalibration.curve_levels_*",
+                   "LONGSEASON_CALIBRATION_MEASURE"),
+    "imaginations": ("og_unit_sim", "ImaginationsCalibration.curve_levels_*",
+                     "IMAGINATIONS_CALIBRATION_MEASURE"),
+    "tower": ("og_unit_tower_calibration", "TowerCalibration.*",
+              "TOWER_CALIBRATION_MEASURE"),
+    "classic": ("og_unit_sim", "ClassicCampaignsCalibration.*",
+                "CLASSIC_CALIBRATION_MEASURE"),
+}
+
+# The two line forms print_calibn_lines() writes, with or without "TOWER ".
+LINE_RE = re.compile(
+    r"^(?P<tower>TOWER )?CALIBN(?P<dash>-TAKEN)? "
+    r"(?P<keys>(?:[a-z_]+=\S+ )+)"
+    r"(?P<what>survivors|taken)@600:(?P<values>(?: -?[0-9]+)*)[ \t]*$")
+
+HEADER_PREFIX = "# seed_table "
+
+
+class TableError(Exception):
+    """A file or an output that is not what this script reads."""
+
+
+# ---------------------------------------------------------------------------
+# Seed lists and table files
+# ---------------------------------------------------------------------------
+
+def resolve_seeds(spec):
+    """A, B, AB, or a comma-separated list of numbers."""
+    if spec == "A":
+        return list(LIST_A)
+    if spec == "B":
+        return list(LIST_B)
+    if spec == "AB":
+        return LIST_A + LIST_B
+    items = spec.split(",")
+    if not items or any(not item.isdigit() for item in items):
+        raise TableError(f"--seeds {spec!r} is not A, B, AB or a comma-separated list of numbers")
+    seeds = [int(item) for item in items]
+    if any(seed > 0xFFFFFFFF for seed in seeds):
+        raise TableError(f"--seeds {spec!r}: a seed is wider than 32 bits")
+    return seeds
+
+
+def parse_line(line):
+    """(row key, "alive" or "taken", values) of a CALIBN line, else None."""
+    match = LINE_RE.match(line)
+    if match is None:
+        return None
+    kind = "taken" if match.group("dash") else "alive"
+    if (kind == "taken") != (match.group("what") == "taken"):
+        return None
+    key = (match.group("tower") or "") + match.group("keys").strip()
+    values = [int(v) for v in match.group("values").split()]
+    return key, kind, values
+
+
+def key_fields(key):
+    fields = {}
+    for token in key.split():
+        name, sep, value = token.partition("=")
+        if sep:
+            fields[name] = value
+    return fields
+
+
+def row_sort_key(key):
+    fields = key_fields(key)
+    number = fields.get("level", fields.get("floor", "0"))
+    return (key.startswith("TOWER "), fields.get("campaign", ""),
+            int(number) if number.lstrip("-").isdigit() else 0, key)
+
+
+class Table:
+    """The rows of one measuring run: key -> {"alive": [...], "taken": [...]}."""
+
+    def __init__(self, header=None, seeds=None):
+        self.header = dict(header or {})
+        self.seeds = list(seeds or [])
+        self.rows = {}
+
+    def add(self, key, kind, values, where):
+        row = self.rows.setdefault(key, {})
+        if kind in row:
+            raise TableError(f"{where}: a second {kind} line for {key!r}")
+        row[kind] = values
+
+    def check(self, where, need_taken):
+        if not self.rows:
+            raise TableError(f"{where}: no CALIBN line")
+        for key, row in self.rows.items():
+            if "alive" not in row:
+                raise TableError(f"{where}: {key!r} has a damage line and no survivor line")
+            if need_taken and "taken" not in row:
+                raise TableError(f"{where}: {key!r} has no CALIBN-TAKEN line")
+            for kind, values in row.items():
+                if len(values) != len(self.seeds):
+                    raise TableError(
+                        f"{where}: {key!r} has {len(values)} {kind} values for "
+                        f"{len(self.seeds)} seeds")
+
+    def sorted_keys(self):
+        return sorted(self.rows, key=row_sort_key)
+
+
+def extract_lines(output, where):
+    """The CALIBN lines of a test binary's output, in the order printed. A
+    line that names CALIBN in any other form is an error, never skipped."""
+    kept = []
+    for line in output.splitlines():
+        if "CALIBN" not in line:
+            continue
+        if parse_line(line) is None:
+            raise TableError(f"{where}: unreadable CALIBN line: {line!r}")
+        kept.append(line)
+    return kept
+
+
+def table_from_lines(lines, seeds, header, where, need_taken):
+    table = Table(header, seeds)
+    for line in lines:
+        key, kind, values = parse_line(line)
+        table.add(key, kind, values, where)
+    table.check(where, need_taken)
+    return table
+
+
+def header_line(fields):
+    return HEADER_PREFIX + " ".join(f"{k}={v}" for k, v in fields.items())
+
+
+def read_table(path):
+    header = None
+    lines = []
+    with open(path, encoding="utf-8") as handle:
+        for number, raw in enumerate(handle, 1):
+            line = raw.rstrip("\n")
+            if not line.strip():
+                continue
+            if line.startswith(HEADER_PREFIX):
+                if header is not None:
+                    raise TableError(f"{path}:{number}: a second header line")
+                header = key_fields(line[len(HEADER_PREFIX):])
+                continue
+            if line.startswith("#"):
+                continue
+            if parse_line(line) is None:
+                raise TableError(f"{path}:{number}: not a CALIBN line: {line!r}")
+            lines.append(line)
+    if header is None or "seeds" not in header:
+        raise TableError(f"{path}: no '{HEADER_PREFIX}... seeds=...' header line")
+    seeds = resolve_seeds(header["seeds"])
+    return table_from_lines(lines, seeds, header, path, need_taken=False)
+
+
+# ---------------------------------------------------------------------------
+# The statistics (exact fractions)
+# ---------------------------------------------------------------------------
+
+def sample_variance(values):
+    """The variance of a sample, divided by n - 1."""
+    n = len(values)
+    mean = Fraction(sum(values), n)
+    return sum((Fraction(v) - mean) ** 2 for v in values) / (n - 1)
+
+
+class Paired:
+    """Before x and after y on the same seeds."""
+
+    def __init__(self, xs, ys):
+        if len(xs) != len(ys):
+            raise TableError("paired lists of different lengths")
+        if len(xs) < 2:
+            raise TableError("an error needs at least two seeds")
+        n = len(xs)
+        diffs = [y - x for x, y in zip(xs, ys)]
+        self.n = n
+        self.mean_x = Fraction(sum(xs), n)
+        self.mean_y = Fraction(sum(ys), n)
+        self.se2_x = sample_variance(xs) / n
+        self.se2_y = sample_variance(ys) / n
+        self.m = Fraction(sum(diffs), n)
+        self.se2 = sample_variance(diffs) / n
+
+    @property
+    def se(self):
+        return math.sqrt(self.se2)
+
+    def ratio(self):
+        """m / se, or None when se is 0."""
+        if self.se2 == 0:
+            return None
+        return float(self.m) / self.se
+
+
+def falls_by(m, se2, k):
+    """m < 0 and m <= -k se, in exact arithmetic."""
+    return m < 0 and m * m >= k * k * se2
+
+
+def rises_by(m, se2, k):
+    """m > 0 and m >= k se."""
+    return m > 0 and m * m >= k * k * se2
+
+
+def is_back(m, se2):
+    """m >= -se; with se 0, m >= 0."""
+    return m >= 0 or m * m <= se2
+
+
+def pooled_word(p):
+    if p.mean_x < 1:
+        return "floor"
+    if falls_by(p.m, p.se2, 3):
+        return "fell"
+    if falls_by(p.m, p.se2, 2):
+        return "fell<3"
+    if rises_by(p.m, p.se2, 2):
+        return "too far"
+    if is_back(p.m, p.se2):
+        return "back"
+    return "not back"
+
+
+def two_lists_word(pa, pb):
+    if pa.mean_x < 1:
+        return "floor"
+    fell_a = falls_by(pa.m, pa.se2, 2)
+    fell_b = falls_by(pb.m, pb.se2, 2)
+    if fell_a and fell_b:
+        return "fell"
+    if fell_a:
+        return "fell(A)"
+    if rises_by(pa.m, pa.se2, 2):
+        return "too far"
+    if is_back(pa.m, pa.se2):
+        return "back"
+    return "not back"
+
+
+def subset(values, seeds, wanted):
+    picked = set(wanted)
+    return [v for v, s in zip(values, seeds) if s in picked]
+
+
+def fmt(value, digits=2):
+    return f"{float(value):.{digits}f}"
+
+
+def fmt_ratio(p):
+    r = p.ratio()
+    return "-" if r is None else f"{r:.1f}"
+
+
+def mean_text(values):
+    return "-" if not values else fmt(Fraction(sum(values), len(values)))
+
+
+# ---------------------------------------------------------------------------
+# verdict
+# ---------------------------------------------------------------------------
+
+def compare_tables(before, after):
+    if before.seeds != after.seeds:
+        raise TableError("the two files hold different seed lists")
+    missing = sorted(set(before.rows) ^ set(after.rows), key=row_sort_key)
+    if missing:
+        raise TableError("the two files hold different levels: " + "; ".join(missing[:6]))
+
+
+def group_of(key, suite):
+    return key_fields(key).get("campaign", suite)
+
+
+def verdict_lines(before, after, rule):
+    compare_tables(before, after)
+    seeds = before.seeds
+    a_seeds = [s for s in seeds if s in set(LIST_A)]
+    b_seeds = [s for s in seeds if s in set(LIST_B)]
+    out = []
+    for name, table in (("before", before), ("after", after)):
+        out.append(f"{name}: " + " ".join(f"{k}={v}" for k, v in table.header.items()))
+    suite = before.header.get("suite", "suite")
+    if rule == "two-lists":
+        if len(a_seeds) < 2 or len(b_seeds) < 2:
+            raise TableError("--rule two-lists needs at least two seeds of list A and two of list B")
+        out.append(f"{'row':<46} {'nA':>3} {'A before':>8} {'A after':>8} {'mA':>6} {'seA':>5} "
+                   f"{'nB':>3} {'mB':>6} {'seB':>5}  word")
+    else:
+        out.append(f"{'row':<46} {'n':>3} {'before (se)':>13} {'after (se)':>13} {'m':>6} "
+                   f"{'se':>5} {'m/se':>6} {'A bef':>6} {'A aft':>6} {'taken bef':>9} "
+                   f"{'taken aft':>9}  word")
+    for key in before.sorted_keys():
+        xs = before.rows[key]["alive"]
+        ys = after.rows[key]["alive"]
+        if rule == "two-lists":
+            pa = Paired(subset(xs, seeds, LIST_A), subset(ys, seeds, LIST_A))
+            pb = Paired(subset(xs, seeds, LIST_B), subset(ys, seeds, LIST_B))
+            out.append(f"{key:<46} {pa.n:>3} {fmt(pa.mean_x):>8} {fmt(pa.mean_y):>8} "
+                       f"{fmt(pa.m):>6} {fmt(pa.se):>5} {pb.n:>3} {fmt(pb.m):>6} "
+                       f"{fmt(pb.se):>5}  {two_lists_word(pa, pb)}")
+            continue
+        p = Paired(xs, ys)
+        taken_x = before.rows[key].get("taken", [])
+        taken_y = after.rows[key].get("taken", [])
+        out.append(
+            f"{key:<46} {p.n:>3} {fmt(p.mean_x):>6} ({fmt(math.sqrt(p.se2_x))}) "
+            f"{fmt(p.mean_y):>6} ({fmt(math.sqrt(p.se2_y))}) {fmt(p.m):>6} {fmt(p.se):>5} "
+            f"{fmt_ratio(p):>6} {mean_text(subset(xs, seeds, LIST_A)):>6} "
+            f"{mean_text(subset(ys, seeds, LIST_A)):>6} {mean_text(taken_x):>9} "
+            f"{mean_text(taken_y):>9}  {pooled_word(p)}")
+    groups = []
+    for key in before.sorted_keys():
+        group = group_of(key, suite)
+        if group not in groups:
+            groups.append(group)
+    for group in groups:
+        keys = [k for k in before.sorted_keys() if group_of(k, suite) == group]
+        totals_x = [sum(before.rows[k]["alive"][i] for k in keys) for i in range(len(seeds))]
+        totals_y = [sum(after.rows[k]["alive"][i] for k in keys) for i in range(len(seeds))]
+        line = f"SUM {group} rows={len(keys)} " + sum_text(totals_x, totals_y)
+        if len(a_seeds) >= 2 and len(a_seeds) < len(seeds):
+            line += " | A: " + sum_text(subset(totals_x, seeds, LIST_A),
+                                        subset(totals_y, seeds, LIST_A))
+        out.append(line)
+    return out
+
+
+def sum_text(xs, ys):
+    p = Paired(xs, ys)
+    return (f"n={p.n} before={fmt(p.mean_x)} ({fmt(math.sqrt(p.se2_x))}) "
+            f"after={fmt(p.mean_y)} ({fmt(math.sqrt(p.se2_y))}) "
+            f"m={fmt(p.m)} se={fmt(p.se)} m/se={fmt_ratio(p)}")
+
+
+# ---------------------------------------------------------------------------
+# playtest
+# ---------------------------------------------------------------------------
+
+def read_playtest(path):
+    runs = {}
+    with open(path, encoding="utf-8") as handle:
+        for number, raw in enumerate(handle, 1):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                record = json.loads(raw)
+                key = (int(record["level"]), int(record["seed"]))
+            except (ValueError, KeyError, TypeError) as error:
+                raise TableError(f"{path}:{number}: not a playtest summary line ({error})")
+            if key in runs:
+                raise TableError(f"{path}:{number}: a second run of level {key[0]} seed {key[1]}")
+            runs[key] = record
+    if not runs:
+        raise TableError(f"{path}: no playtest summary line")
+    return runs
+
+
+def playtest_tally(runs):
+    """level -> runs, foes cleared (level_done == 1), crew alive at the end
+    (summed), a protected hero lost (save_all_loss), runs that failed."""
+    per = {}
+    for (level, _seed), record in sorted(runs.items()):
+        tally = per.setdefault(level, {"runs": 0, "done": 0, "alive": 0, "loss": 0, "errors": 0})
+        tally["runs"] += 1
+        if "error" in record:
+            tally["errors"] += 1
+            continue
+        if record.get("level_done") == 1:
+            tally["done"] += 1
+        tally["alive"] += int(record.get("crew_alive") or 0)
+        if record.get("save_all_loss") is True:
+            tally["loss"] += 1
+    return per
+
+
+def playtest_lines(before_runs, after_runs):
+    if set(before_runs) != set(after_runs):
+        odd = sorted(set(before_runs) ^ set(after_runs))
+        raise TableError("the two sweeps ran different levels or seeds: " +
+                         ", ".join(f"level {l} seed {s}" for l, s in odd[:8]))
+    before = playtest_tally(before_runs)
+    after = playtest_tally(after_runs)
+    out = [f"{'level':>5} {'runs':>4}  {'cleared':>9}  {'crew alive':>10}  "
+           f"{'hero lost':>9}  {'failed':>7}"]
+    differ = 0
+    totals = {"done": [0, 0], "alive": [0, 0], "loss": [0, 0], "errors": [0, 0]}
+    for level in sorted(before):
+        b, a = before[level], after[level]
+        for name in totals:
+            totals[name][0] += b[name]
+            totals[name][1] += a[name]
+        if all(b[name] == a[name] for name in totals):
+            continue
+        differ += 1
+        out.append(f"{level:>5} {b['runs']:>4}  {b['done']:>4}->{a['done']:<4}  "
+                   f"{b['alive']:>5}->{a['alive']:<4}  {b['loss']:>4}->{a['loss']:<4}  "
+                   f"{b['errors']:>3}->{a['errors']:<3}")
+    out.append(f"playtest: {len(before)} levels, {differ} differ; totals: cleared "
+               f"{totals['done'][0]}->{totals['done'][1]}, crew alive "
+               f"{totals['alive'][0]}->{totals['alive'][1]}, hero lost "
+               f"{totals['loss'][0]}->{totals['loss'][1]}, failed runs "
+               f"{totals['errors'][0]}->{totals['errors'][1]}")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
+
+def git_text(*args):
+    try:
+        return subprocess.run(["git", *args], cwd=ROOT, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, check=True).stdout.decode()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def cmd_run(args):
+    seeds = resolve_seeds(args.seeds)
+    binary, gtest_filter, switch = SUITES[args.suite]
+    executable = os.path.join("build", "ci-test", binary)
+    if not os.path.exists(os.path.join(ROOT, executable)):
+        raise TableError(f"{executable} is not built")
+    out_path = os.path.abspath(args.out)
+    env = dict(os.environ)
+    for _binary, _filter, other in SUITES.values():
+        env.pop(other, None)
+    env.pop("CLASSIC_CALIBRATION_FIT", None)
+    env["OG_CALIBRATION_SEEDS"] = ",".join(str(s) for s in seeds)
+    env["OG_CALIBRATION_GAMEPLAY_FIXES"] = str(args.fixes)
+    env[switch] = "1"
+    new_specials = "0" if env.get("OG_CALIBRATION_NEW_SPECIALS", "").startswith("0") else "1"
+    command = [sys.executable, os.path.join("tests", "fixtures", "run_isolated.py"), ".",
+               executable, f"--gtest_filter={gtest_filter}"]
+    proc = subprocess.run(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = proc.stdout.decode("utf-8", errors="replace")
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(out_path + ".log", "w", encoding="utf-8") as log:
+        log.write(output)
+    if proc.returncode != 0:
+        raise TableError(f"{binary} exited {proc.returncode} (its output: {out_path}.log)")
+    head = (git_text("rev-parse", "--short", "HEAD") or "?").strip()
+    status = git_text("status", "--short")
+    dirty = "?" if status is None else str(len([l for l in status.splitlines() if l.strip()]))
+    header = {"suite": args.suite, "seeds": ",".join(str(s) for s in seeds),
+              "fixes": str(args.fixes), "new_specials": new_specials, "head": head,
+              "dirty": dirty}
+    lines = extract_lines(output, f"{out_path}.log")
+    table_from_lines(lines, seeds, header, f"{out_path}.log", need_taken=True)
+    with open(out_path, "w", encoding="utf-8") as handle:
+        handle.write(header_line(header) + "\n")
+        for line in lines:
+            handle.write(line + "\n")
+    print(f"wrote {len(lines)} lines ({len(lines) // 2} rows, {len(seeds)} seeds) to {out_path}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# --self-test
+# ---------------------------------------------------------------------------
+
+class Checks:
+    def __init__(self):
+        self.count = 0
+        self.failed = 0
+
+    def equal(self, name, expected, got):
+        self.count += 1
+        if expected != got:
+            self.failed += 1
+            print(f"FAIL {name}: expected {expected!r}, got {got!r}")
+
+    def near(self, name, expected, got, tolerance=5e-5):
+        self.count += 1
+        if got is None or abs(expected - got) > tolerance:
+            self.failed += 1
+            print(f"FAIL {name}: expected {expected}, got {got}")
+
+    def raises(self, name, call):
+        self.count += 1
+        try:
+            call()
+        except TableError:
+            return
+        self.failed += 1
+        print(f"FAIL {name}: expected a refusal, got none")
+
+
+def self_test():
+    c = Checks()
+
+    # Seed lists.
+    c.equal("list A", 20, len(LIST_A))
+    c.equal("list AB", LIST_A + LIST_B, resolve_seeds("AB"))
+    c.equal("comma list", [7, 1, 101], resolve_seeds("7,1,101"))
+    c.raises("a word is not a seed list", lambda: resolve_seeds("7,x"))
+    c.raises("an empty item is not a seed", lambda: resolve_seeds("7,,1"))
+
+    # All equal: no change, no error, back.
+    p = Paired([5] * 40, [5] * 40)
+    c.equal("all equal: m", Fraction(0), p.m)
+    c.equal("all equal: se^2", Fraction(0), p.se2)
+    c.equal("all equal: word", "back", pooled_word(p))
+
+    # One seed of forty lower by 8: d is 0 on 39 seeds and -8 on one.
+    # m = -8/40 = -0.2; squared deviations 39 * 0.04 + 7.8^2 = 62.4;
+    # variance 62.4 / 39 = 1.6; se^2 = 1.6 / 40 = 0.04, se = 0.2: m sits on
+    # -se exactly, which still reads back.
+    p = Paired([8] * 40, [8] * 39 + [0])
+    c.equal("one seed lower by 8: m", Fraction(-1, 5), p.m)
+    c.equal("one seed lower by 8: se^2", Fraction(1, 25), p.se2)
+    c.equal("one seed lower by 8: word", "back", pooled_word(p))
+
+    # The hand-worked case. x = 6 5 4 7 8, y = 4 4 4 4 4, so d = -2 -1 0 -3 -4.
+    # m = -10 / 5 = -2. Squared deviations from m: 0 1 4 1 4, sum 10.
+    # Sample variance 10 / (5 - 1) = 2.5; se = sqrt(2.5 / 5) = sqrt(0.5)
+    # = 0.70711; m / se = -2.83: past two errors, short of three.
+    p = Paired([6, 5, 4, 7, 8], [4, 4, 4, 4, 4])
+    c.near("hand-worked m", -2.0, float(p.m))
+    c.near("hand-worked se", 0.70711, p.se)
+    c.near("hand-worked m/se", -2.82843, p.ratio())
+    c.near("hand-worked se before", 0.70711, math.sqrt(p.se2_x))
+    c.equal("hand-worked word", "fell<3", pooled_word(p))
+
+    # The other words.
+    c.equal("floor (mean before 0.6)", "floor",
+            pooled_word(Paired([2, 0, 1, 0, 0, 1, 0, 0, 2, 0], [0] * 10)))
+    c.equal("fell (every seed one lower, se 0)", "fell",
+            pooled_word(Paired([5] * 4, [4] * 4)))
+    c.equal("too far (every seed three higher)", "too far",
+            pooled_word(Paired([2, 3, 2, 3], [5, 6, 5, 6])))
+    # d = -2 -1 0 0 -1 0 1 -1: m = -0.5, squared deviations sum 6, variance
+    # 6/7, se^2 = 3/28 (se 0.327): -2 se < m < -se.
+    c.equal("not back", "not back",
+            pooled_word(Paired([4] * 8, [2, 3, 4, 4, 3, 4, 5, 3])))
+
+    # Two lists that disagree: list A loses one survivor on ten of its
+    # twenty seeds, list B changes nothing. Pooled over the forty:
+    # m = -0.25, se^2 = (7.5 / 39) / 40 = 1/208, m/se = -3.6: fell. List A
+    # alone: m = -0.5, se^2 = (5 / 19) / 20 = 1/76: past two errors; list B:
+    # m = 0. The two-lists rule wants both: fell(A).
+    seeds = LIST_A + LIST_B
+    xs = [5] * 40
+    ys = [4] * 10 + [5] * 10 + [5] * 20
+    c.equal("pooled over disagreeing lists", "fell", pooled_word(Paired(xs, ys)))
+    pa = Paired(subset(xs, seeds, LIST_A), subset(ys, seeds, LIST_A))
+    pb = Paired(subset(xs, seeds, LIST_B), subset(ys, seeds, LIST_B))
+    c.equal("list A se^2", Fraction(1, 76), pa.se2)
+    c.equal("two lists that disagree", "fell(A)", two_lists_word(pa, pb))
+    ys_both = [4] * 10 + [5] * 10 + [4] * 10 + [5] * 10
+    pb_both = Paired(subset(xs, seeds, LIST_B), subset(ys_both, seeds, LIST_B))
+    c.equal("two lists that agree", "fell", two_lists_word(pa, pb_both))
+
+    # The lines a run writes, read back; the old three-seed line is not ours.
+    output = "\n".join([
+        "[ RUN      ] WestlandsCampaignTest.curve_levels_x",
+        "CALIBN level=7 cl=4 survivors@600: 3 4",
+        "CALIBN-TAKEN level=7 cl=4 taken@600: 1200 980",
+        "TOWER CALIBN floor=5 cl=2 survivors@600: 1 0",
+        "TOWER CALIBN-TAKEN floor=5 cl=2 taken@600: 2000 2100",
+        "CALIBN campaign=gladiator level=3 cl=2 markers=6 survivors@600: 8 7",
+        "CALIBN-TAKEN campaign=gladiator level=3 cl=2 markers=6 taken@600: 100 250",
+        "CALIB level=1 cl=1 survivors@600: 8 8 8  [seed42 alive=8 host=9 taken=338 dealt=1162]",
+    ])
+    lines = extract_lines(output, "sample")
+    c.equal("lines kept", 6, len(lines))
+    table = table_from_lines(lines, [1, 2], {"suite": "x", "seeds": "1,2"}, "sample", True)
+    c.equal("rows read", ["level=7 cl=4", "campaign=gladiator level=3 cl=2 markers=6",
+                          "TOWER floor=5 cl=2"], table.sorted_keys())
+    c.equal("damage read", [100, 250],
+            table.rows["campaign=gladiator level=3 cl=2 markers=6"]["taken"])
+    c.raises("a mangled CALIBN line is refused",
+             lambda: extract_lines("CALIBN level=7 survivors@600: 3 x", "sample"))
+    c.raises("a row short of a seed is refused",
+             lambda: table_from_lines(lines, [1, 2, 3], {}, "sample", True))
+    c.raises("a row without its damage line is refused when a run needs it",
+             lambda: table_from_lines(lines[:1], [1, 2], {}, "sample", True))
+    other = Table({}, [1, 3])
+    other.rows = dict(table.rows)
+    c.raises("two files of different seeds are refused",
+             lambda: verdict_lines(table, other, "pooled"))
+
+    # The playtest reader on a three-line file: on level 1 the second seed
+    # turns from a lost hero and a wiped crew into a clear with two alive.
+    with tempfile.TemporaryDirectory() as tmp:
+        before_path = os.path.join(tmp, "before.jsonl")
+        after_path = os.path.join(tmp, "after.jsonl")
+        with open(before_path, "w", encoding="utf-8") as handle:
+            handle.write('{"level":1,"seed":42,"level_done":1,"crew_alive":4,"save_all_loss":false}\n'
+                         '{"level":1,"seed":1337,"level_done":0,"crew_alive":0,"save_all_loss":true}\n'
+                         '{"level":2,"seed":42,"level_done":1,"crew_alive":8,"save_all_loss":false}\n')
+        with open(after_path, "w", encoding="utf-8") as handle:
+            handle.write('{"level":1,"seed":42,"level_done":1,"crew_alive":4,"save_all_loss":false}\n'
+                         '{"level":1,"seed":1337,"level_done":1,"crew_alive":2,"save_all_loss":false}\n'
+                         '{"level":2,"seed":42,"level_done":1,"crew_alive":8,"save_all_loss":false}\n')
+        before_runs = read_playtest(before_path)
+        after_runs = read_playtest(after_path)
+    c.equal("playtest tally before", {
+        1: {"runs": 2, "done": 1, "alive": 4, "loss": 1, "errors": 0},
+        2: {"runs": 1, "done": 1, "alive": 8, "loss": 0, "errors": 0}},
+        playtest_tally(before_runs))
+    report = playtest_lines(before_runs, after_runs)
+    c.equal("playtest: only level 1 differs", ["    1"], [line[:5] for line in report[1:-1]])
+    c.equal("playtest totals",
+            "playtest: 2 levels, 1 differ; totals: cleared 2->3, crew alive 12->14, "
+            "hero lost 1->0, failed runs 0->0", report[-1])
+
+    if c.failed:
+        print(f"seed_table self-test: {c.failed} of {c.count} checks failed")
+        return 1
+    print(f"seed_table self-test: OK ({c.count} checks)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+
+def main(argv):
+    if argv == ["--self-test"]:
+        return self_test()
+    parser = argparse.ArgumentParser(
+        description="Seed tables of the campaign calibration suites (see the module text).")
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run", help="play one suite's measure mode and write its lines")
+    run.add_argument("--suite", required=True, choices=sorted(SUITES))
+    run.add_argument("--seeds", required=True, help="A, B, AB or a comma-separated list")
+    run.add_argument("--fixes", required=True, type=int, choices=(0, 1))
+    run.add_argument("--out", required=True)
+    verdict = sub.add_parser("verdict", help="judge AFTER against BEFORE, level by level")
+    verdict.add_argument("before")
+    verdict.add_argument("after")
+    verdict.add_argument("--rule", choices=("pooled", "two-lists"), default="pooled")
+    playtest = sub.add_parser("playtest", help="compare two playtest sweeps")
+    playtest.add_argument("before")
+    playtest.add_argument("after")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "run":
+            return cmd_run(args)
+        if args.command == "verdict":
+            for line in verdict_lines(read_table(args.before), read_table(args.after), args.rule):
+                print(line)
+            return 0
+        for line in playtest_lines(read_playtest(args.before), read_playtest(args.after)):
+            print(line)
+        return 0
+    except (TableError, OSError) as error:
+        print(f"seed_table: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

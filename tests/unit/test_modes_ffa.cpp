@@ -1266,7 +1266,8 @@ TEST_F(ModesFfa, director_endgame_focus_retargets_at_the_leader)
 
 namespace {
 
-std::string run_ffa_bot_match(int ticks, bool* scored)
+std::string run_ffa_bot_match(int ticks, bool* scored,
+                              std::string* modegame = nullptr)
 {
     FfaRig rig(850, 0, /*anchors=*/true);
     // Close-quarters pools so the brawl produces frags inside the window.
@@ -1288,6 +1289,17 @@ std::string run_ffa_bot_match(int ticks, bool* scored)
         }
     }
     EXPECT_EQ(kModeIdFfa, rig.fx.var(kFfaSlotModeId));
+    if (modegame != nullptr)
+    {
+        int total = 0;
+        for (int c = 0; c < kBandCount; ++c)
+            total += rig.frags(c);
+        *modegame = modegame_line(
+            rig.fx.world(),
+            std::format("frag_total={} ", total) +
+                modegame_slots(rig.fx.world(), "frags", kFfaSlotFrags,
+                               kBandCount));
+    }
     return digest_world(rig.fx.world());
 }
 
@@ -1297,8 +1309,11 @@ TEST_F(ModesFfa, ffa_bot_match_is_deterministic_across_runs)
 {
     bool scored_first = false;
     bool scored_second = false;
-    const std::string first = run_ffa_bot_match(600, &scored_first);
+    std::string modegame;
+    const std::string first =
+        run_ffa_bot_match(600, &scored_first, &modegame);
     const std::string second = run_ffa_bot_match(600, &scored_second);
+    print_modegame_line(modegame);
     ASSERT_TRUE(scored_first)
         << "the close-quarters bot brawl must produce a frag (the run "
            "exercises the ledger and the director, not an idle map)";

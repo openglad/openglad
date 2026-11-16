@@ -25,8 +25,12 @@
  * Measurement mode: set WESTLANDS_CALIBRATION_MEASURE=1 to print the
  * per-seed survivor counts for seeds {42, 1337, 2025} and the seed-42
  * battle line (alive / host / damage taken / damage dealt) instead of
- * asserting. It is a measuring tool for balance work: it asserts nothing
- * and runs only when asked.
+ * asserting. With OG_CALIBRATION_SEEDS also set (westlands_sim_fixture.h,
+ * calibration_seeds()) it plays every listed seed instead and prints two
+ * lines per row, CALIBN (survivors per seed) and CALIBN-TAKEN (the crew's
+ * damage taken per seed); scripts/calibration/seed_table.py runs it and
+ * compares two runs. It is a measuring tool for balance work: it asserts
+ * nothing and runs only when asked.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -38,9 +42,12 @@
 #include "westlands_sim_fixture.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <format>
 #include <iterator>
 #include <cstdlib>
+#include <vector>
 
 namespace {
 
@@ -96,6 +103,11 @@ void check_curve_partition(std::size_t partition)
         << "a partition past the stride plays no row and passes vacuously";
     const bool measure =
         std::getenv("WESTLANDS_CALIBRATION_MEASURE") != nullptr;
+    const std::vector<std::uint32_t> seeds =
+        measure ? westlands_fixture::calibration_seeds()
+                : std::vector<std::uint32_t>{};
+    if (measure && ::testing::Test::HasFailure())
+        return; // calibration_seeds() named what is wrong with the list
 
     for (std::size_t index = partition; index < std::size(kCurve);
          index += kCurvePartitions)
@@ -103,6 +115,22 @@ void check_curve_partition(std::size_t partition)
         const CurveLevel& lvl = kCurve[index];
         SCOPED_TRACE("scen" + std::to_string(lvl.level_id) + " at crew level " +
                      std::to_string(lvl.crew_level));
+        if (measure && !seeds.empty())
+        {
+            std::vector<int> alive;
+            std::vector<float> taken;
+            for (const std::uint32_t seed : seeds)
+            {
+                const CurveBattle b =
+                    battle_at_600(lvl.level_id, lvl.crew_level, seed);
+                alive.push_back(b.alive);
+                taken.push_back(b.crew_taken);
+            }
+            westlands_fixture::print_calibn_lines(
+                "", std::format("level={} cl={}", lvl.level_id, lvl.crew_level),
+                alive, taken);
+            continue;
+        }
         if (measure)
         {
             std::printf("CALIB level=%d cl=%d survivors@600:", lvl.level_id,
