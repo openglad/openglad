@@ -10683,8 +10683,9 @@ inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
 };
 
 // --- elf_bot_rocks_blocked (fix V: the rock gate asks the rock's pad) ---
-// elf_rocks_blocked's geometry with a bot: a hostile level-1 elf bot with a
-// TOWER1 touching it from above, 5 px left so the two centres line up (the
+// elf_rocks_blocked's geometry with a bot: a hostile level-1 elf bot inside a
+// TOWER1 (the 25x29 tower at (115, 104) covers y 104 to 132 and the elf's
+// 10x10 box at (120, 120)), 5 px left so the two centres line up (the
 // elf_bot_rocks_far x: at x = 120 the heading between the centres is not UP
 // and the volley's own test already says no). The spawn heading is UP, so the
 // rock's pad is the tower and the tower is faced and inside the flight. The
@@ -10982,11 +10983,11 @@ inline constexpr Mutation kMut_player_slide_potion_fixes_scen99 = {
 // front test is clear, so the cast is not PATH BLOCKED). Each rush act whose
 // last walk leaves the orc in collide_ob runs the classic strike at it:
 // walker::attack draws its damage roll and then refuses a friend (no hp moves),
-// and the rush erases the orc's orders and force-walks it four steps east. With
-// the setting on (fix Z) the rush strikes no friend: no draw, the orc keeps its
-// orders (the walk shoves still push it). The orc's hp never differs; where its
-// own AI takes it does: on this seed the classic orc ends at (194, 162), the
-// fixed one at (200, 150). A far hostile tower holds the level open.
+// and the rush erases the orc's orders and force-walks it four steps east. The
+// orc's hp never moves; where its own AI then takes it does: on this seed the
+// classic orc ends at (194, 162). A far hostile tower holds the level open.
+// This arena is the setting-off twin's; the setting-on twin has its own
+// (below), because here the rush's own walk shoves the orc as well.
 inline constexpr InputEvent kInputs_soldier_charge_ally[] = {
     {  1, 0, K_RIGHT },   {  2, 0, K_NONE },     // heading RIGHT, curdir = enddir
     {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // CHARGE
@@ -11008,17 +11009,52 @@ inline constexpr Mutation kMut_soldier_charge_ally_scen99 = {
     "(void)target;",
     "The rush never calls attack, so its damage draw is gone and the stream parts from the classic one: WalkerPositionMoved(FAMILY_BIG_ORC, 194, 162) fails."
 };
+// The setting-on twin has an arena of its own (2026-11-17). In the arena above
+// the rush's own walk shoves the orc as well (living::shove, two times in
+// three, on the same tick as the classic strike), so with the setting on the
+// strike's erased orders and forced walk changed nothing and its pin left one
+// damage draw fewer. Here the rush runs into a body no walk ever shoves: the
+// seated hero (living::shove refuses a walker in ACT_CONTROL and still draws
+// its rng(3)). The soldier and an archer are both of team 255, so SWITCH can
+// hand the seat from one to the other (a switch takes only a walker whose real
+// team is unset, as in input_switch_char_scen99). The player starts on the
+// soldier, the last team-255 spawn: LEFT held on ticks 0 and 1 turns it to face
+// west (its heading is its facing after each turn), CHARGE on tick 2 queues the
+// rush (-1, 0), and SWITCH on tick 3 seats the archer, which then presses
+// nothing. The rush's first act runs on tick 2 with the soldier still seated:
+// three steps of 4 px, 315 to 303, its box against the archer's (collide()
+// shrinks both by a pixel). From tick 3 the soldier is a bot (its act type
+// restored, unseated) and runs the last two acts on ticks 3 and 4: each step
+// west meets the archer, so does the 1 px step after it, and a bot's blocked
+// step west turns into a step down, which the wall under both (scen1's block of
+// tiles 18 to 21, rows 26 to 28) refuses before any body is asked; so at the
+// end of both acts the collision field names the archer and the act's last step
+// meets it. The archer's three acts as a bot (ticks 0 to 2) move it nowhere:
+// the first queues a search, a shot or a cast, and the search's right-hand
+// rule, its front blocked by the wall under its feet, only turns it. A hostile
+// TOWER1 below the block is its foe meanwhile (with none near, a bot may walk
+// at random) and holds the level open; the block stands between them for the
+// whole run.
+inline constexpr InputEvent kInputs_soldier_charge_ally_switch[] = {
+    {  0, 0, K_LEFT },                          // held on ticks 0 and 1: the soldier turns from south to west
+    {  2, 0, K_SPECIAL },                       // CHARGE: the rush (-1, 0), its first act this tick
+    {  3, 0, K_SWITCH },  {  4, 0, K_NONE },    // the archer takes the seat and presses nothing
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_charge_ally_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1,   kOrderLiving, 296, 470, 0, 0 },          // hostile, below the wall block: the archer's foe while it is a bot; holds the level open
+    { FAMILY_ARCHER,  255, kOrderLiving, 288, 400, 0, 0 },          // the hero once seated: its box ends on the block's top edge (row 26 is wall)
+    { FAMILY_SOLDIER, 255, kOrderLiving, 315, 400, 0, 0, 1, 100 },  // seated first (the last team-255 spawn): casts CHARGE, then runs the rush as a bot
+};
 inline constexpr FactPredicate kFacts_soldier_charge_ally_fixes_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 18000, 18000),
-    pred::WalkerPositionMoved(FAMILY_BIG_ORC, 200, 150,
-        "consequence: with the setting on the rush strikes no ally, so the orc keeps its orders and ends at (200, 150), east of where the classic run's orc ends"),
+    pred::TickReached(12),
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 288, 400,
+        "consequence: with the setting on the rush strikes no ally, so the seated archer its last two acts run into keeps its spawn point (288, 400): nothing else moves a seated hero that presses nothing"),
 };
 inline constexpr Mutation kMut_soldier_charge_ally_fixes_scen99 = {
     "src/gameplay/stats.cpp", 778,
     "!controller_->is_friendly(controller_->collide_ob())",
     "true",
-    "The rush strikes a friend again with the setting on (the damage draw, the erased orders, the forced walk), so the orc ends where the classic one does: WalkerPositionMoved(FAMILY_BIG_ORC, 200, 150) fails."
+    "The rush strikes a friend again with the setting on (the damage draw, the erased orders, the forced walk). Struck at the end of the soldier's second and third rush acts (ticks 3 and 4), the archer is walked west: on this seed it faces east after its acts as a bot, turns the four notches to west on ticks 3 to 6 (the second strike resets the walk to four steps) and steps 4 px on ticks 7 to 10, so it ends at (272, 400): WalkerPositionMoved(FAMILY_ARCHER, 288, 400) fails."
 };
 
 // --- druid_bot_faerie_pad_body (fix AA: SUMMON FAERIE asks the bolt's pad) ---
@@ -11641,7 +11677,6 @@ inline constexpr Mutation kMut_archer_barrage_edge_pad_scen99 = {
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires three arrows into the tower: the tower ends at 32 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) fails (the sounds stay at 10: three of the archer's and seven of the tower's)."
 };
 inline constexpr FactPredicate kFacts_archer_barrage_edge_pad_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and its flown check (BD) passes or not on its own waver draw, so its shots are no longer counted here.
     // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and its flown check (BD) passes or not on its own waver draw, so its shots are no longer counted here.
     pred::TickReached(60),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2200, 3400,
@@ -15294,10 +15329,10 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_soldier_charge_ally_scen99, std::size(kFacts_soldier_charge_ally_scen99),
       kMut_soldier_charge_ally_scen99 },
     { "soldier_charge_ally_fixes_scen99", "scen/scen1.fss", 0x00000018u,
-      kInputs_soldier_charge_ally, std::size(kInputs_soldier_charge_ally), 30,
+      kInputs_soldier_charge_ally_switch, std::size(kInputs_soldier_charge_ally_switch), 12,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_soldier_charge_ally_scen99, std::size(kFamilySpawns_soldier_charge_ally_scen99),
-      0, false, true, Exercises::None,
+      kFamilySpawns_soldier_charge_ally_fixes_scen99, std::size(kFamilySpawns_soldier_charge_ally_fixes_scen99),
+      255, false, true, Exercises::None,
       kFacts_soldier_charge_ally_fixes_scen99, std::size(kFacts_soldier_charge_ally_fixes_scen99),
       kMut_soldier_charge_ally_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "druid_bot_faerie_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
