@@ -9131,17 +9131,18 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
     // negative_assertion: the classic fight kills the hostile tower
 };
 inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) the fight is another one, and no corpse lies in the cleric's reach inside the budget: every slot-2 roll the gate refuses for want of a corpse draws nothing on the hit path, which is all the rule leaves in this arena, so the fact is the fixed stream's value, worked out below.
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) the fight is another one, and no corpse lies in the cleric's reach inside the budget: every slot-2 roll the gate refuses for want of a corpse draws nothing on the hit path, which is all the rule leaves in this arena, so the fact is a band over the fixed stream's blows, worked out below.
     pred::TickReached(130),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16400, 16400,
-        "consequence: on the fixed stream the big orc takes the faerie's sprinkle at tick 6 (1), the tower's arrows at ticks 13, 18 and 23 (3.88 + rng(2) on the arrow's 5: 5, 4, 5), regenerates 1 once its 50-tick wait after the last has run (the stats' heal count starts full, the next point comes 1000 acts later), and takes two more sprinkles at ticks 102 and 113 (1 each): 164 of its 180"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16300, 16600,
+        "consequence: on the fixed stream the big orc takes the faerie's three sprinkles of 1 (ticks 6, 102 and 113) and the tower's three arrows (ticks 13, 18 and 23, each 3.88 + rng(2) on the arrow's 5, so 4 or 5), and regenerates 1 once its 50-tick wait after the last arrow has run (the stats' heal count starts full, the next point comes 1000 acts later): 163 to 166 of its 180"),
+    // rng_drift: each arrow is compute_base_damage's roll on the arrow's 5, 3.88 + rng(2) against no armour, so the rule allows exactly 4 or 5 an arrow; with the three sprinkles of 1 and the one regenerated point the band is 180 - 3 - 15 + 1 to 180 - 3 - 12 + 1; commit d758bcb17
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 620,
     "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)). On the parted stream nothing strikes the big orc and it ends at 180 hp, so WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16400, 16400) fails (until the line check the fact read the tower's hit points: 34 unmutated and 5 mutated)."
+    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)). On the parted stream the big orc takes more blows after tick 40 and the cleric bot's HEAL at tick 127 puts it back at its full 180 hp, so WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16300, 16600) fails (until the line check the fact read the tower's hit points: 34 unmutated and 5 mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -9281,8 +9282,6 @@ inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
     pred::TickReached(20),
     pred::EventKindExactly(/*notification*/2, 1, "anchor: one slot-3 cast, at tick 7 (seed 135)"),
-    pred::WalkerOfTeamAlive(1, 2, 2,
-        "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3300, 3900,
         "consequence: a taunt gives the soldier no free hit, so only its two blows of the run strike the thief, at ticks 6 and 14, each 17.76 + rng(4) on its 20, 18 to 21: the thief ends at 33 to 39 of its 75; a resisted charm's free hit would be a third"),
     // rng_drift: each blow is compute_base_damage's roll on the soldier's 20, 17.76 + rng(4) against no armour, so the rule allows exactly 18 to 21 a blow and the band is two such blows; commit d758bcb17
@@ -9498,8 +9497,10 @@ inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
 // caster's team. The twin now takes seed 30 (0x1E), the first from 0 where the
 // setting-on orc stays a foe and the mutation hands it to the caster: the
 // control roll fails and the colour roll lands on 0, which the setting makes
-// 1. Of seeds 0 to 599 seven do so; the two rolls are the rule's own input,
-// so no staging can take them out of the question.
+// 1. Of seeds 0 to 599 seven do so. The colour roll is the rule's own input,
+// so no staging can take it out of the question; an orc above the caster's
+// level would take the control roll out (it always resists, with no draw),
+// but the two twins share their spawns and keep the equal-level orc.
 inline constexpr SpawnSpec kFamilySpawns_archmage_mind_control_berserk_scen99[] = {
     { FAMILY_ORC,      1, kOrderLiving, 180, 120, 0, 0, 10, 0 },   // equal-level melee-only foe, 60 px east
     { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player
@@ -11400,11 +11401,12 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
 };
 
 // --- elf_rocks_edge_pad (fix AC: a volley that would hit nothing refuses before it pays) ---
-// The player elf (level 1, exactly ROCKS' 10 MP) stands at the top edge of the
-// map heading UP, so the first press's rock pad is off the map: terrain. The
-// classic cast refunds two rocks, fire() charges its swing and draws the
-// waver, and the cast refuses COULD NOT FIRE: 11 MP. With the setting on (fix
-// AC) the cast asks the pad first and refuses before it pays: 10 MP, no draw.
+// The player elf (level 1, exactly ROCKS' 10 MP, plus the 1 a placed walker
+// below 50 MP gains on its first act) stands at the top edge of the map heading
+// UP, so the first press's rock pad is off the map: terrain. The classic cast
+// refunds two rocks, fire() charges its swing and draws the waver, and the
+// cast refuses COULD NOT FIRE: 12 MP. With the setting on (fix AC) the cast
+// asks the pad first and refuses before it pays: 11 MP, no draw.
 // The elf then steps down and the second press throws its two rocks down on
 // both values. In the classic twin the extra waver draw parts the stream: it
 // ends with 4 sounds, the tower below at 127 hp and the elf at 71 (an arrow of
@@ -11623,8 +11625,8 @@ inline constexpr Mutation kMut_archer_bolt_edge_pad_scen99 = {
 // it only holds the level open. Beside the archer its arrows (each flown check
 // passes or not on its own waver draw, Gameplay Fixes BD) met the bolt in the
 // air on its first tick, before any track of it was taken, and the pin no
-// longer changed a fact. The archer's magic is its own: a placed walker gains
-// its next MP only 1000 acts after its first.
+// longer changed a fact. The archer's magic is its own: with 70 it is above
+// a placed walker's maximum of 50 and regenerates nothing.
 inline constexpr SpawnSpec kFamilySpawns_archer_bolt_edge_pad_fixes_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 600, 680, 0, 0 },            // far away: holds the level open and never shoots
     { FAMILY_ARCHER, 0, kOrderLiving, 176,  2, 0, 0, 7, 70 },      // the player LAST, level 7 (slot 3 open), exactly 70 MP = EXPLODING BOLT's price; row 0, grass
