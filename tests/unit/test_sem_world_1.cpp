@@ -1603,33 +1603,42 @@ TEST(SemWorld, the_own_floor_preference_draws_what_the_scan_always_drew)
 // walker.cpp walker::flies, the one test of what flying is (#512): the FLYING
 // flag or flight ticks left. A ghost and a faerie fly, a soldier does not,
 // a soldier with flight ticks left does, a tower does not. One terrain
-// question that asks it: a soldier with flight ticks left passes a water
-// cell that stops it without them.
+// question that asks it: the water cell (5,5) stops the soldier given flight
+// ticks while it has none, and it crosses that cell once it has them. No
+// term of the rule reads the setting; the test runs on both values.
 TEST(SemWorld, a_walker_flies_with_the_flag_or_with_flight_ticks_left)
 {
-    TestGameWorld tw;
-    open_field(tw, 40, 40);
-    walker* ghost = add_living(tw, FAMILY_GHOST, 1, 64, 64);
-    walker* faerie = add_living(tw, FAMILY_FAERIE, 1, 128, 64);
-    walker* soldier = add_living(tw, FAMILY_SOLDIER, 0, 192, 64);
-    walker* potion = add_living(tw, FAMILY_SOLDIER, 0, 256, 64);
-    walker* tower = add_living(tw, FAMILY_TOWER1, 1, 320, 64);
-    ASSERT_TRUE(ghost && faerie && soldier && potion && tower);
-    potion->set_flight_left(5);
-    ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost's family flies";
-    ASSERT_NE(0, faerie->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the faerie's family flies";
-    for (walker* w : {soldier, potion, tower})
-        ASSERT_EQ(0, w->stats()->query_bit_flags(BIT_FLYING)) << "the staging: no FLYING flag";
-    for (walker* w : {ghost, faerie, soldier, tower})
-        ASSERT_EQ(0, w->flight_left()) << "the staging: no flight ticks";
-    EXPECT_TRUE(ghost->flies()) << "the FLYING flag";
-    EXPECT_TRUE(faerie->flies()) << "the FLYING flag";
-    EXPECT_FALSE(soldier->flies()) << "neither";
-    EXPECT_TRUE(potion->flies()) << "flight ticks left";
-    EXPECT_FALSE(tower->flies()) << "neither";
-
-    EXPECT_FALSE(passable_over(PIX_WATER1, Probe::Plain)) << "the staging: water stops a soldier";
-    EXPECT_TRUE(passable_over(PIX_WATER1, Probe::TempFlight)) << "a soldier with flight ticks left crosses water";
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        TestGameWorld tw;
+        open_field(tw, 40, 40);
+        GameWorld& world = tw.world();
+        world.gameplay_fixes = fixes;
+        paint(world, 5, 5, PIX_WATER1);
+        walker* ghost = add_living(tw, FAMILY_GHOST, 1, 64, 160);
+        walker* faerie = add_living(tw, FAMILY_FAERIE, 1, 128, 160);
+        walker* soldier = add_living(tw, FAMILY_SOLDIER, 0, 192, 160);
+        walker* potion = add_living(tw, FAMILY_SOLDIER, 0, 256, 160);
+        walker* tower = add_living(tw, FAMILY_TOWER1, 1, 320, 160);
+        ASSERT_TRUE(ghost && faerie && soldier && potion && tower);
+        ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost's family flies";
+        ASSERT_NE(0, faerie->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the faerie's family flies";
+        for (walker* w : {soldier, potion, tower})
+            ASSERT_EQ(0, w->stats()->query_bit_flags(BIT_FLYING)) << "the staging: no FLYING flag";
+        for (walker* w : {ghost, faerie, soldier, potion, tower})
+            ASSERT_EQ(0, w->flight_left()) << "the staging: no flight ticks yet";
+        ASSERT_FALSE(world.query_grid_passable(kProbeX, kProbeY, potion))
+            << "the staging: with no flight ticks the water cell stops the soldier";
+        potion->set_flight_left(5);
+        EXPECT_TRUE(ghost->flies()) << "the FLYING flag";
+        EXPECT_TRUE(faerie->flies()) << "the FLYING flag";
+        EXPECT_FALSE(soldier->flies()) << "neither";
+        EXPECT_TRUE(potion->flies()) << "flight ticks left";
+        EXPECT_FALSE(tower->flies()) << "neither";
+        EXPECT_TRUE(world.query_grid_passable(kProbeX, kProbeY, potion))
+            << "with flight ticks left the same soldier crosses the water cell";
+    }
 }
 
 // game_world.cpp:2114. The corpse finder reaches a stain only under squared
