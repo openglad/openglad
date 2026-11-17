@@ -1390,7 +1390,7 @@ short living::act_random()
 		}
 		else
 			// Nearest foe is blocked
-			turn(facing(xdist,ydist));
+			stats->turn_to_foe(facing(xdist,ydist));  // classic, turn(); kept with the setting on (port of the current game's 404ae76d8, Gameplay Fixes BE, #513)
 	}
 
 	stats->try_command(COMMAND_SEARCH,200,0,0);

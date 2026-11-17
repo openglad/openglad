@@ -1329,10 +1329,10 @@ bool statistics::walk_to_foe()
 				// turn and the unasked init_fire, in the classic order.
 				{
 					short aim = controller->facing(xdelta, ydelta);
-					bool faced = (controller->curdir == aim);
-					if (myscreen->gameplay_fixes && !faced)
-						controller->enddir = (char) aim;
-					controller->turn(aim);
+					// the turn, kept with the setting on: turn_to_foe, which
+					// act_random asks too and which faces a tower at once
+					// (port of the current game's 404ae76d8, Gameplay Fixes BE)
+					bool faced = turn_to_foe(aim);
 					controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
 					if (!myscreen->gameplay_fixes)
 						controller->init_fire();
@@ -1394,4 +1394,37 @@ command::command()
 	commandcount = 0;
 	com1 = com2 = 0;
 	forced = false;
+}
+
+// Gameplay Fixes BB (#497) and BE (#513): the turn toward a foe that
+// walk_to_foe's near branch and living::act_random take; answers whether the
+// bot already faced its foe. walker::turn never writes enddir, so classic
+// (the setting off) the act after a turn turns the bot back. With the setting
+// on a bot not yet facing its foe keeps the turn: a tower, which has no walk
+// to carry its aim and whose heading walker::turn leaves on the old line while
+// its line check and its shot fly along it, faces its foe at once, heading
+// included (face_delta); any other bot keeps the aim as the facing it is
+// turning to (enddir) and turns one notch, and its next acts finish the turn.
+// A bot that already faces its foe takes the classic turn (fix AT makes it
+// nothing). (Port of the current game's 404ae76d8, where the kept turn is
+// statistics::keep_turn and a tower is walker::stationary(); the stationary
+// living here is a TOWER1, as everywhere in this game.)
+bool statistics::turn_to_foe(short aim)
+{
+	bool faced = (controller->curdir == aim);
+	if (myscreen->gameplay_fixes && !faced)
+	{
+		if (controller->order == ORDER_LIVING && controller->family == FAMILY_TOWER1)
+		{
+			short ux = 0, uy = 0;
+			facing_step_delta((char) aim, ux, uy);
+			controller->face_delta(ux, uy);
+			return false;
+		}
+		controller->enddir = (char) aim;
+		controller->turn(aim);
+		return false;
+	}
+	controller->turn(aim);
+	return faced;
 }

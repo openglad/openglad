@@ -92,6 +92,14 @@ class statistics
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
 		bool walk_to_foe(); // try to walk intelligently towards foe
+		// The turn toward a foe at `aim` (a facing) that walk_to_foe's near
+		// branch and living::act_random take; answers whether the bot already
+		// faced it. Classic, walker::turn alone. With Gameplay Fixes on and the
+		// foe not faced the turn is kept: a tower faces it at once, heading
+		// included, any other bot keeps the aim as enddir and turns a notch.
+		// (Port of the current game's 404ae76d8, the kept turn, Gameplay
+		// Fixes BE, #513; turn_to_foe was near_turn when fix BB shipped.)
+		bool turn_to_foe(short aim);
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;
