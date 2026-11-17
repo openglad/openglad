@@ -3544,10 +3544,9 @@ what was only told to him, and what the game or its tests do because of it.
    the fifteen had taken another seed twice already); for the ally a seed
    at which its old arena's position fact flips, a place its own acts take
    it to on that seed; and for the mind control twin spawns of its own
-   with an orc of level 11, which still needs a seed for the colour roll
-   but leaves 85 of seeds 0 to 599 that reach the rule (the first is 9)
-   where the equal-level orc leaves 7. The maintainer was told of this
-   and has not ruled on it.
+   with an orc above the caster's level, which takes the control roll out
+   and still needs a seed for the colour roll. The maintainer was told of
+   this and has not ruled on it.
 
 ## Out of scope
 
