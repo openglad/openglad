@@ -1286,11 +1286,14 @@ The parity goldens are captures from the old game (branch
   [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1: twelve
   recaptured, no setting-off golden moved), the table mirror
   `46a09a28` (the fifteenth, `soldier_charge_ally`, given an arena of
-  its own, the same entry: one recaptured, no setting-off golden moved)
-  and the table mirror `fb6473a0` (the same entry once more: one of the
+  its own, the same entry: one recaptured, no setting-off golden moved),
+  the table mirror `fb6473a0` (the same entry once more: one of the
   fifteen reads a band of its blows instead of one value, one fact that
   stated a fight's outcome is dropped, comments corrected; nothing
-  moved). `fb6473a0` is the commit the goldens are captured from: 390 of 390
+  moved) and the table mirror `adfa676e` (the same entry after its second
+  review: `orc_right_walk_potion` ends at tick 25 on its twin's seed in
+  place of a seed of its own; one recaptured, no setting-off golden
+  moved). `adfa676e` is the commit the goldens are captured from: 390 of 390
   goldens `cmp` equal to a full capture there, and every capture there
   `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
@@ -3494,10 +3497,11 @@ The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
 BC; #538, #513, #447). Each entry below is what the maintainer said, or
 what was only told to him, and what the game or its tests do because of it.
 
-1. **Fifteen setting-on recordings took an arena, inputs, a budget or a
-   seed of their own after the three fixes were ported:** the ports moved
-   them so that their own pin no longer changed a fact. Each now states the
-   consequence of its own rule again, by the first of three cures that
+1. **Fifteen setting-on rows were given a fact of their own rule again
+   after the three fixes were ported; thirteen of them took an arena,
+   inputs, a budget or a seed of their own.** The ports had moved all
+   fifteen so that their own pin no longer changed a fact. Each now states
+   the consequence of its own rule again, by the first of three cures that
    works. Two keep their arena and seed, because their rule leaves nothing
    but one draw fewer, and read the fixed stream, worked out from their
    blows: `cleric_bot_raise_or_turn_fixes_scen99` as a band (the big orc's
@@ -3505,8 +3509,8 @@ what was only told to him, and what the game or its tests do because of it.
    `elemental_struck_short_pool_fixes_scen99` as one value (the struck
    orc's 84 hp), because there no count, presence or band changes under
    its pin: the orc reads 85, inside any band of its two blows.
-   Seven take an arena, inputs or a budget of their own that reach the rule
-   whatever the towers' line checks draw:
+   Eight take an arena, inputs or a budget of their own. Seven of them reach
+   the rule whatever the towers' line checks draw:
    `soldier_whirlwind_no_foe_fixes_scen99` (a foe that never moves, which
    the caster walks up to), `elf_volley_refund_fixes_scen99`,
    `elf_rocks_edge_pad_fixes_scen99` and `archer_bolt_edge_pad_fixes_scen99`
@@ -3515,13 +3519,20 @@ what was only told to him, and what the game or its tests do because of it.
    hostile towers, and the summon and the burst come early),
    `soldier_bot_charge_unaimed_fixes_scen99` (the run ends after tick 0)
    and `mage_bot_heartburst_fixes_scen99` (the run ends after tick 4).
-   Five take a seed of their own, each the first from 0 where the row
+   The eighth, `orc_right_walk_potion_fixes_scen99`, keeps its twin's seed
+   and ends at tick 25: with 150 ticks the ATTACK order (Gameplay Fixes
+   BC) lets the orc kill the tower and walk over the potion, which is then
+   gone with or without the quiet probes, while inside 25 ticks the orc is
+   still at blows with the tower and has taken a right-hand-walk act whose
+   right-side probe covers the potion, on every seed from 0 to 199. It
+   first took a seed of its own, 16, one of 54 in 200 on which the potion
+   lasted the 150 ticks.
+   Four take a seed of their own, each the first from 0 where the row
    reaches its rule and its own pin changes what its fact reads:
    `thief_bot_charm_or_taunt_fixes_scen99` seed 135 (0x87),
    `archmage_mind_control_berserk_fixes_scen99` 30 (0x1E),
-   `cleric_bot_resurrect_foe_stain_fixes_scen99` 15 (0xF),
-   `cleric_raise_blocked_corpse_fixes_scen99` 2 and
-   `orc_right_walk_potion_fixes_scen99` 16 (0x10); for the first three the
+   `cleric_bot_resurrect_foe_stain_fixes_scen99` 15 (0xF) and
+   `cleric_raise_blocked_corpse_fixes_scen99` 2; for the first three the
    rule waits on a roll that no arena can take out of the question: the
    thief's and the cleric's own special roll, and the cast's colour roll.
    An orc above the caster's level would take the cast's other roll, the
@@ -3540,7 +3551,7 @@ what was only told to him, and what the game or its tests do because of it.
    seed from 0 to 199 reaches the rule. A bot's own CHARGE cannot stage
    it: with the setting on the bot's CHARGE rule (Gameplay Fixes V)
    refuses a rush whose path meets an ally before a foe.
-   Alternatives: seeds of their own for the eight restaged rows (four of
+   Alternatives: seeds of their own for the nine restaged rows (four of
    the fifteen had taken another seed twice already); for the ally a seed
    at which its old arena's position fact flips, a place its own acts take
    it to on that seed; and for the mind control twin spawns of its own
