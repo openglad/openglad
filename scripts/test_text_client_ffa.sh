@@ -11,7 +11,7 @@
 #      fighters are alive. Later a fighter may be dead: the two trade real
 #      damage, a dead fighter keeps its slot and its byte until its respawn,
 #      and which of the two is down on a given tick is the fight's outcome,
-#      which this harness does not judge. (Under seed 42 with the setting
+#      which this test does not judge. (Under seed 42 with the setting
 #      off the soldier is down from about tick 230. With Gameplay Fixes on,
 #      since fix BD, where a shooter's line check flies its test shot the
 #      way the shot flies, the elf is down from about tick 140 to 230.)
@@ -21,7 +21,7 @@
 # match knobs — there is no picker save behind it — so every FILL band sits
 # at its stored NONE and the arena fields NO init bots. The band is the
 # two-member crew alone, which is still a live FFA match (two fighters is
-# the floor), so everything this harness measures about the band survives;
+# the floor), so everything this test measures about the band survives;
 # only the population moved. Filling the arena's other six seats is a host
 # decision now, and the CLI has no way to make it. Amendment 7 (#276) deals
 # FILL: FAIR onto an arena's defined teams in the PICKERS (SDL, text,
