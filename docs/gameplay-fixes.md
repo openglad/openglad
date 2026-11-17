@@ -1274,10 +1274,17 @@ The parity goldens are captures from the old game (branch
   stamps: the four rows below and the dead thrower's arena with the
   setting on moved) and `b1252282` (the readers and the rider mark: the
   other two new arenas with the setting on moved). Six new goldens and four
-  recaptured; no setting-off golden moved at any step. `b1252282` is the
-  commit the goldens are captured from: 384 of 384 goldens `cmp` equal to a
-  full capture there, and every capture there `cmp`s equal to this game's
-  run of the same row.
+  recaptured; no setting-off golden moved at any step. Then the line check
+  (BD), the kept turn (BE) and the ATTACK order (BC): the table mirror
+  `977e870b` first (the three new arenas below, each with the setting off
+  and on; nothing else moved), then `08b8ca26` (BD), `7cdbeab2` (BE) and
+  `740af495` (BC), one per commit, each moving only rows with the setting
+  on (the lists below), and the table mirror `941e2d2b` (the facts of the
+  moved rows; nothing moved). Six new goldens and 53 recaptured; no
+  setting-off golden moved at any step. `941e2d2b` is the commit the
+  goldens are captured from: 390 of 390 goldens `cmp` equal to a full
+  capture there, and every capture there `cmp`s equal to this game's run
+  of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1316,6 +1323,9 @@ The rows with the setting on, by fix:
 | AV | `elf_bot_rocks_tree_pad_fixes_scen99` (a new arena, with its setting-off twin) |
 | AZ | `thief_bomb_colour_score_fixes_scen99` (with its setting-off twin); `archer_charmed_arrow_in_flight_fixes_scen99`, `thief_bomb_charmed_thrower_fixes_scen99` and `thief_bomb_dead_thrower_fixes_scen99` (three new arenas, each with its setting-off twin); and the four rows below that it moves |
 | BB | `mage_bot_far_foe_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
+| BC | `orc_attack_order_blows_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
+| BD | `tower_foe_between_spots_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
+| BE | `orc_refused_shot_turn_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1643,6 +1653,21 @@ entry 13), and was recaptured from the old game on it.
 `orc_bot_faces_foe_fixes_scen99`, fix AT's own row,
 does not move: the orc stands 1 px above the soldier, the pad holds the
 soldier's body and the swing starts on tick 9 as before. No setting-off row
+moves.
+
+Fix BD moved these 25 existing rows with the setting on (each `_fixes_scen99`),
+as the old game's capture after `08b8ca26` shows: `archer_barrage_edge_pad`, `archer_bolt_edge_pad`, `archer_bot_ring_one_foe`, `archmage_bot_image_one_foe`, `archmage_bot_mind_control_hero`, `archmage_summon_no_room`, `barbarian_bot_boulder_far`, `barbarian_bot_explode_lone`, `barbarian_boulder_edge_pad`, `cleric_bot_raise_or_turn`, `cleric_bot_resurrect_foe_stain`, `druid_bot_tree_behind`, `elf_bot_rocks_far`, `elf_rocks_edge_pad`, `elf_volley_refund`, `mage_bot_freeze_engaged`, `mage_bot_heartburst`, `mage_wave_edge_pad`, `orc_stale_shove`, `soldier_bot_boomerang_far`, `soldier_bot_charge_door`, `soldier_whirlwind_no_foe`, `thief_bomb_dead_thrower`, `thief_bot_bomb_ally`, `thief_bot_bomb_far`. Fix BE then moved these 42:
+`archer_barrage_edge_pad`, `archer_bolt_edge_pad`, `archer_bot_barrage_pad_body`, `archer_bot_bolt_at_blows`, `archer_bot_ring_one_foe`, `archmage_bot_mind_control_hero`, `archmage_hit_stale_shift`, `archmage_summon_no_room`, `barbarian_bot_boulder_pad_body`, `barbarian_boulder_edge_pad`, `cleric_bot_raise_or_turn`, `cleric_bot_resurrect_foe_stain`, `cleric_raise_blocked_corpse`, `druid_bot_faerie_pad_body`, `druid_bot_faerie_room`, `druid_bot_tree_pad_body`, `druid_tree_blocked`, `elemental_bot_starburst_one_foe`, `elemental_struck_short_pool`, `elf_bot_rocks_blocked`, `elf_bot_rocks_far`, `elf_bot_rocks_tree_pad`, `elf_rocks_blocked`, `elf_rocks_edge_pad`, `mage_bot_freeze_engaged`, `mage_bot_heartburst`, `mage_bot_warp_two_at_blows`, `mage_bot_wave_pad_body`, `mage_wave_edge_pad`, `orc_stale_shove`, `soldier_bot_boomerang_far`, `soldier_bot_charge_unaimed`, `soldier_charge_ally`, `soldier_charge_front_foe`, `soldier_disarm_higher_foe`, `soldier_disarm_resisted_busy`, `soldier_disarm_resisted_price`, `special_cleric_heal_ally`, `thief_bomb_colour_score`, `thief_bot_bomb_ally`, `thief_bot_charm_or_taunt`, `thief_charm_nearest`. Fix BC then moved these 6: `archmage_mind_control_berserk`, `elemental_struck_short_pool`, `mage_bot_freeze_engaged`, `orc_right_walk_potion`, `thief_bot_bomb_ally`, `thief_charm_nearest`. Each was recaptured from the old game at
+`941e2d2b`, byte-identical to this game's run, together with the setting-on rows of the three new arenas. In
+most of them a tower now faces its foe on its first act (BE) and its flown check (BD) passes or not on its own
+sideways waver draw, so the tower's first shot and every shot after it now hang on that draw. The facts of 23
+rows no longer held. Five were worked out again from the rules as bands whose count the rule fixes
+(`archer_barrage_edge_pad`, `druid_tree_blocked`, `elf_rocks_blocked`, `soldier_charge_front_foe`, and
+`soldier_disarm_resisted_busy`'s sound count), one now asserts the cap itself (`special_cleric_heal_ally`), and
+the rest were dropped where the value hangs on a line check's waver draw or a fight whose stream the ports parted;
+each changed array of the table says which. In `archmage_mind_control_berserk`, `cleric_raise_blocked_corpse`,
+`elemental_struck_short_pool`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe` and
+`thief_bot_charm_or_taunt` the staging no longer reaches the rule the row was written for. No setting-off row
 moves.
 
 The bot payoff gates moved five existing rows with the setting on, each

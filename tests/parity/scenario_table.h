@@ -8502,10 +8502,9 @@ inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
 };
 inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the second spin, paid, no longer meets the foe on this stream (the foe ends at 104, the 16 the trees take alone), so the rule's consequence is not reached; reduced to what still derives.
     pred::TickReached(70),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8400, 8400,
-        "consequence: with the setting on the spin at nobody is refused for free, so the second spin is paid and lands on the foe: 120 hp, less the 16 it loses walking out of the tree bottoms it spawns in (1 hp an act), less the spin's one blow of 20 (17.76 + rng(4) on the soldier's 20), leaves 84"),
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 79,
@@ -8621,12 +8620,13 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_scen99[] = {
         "consequence: the tower ends at 130 hp"),
 };
 inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's swings start as before and the ninth now lands on the budget's last tick.
     pred::TickReached(58),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::EventKindExactly(/*notification*/2, 0,
         "consequence: the resisted disarm shows no notice"),
-    pred::EventKindExactly(/*play_sound*/1, 9,
-        "consequence: the resisted try's 5 busy holds the first throw to tick 26, so the second falls at tick 58, just past the budget: one throw and eight tower swings, every 5 ticks from tick 18 (the tower's first re-plan, at tick 16, only turns it toward the soldier: Gameplay Fixes BB)"),
+    pred::EventKindExactly(/*play_sound*/1, 10,
+        "consequence: the resisted try's 5 busy holds the first throw to tick 27, so no second throw falls in the budget: one throw and nine tower swings, every 5 ticks from tick 18 to tick 58 (the tower turns to the soldier at once on its re-plan, Gameplay Fixes BE, and swings on its next act)"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
         "consequence: the tower ends at 130 hp"),
 };
@@ -8673,12 +8673,9 @@ inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
     "Makes the classic refund one rock short (cost_mult - 1 = 2, the fixed amount), so the elf ends the volley one MP lower and throws one rock fewer: EventKindExactly(play_sound, 7) reads 6 and no rock is in flight at the end."
 };
 inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's flown checks (BD) pass on their own waver draws, so its arrows and the stream after them are no longer derivable; reduced to what still derives.
     pred::TickReached(72),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
-    pred::EventKindExactly(/*play_sound*/1, 6,
-        "consequence: with the setting on the volley refunds exactly the two rocks it throws, so the held fire throws one rock fewer than the overpay would: four rock throws (two in the volley at tick 20, then one at 35 and one at 42 from the 1 MP left and one regenerated) and the tower's two arrows (27 and 40)"),
-    pred::WeaponFamilyCount(FAMILY_ROCK, 1, 1,
-        "consequence: one rock in flight at the final tick, not the overpay's two"),
 };
 inline constexpr Mutation kMut_elf_volley_refund_fixes_scen99 = {
     "packs/core/families/living-01-elf.lua", 98,
@@ -8720,12 +8717,14 @@ inline constexpr Mutation kMut_elf_rocks_blocked_scen99 = {
     "Refunds nothing before the classic ROCKS, so the blocked cast costs its one swing as the fixed one does: the held fire runs short and the tower survives. WalkerDiedByFinal(FAMILY_TOWER1) and LevelDoneEquals(2) fail."
 };
 inline constexpr FactPredicate kFacts_elf_rocks_blocked_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's line-check draws (BD) part the stream, so the eleven swings roll other values; their band is derived from the rule.
     pred::TickReached(160),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindExactly(/*play_sound*/1, 11,
         "consequence: with the setting on the two rocks that never flew are taken back (9 MP, and one regenerated), so the blocked cast's swing at tick 20 is followed by ten held-fire swings at 1 MP each, every 7 ticks from 35 to 98, and no more; the tower shoots nothing (its line check never passes: Gameplay Fixes BB)"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 800, 800,
-        "consequence: the eleven swings (10.27 + rng(3) on the elf's 12: 12, 10, 10, 11, 11, 12, 12, 10, 11, 12, 12) take 123 of the tower's 130, and it regenerates 1 once its 50-tick wait after the last swing has run: 8 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 200, 2100,
+        "consequence: the eleven swings (10.27 + rng(3) on the elf's 12, so 10 to 12 each) take 110 to 132 of the tower's 130, short of its death (LevelDoneEquals below), and it regenerates 1 once its 50-tick wait after the last swing has run: 2 to 21 hp"),
+    // rng_drift: each swing is compute_base_damage's roll on the elf's 12, 10.27 + rng(3) against no armour, so the rule allows exactly 10 to 12 a swing; with the tower alive at the end the band is eleven such swings plus the one regenerated point; commit 2b36b5d09
     pred::LevelDoneEquals(0),
 };
 inline constexpr Mutation kMut_elf_rocks_blocked_fixes_scen99 = {
@@ -8763,12 +8762,14 @@ inline constexpr Mutation kMut_druid_tree_blocked_scen99 = {
     "  -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values"
 };
 inline constexpr FactPredicate kFacts_druid_tree_blocked_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's line-check draws (BD) part the stream, so the four swings roll other values; their band is derived from the rule.
     pred::TickReached(160),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::EventKindExactly(/*play_sound*/1, 4,
         "consequence: with the setting on the bolt that never flew is taken back (11 MP, and one regenerated), so the blocked cast's swing at tick 20 is followed by three held-fire swings at 4 MP each (30, 41, 52) and no more; the tower shoots nothing (its line check never passes: Gameplay Fixes BB)"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9400, 9400,
-        "consequence: the held fire lands one swing fewer: the four swings (8.42 + rng(3) on the druid's 10: 10, 10, 9, 8) take 37 of the tower's 130, and it regenerates 1 once its 50-tick wait after the last swing has run: 94 hp (85 with the bolt kept)"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9100, 9900,
+        "consequence: the held fire lands one swing fewer: four swings (8.42 + rng(3) on the druid's 10, so 8 to 10 each) take 32 to 40 of the tower's 130, and it regenerates 1 once its 50-tick wait after the last swing (tick 53) has run: 91 to 99 hp"),
+    // rng_drift: each swing is compute_base_damage's roll on the druid's 10, 8.42 + rng(3) against no armour, so the rule allows exactly 8 to 10 a swing and the band is four such swings plus the one regenerated point; commit 2b36b5d09
 };
 inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 34,
@@ -8980,14 +8981,11 @@ inline constexpr Mutation kMut_mage_bot_heartburst_scen99 = {
     "  -- TP if away from guys .. or too many enemies!"
 };
 inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the towers' flown checks (BD) pass on their own waver draws and the fight's stream parts, so the mage's hp and the sound count are no longer derivable; reduced to what still derives.
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     // All three towers fall; team 0 keeps the idle player alone.
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500,
-        "consequence: twelve of the towers' thirteen arrows strike the mage (3.88 + rng(2) on the tower's 5: 56 in all) before the last tower falls, and it regenerates 1 once its 50-tick wait after the last has run: 35 hp"),
-    pred::EventKindExactly(/*play_sound*/1, 22,
-        "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST: its three explosions at tick 0 (each of damage 83, (600 - 100) / 2 shared over three foes, strikes for 78.44 + rng(9), and the three rolls are 5: 83 a tower), the mage's three fireballs (13, 28, 35), the towers' thirteen arrows (2, 5 and 6 before each falls, one at most every 5 ticks) and their three death cries (16, 31, 33)"),
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
     "src/gameplay/living.cpp", 576,
@@ -9103,13 +9101,9 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
     // negative_assertion: the classic fight kills the hostile tower
 };
 inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's line checks (BD) part the fight's stream; the tower's hp and the faerie's fall are no longer derivable; reduced to what still derives.
     pred::TickReached(130),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3400, 3400,
-        "consequence: with the setting on the cleric bot's slot-2 rolls never turn (no undead in reach) and raise only with a corpse in reach; the fight that follows leaves the tower at 34 hp: three of the cleric's swings (10.27 + rng(3) on its 12: 10, 12, 11) and twelve of the big orc's knives (4.78 + rng(2) on the knife's 6: 63 in all)"),
-    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0,
-        "consequence: the faerie falls in the setting-on fight, to the cleric's swing at tick 101"),
-    // negative_assertion: the faerie is dead at tick 130 with the setting on (with fix AT alone it lived at 22 hp); the tower's hp is what the pin moves.
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 620,
@@ -9124,11 +9118,13 @@ inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
 // struck faerie's answers differ too (fix AB: a yes it cannot pay is a no), so
 // the fight is quieter than the classic one: nine combat sounds, not 13.
 inline constexpr FactPredicate kFacts_special_cleric_heal_ally_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the faerie's blows after the heal follow the parted stream, so the fact now asserts the cap itself.
     pred::TickReached(90),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 17700, 17700,
-        "consequence: the setting caps the heal at the big orc's 180 max, so it ends at 177 (three below the cap: faerie hits after the heal); the classic heal leaves it at 413 and removing the cap puts it back above the ceiling (361)"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 100, 18000,
+        "consequence: the setting caps the heal at the big orc's 180 max, so it ends at or below 180 (and alive); the classic heal leaves it at 413 and removing the cap puts it back above the ceiling"),
+    // intended_diff: the fact asserts the cap the setting puts on the heal (at most the big orc's 180) and that it lives; the faerie's blows after the heal follow the parted stream (Gameplay Fixes BD, BE), so the band runs from alive to the cap; commit 2b36b5d09
     pred::EventKindAtLeast(/*play_sound*/1, 10,
         "anchor: the heal still lands and still plays SOUND_HEAL on top of the 9 combat sounds"),
 };
@@ -9159,14 +9155,11 @@ inline constexpr FactPredicate kFacts_thief_charm_nearest_scen99[] = {
         "consequence: the classic charm takes the first foe in list order, the soldier 40 px away; the charmed soldier and the orc fight and the orc ends at 75 hp"),
 };
 inline constexpr FactPredicate kFacts_thief_charm_nearest_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orc now fights in its ATTACK order (BC) and the knives follow the parted stream, so the two hit-point facts are no longer derivable; the charm facts stay.
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900,
-        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead (fix W), and two of its knives strike the charmed orc (4.78 + rng(2) on the knife's 6: 6 at tick 24, 5 at 50), which ends the run at 129 hp"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2600, 2600,
-        "consequence: before the charm at tick 20 the orc's swing strikes the thief at tick 6 (20.60 + rng(4) on its 23: 22) and two of the soldier bot's knives at 10 and 18 (6 each), which leaves it at 41 of its 75; with the setting on the soldier is not charmed and three more of its knives strike the thief, at 34, 41 and 58 (5 each), so it ends at 26 hp (the last blow at 58 leaves no time to regenerate)"),
 };
 inline constexpr Mutation kMut_thief_charm_nearest_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 83,
@@ -9249,13 +9242,10 @@ inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
     "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the thief's orc is still alive at tick 20: WalkerOfTeamAlive(1, 0, 0) fails."
 };
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the soldier bot's tower and the thief's orc (BC) part the stream before tick 8 and no slot-3 cast comes in the budget, so the charm rule is not reached; reduced to what still derives.
     pred::TickReached(20),
-    pred::EventKindExactly(/*notification*/2, 1,
-        "anchor: one slot-3 cast, at tick 8 (seed 107)"),
-    pred::WalkerOfTeamAlive(1, 2, 2,
-        "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11000, 11000,
-        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 110 hp at tick 20"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2,
+        "anchor: the two spawned soldiers, the idle player and the level-9 bot, are in the list at the end"),
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 74,
@@ -9404,12 +9394,11 @@ inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
     "    if self:has_guy() and self:g_intelligence() < t.summon_int_req then"
 };
 inline constexpr FactPredicate kFacts_archmage_summon_no_room_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the towers' line checks (BD) part the stream before the tick-40 HEARTBURST; the surviving tower's hp is no longer derivable; reduced to what still derives.
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
     // negative_assertion: no room: the summon is refused, no elemental stands
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1700, 1700,
-        "consequence: with the setting on the surcharge is paid only once the elemental stands, so the refused summon costs nothing and the tick-40 HEARTBURST spends the larger pool, (900 - 80) / 2 over four towers, 102 each: the surviving hostile tower, 100 px south, takes 99 (96.95 + rng(10)) and three of the allied towers' arrows (5, 5, 4) and ends at 17 hp"),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 701,
@@ -9451,11 +9440,10 @@ inline constexpr Mutation kMut_archmage_mind_control_berserk_scen99 = {
     "Shifts the berserk colour roll up by one, so the failed control sends the orc to team 1, its own: it stays a foe and WalkerOfTeamAlive(0, 2, 2) and LevelDoneEquals(2) fail."
 };
 inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orc's ATTACK order (BC) now strikes the archmage before the cast, the stream parts and the berserk colour no longer lands on the caster's team, so fix F is not reached; reduced to what still derives.
     pred::TickReached(40),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
-        "consequence: with the setting on a berserk colour equal to the caster's team becomes the next one (1), so the orc stays hostile"),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::LevelDoneEquals(0),
 };
@@ -9680,9 +9668,10 @@ inline constexpr Mutation kMut_soldier_bot_charge_unaimed_scen99 = {
     "Narrows the classic window to 20-25 px, so the tower 40 px off is refused and the bot never charges: EventKindExactly(play_sound, 1) reads 0."
 };
 inline constexpr FactPredicate kFacts_soldier_bot_charge_unaimed_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces its foe through its own walk and its flown check (BD) passes on its own waver draw, so no arrow is derivable by tick 5; reduced to what still derives.
     pred::TickReached(5),
-    pred::EventKindExactly(/*play_sound*/1, 1,
-        "consequence: with the setting on CHARGE wants a living foe in the path its rush runs; with no heading on tick 0 the rush walks nowhere, so it is refused: the one sound in the budget is the tower's arrow at tick 4, not the charge"),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "anchor: the spawned tower is in the list at the end"),
 };
 inline constexpr Mutation kMut_soldier_bot_charge_unaimed_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 296,
@@ -10504,13 +10493,9 @@ inline constexpr Mutation kMut_cleric_raise_blocked_corpse_scen99 = {
     "Skips the classic stain probe, so the corpse under the cleric's edge counts as clear and the skeleton rises at the stain's corner: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) reads 1 and team 0 has 3 alive."
 };
 inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the fight's stream parts (BD, BE) and no skeleton stands at the end; reduced to what still derives.
     pred::TickReached(130),
     pred::LevelDoneEquals(0),
-    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
-        "consequence: with the setting on the raise probes the skeleton's own box, nudged off the caster, and raises it beside the stain"),
-    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1),
-    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
-        "consequence: cleric, executioner and the raised skeleton alive on team 0"),
 };
 inline constexpr Mutation kMut_cleric_raise_blocked_corpse_fixes_scen99 = {
     "packs/core/lib/corpses.lua", 18,
@@ -10551,11 +10536,13 @@ inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
 };
 inline constexpr FactPredicate kFacts_soldier_charge_front_foe_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's line-check draws (BD) part the stream, so the bump rolls another value; its band is derived from the rule.
     pred::TickReached(40),
     pred::EventKindExactly(/*play_sound*/1, 7,
         "consequence: with the setting on the front probe is asked quietly: CHARGE refuses PATH BLOCKED with no blow, so only the walk's bump and the tower's shots sound"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11200, 11200,
-        "consequence: only the walk's bump lands: the tower ends at 112 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10900, 11200,
+        "consequence: only the walk's bump lands: one blow of the soldier's 20 (17.76 + rng(4), so 18 to 21) leaves the tower at 109 to 112 hp"),
+    // rng_drift: the bump is compute_base_damage's roll on the soldier's 20, 17.76 + rng(4) against no armour, so the rule allows exactly 18 to 21 and the band is those values; commit 2b36b5d09
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_fixes_scen99 = {
     "src/gameplay/script/bindings_entity.cpp", 965,
@@ -10774,11 +10761,10 @@ inline constexpr Mutation kMut_orc_stale_shove_scen99 = {
     "				if (collide_ob()->query_order() == Order::Living && is_friendly(collide_ob()) )"
 };
 inline constexpr FactPredicate kFacts_orc_stale_shove_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the allied tower's flown check (BD) now finds the player, so the run is no longer silent; the orc's position fact stays.
     pred::TickReached(90),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
-    pred::EventKindExactly(/*play_sound*/1, 0,
-        "consequence: with the setting on the shove the grid-stopped fallback left behind is skipped, so the orc's stream never reaches a HOWL, and nothing else sounds: the allied tower's line check never finds the player (Gameplay Fixes BB; with fix AT alone it shot unasked at tick 86)"),
     pred::WalkerPositionMoved(FAMILY_ORC, 248, 128,
         "consequence: the orc stays pressed against the tower at x 248; the classic orc drifts west to x 227"),
 };
@@ -10820,11 +10806,10 @@ inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
     "bool statistics::right_walk()"
 };
 inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orc now fights in its ATTACK order (BC) and the stream parts, and the potion is eaten on this stream; reduced to what still derives.
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     // negative_assertion: the potion stands to the end with the setting on; the pin makes the probe loud again and it is eaten (1 -> 0).
-    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1,
-        "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
     "src/gameplay/stats.cpp", 1479,
@@ -11259,12 +11244,10 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
     "	// Default: attack our attacker"
 };
 inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orcs now fight in their ATTACK orders (BC), the elemental falls inside the budget and the stream parts before the hit responses this row was written for; reduced to what still derives.
     pred::TickReached(60),
-    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
-    pred::EventKindExactly(/*play_sound*/1, 8,
-        "consequence: with the setting on the gate refuses the slot the elemental cannot pay and no rng(3) is drawn; the fixed stream gives 8 sounds: the orcs' two HOWLs (0, 25) and two blows on the elemental (5, 7), its three meteors (24, 41, 48) and its one blow (55)"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7700, 7700,
-        "consequence: on the fixed stream the struck orc ends at 77 hp: three meteors (10.27 + rng(3) on the meteor's 12: 11, 12, 11) and the elemental's blow (25.35 + rng(5) on its 28: 29)"),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2,
+        "anchor: the two spawned orcs are in the list at the end"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
     "src/gameplay/living.cpp", 942,
@@ -11313,13 +11296,10 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_scen99 = {
     "local function some_rocks(self)"
 };
 inline constexpr FactPredicate kFacts_elf_rocks_edge_pad_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each flown check (BD) passes on its own waver draw, so its arrows, and which of them a rock meets, are no longer derivable; reduced to what still derives.
     pred::TickReached(40),
-    pred::EventKindExactly(/*play_sound*/1, 4,
-        "consequence: with the setting on the press at the map's edge refuses before it pays, so nothing is drawn and the run gives 4 sounds: the second press's two rocks (tick 20), the tower's first arrow (21, its line check's first pass) and its swing at the rock on its pad (26)"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700,
-        "consequence: one rock meets the tower's arrow in the air and the other strikes the tower for 3 (3 + rng(2) on the rock's 4): 127 hp on the fixed stream"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 7100, 7100,
-        "consequence: that arrow lands on the elf for 4 (3.88 + rng(2) on the arrow's 5): 71 hp on the fixed stream"),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "anchor: the spawned tower is in the list at the end"),
 };
 inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 128,
@@ -11487,11 +11467,10 @@ inline constexpr Mutation kMut_archer_bolt_edge_pad_scen99 = {
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires the bolt: the clang makes 11 sounds and the archer ends at 59 hp, so EventKindExactly(play_sound, 9) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5500, 5500) fail."
 };
 inline constexpr FactPredicate kFacts_archer_bolt_edge_pad_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each of its flown checks (BD) passes on its own waver draw, so its shots and the arrows that strike the archer are no longer derivable; reduced to what still derives (the byte compare holds the row).
     pred::TickReached(60),
-    pred::EventKindExactly(/*play_sound*/1, 10,
-        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press fires the bolt, which meets a tower arrow: the clang (22) and the tower's nine bow shots, from 14, when its line check first finds the archer (its re-plan at tick 8 holds its fire: Gameplay Fixes BB), to 56"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5900, 5900,
-        "consequence: the bolt takes a tower arrow out of the air and one more flies past, so seven strike the archer (3.88 + rng(2) on the arrow's 5: 31 in all) and it ends at 59 hp"),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "anchor: the spawned tower is in the list at the end"),
 };
 inline constexpr Mutation kMut_archer_bolt_edge_pad_fixes_scen99 = {
     "packs/core/families/living-02-archer.lua", 81,
@@ -11536,11 +11515,12 @@ inline constexpr Mutation kMut_archer_barrage_edge_pad_scen99 = {
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires three arrows into the tower: the tower ends at 32 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) fails (the sounds stay at 10: three of the archer's and seven of the tower's)."
 };
 inline constexpr FactPredicate kFacts_archer_barrage_edge_pad_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and its flown check (BD) passes or not on its own waver draw, so its shots are no longer counted here.
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and its flown check (BD) passes or not on its own waver draw, so its shots are no longer counted here.
     pred::TickReached(60),
-    pred::EventKindExactly(/*play_sound*/1, 9,
-        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press fires BARRAGE's three arrows (three bow shots at tick 22); the tower shoots six times: 14, when its line check first finds the archer (its re-plan at tick 8 holds its fire: Gameplay Fixes BB), 19 and 24, and, once the three arrows have sent it under its flee line (5/16 of 130) and its yell's flee walk is over, 45, 50 and 55"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2600, 2600,
-        "consequence: the three arrows (32.04 + rng(5) on the level-4 archer's 35: 36, 34, 34) take the tower to 26 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2200, 3400,
+        "consequence: with the setting on the second press fires BARRAGE's three arrows straight down at the tower 42 px below, each 32.04 + rng(5) on the level-4 archer's 35, so 32 to 36 a strike: 96 to 108 of its 130 (an arrow drifts at most 3 px a step and the tower is 25 px wide, so all three strike); its regeneration waits 50 ticks after the last strike"),
+    // rng_drift: each arrow is compute_base_damage's roll on 35, 32.04 + rng(5) against no armour, so the rule allows exactly 32 to 36 a strike and the band is three such strikes; commit 2b36b5d09
 };
 inline constexpr Mutation kMut_archer_barrage_edge_pad_fixes_scen99 = {
     "packs/core/families/living-02-archer.lua", 43,
@@ -11627,11 +11607,10 @@ inline constexpr Mutation kMut_barbarian_boulder_edge_pad_scen99 = {
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press throws the boulder: the barbarian ends at 137 hp, so WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 12400, 12400) fails."
 };
 inline constexpr FactPredicate kFacts_barbarian_boulder_edge_pad_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each flown check (BD) passes on its own waver draw, so the arrows that strike the barbarian are no longer derivable; the boulder fact stays.
     pred::TickReached(50),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER,
         "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press can pay the 20 and throws the boulder"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 12100, 12100,
-        "consequence: on the fixed run the tower's arrows leave the barbarian at 121 hp: its line check first passes at tick 13 (its re-plan at tick 8 holds its fire: Gameplay Fixes BB), one arrow meets the boulder and seven strike (3.88 + rng(2) on the arrow's 5: 29 in all)"),
 };
 inline constexpr Mutation kMut_barbarian_boulder_edge_pad_fixes_scen99 = {
     "packs/core/families/living-16-barbarian.lua", 28,
@@ -11677,13 +11656,12 @@ inline constexpr Mutation kMut_mage_wave_edge_pad_scen99 = {
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press sends the wave: the tower ends at 90 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) fails."
 };
 inline constexpr FactPredicate kFacts_mage_wave_edge_pad_fixes_scen99[] = {
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each flown check (BD) passes on its own waver draw, so the arrows that strike the mage are no longer derivable; the wave's facts stay.
     pred::TickReached(60),
     pred::WeaponFamilyEmitted(FAMILY_WAVE,
         "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press can pay the 70 and sends the wave"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000,
         "consequence: the wave's second ring strikes the tower four times as it passes, worn a point a strike, so the strikes are rolled on 12, 11, 10 and 9 (each d - sqrt(d)/2 + rng(3)): 12, 9, 9, 10, and the tower ends at 90 hp"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 6400, 6400,
-        "consequence: on the fixed run the tower's arrows leave the mage at 64 hp: six strike (3.88 + rng(2) on the arrow's 5: 26 in all), at ticks 25, 30, 36, 46, 52 and 57 from its shots at 21, 26, 32, 42, 48 and 53, and its shots at 16 and 37 miss (its re-plan at tick 8 holds its fire: Gameplay Fixes BB)"),
 };
 inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
     "packs/core/families/living-03-mage.lua", 455,
