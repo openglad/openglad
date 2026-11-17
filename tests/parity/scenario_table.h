@@ -8801,7 +8801,7 @@ inline constexpr FactPredicate kFacts_druid_tree_blocked_fixes_scen99[] = {
     pred::EventKindExactly(/*play_sound*/1, 4,
         "consequence: with the setting on the bolt that never flew is taken back (11 MP, and one regenerated), so the blocked cast's swing at tick 20 is followed by three held-fire swings at 4 MP each (30, 41, 52) and no more; the tower shoots nothing (its line check never passes: Gameplay Fixes BB)"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9100, 9900,
-        "consequence: the held fire lands one swing fewer: four swings (8.42 + rng(3) on the druid's 10, so 8 to 10 each) take 32 to 40 of the tower's 130, and it regenerates 1 once its 50-tick wait after the last swing (tick 53) has run: 91 to 99 hp"),
+        "consequence: the held fire lands one swing fewer: four swings (8.42 + rng(3) on the druid's 10, so 8 to 10 each) take 32 to 40 of the tower's 130, and it regenerates 1 once its 50-tick wait after the last swing (tick 52) has run: 91 to 99 hp"),
     // rng_drift: each swing is compute_base_damage's roll on the druid's 10, 8.42 + rng(3) against no armour, so the rule allows exactly 8 to 10 a swing and the band is four such swings plus the one regenerated point; commit 2b36b5d09
 };
 inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
@@ -9648,11 +9648,11 @@ inline constexpr Mutation kMut_archmage_bot_mind_control_hero_fixes_scen99 = {
 // A hostile level-10 archmage bot with 1100 MP just below the player's
 // soldier, whose held swing never reaches it (the swing stops short of the
 // archmage's body at y = 135), so no hit response runs in this arena: the
-// summon at tick 10 is the archmage's own slot-3 roll. The classic roll
-// summons with the Shift its coin left: with the seed (12) that is 0, an image
-// (a skeleton phantom). With the setting on the slot-3 rule picks the
-// elemental when the spare MP covers it, and 1100 MP does. The struck hit
-// response has its own arena, archmage_bot_struck.
+// summon on tick 0, the archmage's first act, is its own slot-3 roll. The
+// classic roll summons with the Shift its coin left: with the seed (12) that
+// is 0, an image (a skeleton phantom). With the setting on the slot-3 rule
+// picks the elemental when the spare MP covers it, and 1100 MP does. The
+// struck hit response has its own arena, archmage_bot_struck.
 inline constexpr InputEvent kInputs_archmage_hit_stale_shift[] = {
     {  5, 0, K_FIRE }, { 40, 0, K_NONE },
 };
@@ -9666,19 +9666,19 @@ inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
     // negative_assertion: the coin's Shift summons an image, never the elemental
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
-        "consequence: the slot-3 roll at tick 10 summons with the Shift the coin left (0): an image, a skeleton phantom"),
+        "consequence: the slot-3 roll on tick 0 summons with the Shift the coin left (0): an image, a skeleton phantom"),
 };
 inline constexpr FactPredicate kFacts_archmage_hit_stale_shift_fixes_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1,
-        "consequence: with the setting on the slot-3 roll at tick 10 picks the elemental, which the spare MP covers (1100 MP), whatever the coin left"),
+        "consequence: with the setting on the slot-3 roll on tick 0 picks the elemental, which the spare MP covers (1100 MP), whatever the coin left"),
 };
 inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 77,
     "self:set_shifter_down(1)",
     "self:set_shifter_down(0)",
-    "Makes the summon choice always pick the image, so the slot-3 roll summons a phantom instead of the elemental: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",
+    "Makes the summon choice always pick the image, whose gate refuses with the soldier at blows (and one foe hunting the archmage, not two), so the slot-3 roll on tick 0 summons nothing: WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1) fails.",
     "local function summon_shift(self)"
 };
 
@@ -10277,10 +10277,10 @@ inline constexpr Mutation kMut_thief_bot_bomb_far_fixes_scen99 = {
 // the thief roll DROP BOMB with the tower beside it as its foe: the classic
 // gate bombs a foe that close (it refuses only 35 to 130 px), the bomb goes
 // off at tick 54 with the orc inside and the orc is hurt. With the setting on
-// the bomb wants no ally of the thief's inside the blast: the gate first says
-// yes at tick 37, the bomb is dropped there and has not gone off by tick 60,
-// and the orc stays whole (before fix AT the bomb was never dropped in the
-// run).
+// the bomb wants no ally of the thief's inside the blast: the gate says no at
+// ticks 3, 8 and 13 and first says yes at tick 24, the bomb is dropped there
+// and has not gone off by tick 60 (it burns 50 ticks), and the orc stays
+// whole (before fix AT the bomb was never dropped in the run).
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_bomb_ally_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 137, 120, 0, 0 },          // the foe, a 1 px gap east
     { FAMILY_ORC,     1, kOrderLiving, 100, 120, 0, 0 },          // an ally 20 px west, inside the 31 px blast
@@ -10303,7 +10303,7 @@ inline constexpr Mutation kMut_thief_bot_bomb_ally_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_bomb_ally_fixes_scen99[] = {
     pred::TickReached(60),
     pred::WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1,
-        "consequence: with the setting on the bomb wants no ally inside the blast; it is dropped only at tick 37, when the gate first finds none there, and has not gone off by tick 60"),
+        "consequence: with the setting on the bomb wants no ally inside the blast; it is dropped only at tick 24, when the gate first finds none there, and has not gone off by tick 60"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000,
         "consequence: the allied orc ends the run at its full 140 hp"),
 };
@@ -10311,7 +10311,7 @@ inline constexpr Mutation kMut_thief_bot_bomb_ally_fixes_scen99 = {
     "packs/core/families/living-11-thief.lua", 66,
     "return G.foes_within(self, 1, reach, true) and clear",
     "return G.foes_within(self, 1, reach, true) and true",
-    "Drops the ally test, so the thief bombs the tower with the orc in the blast: the bomb goes off by tick 53 and hurts the orc (103 hp), so WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1) and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fail."
+    "Drops the ally test, so the thief bombs the tower with the orc in the blast, at ticks 3 and 8: the two bombs go off at ticks 53 and 58 and hurt the orc (103 hp), so WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1) reads 0 and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fails."
 };
 
 // --- thief_bot_cloud_alone (bot gates: POISON CLOUD wants two foes at blows) ---
@@ -11947,8 +11947,9 @@ inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
 // is level 1, so the blow pays 91 to 93 (the setting-on row's bands are below
 // its facts). Classic, it pays the blast's own colour, red; with the setting
 // on, the blast's own colour too, which is now the thief's. The blast's blow on
-// the thief is a blow on its own side, and the tower's arrows have a team-2
-// head that is neither a hero nor on the player's team: neither scores.
+// the thief is a blow on its own side, and the tower's blows (the thief's body
+// holds its pad, so it looses no arrow) have a team-2 head that is neither a
+// hero nor on the player's team: neither scores.
 inline constexpr SpawnSpec kFamilySpawns_thief_bomb_colour_score_scen99[] = {
     { FAMILY_TOWER1, 2, kOrderLiving, 222, 196, 0, 0 },           // stationary team-2 level-1 bystander on effect_bomb_bystander's tile, inside the blast's reach
     { FAMILY_THIEF,  1, kOrderLiving, 200, 200, 0, 0, 5, 300 },   // the player LAST, on team 1 (player_team 1); level 5: bomb damage 90 and a blast reach of 20
@@ -11969,17 +11970,20 @@ inline constexpr Mutation kMut_thief_bomb_colour_score_scen99 = {
     "The classic payments pay the chain head's team, so the blast's blow on the tower pays team 1: ScoreDelta(0, 91, 93) reads 0 and ScoreDelta(1, 0, 0) reads 91 to 93."
 };
 // With the setting on the tower, a stationary shooter facing the thief, no
-// longer turns off it and back before it shoots (fix AT), so its arrows fly a
-// tick sooner and the blast's damage roll is another draw of the stream: the
-// row cannot take the setting-off tower fact. The roll is the bomb's 90 as
-// 90 - sqrt(90)/2 + rng(9) = 85.26 + {0..8} against the placed tower's armour
-// 0, so the rule allows the tower to lose 85 to 93 hp (37 to 45 left) and the
-// blow to pay 86 to 94: the bands are those values.
+// longer turns off it and back before it strikes (fix AT, a tick sooner), and
+// the kept turn (Gameplay Fixes BE) brings its blows two ticks sooner again:
+// they fall every five ticks from tick 2 where the classic tower's fall from
+// tick 5 (from tick 4 until the kept turn). So the blast's damage roll is
+// another draw of the stream: the row cannot take the setting-off tower fact.
+// The roll is the bomb's 90 as 90 - sqrt(90)/2 + rng(9) = 85.26 + {0..8}
+// against the placed tower's armour 0, so the rule allows the tower to lose
+// 85 to 93 hp (37 to 45 left) and the blow to pay 86 to 94: the bands are
+// those values.
 inline constexpr FactPredicate kFacts_thief_bomb_colour_score_fixes_scen99[] = {
     pred::TickReached(100),
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3700, 4500,
         "the blast lands its full tier on the tower: 85 to 93 of its 130 hp"),
-    // rng_drift: with fix AT the tower shoots a tick sooner, so the blast's roll on the bomb's 90 is another draw and the band is every value 85.26 + rng(9) allows; commit 7dd61d2d
+    // rng_drift: with fix AT and the kept turn (Gameplay Fixes BE) the tower's blows fall three ticks sooner, so the blast's roll on the bomb's 90 is another draw and the band is every value 85.26 + rng(9) allows; commit 7dd61d2d
     pred::ScoreDelta(/*team*/0, 0, 0,
         "with the setting on red is paid nothing: the blast wears the thief's colour"),
     pred::ScoreDelta(/*team*/1, 86, 94,

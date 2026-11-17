@@ -1293,13 +1293,14 @@ The parity goldens are captures from the old game (branch
   moved) and the table mirror `adfa676e` (the same entry after its second
   review: `orc_right_walk_potion` ends at tick 25 on its twin's seed in
   place of a seed of its own; one recaptured, no setting-off golden
-  moved), and the table mirror `7c33f42b` (the moved rows after their
+  moved), the table mirror `7c33f42b` (the moved rows after their
   review: `thief_charm_nearest` takes an arena and a budget of its own,
   the same entry; two rows read the bands their rule gives and a third
-  counts the heal's notice; one recaptured, no setting-off golden moved).
-  `7c33f42b` is the commit the goldens are captured from: 390 of 390
-  goldens `cmp` equal to a full capture there, and every capture there
-  `cmp`s equal to this game's run of the same row.
+  counts the heal's notice; one recaptured, no setting-off golden moved)
+  and the table mirror `608060fd` (the texts of four moved rows after the
+  second review; nothing moved). `608060fd` is the commit the goldens are
+  captured from: 390 of 390 goldens `cmp` equal to a full capture there,
+  and every capture there `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1514,19 +1515,24 @@ damage plus the tower's level for the colour the blast wears: with the
 setting off red is paid it, with the setting on team 1, and the other team
 nothing. With the setting off the blow takes 90 to 92 of the tower's 130
 hp (the bystander row's tower fact) and pays 91 to 93. With the setting on
-the tower, which faces the thief, shoots a tick sooner (fix AT), so the
-blast's damage roll is another draw of the stream, and that row's bands
-are every value the roll allows: 85 to 93 hp, 86 to 94 paid. The blast's
-quarter on the thief is a blow on its own side, and the tower's arrows
-have a team-2 head that is no hero, so neither scores. The setting-off
-row's pin moves the classic payment to the chain head's team; the
-setting-on row's pin leaves the blast red, so it pays nobody. Both rows
-were captured from the old game at `30ada1c5`, after the first port of AZ
-(`bc75c886`, corrected by `fbcab638`); the rule as it stands pays the same
-team on both rows, so both still `cmp` equal to this game's run. The
-rule's port kept them: taking the first port out (`d4a87048`) left the
-setting-on row's blast red for one commit, and the stamps (`fbefdccc`)
-gave it the thief's colour back, byte for byte the recording.
+the tower strikes the thief sooner: a tick sooner with fix AT and two more
+with the kept turn (Gameplay Fixes BE), its blows falling every five ticks
+from tick 2 where the classic tower's fall from tick 5. So the blast's
+damage roll is another draw of the stream, and that row's bands are every
+value the roll allows: 85 to 93 hp, 86 to 94 paid. The blast's quarter on
+the thief is a blow on its own side, and the tower's blows (the thief's
+body holds its pad, so it looses no arrow) have a team-2 head that is no
+hero, so neither scores. The setting-off row's pin moves the classic
+payment to the chain head's team; the setting-on row's pin leaves the
+blast red, so it pays nobody. Both rows were captured from the old game at
+`30ada1c5`, after the first port of AZ (`bc75c886`, corrected by
+`fbcab638`); the rule as it stands pays the same team on both rows, so
+both still `cmp` equal to this game's run. The rule's port kept them:
+taking the first port out (`d4a87048`) left the setting-on row's blast red
+for one commit, and the stamps (`fbefdccc`) gave it the thief's colour
+back, byte for byte the recording. The kept turn's port (`7cdbeab2`) moved
+the setting-on row's blows, and it was captured from the old game again
+after that port.
 
 Fix AZ's arrow arena, `archer_charmed_arrow_in_flight_scen99` and
 `archer_charmed_arrow_in_flight_fixes_scen99`: a hostile level-1 archer
