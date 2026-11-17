@@ -1284,10 +1284,12 @@ The parity goldens are captures from the old game (branch
   setting-off golden moved at any step. Then the table mirror `e6663739`
   (fourteen setting-on rows given a fact of their own rule again, see
   [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1: twelve
-  recaptured, no setting-off golden moved). `e6663739` is the commit the
-  goldens are captured from: 390 of 390 goldens `cmp` equal to a full
-  capture there, and every capture there `cmp`s equal to this game's run
-  of the same row.
+  recaptured, no setting-off golden moved) and the table mirror
+  `46a09a28` (the fifteenth, `soldier_charge_ally`, given an arena of
+  its own, the same entry: one recaptured, no setting-off golden moved).
+  `46a09a28` is the commit the goldens are captured from: 390 of 390
+  goldens `cmp` equal to a full capture there, and every capture there
+  `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1671,10 +1673,10 @@ the rest were dropped where the value hangs on a line check's waver draw or a fi
 each changed array of the table says which. In `archmage_mind_control_berserk`, `cleric_raise_blocked_corpse`,
 `elemental_struck_short_pool`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe` and
 `thief_bot_charm_or_taunt` the staging no longer reaches the rule the row was written for. No setting-off row
-moves. Fourteen of the fifteen rows whose own pin then changed no fact were given a fact of their own rule again,
-with an arena, inputs, a budget or a seed of their own or a worked-out value of the fixed stream, and the twelve
-whose run changed were captured again at `e6663739` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1);
-`soldier_charge_ally` was not.
+moves. The fifteen rows whose own pin then changed no fact were each given a fact of their own rule again,
+with an arena, inputs, a budget or a seed of their own or a worked-out value of the fixed stream: the twelve
+whose run changed first were captured again at `e6663739`, and `soldier_charge_ally`, given an arena of its own
+last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1).
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -3489,7 +3491,7 @@ The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
 BC; #538, #513, #447). Each entry below is what the maintainer said, or
 what was only told to him, and what the game or its tests do because of it.
 
-1. **Fourteen setting-on recordings took an arena, inputs, a budget or a
+1. **Fifteen setting-on recordings took an arena, inputs, a budget or a
    seed of their own after the three fixes were ported:** the ports moved
    them so that their own pin no longer changed a fact. Each now states the
    consequence of its own rule again, by the first of three cures that
@@ -3516,13 +3518,23 @@ what was only told to him, and what the game or its tests do because of it.
    `orc_right_walk_potion_fixes_scen99` 16 (0x10); for the first three the
    rule is a bot's own roll or the cast's own rolls, which no arena can take
    out of the question. The setting-off twins keep their arenas, seeds and
-   recordings. `soldier_charge_ally_fixes_scen99` is not cured: in its arena
-   the rush's walk shoves the ally as well, so fix Z leaves one damage draw
-   fewer, which moves no hit point, and only the ally's later path, which
-   no rule gives, differs. Alternatives: seeds of their own for the seven
-   restaged rows (four of the fifteen had taken another seed twice already),
-   and for the ally an arena where the walk cannot shove it. The maintainer
-   was told of this and has not ruled on it.
+   recordings. `soldier_charge_ally_fixes_scen99` took an arena of its own
+   last: in its old arena the rush's own walk shoved the ally as well, so
+   fix Z left one damage draw fewer, which moved no hit point. Now the
+   player casts CHARGE on a soldier and hands the seat to an archer with
+   SWITCH, and the soldier finishes the rush as a bot into the seated
+   archer, whom no walk shoves; a wall under both keeps the bot's blocked
+   steps from sliding off. With the setting on the archer keeps its spawn
+   point; under the row's own pin, which strikes it as the classic rush
+   does, it is walked 16 px west. The row keeps its seed 24, and every
+   seed from 0 to 199 reaches the rule. A bot's own CHARGE cannot stage
+   it: with the setting on the bot's CHARGE rule (Gameplay Fixes V)
+   refuses a rush whose path meets an ally before a foe.
+   Alternatives: seeds of their own for the eight restaged rows (four of
+   the fifteen had taken another seed twice already), and for the ally a
+   seed at which its old arena's position fact flips, a place its own acts
+   take it to on that seed. The maintainer was told of this and has not
+   ruled on it.
 
 ## Out of scope
 
