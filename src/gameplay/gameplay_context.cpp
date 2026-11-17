@@ -144,8 +144,8 @@ public:
         //   on the state's floor.
         // tests: SemPathing.pathing_plans_on_the_states_floor_when_stacked_and_on_floor_0_otherwise
         const int f = multifloor ? GET_STATE_FLOOR(state) : 0;
-        const bool nonflyer = !(aw->stats()->query_bit_flags(BIT_FLYING) ||
-                                aw->flight_left());
+        const bool nonflyer =
+            !aw->flies();
 
         // plumbing: 8-neighbour expansion (skip self); rules below,
         //   below

@@ -1975,7 +1975,7 @@ bool statistics::walk_to_foe()
 	// byte-identical.
 	const bool multifloor = current_game->world->floor_count() > 1;
 	const bool flyer = multifloor &&
-	    (query_bit_flags(BIT_FLYING) || controller_->flight_left() != 0);
+	    controller_->flies();
 	const bool cross_floor = multifloor && !flyer &&
 	    foe->floor() != controller_->floor();
 
@@ -2589,13 +2589,13 @@ bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance
 	// tests: parity:walk_to_foe_adopts_near_foe_scen99
 	if (static_cast<std::uint32_t>(controller_->distance_to_ob(near_foe)) < held_distance)
 		return true;
-	// rule: #447 (this game only, both settings; only a level with more than one floor has a
-	//   flyer here): a flyer never changes floors, so a foe on another floor is one it can only
-	//   shadow. When the quick foe search answers a foe on the flyer's own floor it takes that
-	//   one, even when it is farther than the foe it holds; the quick search looks about five
-	//   map cells (160 px) round the bot, and with no foe on its floor inside that reach the
-	//   flyer keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's rule
-	//   alone.
+	// rule: #447, #512 (this game only, both settings; only a level with more than one floor has
+	//   a flyer here): a flyer never changes floors, so a foe on another floor is one it can only
+	//   shadow. When the foe search answers a foe on the flyer's own floor (the quick search, or
+	//   beyond its reach the full scan, which answers a flyer the nearest foe on its floor) it
+	//   takes that one, even when it is farther than the foe it holds. With no foe on its floor
+	//   anywhere it keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's
+	//   rule alone.
 	// tests: SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor
 	const walker* held = controller_->foe();
 	return flyer && held != nullptr && held->floor() != controller_->floor()

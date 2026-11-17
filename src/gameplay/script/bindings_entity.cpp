@@ -1271,7 +1271,7 @@ int og_summon_configured(lua_State* L)
     return 1;
 }
 
-// og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.
+// og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map. That fallback answers a flyer on a level with floors the nearest foe on its own floor when there is one.
 int og_find_near_foe(lua_State* L)
 {
     GameWorld* world = world_arg(L);

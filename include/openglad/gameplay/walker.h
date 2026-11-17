@@ -234,6 +234,10 @@ class walker : public og::sim::SimEntity
 		// A living of a family that never moves (a tower). Defined at the end
 		// of walker.cpp.
 		[[nodiscard]] bool stationary() const;
+		// A walker flies while it has the FLYING flag or flight ticks left (a
+		// flight potion; the one tick a walker stuck in a wall is given): the one
+		// test of what flying is. Defined at the end of walker.cpp.
+		[[nodiscard]] bool flies() const;
 		bool query_next_to();
 		// Why a special() attempt produced nothing. Only the player-input
 		// path asks: a silent no-op there reads as a broken key, while the

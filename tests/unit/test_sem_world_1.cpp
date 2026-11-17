@@ -1322,6 +1322,316 @@ TEST(SemWorld, the_full_foe_scan_finds_a_foe_on_another_floor)
         << "floor arm: the full scan does not filter by floor";
 }
 
+namespace {
+
+// #512's stage: a grass field 64 tiles (1024 px) a side with `floors` floors.
+void floors_field(TestGameWorld& tw, int floors, short fixes)
+{
+    open_field(tw, 64, 64);
+    tw.world().set_floor_count(floors);
+    tw.world().gameplay_fixes = fixes;
+}
+
+// add_living on `floor`: the floor is set before the body is placed, since
+// the obmap files a walker under its floor when it is placed.
+walker* add_living_on(TestGameWorld& tw, int family, unsigned char team,
+                      short x, short y, short floor)
+{
+    walker* w = tw.world().add_ob(Order::Living, family);
+    if (w == nullptr)
+        return nullptr;
+    w->set_team_num(team);
+    w->set_act_type(ACT_GUARD);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->stats()->set_max_hitpoints(40.0f);
+    w->stats()->set_hitpoints(40.0f);
+    w->set_floor(floor);
+    w->setxy(x, y);
+    return w;
+}
+
+// The first state of the sim stream whose next two cloak rolls of die 2
+// come out `first` and `second` (0: the foe is seen, 1: it stays hidden).
+std::uint32_t state_for_rolls(std::uint32_t first, std::uint32_t second)
+{
+    for (std::uint32_t seed = 1;; ++seed)
+    {
+        og::sim::SimRandom probe(seed);
+        const std::uint32_t a = probe.next(2);
+        const std::uint32_t b = probe.next(2);
+        if (a == first && b == second)
+            return seed;
+    }
+}
+
+// The state after `draws` draws of die `bound` from `state`.
+std::uint32_t state_after_draws(std::uint32_t state, std::uint32_t bound, int draws)
+{
+    og::sim::SimRandom probe(state);
+    for (int i = 0; i < draws; ++i)
+        (void)probe.next(bound);
+    return probe.state_;
+}
+
+}  // namespace
+
+// #512 (this game only, both settings), game_world.cpp
+// GameWorld::NearestFoePick. Two floors; a team-1 ghost (it flies) at
+// (320,320) on floor 0; `above`, a team-0 soldier at (320,340) on floor 1,
+// 20 px off by the scan's measure (Manhattan); `distant`, one at (320,620) on
+// floor 0, 300 px off, beyond the quick search's spiral (about five map cells
+// round the searcher). A flyer never leaves its floor, so the full scan
+// answers it the nearest foe on its own floor when there is one, however far:
+// `distant`; the quick search, whose spiral meets nobody on floor 0, falls back
+// to that scan and answers the same. In the same test:
+//  * `distant` moved to floor 1: nobody stands on the ghost's floor, and the
+//    ghost is answered the nearest foe on any floor, `above` (the rule of
+//    floors);
+//  * two foes on the ghost's floor at one distance, (320,620) and (620,320),
+//    300 px each: the earlier in the object list, in either order;
+//  * a hostile tent (a generator) in `distant`'s place is taken.
+TEST(SemWorld, the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor)
+{
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        for (short distant_floor : {short{0}, short{1}})
+        {
+            SCOPED_TRACE(distant_floor == 0 ? "`distant` on the ghost's floor" : "`distant` on floor 1 too");
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 0);
+            walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* distant = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, distant_floor);
+            ASSERT_TRUE(ghost && above && distant);
+            ASSERT_EQ(2, world.floor_count()) << "the staging: a level with two floors";
+            ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost flies";
+            ASSERT_EQ(Order::Living, ghost->query_order());
+            ASSERT_EQ(0, ghost->floor());
+            ASSERT_EQ(1, above->floor());
+            ASSERT_EQ(distant_floor, distant->floor());
+            ASSERT_EQ(20, ghost->distance_to_ob(above)) << "the staging: `above` is the nearer";
+            ASSERT_EQ(300, ghost->distance_to_ob(distant)) << "the staging: `distant` is 300 px off";
+            walker* const want = distant_floor == 0 ? distant : above;
+            EXPECT_EQ(want, world.find_nearest_foe(ghost))
+                << (distant_floor == 0 ? "the nearest foe on its own floor, however far"
+                                   : "no foe on its floor: the nearest on any floor");
+            EXPECT_EQ(want, world.find_near_foe(ghost))
+                << "the quick search falls back to the full scan and answers the same";
+        }
+        for (bool a_first : {true, false})
+        {
+            SCOPED_TRACE(a_first ? "two at one distance, (320,620) made first"
+                                 : "two at one distance, (620,320) made first");
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 0);
+            walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* first = add_living_on(tw, FAMILY_SOLDIER, 0, a_first ? 320 : 620, a_first ? 620 : 320, 0);
+            walker* second = add_living_on(tw, FAMILY_SOLDIER, 0, a_first ? 620 : 320, a_first ? 320 : 620, 0);
+            ASSERT_TRUE(ghost && above && first && second);
+            ASSERT_EQ(0, first->floor()) << "the staging: both stand on the ghost's floor";
+            ASSERT_EQ(0, second->floor()) << "the staging: both stand on the ghost's floor";
+            ASSERT_EQ(300, ghost->distance_to_ob(first)) << "the staging";
+            ASSERT_EQ(300, ghost->distance_to_ob(second)) << "the staging: a tie";
+            EXPECT_EQ(first, world.find_nearest_foe(ghost))
+                << "a tie on the ghost's floor keeps the earlier walker in the object list";
+        }
+        {
+            SCOPED_TRACE("a hostile tent on the ghost's floor");
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 0);
+            walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* tent = world.add_ob(Order::Generator, FAMILY_TENT);
+            ASSERT_TRUE(ghost && above && tent);
+            tent->set_team_num(0);
+            tent->set_sizex(16);
+            tent->set_sizey(16);
+            tent->setxy(320, 620);
+            ASSERT_EQ(0, tent->floor()) << "the staging: the tent stands on the ghost's floor";
+            ASSERT_EQ(Order::Generator, tent->query_order());
+            EXPECT_EQ(tent, world.find_nearest_foe(ghost)) << "a hostile generator on its floor is taken";
+        }
+    }
+}
+
+// #512, the same three walkers with another searcher in the ghost's place:
+//  * an orc (it does not fly) gets `above`: a ground walker takes a foe
+//    upstairs through this scan and paths to it by the stairs;
+//  * a tower gets `above`: it cannot leave its floor either, but it is not
+//    part of #512 (its foe on another floor is #571);
+//  * a soldier with flight ticks left (a flight potion) gets `distant`: while it
+//    flies it takes no stair;
+//  * a tent (a generator) given flight ticks gets `above`: the preference is
+//    for a living;
+//  * a world with ONE floor, a ghost on it, the nearer hostile carrying floor
+//    number 1 and the farther floor number 0 (no level has that; it is how
+//    the test can see the guard): the ghost gets the nearer one, because on
+//    a level with one floor the scan is floor-blind.
+TEST(SemWorld, the_own_floor_preference_is_for_a_living_that_flies_on_a_level_with_floors)
+{
+    enum class Searcher { Orc, Tower, SoldierWithFlight, TentWithFlight };
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        for (Searcher who : {Searcher::Orc, Searcher::Tower, Searcher::SoldierWithFlight, Searcher::TentWithFlight})
+        {
+            const char* name = who == Searcher::Orc                 ? "an orc"
+                               : who == Searcher::Tower             ? "a tower"
+                               : who == Searcher::SoldierWithFlight ? "a soldier with flight ticks left"
+                                                                    : "a tent given flight ticks";
+            SCOPED_TRACE(name);
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* searcher = nullptr;
+            if (who == Searcher::TentWithFlight)
+            {
+                searcher = world.add_ob(Order::Generator, FAMILY_TENT);
+                ASSERT_NE(nullptr, searcher);
+                searcher->set_team_num(1);
+                searcher->set_sizex(16);
+                searcher->set_sizey(16);
+                searcher->setxy(320, 320);
+            }
+            else
+            {
+                const int family = who == Searcher::Orc     ? FAMILY_ORC
+                                   : who == Searcher::Tower ? FAMILY_TOWER1
+                                                            : FAMILY_SOLDIER;
+                searcher = add_living_on(tw, family, 1, 320, 320, 0);
+            }
+            walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* distant = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 0);
+            ASSERT_TRUE(searcher && above && distant);
+            const bool ticks = who == Searcher::SoldierWithFlight || who == Searcher::TentWithFlight;
+            if (ticks)
+                searcher->set_flight_left(5);
+            ASSERT_EQ(0, searcher->floor());
+            ASSERT_EQ(20, searcher->distance_to_ob(above)) << "the staging";
+            ASSERT_EQ(300, searcher->distance_to_ob(distant)) << "the staging";
+            ASSERT_EQ(0, searcher->stats()->query_bit_flags(BIT_FLYING)) << "the staging: no FLYING flag";
+            ASSERT_EQ(ticks ? 5 : 0, searcher->flight_left()) << "the staging: flight ticks or none";
+            if (who == Searcher::Tower) {
+                ASSERT_TRUE(searcher->stationary()) << "the staging: a tower never moves";
+            }
+            if (who == Searcher::TentWithFlight) {
+                ASSERT_EQ(Order::Generator, searcher->query_order()) << "the staging: a generator, not a living";
+            }
+            walker* const want = who == Searcher::SoldierWithFlight ? distant : above;
+            EXPECT_EQ(want, world.find_nearest_foe(searcher))
+                << (who == Searcher::SoldierWithFlight ? "a living that flies prefers a foe on its floor"
+                                                       : "any other searcher gets the nearest on any floor");
+        }
+        {
+            SCOPED_TRACE("a level with one floor");
+            TestGameWorld tw;
+            floors_field(tw, 1, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 0);
+            walker* nearer = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* farther = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 0);
+            ASSERT_TRUE(ghost && nearer && farther);
+            ASSERT_EQ(1, world.floor_count()) << "the staging: one floor";
+            ASSERT_TRUE(ghost->flies()) << "the staging: the ghost flies";
+            ASSERT_EQ(0, ghost->floor());
+            ASSERT_EQ(1, nearer->floor()) << "the staging: the nearer one carries floor number 1";
+            ASSERT_EQ(0, farther->floor());
+            ASSERT_LT(ghost->distance_to_ob(nearer), ghost->distance_to_ob(farther)) << "the staging";
+            EXPECT_EQ(nearer, world.find_nearest_foe(ghost))
+                << "on a level with one floor the scan is floor-blind, for a flyer too";
+        }
+    }
+}
+
+// #512: the preference draws nothing. A cloaked hostile on each floor
+// (invisibility 40: the cloak roll is a die of 40 / 20 = 2, and only a 0
+// shows it), `above` (320,340) on floor 1 made before `distant` (320,620) on
+// floor 0. For each of the four ways the two rolls can come out, the stream
+// after a ghost's scan and after an orc's scan has moved by exactly those
+// two rolls, and the answer follows the rolls: the ghost takes `distant` when
+// it is seen, else `above` when it is seen; the orc the nearer one seen.
+TEST(SemWorld, the_own_floor_preference_draws_what_the_scan_always_drew)
+{
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        for (const bool flyer : {true, false})
+        {
+            for (const std::uint32_t above_roll : {0u, 1u})
+            {
+                for (const std::uint32_t distant_roll : {0u, 1u})
+                {
+                    SCOPED_TRACE(std::string(flyer ? "a ghost" : "an orc") + ", `above` " +
+                                 (above_roll == 0 ? "seen" : "hidden") + ", `distant` " +
+                                 (distant_roll == 0 ? "seen" : "hidden"));
+                    TestGameWorld tw;
+                    floors_field(tw, 2, fixes);
+                    GameWorld& world = tw.world();
+                    walker* searcher = add_living_on(tw, flyer ? FAMILY_GHOST : FAMILY_ORC, 1, 320, 320, 0);
+                    walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+                    walker* distant = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 0);
+                    ASSERT_TRUE(searcher && above && distant);
+                    above->set_invisibility_left(40);
+                    distant->set_invisibility_left(40);
+                    ASSERT_EQ(flyer, searcher->flies()) << "the staging";
+                    ASSERT_EQ(2, above->invisibility_left() / 20) << "the staging: a die of 2";
+                    ASSERT_EQ(2, distant->invisibility_left() / 20) << "the staging: a die of 2";
+                    const std::uint32_t s = state_for_rolls(above_roll, distant_roll);
+                    world.rng_.state_ = s;
+
+                    walker* const got = world.find_nearest_foe(searcher);
+
+                    EXPECT_EQ(state_after_draws(s, 2, 2), world.rng_.state_)
+                        << "two cloak rolls, one per hostile, and nothing more";
+                    walker* const seen_above = above_roll == 0 ? above : nullptr;
+                    walker* const seen_distant = distant_roll == 0 ? distant : nullptr;
+                    walker* const want = flyer ? (seen_distant != nullptr ? seen_distant : seen_above)
+                                               : (seen_above != nullptr ? seen_above : seen_distant);
+                    EXPECT_EQ(want, got) << "the answer follows the rolls";
+                }
+            }
+        }
+    }
+}
+
+// walker.cpp walker::flies, the one test of what flying is (#512): the FLYING
+// flag or flight ticks left. A ghost and a faerie fly, a soldier does not,
+// a soldier with flight ticks left does, a tower does not. One terrain
+// question that asks it: a soldier with flight ticks left passes a water
+// cell that stops it without them.
+TEST(SemWorld, a_walker_flies_with_the_flag_or_with_flight_ticks_left)
+{
+    TestGameWorld tw;
+    open_field(tw, 40, 40);
+    walker* ghost = add_living(tw, FAMILY_GHOST, 1, 64, 64);
+    walker* faerie = add_living(tw, FAMILY_FAERIE, 1, 128, 64);
+    walker* soldier = add_living(tw, FAMILY_SOLDIER, 0, 192, 64);
+    walker* potion = add_living(tw, FAMILY_SOLDIER, 0, 256, 64);
+    walker* tower = add_living(tw, FAMILY_TOWER1, 1, 320, 64);
+    ASSERT_TRUE(ghost && faerie && soldier && potion && tower);
+    potion->set_flight_left(5);
+    ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost's family flies";
+    ASSERT_NE(0, faerie->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the faerie's family flies";
+    for (walker* w : {soldier, potion, tower})
+        ASSERT_EQ(0, w->stats()->query_bit_flags(BIT_FLYING)) << "the staging: no FLYING flag";
+    for (walker* w : {ghost, faerie, soldier, tower})
+        ASSERT_EQ(0, w->flight_left()) << "the staging: no flight ticks";
+    EXPECT_TRUE(ghost->flies()) << "the FLYING flag";
+    EXPECT_TRUE(faerie->flies()) << "the FLYING flag";
+    EXPECT_FALSE(soldier->flies()) << "neither";
+    EXPECT_TRUE(potion->flies()) << "flight ticks left";
+    EXPECT_FALSE(tower->flies()) << "neither";
+
+    EXPECT_FALSE(passable_over(PIX_WATER1, Probe::Plain)) << "the staging: water stops a soldier";
+    EXPECT_TRUE(passable_over(PIX_WATER1, Probe::TempFlight)) << "a soldier with flight ticks left crosses water";
+}
+
 // game_world.cpp:2114. The corpse finder reaches a stain only under squared
 // distance 800: exactly 800 and 841 are out of reach, 784 is in.
 TEST(SemWorld, the_corpse_finder_reaches_only_under_squared_distance_800)

@@ -1201,14 +1201,15 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
     }
 }
 
-// #447 (this game only, both settings), stats.cpp statistics::near_adopts.
+// #447, #512 (this game only, both settings), stats.cpp statistics::near_adopts.
 // Two floors. A team-1 ghost (it flies; melee only) at (320,320) on floor 0
 // facing down, holding `above`, a team-0 soldier on floor 1; `beside`, a
 // second team-0 soldier; a SEARCH(9) queued, re-plan due. A flyer keeps the
 // floor-blind chase (it never changes floors), so the re-plan finds `above`
 // within 100 px and enters the near branch, where the quick foe search
 // (find_near_foe: floor-keyed, about five map cells round the bot, then the
-// floor-blind full scan) answers a foe; the staging asserts that answer first.
+// full scan, which answers a flyer the nearest foe on its own floor when
+// there is one) answers a foe; the staging asserts that answer first.
 //  * the scene: `above` at (320,340) on floor 1 (corner distance 20),
 //    `beside` at (320,400) on floor 0 (80: not nearer). The search answers
 //    `beside`, on the ghost's own floor: the ghost takes it and queues its
@@ -1217,10 +1218,13 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
 //    at (320,400), both on floor 1. The search finds nobody on floor 0 and
 //    the full scan answers `above`: the ghost keeps it, and since its pad (on
 //    floor 0) is clear it starts no swing on either setting (busy 0, the walk
-//    animation): a flyer swings at no foe on another floor;
-//  * control, beyond the quick search: `beside` at (320,620) on floor 0, 300
-//    px off. The spiral never reaches it and the full scan answers `above`:
-//    the ghost keeps `above`;
+//    animation): a flyer swings at no foe on another floor. With nobody on
+//    its floor the ghost is left as it was before #512 (the rule of floors):
+//    the same ATTACK order of 30 + rng(25) rounds and the same three draws;
+//  * a foe on the ghost's floor beyond the quick search (#512): `beside` at
+//    (320,620) on floor 0, 300 px off. The spiral never reaches it; the full
+//    scan answers a flyer the nearest foe on its own floor, `beside`, and the
+//    ghost takes it and queues its ATTACK order, as in the first scene;
 //  * control, another foe on the other floor at the same distance: `twin`, a
 //    third team-0 soldier at (320,300) on floor 1, made before `above`
 //    (320,340); both 20 px off, `beside` at (320,400) on floor 1. The search
@@ -1228,7 +1232,8 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
 //    walker on a tie, answers `twin`: not nearer than `above` and not on the
 //    ghost's floor, so the ghost keeps `above`. Only this scene tells "take
 //    the foe on its own floor" from "take whatever the search answers": in
-//    the two controls above the search answers the held foe itself;
+//    the control with no foe on the ghost's floor the search answers the
+//    held foe itself;
 //  * control, a ground walker: an orc (it does not fly) in the ghost's place,
 //    the first scene's soldiers. A ground walker whose foe is on another
 //    floor heads for a stair and never enters the near branch: it keeps
@@ -1244,7 +1249,7 @@ TEST_F(SemAi4, a_chaser_facing_its_near_foe_swings_along_its_facing_not_a_stale_
 //    decides: not nearer, the ghost keeps `held` and queues its ATTACK order
 //    (the near branch ran, so the rule was asked). Only this scene tells
 //    "the held foe is on another floor" from "the ghost flies".
-// The five controls assert the foe (the ground walker may step; that is not
+// The four controls assert the foe (the ground walker may step; that is not
 // this rule).
 TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor)
 {
@@ -1255,7 +1260,7 @@ TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_fl
                          Scene::TieOnTheOtherFloor, Scene::GroundWalker}) {
             const char* scene = sc == Scene::OwnFloorFoe          ? "a foe on the ghost's floor"
                                 : sc == Scene::NoFoeOnItsFloor    ? "control: no foe on the ghost's floor"
-                                : sc == Scene::BeyondTheSearch    ? "control: the foe on its floor beyond the quick search"
+                                : sc == Scene::BeyondTheSearch    ? "a foe on the ghost's floor beyond the quick search"
                                 : sc == Scene::TieOnTheOtherFloor ? "control: another foe on the other floor at the same distance"
                                                                   : "control: a ground walker";
             SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") + scene);
@@ -1277,9 +1282,9 @@ TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_fl
             bot->set_foe(above);
             if (sc != Scene::GroundWalker) {
                 walker* const answered = world().find_near_foe(bot);
-                walker* const expected = sc == Scene::OwnFloorFoe          ? beside
-                                         : sc == Scene::TieOnTheOtherFloor ? twin
-                                                                           : above;
+                walker* const expected = sc == Scene::OwnFloorFoe || sc == Scene::BeyondTheSearch ? beside
+                                         : sc == Scene::TieOnTheOtherFloor                         ? twin
+                                                                                                   : above;
                 ASSERT_EQ(expected, answered) << "the staging: the quick foe search's answer";
             }
             if (sc == Scene::TieOnTheOtherFloor) {
@@ -1302,7 +1307,7 @@ TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_fl
 
             EXPECT_TRUE(bot->stats()->walk_to_foe());
 
-            if (sc == Scene::OwnFloorFoe) {
+            if (sc == Scene::OwnFloorFoe || sc == Scene::BeyondTheSearch) {
                 EXPECT_EQ(beside, bot->foe()) << "the foe on its own floor is taken, though it is farther";
                 EXPECT_EQ(COMMAND_ATTACK, front_of(bot).type) << "and attacked";
             } else {
@@ -1311,6 +1316,19 @@ TEST_F(SemAi4, a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_fl
             if (sc == Scene::NoFoeOnItsFloor) {
                 EXPECT_FLOAT_EQ(0.0f, bot->busy()) << "no swing at a foe on another floor";
                 EXPECT_EQ(ANI_WALK, bot->ani_type()) << "no swing at a foe on another floor";
+                // The ruling, exactly: the order and the draws of the game before #512.
+                og::sim::SimRandom duration(s);
+                (void)duration.next(300);
+                (void)duration.next(10);
+                const int rounds = 30 + static_cast<int>(duration.next(25));
+                const Cmd f = front_of(bot);
+                EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+                EXPECT_EQ(COMMAND_ATTACK, f.type) << "the near branch queues its ATTACK order";
+                EXPECT_EQ(rounds, f.count) << "30 + rng(25), the third draw";
+                EXPECT_EQ(1, f.com1);
+                EXPECT_EQ(1, f.com2);
+                EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_)
+                    << "rng(300), the cadence rng(10), the duration rng(25): nothing more";
             }
         }
     }

@@ -1914,7 +1914,7 @@ bool water_blocks_mover(const walker& mover)
 	// tests: SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
-	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
+	if (mover.flies())
 		return false;
 	return !stats->query_bit_flags(BIT_SWIMMING);
 }
@@ -3418,8 +3418,8 @@ void walker::apply_z_motion()
 		return;
 	}
 
-	const bool flying = (stats_ != nullptr) &&
-		(stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+	const bool flying =
+		flies();
 
 	smoother& sm = w->smoother_for_floor(floor());
 	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
@@ -4121,4 +4121,19 @@ bool walker::stationary() const
 		return false;
 	const auto* fd = get_family_descriptor(family());
 	return fd != nullptr && fd->is_stationary;
+}
+
+// A walker flies while it has the FLYING flag or flight ticks left (a flight
+// potion; the one tick a walker stuck in a wall is given). The one test of
+// what flying is: the terrain questions, the stairs, the pathing graph, the
+// chase and the foe search all ask it. Appended at EOF so the parity canary
+// pins above never shift.
+bool walker::flies() const
+{
+	// rule: A walker flies while it has the FLYING flag or flight ticks left: it takes no stair,
+	//   falls through no air tile, crosses water, tree crowns and low obstacles, and the chase and
+	//   the foe search treat it as a walker that never leaves its floor.
+	// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
+	// tests: SemWorld.a_walker_flies_with_the_flag_or_with_flight_ticks_left
+	return stats_ != nullptr && (stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
 }

@@ -2211,22 +2211,32 @@ record differences kept on purpose (#484, #440, #491):
   (`tests/unit/test_owner_chain_loop.cpp`) pins it on both values, with a
   two-link loop, a three-link loop and a 40-link chain with no loop.
 - **A flying bot whose foe is on another floor takes a foe on its own
-  floor (#447).** A flyer never changes floors, so a foe on another floor
-  is one it can only hover over. On a tick it re-plans within 100 px of
-  such a foe, it now takes the foe the quick foe search answers when that
-  one stands on its own floor, even when it is farther than the foe it
-  holds; before, it kept the foe it could not reach unless the other was
-  nearer on the map. The change is partial: the quick search looks about
-  five map cells (160 px) round the bot and then falls back to the nearest
-  foe on any floor, so a foe on the flyer's floor beyond that reach is
-  still not taken (on Westlands 7, 8 and 16 most of the ticks such a ghost
-  still hovers had one). A flyer that holds a foe on its own floor keeps
-  #320's rule (a strictly nearer foe) alone. Only a level with more than
-  one floor has a flyer here, so no recording moves on either value, and
-  the old game has one floor, so nothing is ported.
-  `SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor`
-  pins it on both values (see GAMEPLAY_FIXES_FROM_CLASSIC.md for the
-  measure).
+  floor (#447, #512).** A flyer never changes floors, so a foe on another
+  floor is one it can only hover over. On a tick it re-plans within 100 px
+  of such a foe, it now takes the foe the quick foe search answers when
+  that one stands on its own floor, even when it is farther than the foe
+  it holds; before, it kept the foe it could not reach unless the other
+  was nearer on the map. Since #512 every foe search answers a flyer on a
+  level with floors the nearest foe on its own floor when there is one,
+  however far: the quick search and its fallback, the world's hand-out of
+  a foe to a walker that has none, the ordinary act's own search, a
+  guard's, the special gates that ask for a foe within some distance, and
+  what a pack's script is answered when it asks for a near foe. A flyer
+  far from the spot under its foe still flies there first and takes the
+  foe on its own floor when it re-plans within 100 px. With no foe on its
+  floor it keeps the foe it has: the rule of floors. A tower, which cannot
+  leave its floor either, is not part of this change. A flyer that holds a
+  foe on its own floor keeps #320's rule (a strictly nearer foe) alone.
+  Only a level with more than one floor has a flyer here, so no recording
+  moves on either value, and the old game has one floor, so nothing is
+  ported.
+  `SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor`,
+  `SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor`,
+  `SemWorld.the_own_floor_preference_is_for_a_living_that_flies_on_a_level_with_floors`,
+  `SemWorld.the_own_floor_preference_draws_what_the_scan_always_drew`,
+  `SemWorld.the_world_hands_a_flyer_with_no_foe_one_on_its_own_floor` and
+  `SemWorld.a_walker_flies_with_the_flag_or_with_flight_ticks_left` pin it
+  on both values (see GAMEPLAY_FIXES_FROM_CLASSIC.md for the measure).
 - **A hero of a pack class from 128 to 255 keeps its class (#500).** #443
   made a walker's family an unsigned byte, but a company character's own
   record kept a signed one, from the moment the hero was made. A hero of
