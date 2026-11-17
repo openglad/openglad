@@ -1293,7 +1293,11 @@ The parity goldens are captures from the old game (branch
   moved) and the table mirror `adfa676e` (the same entry after its second
   review: `orc_right_walk_potion` ends at tick 25 on its twin's seed in
   place of a seed of its own; one recaptured, no setting-off golden
-  moved). `adfa676e` is the commit the goldens are captured from: 390 of 390
+  moved), and the table mirror `7c33f42b` (the moved rows after their
+  review: `thief_charm_nearest` takes an arena and a budget of its own,
+  the same entry; two rows read the bands their rule gives and a third
+  counts the heal's notice; one recaptured, no setting-off golden moved).
+  `7c33f42b` is the commit the goldens are captured from: 390 of 390
   goldens `cmp` equal to a full capture there, and every capture there
   `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
@@ -1427,10 +1431,12 @@ soldier on its pad: one blow, and the recording ends there (B = 11). The
 blow is the orc's own 23 damage rolled as 23 - sqrt(23)/2 + rng(4), and
 the spawned soldier has no armor (only `set_difficulty` gives a placed
 walker armor, and the recording never calls it), so the soldier ends at
-96 to 99 of its 120 hp with the setting on and at 120 with it off. The
-orc's next swing waits for its own 30-round ATTACK, far past B. The pin
-inverts the gate: the classic row then lands the blow and the fixed row
-does not.
+96 to 99 of its 120 hp with the setting on and at 120 with it off.
+Classic, the orc's next swing waits for its own 30-round ATTACK; with the
+setting on the ATTACK order (Gameplay Fixes BC) swings again once the
+weapon's pause is over, past B either way (`orc_attack_order_blows` runs
+on to those blows). The pin inverts the gate: the classic row then lands
+the blow and the fixed row does not.
 
 Fix AT moves these 44 existing rows with the setting on, as measured in the
 current game before the port; the old game's capture after `915a99ee` moves
@@ -1672,17 +1678,21 @@ as the old game's capture after `08b8ca26` shows: `archer_barrage_edge_pad`, `ar
 `941e2d2b`, byte-identical to this game's run, together with the setting-on rows of the three new arenas. In
 most of them a tower now faces its foe on its first act (BE) and its flown check (BD) passes or not on its own
 sideways waver draw, so the tower's first shot and every shot after it now hang on that draw. The facts of 23
-rows no longer held. Five were worked out again from the rules as bands whose count the rule fixes
-(`archer_barrage_edge_pad`, `druid_tree_blocked`, `elf_rocks_blocked`, `soldier_charge_front_foe`, and
-`soldier_disarm_resisted_busy`'s sound count), one now asserts the cap itself (`special_cleric_heal_ally`), and
-the rest were dropped where the value hangs on a line check's waver draw or a fight whose stream the ports parted;
-each changed array of the table says which. At that capture the staging of `archmage_mind_control_berserk`,
+rows no longer held. Four were worked out again from the rules as bands whose count the rule fixes
+(`druid_tree_blocked`, `elf_rocks_blocked`, `soldier_charge_front_foe`, and `soldier_disarm_resisted_busy`'s
+sound count), `archer_barrage_edge_pad` as a band of one to three strikes (an arrow of the tower's in the air can
+take one or two of BARRAGE's three), one now asserts the cap itself beside the heal's one notice
+(`special_cleric_heal_ally`), and the rest were dropped where the value hangs on a line check's waver draw or a
+fight whose stream the ports parted; each changed array of the table says which. At that capture the staging of `archmage_mind_control_berserk`,
 `cleric_bot_resurrect_foe_stain`, `cleric_raise_blocked_corpse`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe`
 and `thief_bot_charm_or_taunt` no longer reached the rule the row was written for. No setting-off row
 moves. The fifteen rows whose own pin then changed no fact were each given a fact of their own rule again,
 with an arena, inputs, a budget or a seed of their own or a worked-out reading of the fixed stream: the twelve
 whose run changed first were captured again at `e6663739`, and `soldier_charge_ally`, given an arena of its own
-last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1).
+last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1). After the review of the ports,
+`mage_wave_edge_pad` reads the band of the wave's four strikes in place of one value, and `thief_charm_nearest`,
+whose own pin had changed only whether the thief lived, took an arena and a budget of its own and was captured
+again at `7c33f42b` (the same entry).
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -3551,7 +3561,14 @@ what was only told to him, and what the game or its tests do because of it.
    seed from 0 to 199 reaches the rule. A bot's own CHARGE cannot stage
    it: with the setting on the bot's CHARGE rule (Gameplay Fixes V)
    refuses a rush whose path meets an ally before a foe.
-   Alternatives: seeds of their own for the nine restaged rows (four of
+   `thief_charm_nearest_fixes_scen99`, a sixteenth row, was found after
+   the fifteen: its facts still changed under its own pin, but only in
+   whether the thief lived, a fight's outcome. It took an arena of its
+   own the same way: its soldier stands 40 px south of the thief on a
+   team of its own and the run ends at tick 25, so the team each foe ends
+   on says whom the charm took, on every seed from 0 to 199 but the 8 on
+   which the charm's own one-in-twenty roll resists.
+   Alternatives: seeds of their own for the ten restaged rows (four of
    the fifteen had taken another seed twice already); for the ally a seed
    at which its old arena's position fact flips, a place its own acts take
    it to on that seed; and for the mind control twin spawns of its own
