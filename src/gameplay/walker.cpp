@@ -4108,3 +4108,17 @@ bool walker::pad_room(Order body_order, std::int32_t body_family, std::int32_t w
 		return false;
 	return og::sim::summon_room_at(*current_game->world, *this, body_order, body_family, px, py);
 }
+
+// A living of a family that never moves (a tower): its family descriptor says
+// is_stationary. Only a living is asked, since the descriptor is looked up by
+// family number alone and a weapon can share a living's number (the bone wall
+// shares the tower's). Appended at EOF so the parity canary pins above never
+// shift.
+bool walker::stationary() const
+{
+	// plumbing: only a living has a family that can be stationary
+	if (order() != Order::Living)
+		return false;
+	const auto* fd = get_family_descriptor(family());
+	return fd != nullptr && fd->is_stationary;
+}

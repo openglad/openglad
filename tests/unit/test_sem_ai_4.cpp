@@ -1076,7 +1076,7 @@ TEST_F(SemAi4, a_shooter_fires_from_the_near_branch_only_when_its_line_check_pas
     }
 }
 
-// Gameplay Fixes BB (#497), stats.cpp statistics::near_turn; both settings.
+// Gameplay Fixes BB (#497), stats.cpp statistics::turn_to_foe; both settings.
 // A team-0 soldier at (320,320), its foe a team-1 orc at (337,320) (due east:
 // the aim is RIGHT); a SEARCH(9) queued, re-plan due. Two starts: facing UP
 // (two notches off) and UP_RIGHT (one notch off). On both settings the short

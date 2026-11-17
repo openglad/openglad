@@ -14,3 +14,6 @@ og_add_unit_group(og_unit_sem_ai_3 FILES
 og_add_unit_group(og_unit_sem_ai_4 FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_ai_4.cpp
 )
+og_add_unit_group(og_unit_sem_ai_5 FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_ai_5.cpp
+)

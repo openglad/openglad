@@ -2023,7 +2023,7 @@ bool statistics::walk_to_foe()
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
 		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or
 		//   any chaser on a crowded map (more than 200 objects, dead included), skips A*: if any
-		//   foe is within 100 px it wipes its orders, turns toward the foe (near_turn), starts an
+		//   foe is within 100 px it wipes its orders, turns toward the foe (turn_to_foe), starts an
 		//   ATTACK of 30+rng(25) rounds and may swing (near_swing); if no foe is that close it
 		//   abandons its current order (front count zeroed) and falls through to the walk.
 		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
@@ -2066,7 +2066,7 @@ bool statistics::walk_to_foe()
 					xdelta = near_foe->xpos() - controller_->xpos();
 					ydelta = near_foe->ypos() - controller_->ypos();
 				}
-				const bool faced = near_turn(controller_->facing(xdelta, ydelta));
+				const bool faced = turn_to_foe(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				near_swing(faced, static_cast<short>(xdelta), static_cast<short>(ydelta));
 				return 1;
@@ -2510,23 +2510,23 @@ bool statistics::slide_half_clear(short dx, short dy)
 	return current_game->world->query_passable(x, y, controller_);
 }
 
-// Gameplay Fixes BB (#497): the turn of walk_to_foe's near branch. Appended at
-// the end of the file so the parity pins above never shift.
-// walker::turn never writes enddir, and init_fire() and living::act_round both
-// turn a walker toward enddir before anything else. Classic: the notch this
-// turn gives a bot that does not face its foe is undone at once by the
-// init_fire() that follows (measured on Tryxian level 1, six seeds of 2400
-// ticks: every one of 14,547 calls with the setting off), so the bot never
-// completes its aim here.
-bool statistics::near_turn(short aim)
+// Gameplay Fixes BB (#497) and BE (#513): the turn toward a foe, for walk_to_foe's
+// near branch and for living::act_random's refused shot. Appended at the end of the
+// file so the parity pins above never shift. walker::turn never writes enddir, and
+// init_fire() and living::act_round both turn a walker toward enddir before anything
+// else: classic, a bot's notch toward a foe it does not face is undone at once, in the
+// near branch by the init_fire() that follows (measured on Tryxian level 1, six seeds
+// of 2400 ticks: all 14,547 calls with the setting off), in act_random by its next
+// act. With the setting on the turn is kept; a tower is snap-faced (keep_turn, below).
+bool statistics::turn_to_foe(short aim)
 {
 	const bool faced = controller_->curdir() == aim;
-	// rule: Gameplay Fixes BB (#497): a bot not yet facing its near foe keeps the foe's direction
-	//   as the facing it is turning to (enddir), so the notch it turns now is not undone and its
-	//   next acts finish the turn. Classic: enddir is left as it was and the bot is turned back.
-	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
+	// rule: Gameplay Fixes BB (#497) and BE (#513): a bot not yet facing its foe keeps the foe's
+	//   direction for good (keep_turn, at the end of this file), so its turn is not undone and its
+	//   next acts finish it. Classic: enddir is left as it was and the bot is turned back.
+	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on, SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
 	if (og::sim::session_gameplay_fixes() != 0 && !faced)
-		controller_->set_enddir(static_cast<char>(aim));
+		return keep_turn(aim);
 	controller_->turn(aim);
 	return faced;
 }
@@ -2600,4 +2600,38 @@ bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance
 	const walker* held = controller_->foe();
 	return flyer && held != nullptr && held->floor() != controller_->floor()
 	        && near_foe->floor() == controller_->floor();
+}
+
+// Gameplay Fixes BE (#513): the turn toward a foe that is kept. Asked only by
+// turn_to_foe, only with the setting on and only by a bot that does not face
+// `aim`; it answers false, "the bot did not face its foe", so the near branch
+// starts no swing on this act. A bot that can walk keeps the aim as the facing
+// it is turning to (enddir) and turns one notch: living::act_round's turn
+// finishes it, one notch an act, before the bot's queued orders run. A tower
+// has no walk to carry its aim, and walker::turn leaves a stationary living's
+// heading where it was while its line check and its shot fly along that
+// heading; so it faces its foe at once, as its own step rule already does
+// (walker::walkstep), and its next line check flies the new way. That also
+// serves fix BB's near branch: a tower within 100 px of a foe it does not face
+// faces it on the re-plan act and can shoot on its next one. Appended at the
+// end of the file so the parity pins above never shift.
+bool statistics::keep_turn(short aim)
+{
+	// rule: Gameplay Fixes BE (#513): a stationary living (a tower) faces its foe at once, heading
+	//   included (face_delta): a notch of walker::turn would leave its heading, which its line
+	//   check and its shot fly along, on the old line. Any other bot keeps the aim as the facing it
+	//   is turning to (enddir) and turns one notch; its next acts finish the turn.
+	// tests: SemAi5.a_tower_whose_shot_is_refused_faces_its_foe_at_once_with_its_heading
+	// tests: SemAi5.a_tower_turning_toward_its_near_foe_faces_it_at_once_with_the_setting_on
+	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
+	if (controller_->stationary())
+	{
+		short ux = 0, uy = 0;
+		facing_step_delta(static_cast<char>(aim), ux, uy);
+		controller_->face_delta(ux, uy);
+		return false;
+	}
+	controller_->set_enddir(static_cast<char>(aim));
+	controller_->turn(aim);
+	return false;
 }

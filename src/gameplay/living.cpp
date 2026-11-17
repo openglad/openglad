@@ -1076,17 +1076,24 @@ bool living::act_random()
 
 	// If foe is in firing range, turn and fire
 	// rule: act_random: a foe inside the line-of-sight box is fired at if a shot can reach it
-	//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe. Either way out
-	//   of a shot, it searches 200 steps.
+	//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe, and with
+	//   Gameplay Fixes on the turn is kept (fix BE: statistics::turn_to_foe; its next acts finish
+	//   it and a tower faces the foe at once). Either way out of a shot, it searches 200 steps.
 	// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
 	// tests: SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it
+	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
+	// tests: SemAi5.a_half_turn_takes_four_acts_and_then_the_search_runs
 	if (abs(xdist) < lineofsight() * GRID_SIZE &&
 	        abs(ydist) < lineofsight() * GRID_SIZE)
 	{
 		// rule: act_random: a foe inside the line-of-sight box is fired at if a shot can reach it
-		//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe.
+		//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe, and with
+		//   Gameplay Fixes on the turn is kept (fix BE).
 		// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
 		// tests: SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it
+		// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
+		// tests: SemAi5.a_bot_already_facing_its_foe_is_left_as_it_is
+		// tests: SemAi5.a_tower_whose_shot_is_refused_faces_its_foe_at_once_with_its_heading
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
@@ -1095,7 +1102,7 @@ bool living::act_random()
 		}
 		else
 			// Nearest foe is blocked
-			turn(facing(xdist,ydist));
+			stats_->turn_to_foe(facing(xdist,ydist));
 	}
 
 	stats_->try_command(COMMAND_SEARCH,200,0,0);

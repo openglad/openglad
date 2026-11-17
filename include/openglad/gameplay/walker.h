@@ -231,6 +231,9 @@ class walker : public og::sim::SimEntity
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).
 		void face_delta(short xdelta, short ydelta);
+		// A living of a family that never moves (a tower). Defined at the end
+		// of walker.cpp.
+		[[nodiscard]] bool stationary() const;
 		bool query_next_to();
 		// Why a special() attempt produced nothing. Only the player-input
 		// path asks: a silent no-op there reads as a broken key, while the
