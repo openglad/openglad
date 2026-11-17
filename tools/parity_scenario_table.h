@@ -8703,7 +8703,7 @@ inline constexpr InputEvent kInputs_elf_rocks_blocked[] = {
     { 30, 0, K_FIRE },    { 150, 0, K_NONE },
 };
 inline constexpr SpawnSpec kFamilySpawns_elf_rocks_blocked_scen99[] = {
-    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // touching above: blocks the elf's throw
+    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // overlapping: the 25x29 tower covers y 104 to 132 and the elf's box inside it; its body blocks the elf's throw
     { FAMILY_ELF,    0, kOrderLiving, 120, 120, 0, 0, 1, 10 },    // caster LAST -> player; 10 MP = ROCKS' price
 };
 inline constexpr FactPredicate kFacts_elf_rocks_blocked_scen99[] = {
@@ -8746,7 +8746,7 @@ inline constexpr InputEvent kInputs_druid_tree_blocked[] = {
     { 25, 0, K_FIRE },    { 150, 0, K_NONE },
 };
 inline constexpr SpawnSpec kFamilySpawns_druid_tree_blocked_scen99[] = {
-    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // touching above: blocks the druid's throw
+    { FAMILY_TOWER1, 1, kOrderLiving, 120, 104, 0, 0 },           // overlapping: the 25x29 tower covers y 104 to 132 and the druid's box inside it; its body blocks the druid's throw
     { FAMILY_DRUID,  0, kOrderLiving, 120, 120, 0, 0, 1, 15 },    // caster LAST -> player; 15 MP = GROW TREE's price
 };
 inline constexpr FactPredicate kFacts_druid_tree_blocked_scen99[] = {
@@ -11713,7 +11713,9 @@ inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
 // BB asks), init_fire starts the swing on tick 9, the attack animation
 // (three frames) shows its second frame on tick 10 and ends on tick 11, and
 // fire() finds the soldier on the blocked pad: one blow on tick 11, the budget
-// B. Its next swing waits for the same 30-round ATTACK, far above B.
+// B. Classic, its next swing waits for the same 30-round ATTACK; with the
+// setting on fix BC swings again once the weapon's pause is over, after B
+// either way (orc_attack_order_blows_scen99 runs on to those blows).
 // The blow: attack() with the orc's own damage, 23 (its level-1 melee_damage;
 // the runner never calls set_difficulty), is 23 - sqrt(23)/2 + rng(4) =
 // 20.60 + {0..3}; the soldier carries no armor (only set_difficulty gives a
@@ -12134,6 +12136,225 @@ inline constexpr Mutation kMut_thief_bomb_dead_thrower_fixes_scen99 = {
     "gf.made_by(bomb, self)",
     "bomb:set_owner(self)",
     "The bomb keeps the team it was made with, red, and so does its blast: the dead thrower's blast pays the player's team its blow on the tower again, so EventKindExactly(score_change, 1) reads 2 and ScoreDelta(0, 177, 193) reads 205 to 225."
+};
+
+// --- tower_foe_between_spots (fix BD, #538: the line check flies the shot) ---
+// A hostile level-1 TOWER1 (25x29, stepsize 0, fire delay 5) at (173, 140)
+// and the idle player soldier (16x16) straight above it at (176, 105): a
+// 19 px gap between the tower's top (y 140) and the soldier's bottom row
+// (y 120), the first blind gap of SemLineCheck's
+// classic_the_check_steps_over_a_foe_between_two_of_its_spots. The tower's
+// arrow is the table's step 8 and range 12, a straight shot's scaled by
+// 362/256 and 309/256: 11.3125 px a step and 14 steps, a reach of 11 x 14 =
+// 154 px (the soldier's corner is 38 px off). fire() and the line check put
+// the 7x7 arrow on the tower's pad, one pixel above it and centred: (182, 132).
+// The classic check tests the pad and then spots 1, 3, 6, 10 ... steps out,
+// each cut to a whole pixel: y 132, 120, 97, 63, 17, then off the map. The
+// soldier's box (y 105 to 120) lies between the spots at 120 and 97: the box
+// at 120 starts on the soldier's last row, and the obmap's test shrinks each
+// box by a pixel, so no spot meets it, whatever sideways waver the check
+// draws (a waver moves a spot sideways, never along the line). The flown
+// check (Gameplay Fixes BD) takes the shot's own steps: its first tests y 120
+// to 126, its second y 108 to 114, inside the soldier, so it passes. An arrow
+// drifts at most 3 px sideways a step and the soldier is 16 px wide and
+// centred on the pad, so the second step meets it for every waver the check
+// and the shot draw. Tick by tick:
+// - Tick 1, on this seed the tower's special coin falls; it can pay for no
+//   special (it has none), so the act is act_random. Its foe, the soldier,
+//   is straight above it and the tower faces DOWN (the spawn facing), so
+//   fire_check refuses it for its facing and it turns toward the soldier and
+//   queues the hunt (SEARCH). Classic, walker::turn moves it a notch and
+//   tick 2 turns it back (#513). With the setting on (Gameplay Fixes BE) a
+//   tower, which has no walk to carry the turn, faces its foe at once,
+//   heading included.
+// - The hunt (tick 2 with the setting on, tick 3 classic): the tower's
+//   path_check_counter starts at 7 (its construction draw), so these
+//   walk_to_foe calls are throttled right-hand walks, which in open ground
+//   are direct_walk: it asks fire_check and, refused, takes a step toward the
+//   foe. On, the flown check passes on tick 2, so direct_walk starts an
+//   ATTACK order; on tick 3 the order's fire_check passes again and the tower
+//   fires. The arrow stands on the pad on tick 3, takes its first step on
+//   tick 4 and meets the soldier at its second, on tick 5. The shot charges
+//   the fire delay, so the next arrow leaves on tick 8 and cannot land before
+//   tick 10. Classic, tick 3's check is refused for the facing, and the step
+//   turns the tower up at once (walkstep's stationary arm), heading included;
+//   from tick 4 every direct_walk asks the classic check, which steps over the
+//   soldier: no shot.
+// The budget B = 9: one arrow has landed with the setting on (the second,
+// from tick 8, is one step out) and none classic. The arrow does the table's
+// 5, scaled by (1 + 3) / 4 and by the level of a walker with no record, 1: 5,
+// so 5 - sqrt(5)/2 + rng(2) = 3.88 + {0, 1} against no armour (only
+// set_difficulty gives a placed walker armour), rounded to 4 or 5: the
+// soldier at 115 or 116 of its 120 (11500..11600 cents). Its regeneration
+// waits 50 ticks after the blow.
+// The classic row's pin makes the classic loop step one step a spot (its y
+// coordinate, which a tower facing up steps): its second spot, y 108, meets
+// the soldier on tick 4, so direct_walk turns the tower (classic, a walker
+// asked to face the way it faces still turns a notch) and starts the ATTACK
+// order; tick 5 turns it back, and on tick 6 the order fires: the arrow
+// lands on tick 8. The setting-on row's pin turns the flown check off, so the
+// classic loop steps over the soldier with the setting on too and no arrow
+// leaves.
+inline constexpr SpawnSpec kFamilySpawns_tower_foe_between_spots_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 173, 140, 0, 0 },          // hostile level-1 tower, facing DOWN at spawn; its box ends at y 168
+    { FAMILY_SOLDIER, 0, kOrderLiving, 176, 105, 0, 0 },          // the idle player LAST, straight above: its bottom row is y 120, a 19 px gap
+};
+inline constexpr FactPredicate kFacts_tower_foe_between_spots_scen99[] = {
+    pred::TickReached(9),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // negative_assertion: no arrow lands by tick 9 on the classic run (the soldier keeps its full 120 hp); the pin makes the classic loop step one step a spot, and its arrow from tick 6 takes the soldier to 115 or 116.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic check steps over the soldier between its spots at y 120 and 97, so the tower never fires"),
+};
+inline constexpr Mutation kMut_tower_foe_between_spots_scen99 = {
+    "src/gameplay/walker.cpp", 2306,
+    "weapon->ypos() + static_cast<float>(i) * weapon->lasty());",
+    "weapon->ypos() + weapon->lasty());",
+    "The classic loop steps one step a spot instead of 0, 1, 3, 6 ... steps out, so its second spot (y 108) meets the soldier on tick 4: direct_walk starts the ATTACK order, the arrow leaves on tick 6 and lands on tick 8, and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 115 or 116."
+};
+inline constexpr FactPredicate kFacts_tower_foe_between_spots_fixes_scen99[] = {
+    pred::TickReached(9),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 11600,
+        "consequence: with the setting on the flown check meets the soldier at the shot's second step, and exactly one arrow (from tick 3) has landed by tick 9"),
+    // rng_drift: the arrow is compute_base_damage's roll on its 5, 3.88 + rng(2) against no armour, so the rule allows exactly 4 or 5 hp lost and the band is those two values; commit 2b36b5d09
+};
+inline constexpr Mutation kMut_tower_foe_between_spots_fixes_scen99 = {
+    "src/gameplay/walker_movement.cpp", 777,
+    "if (og::sim::session_gameplay_fixes() == 0)",
+    "if (og::sim::session_gameplay_fixes() != 0)",
+    "The flown check answers nothing with the setting on, so the classic loop steps over the soldier and the tower never fires: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 11600) reads 120."
+};
+
+// --- orc_attack_order_blows (fix BC, #447: a melee-only bot fights in its ATTACK order) ---
+// orc_bot_faces_foe's arena run three of the orc's weapon pauses longer. Its
+// first ticks are that row's: a HOWL on tick 1, act_random on tick 2, six
+// throttled walks that bring the orc to 1 px above the soldier (y 138), and
+// the re-plan (tick 10 classic, tick 9 with the setting on), where the near
+// branch starts an ATTACK order of 30 + rng(25) rounds; with the setting on
+// its swing there lands the first blow on tick 11 (Gameplay Fixes BB).
+// Then the order: each round fire_check refuses the orc as melee only with
+// its foe inside its weapon's reach (NoRanged). Classic, the order only faces
+// its foe (the guard-standoff fix): the order spends one round an act from
+// tick 11, so it holds at least to tick 40 and no blow can land before tick
+// 41: the soldier ends whole. With the setting on (Gameplay Fixes BC) the orc
+// already faces its foe and the soldier's body stands on its weapon's pad,
+// so the order swings: one swing per weapon pause, P = the fire delay, 7,
+// plus the two further acts of its three-frame attack row, 9 acts
+// (SemAi5.a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_order
+// pins P); while the pause runs the order starts nothing and the orc does
+// not step. The swings start on ticks 9, 18, 27 and 36, and each blow lands
+// when the row ends, two acts later: ticks 11, 20, 29 and 38. The budget
+// B = 38 = 11 + 3P: four blows. Every swing is paid: a placed orc has the
+// stats' default 50 magic (the runner never calls set_difficulty, which
+// would give a level-1 orc 11), HOWL costs 25 and its first act regenerates
+// one point, so 26 are left and four swings cost 8. Each blow is
+// orc_bot_faces_foe's, 21 to 24 hp against no armour, so the four take 84 to
+// 96 of the soldier's 120: 24 to 36 left (2400..3600 cents). Each blow puts
+// its regeneration off for 50 ticks, so nothing heals before B.
+// Both rows pin the setting's test in attack_face_or_fight. The classic row
+// then fights: after its re-plan's notch and turn back the order's first
+// round, on tick 11, finds the orc facing the soldier with its body on the
+// pad and swings, and blows land from tick 13. The setting-on row then only
+// faces in its order, and only the near branch's blow of tick 11 lands.
+inline constexpr SpawnSpec kFamilySpawns_orc_attack_order_blows_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 120, 120, 0, 0, 1, 0 },   // hostile level-1 melee bot, facing DOWN at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 155, 0, 0 },         // the idle player LAST, straight below the orc: a 19 px gap (orc box ends at 136)
+};
+inline constexpr FactPredicate kFacts_orc_attack_order_blows_scen99[] = {
+    pred::TickReached(38),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 120, 138,
+        "consequence: six throttled walks of 3 px take the orc from a 19 px gap to 1 px above the soldier"),
+    // negative_assertion: no blow lands by tick 38 on the classic run (the soldier keeps its full 120 hp); the pin lets the classic order fight, and its blows from tick 13 take the soldier below 120.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic ATTACK order only faces its foe, and it holds until tick 40 at the earliest"),
+};
+inline constexpr Mutation kMut_orc_attack_order_blows_scen99 = {
+    "src/gameplay/stats.cpp", 2675,
+    "const bool fights = og::sim::session_gameplay_fixes() != 0 &&",
+    "const bool fights = og::sim::session_gameplay_fixes() == 0 &&",
+    "The classic ATTACK order fights: on tick 11 it finds the orc facing the soldier with its body on the pad and swings, one blow per weapon pause from tick 13, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) fails."
+};
+inline constexpr FactPredicate kFacts_orc_attack_order_blows_fixes_scen99[] = {
+    pred::TickReached(38),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 120, 138,
+        "consequence: six throttled walks of 3 px take the orc from a 19 px gap to 1 px above the soldier; a body on the pad is swung at, never stepped at"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2400, 3600,
+        "consequence: with the setting on the near branch's blow (tick 11) and three of the order's, one per weapon pause (ticks 20, 29, 38), take 84 to 96 hp"),
+    // rng_drift: each blow is compute_base_damage's roll on the orc's 23, 20.60 + rng(4) against no armor, so the rule allows exactly 21 to 24 hp a blow and the band is four such blows; commit 618370c5d
+};
+inline constexpr Mutation kMut_orc_attack_order_blows_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2675,
+    "const bool fights = og::sim::session_gameplay_fixes() != 0 &&",
+    "const bool fights = og::sim::session_gameplay_fixes() == 0 &&",
+    "The setting-on ATTACK order only faces its foe, so only the near branch's blow of tick 11 lands: WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2400, 3600) reads 96 to 99."
+};
+
+// --- orc_refused_shot_turn (fix BE, #513: a bot whose shot is refused keeps its turn) ---
+// A hostile level-1 orc bot (stepsize 3) at (120, 200), facing DOWN (the
+// spawn facing), with 1 magic, and the idle player soldier at (200, 120), up
+// and to the right on the diagonal: 80 px on each axis, a corner distance of
+// 160, inside the orc's sight box (20 tiles) and beyond the near branch's
+// 100 px for the whole run. Its foe's direction, UP_RIGHT, is three notches
+// from its facing. With 1 magic (2 after its first act's regeneration point)
+// the orc can pay for no special (HOWL, its slot 1, costs 25), so on both
+// settings a special coin is act_random. Tick by tick:
+// - Tick 1, on this seed the special coin falls: act_random. The soldier is
+//   in its sight box and fire_check refuses the orc (the soldier is beyond
+//   its weapon's reach), so it turns toward its foe and queues the hunt
+//   (SEARCH). Classic, walker::turn moves it a notch (DOWN_RIGHT) and leaves
+//   the facing it is turning to as it was (DOWN), so tick 2 turns it straight
+//   back (#513). With the setting on (Gameplay Fixes BE) the turn is kept:
+//   the facing it is turning to is UP_RIGHT, and ticks 2 and 3 finish the
+//   turn, a notch each.
+// - Then the hunt (tick 3 classic, tick 4 with the setting on). The orc's
+//   path_check_counter starts at 7 (its construction draw), so its
+//   walk_to_foe calls are throttled right-hand walks until the seventh; in
+//   open ground that is direct_walk, whose line check refuses again (out of
+//   reach) and which steps straight at the foe: a diagonal step of 3 px on
+//   each axis. Classic, the orc still faces DOWN, so its walk turns it first,
+//   a notch an act (ticks 3, 4 and 5; on 4 and 5 the turn is all the act),
+//   and its first step is on tick 6. With the setting on it faces UP_RIGHT
+//   already and steps on tick 4.
+// - Up to the budget no walk_to_foe call draws its one-in-300 reset on this
+//   seed, and none re-plans (the classic row's calls on ticks 3 and 6 to 9,
+//   the setting-on row's on ticks 4 to 9: at most six of the seven).
+// The budget B = 9. Classic, four steps (ticks 6 to 9) leave the orc at
+// (132, 188); with the setting on six steps (ticks 4 to 9) at (138, 182):
+// the kept turn saves two acts. WalkerPositionMoved bounds both coordinates
+// from below and the orc walks up and to the right, so each row's fact holds
+// at that point of its path alone: a step less fails x, a step more fails y.
+// Both rows pin turn_to_foe's gate: the classic row then keeps its turn and
+// stands at (138, 182), the setting-on row loses it and stands at (132, 188).
+inline constexpr SpawnSpec kFamilySpawns_orc_refused_shot_turn_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 120, 200, 0, 0, 1, 1 },   // hostile level-1 melee bot, facing DOWN at spawn; 1 magic, so no special is paid for
+    { FAMILY_SOLDIER, 0, kOrderLiving, 200, 120, 0, 0 },         // the idle player LAST, up and to the right on the diagonal, 160 px off
+};
+inline constexpr FactPredicate kFacts_orc_refused_shot_turn_scen99[] = {
+    pred::TickReached(9),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 132, 188,
+        "consequence: classic, the refused shot's notch is turned back, the hunt's walk turns the orc three notches, and it takes four diagonal steps of 3 px, ticks 6 to 9"),
+};
+inline constexpr Mutation kMut_orc_refused_shot_turn_scen99 = {
+    "src/gameplay/stats.cpp", 2528,
+    "if (og::sim::session_gameplay_fixes() != 0 && !faced)",
+    "if (og::sim::session_gameplay_fixes() == 0 && !faced)",
+    "The classic row keeps the refused shot's turn: the orc faces UP_RIGHT after ticks 2 and 3 and steps from tick 4, six steps to (138, 182), so WalkerPositionMoved(FAMILY_ORC, 132, 188) fails on y."
+};
+inline constexpr FactPredicate kFacts_orc_refused_shot_turn_fixes_scen99[] = {
+    pred::TickReached(9),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 138, 182,
+        "consequence: with the setting on the refused shot's turn is kept and finished on ticks 2 and 3, and the orc takes six diagonal steps of 3 px, ticks 4 to 9"),
+};
+inline constexpr Mutation kMut_orc_refused_shot_turn_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2528,
+    "if (og::sim::session_gameplay_fixes() != 0 && !faced)",
+    "if (og::sim::session_gameplay_fixes() == 0 && !faced)",
+    "The setting-on row loses the kept turn: tick 2 turns the orc back, its walk turns it from tick 3 and it steps from tick 6, four steps to (132, 188), so WalkerPositionMoved(FAMILY_ORC, 138, 182) fails on x."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -15269,6 +15490,48 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_thief_bomb_dead_thrower_fixes_scen99, std::size(kFacts_thief_bomb_dead_thrower_fixes_scen99),
       kMut_thief_bomb_dead_thrower_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "tower_foe_between_spots_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_foe_between_spots_scen99, std::size(kFamilySpawns_tower_foe_between_spots_scen99),
+      0, false, true, Exercises::None,
+      kFacts_tower_foe_between_spots_scen99, std::size(kFacts_tower_foe_between_spots_scen99),
+      kMut_tower_foe_between_spots_scen99 },
+    { "tower_foe_between_spots_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_foe_between_spots_scen99, std::size(kFamilySpawns_tower_foe_between_spots_scen99),
+      0, false, true, Exercises::None,
+      kFacts_tower_foe_between_spots_fixes_scen99, std::size(kFacts_tower_foe_between_spots_fixes_scen99),
+      kMut_tower_foe_between_spots_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_attack_order_blows_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 38,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_attack_order_blows_scen99, std::size(kFamilySpawns_orc_attack_order_blows_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_attack_order_blows_scen99, std::size(kFacts_orc_attack_order_blows_scen99),
+      kMut_orc_attack_order_blows_scen99 },
+    { "orc_attack_order_blows_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 38,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_attack_order_blows_scen99, std::size(kFamilySpawns_orc_attack_order_blows_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_attack_order_blows_fixes_scen99, std::size(kFacts_orc_attack_order_blows_fixes_scen99),
+      kMut_orc_attack_order_blows_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_refused_shot_turn_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_refused_shot_turn_scen99, std::size(kFamilySpawns_orc_refused_shot_turn_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_refused_shot_turn_scen99, std::size(kFacts_orc_refused_shot_turn_scen99),
+      kMut_orc_refused_shot_turn_scen99 },
+    { "orc_refused_shot_turn_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_refused_shot_turn_scen99, std::size(kFamilySpawns_orc_refused_shot_turn_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_refused_shot_turn_fixes_scen99, std::size(kFacts_orc_refused_shot_turn_fixes_scen99),
+      kMut_orc_refused_shot_turn_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
