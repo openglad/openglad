@@ -610,6 +610,10 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+    // While walker::line_check_flight flies its probe (Gameplay Fixes BD) this names that probe:
+    // query_grid_passable takes an arrow slit as open for it and draws nothing, as it does for a
+    // quiet question. Null at every other time; never saved, never sent.
+    const walker* slit_open_for = nullptr;
 
     // Game state flags written in-place by tick().
     short level_done = 0;

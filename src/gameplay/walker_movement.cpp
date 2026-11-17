@@ -762,3 +762,78 @@ walker::FlightStep walker::flight_step()
         return FlightStep::Struck;
     return walked ? FlightStep::Flew : FlightStep::Stopped;
 }
+
+// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies (walker.h). The
+// classic loop places its test weapon 0, 1, 3, 6, 10 ... steps out, each spot cut to a whole
+// pixel, so it steps over a body the shot would strike and over a one-tile wall the shot would
+// stop on. Appended at the end so the parity pins above never shift.
+std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_foe,
+                                              FireCheckDenial* denial)
+{
+    // rule: Gameplay Fixes BD (#538): classic (the setting off) nothing is asked here and
+    //   fire_check's own loop tests 0, 1, 3, 6 ... steps out.
+    // tests: SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
+    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on
+    if (og::sim::session_gameplay_fixes() == 0)
+        return std::nullopt;
+    GameWorld& world = *current_game->world;
+    // From the pad on the check takes an arrow slit as open and draws nothing for it: the shot
+    // itself takes the slit's gamble (GameWorld::slit_open_for, read where the gamble is rolled).
+    world.slit_open_for = weapon;
+    const auto answer = [&](bool lands, FireCheckDenial why) {
+        world.slit_open_for = nullptr;
+        weapon->set_dead(1);
+        // plumbing: the denial is written only for a caller that asked for it
+        if (denial != nullptr)
+            *denial = why;
+        return std::optional<bool>(lands);
+    };
+    const auto on_the_ball = [&] {
+        return ignored_foe != nullptr &&
+               ::collide(weapon->xpos(), weapon->ypos(), weapon->sizex(), weapon->sizey(),
+                         ignored_foe->xpos(), ignored_foe->ypos(), ignored_foe->sizex(),
+                         ignored_foe->sizey());
+    };
+    // rule: Gameplay Fixes BD (#538): the pad first, as fire() asks it: terrain there refuses
+    //   (the shot would be wasted), a body or the mode ball there passes (the blow lands).
+    // tests: SemLineCheck.the_pad_passes_on_a_body_and_refuses_on_a_wall_on_both_settings
+    // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+    if (!world.query_grid_passable(weapon->xpos(), weapon->ypos(), weapon))
+        return answer(false, FireCheckDenial::WallBlocked);
+    if (on_the_ball() || !world.query_object_passable(weapon->xpos(), weapon->ypos(), weapon))
+        return answer(true, FireCheckDenial::None);
+    // fire() gives a fresh shot a facing its first act only turns to, so the shot moves
+    // lineofsight - 1 steps; the probe is pointed along its heading so walk() steps at once.
+    weapon->set_curdir(static_cast<signed char>(weapon->facing(weapon->lastx(), weapon->lasty())));
+    // rule: Gameplay Fixes BD (#538): then the steps a fresh shot moves, each the shot's own
+    //   (flight_step): a step that strikes a live body passes, a step stopped by terrain or the
+    //   map's edge refuses (WallBlocked), a taken step onto the mode ball passes, and when the
+    //   steps run out the check refuses (RayMiss).
+    // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
+    // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
+    // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
+    // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+    // tests: SemLineCheck.the_check_draws_its_waver_and_nothing_else_in_open_ground
+    // tests: SemLineCheck.a_fresh_shot_moves_one_step_fewer_than_its_line_of_sight
+    for (std::int32_t step = 1; step < weapon->lineofsight(); ++step)
+    {
+        weapon->set_collide_ob(nullptr);  // weap::act clears it before every act
+        const FlightStep met = weapon->flight_step();
+        // rule: Gameplay Fixes BD (#538): a flight step that strikes a live body passes (the
+        //   shot lands, also on an enemy weapon in flight that won its clash roll against the
+        //   probe), a step stopped by terrain or the map's edge refuses (WallBlocked), and a taken
+        //   step onto the mode ball passes.
+        // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
+        // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
+        // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
+        // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+        // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+        if (met == FlightStep::Struck)
+            return answer(true, FireCheckDenial::None);
+        if (met == FlightStep::Stopped)
+            return answer(false, FireCheckDenial::WallBlocked);
+        if (on_the_ball())
+            return answer(true, FireCheckDenial::None);
+    }
+    return answer(false, FireCheckDenial::RayMiss);
+}

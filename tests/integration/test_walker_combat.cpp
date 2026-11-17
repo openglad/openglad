@@ -1175,12 +1175,14 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
         << "the scripted next(6) == 2 makes the arrow's waver 2 - 5/2 = 0; a"
            " non-zero step_y means the waver formula or the draw order moved";
 
-    // Wall the tile that holds the ray's third position, and park the foe
-    // there. fire_check's loop moves the weapon CUMULATIVELY
-    // (setxy(pos + i*step)), so the ray visits start + 0, 1, 3, 6 ... steps;
-    // the 7-px-wide arrow box at start + 1*step (x 124..131 here) already
-    // reaches into the 16-px tile that contains start + 2*step, the tile
-    // walled below. The shot dies on terrain before it can reach the foe.
+    // Wall the tile that holds start + 2*step and park the foe beyond it, at
+    // start + 3*step. The 7-px-wide arrow box one step past the pad (x 124 to
+    // 130 here) already reaches into that 16-px tile, so the ray meets the
+    // wall at its first step past the pad whichever check asks: the classic
+    // loop, which visits start + 0, 1, 3, 6 ... steps (setxy(pos + i*step)),
+    // and the flown check of Gameplay Fixes BD, which takes the shot's own
+    // step one at a time. The test does not hang on the stepping: the shot
+    // dies on terrain before it can reach the foe.
     set_world_tile(static_cast<short>(start_x + 2 * step_x),
                    static_cast<short>(start_y + 2 * step_y),
                    PIX_H_WALL1);

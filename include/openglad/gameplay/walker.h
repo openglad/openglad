@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -218,8 +219,14 @@ class walker : public og::sim::SimEntity
 		// What one step of a flying weapon met (flight_step).
 		enum class FlightStep : std::uint8_t { Flew, Struck, Stopped };
 		// One step of a weapon in flight: walk() along its heading, and what that met.
-		// act_fire takes it every act. Defined at the end of walker_movement.cpp.
+		// act_fire takes it every act; with Gameplay Fixes on, fire_check's probe takes
+		// the same step (fix BD). Defined at the end of walker_movement.cpp.
 		[[nodiscard]] FlightStep flight_step();
+		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies. No
+		// answer with the setting off (the classic loop asks). When it answers it sets
+		// the probe dead and writes *denial. Defined at the end of walker_movement.cpp.
+		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, walker* ignored_foe,
+		                                                    FireCheckDenial* denial);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

@@ -1277,22 +1277,22 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     if (ob->owner() == nullptr)
                         return false;
 
-                    // A quiet probe never rolls the gamble and treats the slit
-                    // as passable. That is the loud answer where a quiet weapon
-                    // probe is made today (walker::fire_pad_clear: the pad one
-                    // pixel outside a shooter up to 38 px a side gives dist /
-                    // GRID_SIZE 0 or 1 below, and rng_.next(0) and rng_.next(1)
-                    // both answer 0). A golem (48x36) or giant skeleton (64x64)
-                    // pad can reach a bound of 2, where the loud roll blocks half.
-                    // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
-                    //   living outright, flyers included.
+                    // A quiet probe never rolls the gamble and treats the slit as passable: the
+                    // loud answer at walker::fire_pad_clear's pad, one pixel outside a shooter up
+                    // to 38 px a side (dist / GRID_SIZE 0 or 1 below; rng_.next(0) and rng_.next(1)
+                    // both answer 0). A golem (48x36) or giant skeleton (64x64) pad can reach a
+                    // bound of 2, where the loud roll blocks half. With Gameplay Fixes on the line
+                    // check's probe (slit_open_for, fix BD) is answered the same way: the check
+                    // takes the slit as open and the shot takes the gamble.
+                    // rule: A loud weapon takes the arrow slit's gamble; a quiet question, and with Gameplay Fixes
+                    //   BD the line check's probe (slit_open_for), takes the slit as open and draws nothing.
                     // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                     // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round8_query_grid_treeb1_and_arrow_slit_variants
                     // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
-                    // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
-                    if (!quiet)
+                    // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing, SemLineCheck.an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_gamble
+                    if (!quiet && ob != slit_open_for)
                     {
                         // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block
                         //   every living outright, flyers included.

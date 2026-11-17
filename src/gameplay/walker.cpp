@@ -2291,15 +2291,15 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   extra target; see the ray's hit test below.
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray
-	walker* const ignored_foe =
-		foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
-		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
-			? foe()
-			: nullptr;
+	walker* const ignored_foe = foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
+		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe()) ? foe() : nullptr;
 
 	// Run weapon through where it would go if all went well ..
-	// plumbing: fire_check's ray walk over the weapon's lineofsight steps (cumulative i*lastx,
-	//   classic triangular stepping); rules below.
+	// rule: Gameplay Fixes BD (#538): with the setting on the ray is the shot's own flight (line_check_flight); off, the classic loop below.
+	// tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on, SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
+	if (const std::optional<bool> flown = line_check_flight(weapon, ignored_foe, denial))
+		return *flown;
+	// plumbing: the classic ray walk (cumulative i*lastx, triangular stepping: 0, 1, 3, 6 ... steps out); rules below.
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
 		weapon->setxy(weapon->xpos() + static_cast<float>(i) * weapon->lastx(),
