@@ -1284,10 +1284,13 @@ The parity goldens are captures from the old game (branch
   setting-off golden moved at any step. Then the table mirror `e6663739`
   (fourteen setting-on rows given a fact of their own rule again, see
   [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1: twelve
-  recaptured, no setting-off golden moved) and the table mirror
+  recaptured, no setting-off golden moved), the table mirror
   `46a09a28` (the fifteenth, `soldier_charge_ally`, given an arena of
-  its own, the same entry: one recaptured, no setting-off golden moved).
-  `46a09a28` is the commit the goldens are captured from: 390 of 390
+  its own, the same entry: one recaptured, no setting-off golden moved)
+  and the table mirror `fb6473a0` (the same entry once more: one of the
+  fifteen reads a band of its blows instead of one value, one fact that
+  stated a fight's outcome is dropped, comments corrected; nothing
+  moved). `fb6473a0` is the commit the goldens are captured from: 390 of 390
   goldens `cmp` equal to a full capture there, and every capture there
   `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
@@ -1670,11 +1673,11 @@ rows no longer held. Five were worked out again from the rules as bands whose co
 (`archer_barrage_edge_pad`, `druid_tree_blocked`, `elf_rocks_blocked`, `soldier_charge_front_foe`, and
 `soldier_disarm_resisted_busy`'s sound count), one now asserts the cap itself (`special_cleric_heal_ally`), and
 the rest were dropped where the value hangs on a line check's waver draw or a fight whose stream the ports parted;
-each changed array of the table says which. In `archmage_mind_control_berserk`, `cleric_raise_blocked_corpse`,
-`elemental_struck_short_pool`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe` and
-`thief_bot_charm_or_taunt` the staging no longer reaches the rule the row was written for. No setting-off row
+each changed array of the table says which. At that capture the staging of `archmage_mind_control_berserk`,
+`cleric_bot_resurrect_foe_stain`, `cleric_raise_blocked_corpse`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe`
+and `thief_bot_charm_or_taunt` no longer reached the rule the row was written for. No setting-off row
 moves. The fifteen rows whose own pin then changed no fact were each given a fact of their own rule again,
-with an arena, inputs, a budget or a seed of their own or a worked-out value of the fixed stream: the twelve
+with an arena, inputs, a budget or a seed of their own or a worked-out reading of the fixed stream: the twelve
 whose run changed first were captured again at `e6663739`, and `soldier_charge_ally`, given an arena of its own
 last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1).
 
@@ -3496,9 +3499,12 @@ what was only told to him, and what the game or its tests do because of it.
    them so that their own pin no longer changed a fact. Each now states the
    consequence of its own rule again, by the first of three cures that
    works. Two keep their arena and seed, because their rule leaves nothing
-   but one draw fewer: each reads one value of the fixed stream, worked out
-   from its blows (`elemental_struck_short_pool_fixes_scen99` the struck
-   orc's 84 hp, `cleric_bot_raise_or_turn_fixes_scen99` the big orc's 164).
+   but one draw fewer, and read the fixed stream, worked out from their
+   blows: `cleric_bot_raise_or_turn_fixes_scen99` as a band (the big orc's
+   163 to 166 hp, whatever its three arrows roll; 180 under its pin), and
+   `elemental_struck_short_pool_fixes_scen99` as one value (the struck
+   orc's 84 hp), because there no count, presence or band changes under
+   its pin: the orc reads 85, inside any band of its two blows.
    Seven take an arena, inputs or a budget of their own that reach the rule
    whatever the towers' line checks draw:
    `soldier_whirlwind_no_foe_fixes_scen99` (a foe that never moves, which
@@ -3516,9 +3522,13 @@ what was only told to him, and what the game or its tests do because of it.
    `cleric_bot_resurrect_foe_stain_fixes_scen99` 15 (0xF),
    `cleric_raise_blocked_corpse_fixes_scen99` 2 and
    `orc_right_walk_potion_fixes_scen99` 16 (0x10); for the first three the
-   rule is a bot's own roll or the cast's own rolls, which no arena can take
-   out of the question. The setting-off twins keep their arenas, seeds and
-   recordings. `soldier_charge_ally_fixes_scen99` took an arena of its own
+   rule waits on a roll that no arena can take out of the question: the
+   thief's and the cleric's own special roll, and the cast's colour roll.
+   An orc above the caster's level would take the cast's other roll, the
+   control roll, out of the question (it always resists, with no draw),
+   but the two mind control twins keep the equal-level orc they share.
+   The setting-off twins keep their arenas, seeds and recordings.
+   `soldier_charge_ally_fixes_scen99` took an arena of its own
    last: in its old arena the rush's own walk shoved the ally as well, so
    fix Z left one damage draw fewer, which moved no hit point. Now the
    player casts CHARGE on a soldier and hands the seat to an archer with
@@ -3531,10 +3541,13 @@ what was only told to him, and what the game or its tests do because of it.
    it: with the setting on the bot's CHARGE rule (Gameplay Fixes V)
    refuses a rush whose path meets an ally before a foe.
    Alternatives: seeds of their own for the eight restaged rows (four of
-   the fifteen had taken another seed twice already), and for the ally a
-   seed at which its old arena's position fact flips, a place its own acts
-   take it to on that seed. The maintainer was told of this and has not
-   ruled on it.
+   the fifteen had taken another seed twice already); for the ally a seed
+   at which its old arena's position fact flips, a place its own acts take
+   it to on that seed; and for the mind control twin spawns of its own
+   with an orc of level 11, which still needs a seed for the colour roll
+   but leaves 85 of seeds 0 to 599 that reach the rule (the first is 9)
+   where the equal-level orc leaves 7. The maintainer was told of this
+   and has not ruled on it.
 
 ## Out of scope
 
