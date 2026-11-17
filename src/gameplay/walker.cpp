@@ -2516,7 +2516,7 @@ walker::act_fire()
 		//   step met (attack: damage, score, effects); a wall or an already-dead body takes no hit.
 		//   Cross-reference below: every stock NO_COLLIDE weapon family
 		//   (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
-		//   holds for stock content only because 1654 keeps them alive after the hit.
+		//   holds for stock content only because the IMMORTAL test below keeps them alive after the hit.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
 		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
 	{
@@ -2535,7 +2535,7 @@ walker::act_fire()
 		//   survives the hit and keeps flying until its range runs out. See above: the stock
 		//   NO_COLLIDE weapons are all IMMORTAL, which is what lets them hit every tick.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
+		// tests: WalkerCombat.walker_act_with_commands, SemLineCheck.a_no_collide_shot_that_is_not_immortal_is_spent_by_its_first_act
 		if ((step != FlightStep::Flew || stats_->query_bit_flags(BIT_NO_COLLIDE)) &&
 		    !stats_->query_bit_flags(BIT_IMMORTAL))
 		{

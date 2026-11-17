@@ -472,6 +472,48 @@ TEST_F(SemLineCheck, one_flight_step_tells_a_strike_from_a_stop_and_a_free_step)
     }
 }
 
+// walker::act_fire, both settings (it is not gated): a NO_COLLIDE shot that
+// is not IMMORTAL is spent by every step, the free ones too. No stock weapon
+// is NO_COLLIDE without being IMMORTAL (the wave family is both); a pack's
+// weapon can be. An archer's arrow pointed right along its own step, in open
+// ground with nothing under its next box, is given the flag and acts once:
+// it takes its step (flight_step's Flew), meets nothing, and is dead. The
+// control in the same body, the same arrow without the flag: the same step,
+// nothing met, and it flies on.
+TEST_F(SemLineCheck, a_no_collide_shot_that_is_not_immortal_is_spent_by_its_first_act)
+{
+    constexpr short kX = 400;
+    constexpr short kY = 320;
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool no_collide : {true, false}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (no_collide ? "a NO_COLLIDE arrow" : "the control: an ordinary arrow"));
+            fresh_world(fixes);
+            walker* archer = living_at(FAMILY_ARCHER, 0, 300, kY);
+            ASSERT_NE(nullptr, archer);
+            walker* arrow = aimed_shot(archer, FACE_RIGHT, kX, kY);
+            ASSERT_NE(nullptr, arrow);
+            ASSERT_EQ(ACT_FIRE, static_cast<int>(arrow->act_type())) << "the staging: the arrow flies when it acts";
+            ASSERT_EQ(ANI_WALK, static_cast<int>(arrow->ani_type())) << "the staging: no animation to finish first";
+            ASSERT_GT(arrow->lineofsight(), 1) << "the staging: range is left after this act";
+            const float step = arrow->stepsize();
+            ASSERT_TRUE(world().query_grid_passable(static_cast<float>(kX) + step, kY, arrow))
+                << "the staging: no wall under the next step's box";
+            ASSERT_TRUE(world().query_object_passable(static_cast<float>(kX) + step, kY, arrow, arrow->floor(), true))
+                << "the staging: no body under the next step's box";
+            arrow->stats()->set_bit_flags(BIT_NO_COLLIDE, no_collide ? 1 : 0);
+            ASSERT_EQ(no_collide, arrow->stats()->query_bit_flags(BIT_NO_COLLIDE) != 0) << "the staging: the flag";
+            ASSERT_FALSE(arrow->stats()->query_bit_flags(BIT_IMMORTAL)) << "the staging: the arrow is not IMMORTAL";
+            arrow->act();
+            EXPECT_FLOAT_EQ(static_cast<float>(kX) + step, arrow->worldx()) << "the step was taken";
+            EXPECT_EQ(nullptr, arrow->collide_ob()) << "nothing met";
+            EXPECT_EQ(no_collide, arrow->dead() != 0)
+                << (no_collide ? "a NO_COLLIDE shot that is not IMMORTAL is spent by its free step"
+                               : "an ordinary shot flies on after a free step");
+        }
+    }
+}
+
 // walker::fire (walker.cpp: a fresh shot's facing is (frame + 1) % 2, "so
 // first walk will just be draw") and walker::act_fire's countdown, both
 // settings. An archer at the middle of the field fires an arrow along each
