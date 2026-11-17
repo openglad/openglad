@@ -7,7 +7,9 @@
  */
 
 // Semantic tests, batch ai-5: how a bot turns toward a foe it cannot strike
-// yet (Gameplay Fixes BE, #513). Each test is named after the rule it asserts.
+// yet (Gameplay Fixes BE, #513), and how a melee-only bot fights in its
+// ATTACK order (Gameplay Fixes BC, #447). Each test is named after the rule
+// it asserts.
 //
 // Every scene is headless: an open field of grass 1024 px a side, bodies
 // placed in pixels (each with its family's own box), the sim stream
@@ -25,6 +27,24 @@
 //  * fire_check builds its test weapon and draws its waver once, next(h + 1)
 //    with h the weapon's stepsize / 2 clamped to 0..127
 //    (walker::set_weapon_heading), before any of its gates.
+//  * The ATTACK order (statistics::do_command) aims at its foe along the
+//    snapped delta (an axis when one delta is more than three times the
+//    other, else a diagonal) and asks fire_check along it. A melee-only bot
+//    is refused NoRanged whenever its foe is inside its weapon's reach (the
+//    Manhattan distance between the boxes' corners), whatever it faces: the
+//    reach gate and the melee-only gate come before the facing gate.
+//  * init_fire charges busy with the family's fire delay and starts the
+//    attack animation, whose first frame draws nothing; the blow leaves when
+//    the animation's row ends (walker::animate calls fire()). busy drains by
+//    one on each act that does not animate; init_fire starts nothing while
+//    it is above 0.
+//  * walkstep tries the full step, then a one-unit step, then for a bot one
+//    stepsize sideways by its table (RIGHT turns to UP). A loud step into a
+//    hostile body swings at it (living::collide calls init_fire); a refused
+//    step shoves an ally two times in three (living::shove, one rng(3)).
+//  * The obmap's overlap test (::collide) shrinks each box by one pixel, so
+//    boxes that only touch do not meet; walkers on different floors never
+//    meet.
 
 #include <gtest/gtest.h>
 
@@ -36,17 +56,21 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -165,13 +189,35 @@ protected:
         return w;
     }
 
+    // Two floors: floor 1 a second field of grass of the same size.
+    void two_floors()
+    {
+        GameWorld& w = world();
+        w.set_floor_count(2);
+        const int gw = w.grid.w;
+        const int gh = w.grid.h;
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
+                  static_cast<unsigned char>(PIX_GRASS1));
+        w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw), static_cast<unsigned char>(gh), buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    }
+
+    // One tile of floor 0's grid.
+    void tile(int tx, int ty, unsigned char pix)
+    {
+        world().grid.data[static_cast<std::size_t>(tx + world().grid.w * ty)] = pix;
+    }
+
     // A level-4 bot (ACT_RANDOM, no seat) with its family's box, 400 hp,
-    // 500 MP, no regeneration, walking, facing right.
-    walker* living_at(int family, unsigned char team, short x, short y)
+    // 500 MP, no regeneration, walking, facing right, on `floor` (set before
+    // the body is placed: the obmap files a body under its floor).
+    walker* living_at(int family, unsigned char team, short x, short y, short floor = 0)
     {
         walker* w = world().add_ob(Order::Living, family);
         if (w == nullptr)
             return nullptr;
+        w->set_floor(floor);
         w->set_team_num(team);
         w->set_real_team_num(255);
         w->set_act_type(ACT_RANDOM);
@@ -206,6 +252,42 @@ protected:
         const auto h = static_cast<signed char>(std::clamp(k->stepsize() / 2, 0.0f, 127.0f));
         world().remove_ob(k);
         return static_cast<std::uint32_t>(h + 1);
+    }
+
+    // Do the box of `a` moved to (ax, ay) and the box of `b` where it stands
+    // meet, by the obmap's own test (each box shrunk by a pixel)?
+    static bool meets(const walker* a, int ax, int ay, const walker* b)
+    {
+        return ::collide(static_cast<short>(ax), static_cast<short>(ay), a->sizex(), a->sizey(),
+                         b->xpos(), b->ypos(), b->sizex(), b->sizey()) != 0;
+    }
+
+    // The box of the weapon `w` would put on its pad the way it faces now
+    // (walker::weapon_pad, the table fire() reads), read from a weapon it
+    // builds and then drops (no draw).
+    struct Box
+    {
+        int x = 0;
+        int y = 0;
+        short sx = 0;
+        short sy = 0;
+    };
+    Box pad_box(walker* w)
+    {
+        Box b;
+        walker* k = w->create_weapon();
+        if (k == nullptr)
+            return b;
+        short px = 0, py = 0;
+        w->weapon_pad(*k, px, py);
+        b = Box{px, py, k->sizex(), k->sizey()};
+        world().remove_ob(k);
+        return b;
+    }
+    static bool box_meets(const Box& b, const walker* body)
+    {
+        return ::collide(static_cast<short>(b.x), static_cast<short>(b.y), b.sx, b.sy,
+                         body->xpos(), body->ypos(), body->sizex(), body->sizey()) != 0;
     }
 
     // The live weapons in the world (a shot started, or a probe left alive).
@@ -276,6 +358,48 @@ protected:
         return sc;
     }
 
+    // The rounds of the ATTACK order the BC tests queue.
+    static constexpr int kOrder = 30;
+
+    // The ATTACK order as the bot's only order: kOrder rounds, com1 and com2
+    // `com` (1 from walk_to_foe's near branch, 0 from a mode's script; the
+    // order reads neither).
+    static void hold_attack(walker* w, int com = 1)
+    {
+        w->stats()->clear_command();
+        w->stats()->add_command(COMMAND_ATTACK, kOrder, com, com);
+    }
+
+    // The line check's answer along (dx, dy): None when it passes, else why
+    // it refuses. Asking builds a test weapon and draws its waver, so a test
+    // asks it in a twin world built the same way.
+    static walker::FireCheckDenial refusal(walker* w, short dx, short dy)
+    {
+        walker::FireCheckDenial why = walker::FireCheckDenial::None;
+        if (w->fire_check(dx, dy, &why))
+            return walker::FireCheckDenial::None;
+        return why;
+    }
+
+    // The ATTACK order's aim at `foe` (stats.cpp COMMAND_ATTACK): an axis when
+    // one delta is more than three times the other, else a diagonal; each
+    // half -1, 0 or 1.
+    struct Aim
+    {
+        short dx = 0;
+        short dy = 0;
+    };
+    static Aim order_aim(const walker* bot, const walker* foe)
+    {
+        short dx = static_cast<short>(foe->xpos() - bot->xpos());
+        short dy = static_cast<short>(foe->ypos() - bot->ypos());
+        if (std::abs(dx) > std::abs(3 * dy))
+            dy = 0;
+        if (std::abs(dy) > std::abs(3 * dx))
+            dx = 0;
+        return Aim{static_cast<short>((dx > 0) - (dx < 0)), static_cast<short>((dy > 0) - (dy < 0))};
+    }
+
     // The stream that takes act() into act_random with the held foe kept:
     // the special roll not 0, the second 1-in-5 0, the 1-in-80 not 0; then
     // the waver of the line check's probe; then, on the first act that runs
@@ -284,6 +408,56 @@ protected:
     static std::uint32_t into_act_random(std::uint32_t waver)
     {
         return state_where({{5, kNonZero}, {5, 0}, {80, kNonZero}, {waver, kAny}, {300, kNonZero}});
+    }
+
+    // BC tests 6 and 13, one body: the orc of orc_scene facing RIGHT, its foe
+    // 1 px off its right side (the soldier's body on the orc's pad), not
+    // busy, holding the ATTACK order with com1 and com2 `com`; one round.
+    void faced_swing_round(int com)
+    {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(setting(fixes));
+            Scene twin = orc_scene(fixes, FACE_RIGHT, 1);
+            ASSERT_TRUE(twin.bot && twin.soldier);
+            ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+                << "the staging: refused as melee only, the foe in reach";
+
+            Scene sc = orc_scene(fixes, FACE_RIGHT, 1);
+            ASSERT_TRUE(sc.bot && sc.soldier);
+            walker* orc = sc.bot;
+            const Aim aim = order_aim(orc, sc.soldier);
+            ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+            ASSERT_EQ(0, aim.dy);
+            ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+            ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Body)
+                << "the staging: the soldier's body is on the orc's pad";
+            ASSERT_FLOAT_EQ(0.0f, orc->busy()) << "the staging: not busy";
+            ASSERT_EQ(ANI_WALK, orc->ani_type());
+            hold_attack(orc, com);
+            const std::uint32_t waver = waver_bound_of(orc);
+            ASSERT_GT(waver, 0u);
+            const std::uint32_t s = world().rng_.state_;
+
+            EXPECT_EQ(1, orc->stats()->do_command());
+
+            EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the line check's waver; the round draws nothing else";
+            EXPECT_EQ(320, orc->xpos()) << "not moved";
+            EXPECT_EQ(320, orc->ypos()) << "not moved";
+            EXPECT_EQ(FACE_RIGHT, orc->curdir());
+            if (fixes) {
+                EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "the swing started: the fire delay is charged";
+                EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "the swing started: the attack animation runs";
+            } else {
+                EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "the classic round only faces: no swing";
+                EXPECT_EQ(ANI_WALK, orc->ani_type()) << "the classic round only faces: no swing";
+            }
+            const Cmd f = front_of(orc);
+            EXPECT_EQ(COMMAND_ATTACK, f.type);
+            EXPECT_EQ(kOrder - 1, f.count) << "the order spent one round";
+            EXPECT_EQ(com, f.com1);
+            EXPECT_EQ(com, f.com2);
+            EXPECT_EQ(sc.soldier, orc->foe());
+        }
     }
 };
 
@@ -313,6 +487,11 @@ protected:
 //    On: to RIGHT, its foe's direction. Off: back to UP, the facing it had.
 //  Act 3: the orc faces its enddir, so the SEARCH runs: walk_to_foe counts
 //    the path-check counter down (49) and the order spends a round (199).
+// A second start: the orc faces UP_RIGHT, ONE notch off its foe, so act 1's
+// notch reaches RIGHT. Setting on: act 1 leaves curdir and enddir RIGHT, on
+// the foe, and act 2 runs the SEARCH. Off: act 1 leaves enddir UP_RIGHT, act
+// 2 turns the orc back to it with nothing drawn and the SEARCH not run, and
+// act 3 runs it.
 TEST_F(SemAi5, a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -376,6 +555,48 @@ TEST_F(SemAi5, a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_th
         EXPECT_EQ(COMMAND_SEARCH, f.type);
         EXPECT_EQ(199, f.count) << "act 3: the SEARCH ran one round";
         EXPECT_EQ(kCounter - 1, orc->path_check_counter()) << "act 3: the SEARCH's chase ran";
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(std::string(setting(fixes)) + ", one notch off");
+        Scene twin = orc_scene(fixes, FACE_UP_RIGHT, 16);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_FALSE(twin.bot->fire_check(twin.dx, twin.dy)) << "the staging: the line check refuses";
+
+        Scene sc = orc_scene(fixes, FACE_UP_RIGHT, 16);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        ASSERT_EQ(FACE_RIGHT, orc->facing(sc.dx, sc.dy)) << "the staging: the aim is RIGHT";
+        ASSERT_EQ(FACE_UP_RIGHT, orc->curdir()) << "the staging: the orc faces UP_RIGHT, one notch off its foe";
+        ASSERT_EQ(FACE_UP_RIGHT, orc->enddir());
+        ASSERT_GT(orc->path_check_counter(), 3) << "the staging: no round of the chase re-plans";
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = into_act_random(waver);
+        world().rng_.state_ = s;
+
+        (void)orc->act();
+
+        EXPECT_EQ(state_after(s, {5, 5, 80, waver}), world().rng_.state_) << "act 1: the two 1-in-5s, the 1-in-80, the waver";
+        EXPECT_EQ(FACE_RIGHT, orc->curdir()) << "act 1: the notch reaches the foe's direction";
+        EXPECT_EQ(fixes ? FACE_RIGHT : FACE_UP_RIGHT, orc->enddir())
+            << (fixes ? "act 1: the foe's direction is kept as the facing it turns to" : "act 1: the classic turn leaves enddir as it was");
+        EXPECT_EQ(COMMAND_SEARCH, front_of(orc).type) << "act 1: the SEARCH is queued";
+        EXPECT_EQ(200, front_of(orc).count);
+
+        if (!fixes) {
+            const std::uint32_t after1 = world().rng_.state_;
+            (void)orc->act();
+            EXPECT_EQ(FACE_UP_RIGHT, orc->curdir()) << "act 2: turned back to the facing it had";
+            EXPECT_EQ(after1, world().rng_.state_) << "act 2: the turn is the act; nothing is drawn";
+            EXPECT_EQ(200, front_of(orc).count) << "act 2: the SEARCH did not run";
+            EXPECT_EQ(kCounter, orc->path_check_counter()) << "act 2: no chase";
+        }
+
+        (void)orc->act();
+
+        EXPECT_EQ(COMMAND_SEARCH, front_of(orc).type);
+        EXPECT_EQ(199, front_of(orc).count) << (fixes ? "act 2 runs the SEARCH" : "act 3 runs the SEARCH");
+        EXPECT_EQ(kCounter - 1, orc->path_check_counter()) << "the SEARCH's chase ran";
     }
 }
 
@@ -585,6 +806,7 @@ TEST_F(SemAi5, a_tower_whose_shot_is_refused_faces_its_foe_at_once_with_its_head
         EXPECT_EQ(320, tower->xpos());
         EXPECT_EQ(320, tower->ypos());
 
+        // This second check's waver is not pinned: the staging lands for any sideways waver.
         why = walker::FireCheckDenial::None;
         const bool passes = tower->fire_check(sc.dx, sc.dy, &why);
         if (fixes) {
@@ -653,5 +875,621 @@ TEST_F(SemAi5, a_tower_turning_toward_its_near_foe_faces_it_at_once_with_the_set
             EXPECT_FLOAT_EQ(0.0f, tower->lastx()) << "the heading stays UP";
             EXPECT_FLOAT_EQ(-1.0f, tower->lasty());
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A melee-only bot's ATTACK order (stats.cpp COMMAND_ATTACK, through
+// statistics::attack_face_or_fight and statistics::foe_on_pad)
+// ---------------------------------------------------------------------------
+
+// Gameplay Fixes BC (#447), stats.cpp COMMAND_ATTACK through
+// statistics::attack_face_or_fight; both settings. A team-1 orc (melee only)
+// at (320,320) facing RIGHT, holding its foe, a team-0 soldier 1 px off its
+// right side, their boxes level; the orc holds the ATTACK order the near
+// branch queues (30 rounds, 1, 1) and is not busy. Asserted first: the order
+// aims RIGHT and the orc already faces that way; the soldier's body stands on
+// the orc's pad (fire_pad_answer: quiet, no draw); the line check refuses the
+// orc as melee only (NoRanged, asked in a twin world). One round:
+//  Setting on: the orc swings: busy is charged its fire delay and the attack
+//    animation runs; it does not move.
+//  Setting off: it only faces its foe (the guard-standoff fix): busy 0, the
+//    walk animation, not moved.
+// Both: the stream after is the line check's waver alone (the decision draws
+// nothing) and the order has spent one round.
+TEST_F(SemAi5, a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on)
+{
+    faced_swing_round(1);
+}
+
+// Gameplay Fixes BC (#447), statistics::attack_face_or_fight's step; both
+// settings. The orc of the test above with the soldier two tiles (32 px) off
+// its right side, inside the rock's reach, so its pad is clear (asserted, with
+// the NoRanged refusal). One round:
+//  Setting on: the orc takes one step toward its foe: moved exactly its
+//    stepsize along the order's aim (RIGHT), busy 0, the walk animation.
+//  Setting off: it only faces: not moved.
+// Both: only the line check's waver is drawn.
+TEST_F(SemAi5, a_faced_melee_only_attacker_steps_toward_a_foe_off_its_pad_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        const short gap = 2 * GRID_SIZE;
+        Scene twin = orc_scene(fixes, FACE_RIGHT, gap);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach";
+
+        Scene sc = orc_scene(fixes, FACE_RIGHT, gap);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        const Aim aim = order_aim(orc, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Clear) << "the staging: the orc's pad is clear";
+        const int step = static_cast<int>(orc->stepsize());
+        ASSERT_GT(step, 0);
+        ASSERT_FLOAT_EQ(static_cast<float>(step), orc->stepsize()) << "the staging: a whole step";
+        hold_attack(orc);
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the line check's waver; the round draws nothing else";
+        if (fixes) {
+            EXPECT_EQ(320 + aim.dx * step, orc->xpos()) << "one step toward the foe";
+            EXPECT_EQ(320 + aim.dy * step, orc->ypos()) << "one step toward the foe";
+        } else {
+            EXPECT_EQ(320, orc->xpos()) << "the classic round only faces: not moved";
+            EXPECT_EQ(320, orc->ypos()) << "the classic round only faces: not moved";
+        }
+        EXPECT_EQ(FACE_RIGHT, orc->curdir());
+        EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "no swing";
+        EXPECT_EQ(ANI_WALK, orc->ani_type()) << "no swing";
+        EXPECT_EQ(kOrder - 1, front_of(orc).count) << "the order spent one round";
+    }
+}
+
+// Gameplay Fixes BC (#447), the "already faced" term of
+// statistics::attack_face_or_fight; both settings. The orc faces UP, the
+// soldier touching its right side (no gap), boxes level, so the order aims
+// RIGHT, two notches off its facing; refused NoRanged (twin world).
+//  Round 1, both settings: the orc snaps to face its foe (curdir and enddir
+//    RIGHT) and that is the round: no step, no swing. Its pad then holds the
+//    soldier's body (asserted).
+//  Round 2: setting on, the swing starts (busy charged, attack animation);
+//    off, it only faces again. Neither round moves the orc.
+TEST_F(SemAi5, a_melee_only_attacker_that_must_turn_only_turns_on_both_settings)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene twin = orc_scene(fixes, FACE_UP, 0);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach";
+
+        Scene sc = orc_scene(fixes, FACE_UP, 0);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        const Aim aim = order_aim(orc, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_UP, orc->curdir()) << "the staging: the orc faces UP, off its foe";
+        hold_attack(orc);
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "round 1: the waver alone";
+        EXPECT_EQ(FACE_RIGHT, orc->curdir()) << "round 1: it faces its foe";
+        EXPECT_EQ(FACE_RIGHT, orc->enddir());
+        EXPECT_EQ(320, orc->xpos()) << "round 1: the turn is the round: no step";
+        EXPECT_EQ(320, orc->ypos());
+        EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "round 1: the turn is the round: no swing";
+        EXPECT_EQ(ANI_WALK, orc->ani_type()) << "round 1: the turn is the round: no swing";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Body)
+            << "the staging: facing its foe, the orc has the soldier's body on its pad";
+
+        s = world().rng_.state_;
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "round 2: the waver alone";
+        EXPECT_EQ(320, orc->xpos()) << "round 2: not moved";
+        EXPECT_EQ(320, orc->ypos());
+        EXPECT_EQ(FACE_RIGHT, orc->curdir());
+        if (fixes) {
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "round 2: the swing started";
+            EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "round 2: the swing started";
+        } else {
+            EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "round 2: the classic round only faces";
+            EXPECT_EQ(ANI_WALK, orc->ani_type()) << "round 2: the classic round only faces";
+        }
+        EXPECT_EQ(kOrder - 2, front_of(orc).count) << "two rounds spent";
+    }
+}
+
+// Gameplay Fixes BC (#447) and init_fire's busy gate (walker.cpp); the setting
+// on only (off, the round only faces, as test 6 shows). The scene of test 6
+// with the orc busy 3: the order's round neither starts a swing (busy stays 3,
+// the walk animation) nor steps (not moved); the round itself drains nothing
+// (busy drains in living::act_round, not in the order).
+TEST_F(SemAi5, a_busy_melee_only_attacker_neither_swings_nor_steps)
+{
+    Scene twin = orc_scene(1, FACE_RIGHT, 1);
+    ASSERT_TRUE(twin.bot && twin.soldier);
+    ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+        << "the staging: refused as melee only, the foe in reach";
+
+    Scene sc = orc_scene(1, FACE_RIGHT, 1);
+    ASSERT_TRUE(sc.bot && sc.soldier);
+    walker* orc = sc.bot;
+    ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+    ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Body) << "the staging: the soldier's body is on the orc's pad";
+    orc->set_busy(3.0f);
+    hold_attack(orc);
+    const std::uint32_t waver = waver_bound_of(orc);
+    ASSERT_GT(waver, 0u);
+    const std::uint32_t s = world().rng_.state_;
+
+    EXPECT_EQ(1, orc->stats()->do_command());
+
+    EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+    EXPECT_FLOAT_EQ(3.0f, orc->busy()) << "busy: no swing started";
+    EXPECT_EQ(ANI_WALK, orc->ani_type()) << "busy: no swing started";
+    EXPECT_EQ(320, orc->xpos()) << "a body on the pad is never stepped at";
+    EXPECT_EQ(320, orc->ypos());
+    EXPECT_EQ(kOrder - 1, front_of(orc).count);
+}
+
+// Gameplay Fixes BC (#447), statistics::foe_on_pad's "no" for a wall and for
+// an ally; both settings. The orc faces RIGHT with its foe beyond the thing on
+// its pad, inside the rock's reach (NoRanged, twin world).
+//  A wall: the orc stands with its right edge on a tile boundary and the
+//    column of tiles beyond it walled over its rows, so its pad answers
+//    Terrain; there is no pixel of room, so walkstep's one-unit step is
+//    refused by the wall too and its table's sidestep for RIGHT, one stepsize
+//    UP, is the step that moves (that spot is open: asserted). On: no swing,
+//    moved one stepsize up, still facing RIGHT. Off: not moved.
+//  An ally: a team-1 orc 1 px off the orc's right side, on its pad, which
+//    answers Clear (an own-team body passes a weapon probe); the full step's
+//    box meets the ally and the one-unit step's does not (asserted). The
+//    stream is pinned so the shove's 2-in-3 roll shoves. On: no swing; the
+//    refused full step shoves the ally, which holds the WALK order
+//    living::shove gives it (4 rounds along the step, which
+//    statistics::force_command clamps to the unit (1, 0) as it does every
+//    WALK order), and the one-unit step moves the orc 1 px; the stream is
+//    the waver and the shove's rng(3). Off: not moved, the ally holds no
+//    order, the waver alone.
+TEST_F(SemAi5, a_wall_or_an_ally_on_the_pad_is_stepped_at_not_swung_at)
+{
+    const auto wall_scene = [this](short fixes, int* wall_tx) {
+        Scene sc;
+        fresh_world(fixes);
+        sc.bot = living_at(FAMILY_ORC, 1, 320, 320);
+        if (sc.bot == nullptr)
+            return sc;
+        const short ox = static_cast<short>(21 * GRID_SIZE - sc.bot->sizex());
+        place(sc.bot, ox, 320);
+        *wall_tx = (ox + sc.bot->sizex()) / GRID_SIZE;
+        for (int ty = 320 / GRID_SIZE; ty <= (320 + sc.bot->sizey() - 1) / GRID_SIZE; ++ty)
+            tile(*wall_tx, ty, PIX_H_WALL1);
+        sc.soldier = living_at(FAMILY_SOLDIER, 0, static_cast<short>((*wall_tx + 1) * GRID_SIZE), 320);
+        if (sc.soldier == nullptr)
+            return sc;
+        face(sc.bot, FACE_RIGHT);
+        sc.bot->set_foe(sc.soldier);
+        return sc;
+    };
+    const auto ally_scene = [this](short fixes, walker** ally) {
+        Scene sc;
+        fresh_world(fixes);
+        sc.bot = living_at(FAMILY_ORC, 1, 320, 320);
+        if (sc.bot == nullptr)
+            return sc;
+        *ally = living_at(FAMILY_ORC, 1, static_cast<short>(320 + sc.bot->sizex() + 1), 320);
+        if (*ally == nullptr)
+            return sc;
+        sc.soldier = living_at(FAMILY_SOLDIER, 0, static_cast<short>((*ally)->xpos() + (*ally)->sizex() + 1), 320);
+        if (sc.soldier == nullptr)
+            return sc;
+        face(sc.bot, FACE_RIGHT);
+        sc.bot->set_foe(sc.soldier);
+        return sc;
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(std::string(setting(fixes)) + ", a wall on the pad");
+        int wall_tx = -1;
+        Scene twin = wall_scene(fixes, &wall_tx);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach";
+
+        Scene sc = wall_scene(fixes, &wall_tx);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        const short ox = orc->xpos();
+        const short oy = orc->ypos();
+        const int step = static_cast<int>(orc->stepsize());
+        ASSERT_GT(step, 0);
+        const Aim aim = order_aim(orc, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Terrain) << "the staging: a wall on the orc's pad";
+        ASSERT_EQ(wall_tx * GRID_SIZE, ox + orc->sizex()) << "the staging: no pixel of room before the wall";
+        ASSERT_FALSE(world().query_grid_passable(static_cast<float>(ox + 1), static_cast<float>(oy), orc))
+            << "the staging: the one-unit step meets the wall";
+        ASSERT_TRUE(world().query_passable(static_cast<float>(ox), static_cast<float>(oy - step), orc, orc->floor(), true))
+            << "the staging: the sidestep's spot, one stepsize UP, is open";
+        hold_attack(orc);
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+        EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "a wall is never swung at";
+        EXPECT_EQ(ANI_WALK, orc->ani_type()) << "a wall is never swung at";
+        EXPECT_EQ(ox, orc->xpos());
+        EXPECT_EQ(fixes ? oy - step : oy, orc->ypos())
+            << (fixes ? "the refused step's sidestep: one stepsize UP" : "the classic round only faces: not moved");
+        EXPECT_EQ(FACE_RIGHT, orc->curdir()) << "walkstep keeps the facing it had";
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(std::string(setting(fixes)) + ", an ally on the pad");
+        walker* twin_ally = nullptr;
+        Scene twin = ally_scene(fixes, &twin_ally);
+        ASSERT_TRUE(twin.bot && twin.soldier && twin_ally);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach";
+
+        walker* ally = nullptr;
+        Scene sc = ally_scene(fixes, &ally);
+        ASSERT_TRUE(sc.bot && sc.soldier && ally);
+        walker* orc = sc.bot;
+        const short ox = orc->xpos();
+        const short oy = orc->ypos();
+        const int step = static_cast<int>(orc->stepsize());
+        ASSERT_GT(step, 0);
+        const Aim aim = order_aim(orc, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+        ASSERT_NE(0, orc->is_friendly(ally)) << "the staging: the ally is on the orc's side";
+        ASSERT_TRUE(box_meets(pad_box(orc), ally)) << "the staging: the ally stands on the orc's pad";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Clear)
+            << "the staging: an own-team body passes the weapon probe";
+        ASSERT_TRUE(meets(orc, ox + step, oy, ally)) << "the staging: the full step meets the ally";
+        ASSERT_FALSE(meets(orc, ox + 1, oy, ally)) << "the staging: the one-unit step does not";
+        ASSERT_TRUE(ally->stats()->commands.empty()) << "the staging: the ally holds no order";
+        hold_attack(orc);
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = state_where({{waver, kAny}, {3, kNonZero}});
+        world().rng_.state_ = s;
+
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "an ally is never swung at";
+        EXPECT_EQ(ANI_WALK, orc->ani_type()) << "an ally is never swung at";
+        EXPECT_EQ(oy, orc->ypos());
+        if (fixes) {
+            EXPECT_EQ(state_after(s, {waver, 3}), world().rng_.state_) << "the waver and the shove's 2-in-3 roll";
+            EXPECT_EQ(ox + 1, orc->xpos()) << "the full step is refused by the ally; the one-unit step moves";
+            const Cmd a = front_of(ally);
+            EXPECT_EQ(1u, a.size);
+            EXPECT_EQ(COMMAND_WALK, a.type) << "the refused step shoved the ally";
+            EXPECT_EQ(4, a.count) << "living::shove's WALK of 4 rounds";
+            EXPECT_EQ(aim.dx, a.com1) << "along the orc's step, clamped to one unit as every WALK order is";
+            EXPECT_EQ(aim.dy, a.com2);
+        } else {
+            EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+            EXPECT_EQ(ox, orc->xpos()) << "the classic round only faces: not moved";
+            EXPECT_TRUE(ally->stats()->commands.empty()) << "the classic round shoves nobody";
+        }
+    }
+}
+
+// Gameplay Fixes BC (#447), the floor term of statistics::attack_face_or_fight
+// (#447's rule of floors: a flyer never changes floors); both settings. Two
+// floors; a team-1 ghost (melee only) at (320,320) on floor 0 facing RIGHT,
+// holding its foe, a team-0 soldier 1 px off its right side on floor 1. The
+// reach does not see floors, so the line check refuses NoRanged (twin world);
+// the soldier's body is on another floor, so the ghost's pad holds nothing
+// (Clear). One round, both settings: it only faces its foe: no step (a step
+// would carry it over the soldier's spot), no swing.
+TEST_F(SemAi5, a_melee_only_attacker_whose_foe_is_on_another_floor_only_faces_it)
+{
+    const auto ghost_scene = [this](short fixes) {
+        Scene sc;
+        fresh_world(fixes);
+        two_floors();
+        sc.bot = living_at(FAMILY_GHOST, 1, 320, 320, 0);
+        if (sc.bot == nullptr)
+            return sc;
+        sc.soldier = living_at(FAMILY_SOLDIER, 0, static_cast<short>(320 + sc.bot->sizex() + 1), 320, 1);
+        if (sc.soldier == nullptr)
+            return sc;
+        face(sc.bot, FACE_RIGHT);
+        sc.bot->set_foe(sc.soldier);
+        return sc;
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene twin = ghost_scene(fixes);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach (the reach does not see floors)";
+
+        Scene sc = ghost_scene(fixes);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* ghost = sc.bot;
+        ASSERT_EQ(2, world().floor_count()) << "the staging: two floors";
+        ASSERT_EQ(0, ghost->floor());
+        ASSERT_EQ(1, sc.soldier->floor()) << "the staging: the soldier is one floor up";
+        const Aim aim = order_aim(ghost, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_RIGHT, ghost->curdir()) << "the staging: the ghost already faces its foe";
+        ASSERT_TRUE(ghost->fire_pad_answer() == walker::PadAnswer::Clear)
+            << "the staging: the ghost's pad, on its own floor, holds nothing";
+        hold_attack(ghost);
+        const std::uint32_t waver = waver_bound_of(ghost);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, ghost->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+        EXPECT_EQ(320, ghost->xpos()) << "a foe on another floor is only faced: no step";
+        EXPECT_EQ(320, ghost->ypos());
+        EXPECT_FLOAT_EQ(0.0f, ghost->busy()) << "no swing";
+        EXPECT_EQ(ANI_WALK, ghost->ani_type()) << "no swing";
+        EXPECT_EQ(FACE_RIGHT, ghost->curdir());
+        EXPECT_EQ(kOrder - 1, front_of(ghost).count);
+    }
+}
+
+// Gameplay Fixes BC (#447) in a ticking world; both settings. The orc of
+// test 6 (the soldier's body on its pad, not busy, the ATTACK order of 30
+// rounds) with only enough magic for the blows this test counts: three swings
+// at its weapon's cost, which is less than HOWL costs (asserted), so no
+// special can ever fire. The soldier is a seat with nobody at it (ACT_CONTROL:
+// it does not act, and a seat's hit response does nothing) with 400 hp, so it
+// cannot die here. Walkers are read by entity id after each world.tick().
+// P, the acts from one swing's start to the next, is the fire delay (busy
+// drains one an act once the animation is over) plus the attack animation's
+// further acts; a blow lands when the animation's row ends, its length minus
+// one acts after the swing starts. Both are counted from the orc's own
+// animation row.
+//  Setting on, 3P ticks: swings start on ticks 1, 1 + P and 1 + 2P, and the
+//    blows land on those ticks plus the row's further acts; the orc never
+//    moves (a body on its pad is never stepped at) and the order still holds.
+//  Setting off, the order's 30 ticks: no swing starts and no blow lands; the
+//    order is spent, one round an act.
+TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_order)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene sc = orc_scene(fixes, FACE_RIGHT, 1);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        sc.soldier->set_act_type(ACT_CONTROL);
+        ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc already faces its foe";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Body) << "the staging: the soldier's body is on the orc's pad";
+        ASSERT_FLOAT_EQ(0.0f, orc->busy());
+        const int cost = orc->stats()->weapon_cost();
+        ASSERT_GT(cost, 0) << "the staging: a swing costs magic";
+        const int blows = 3;
+        ASSERT_LT(blows * cost, static_cast<int>(og::sim::cast_cost(*orc, 1, false)))
+            << "the staging: less magic than HOWL costs";
+        orc->stats()->set_magicpoints(static_cast<float>(blows * cost));
+        ASSERT_GE(orc->curdir(), 0);
+        const int row_index = orc->curdir() + ANI_ATTACK * NUM_FACINGS;
+        ASSERT_LT(row_index, orc->ani_count) << "the staging: the orc has an attack row";
+        const signed char* row = orc->ani[row_index];
+        ASSERT_NE(nullptr, row);
+        int row_len = 0;
+        while (row_len < 128 && row[row_len] != -1)
+            ++row_len;
+        ASSERT_GE(row_len, 1) << "the staging: the attack row has frames";
+        const int fire_delay = static_cast<int>(std::ceil(orc->fire_frequency()));
+        ASSERT_GE(fire_delay, 1);
+        const int lands_after = row_len - 1;
+        const int period = fire_delay + lands_after;
+        hold_attack(orc);
+        const std::uint32_t orc_id = orc->entity_id();
+        const std::uint32_t soldier_id = sc.soldier->entity_id();
+        const float hp0 = sc.soldier->stats()->hitpoints();
+
+        std::vector<int> starts;
+        std::vector<int> landed;
+        float busy_before = 0.0f;
+        float hp_before = hp0;
+        const int ticks = fixes ? 3 * period : kOrder;
+        for (int t = 1; t <= ticks; ++t) {
+            world().tick();
+            const walker* o = world().find_by_id(orc_id);
+            const walker* foe = world().find_by_id(soldier_id);
+            ASSERT_TRUE(o != nullptr && foe != nullptr) << "tick " << t;
+            if (o->busy() > busy_before)
+                starts.push_back(t);
+            if (foe->stats()->hitpoints() < hp_before)
+                landed.push_back(t);
+            busy_before = o->busy();
+            hp_before = foe->stats()->hitpoints();
+            EXPECT_EQ(320, o->xpos()) << "tick " << t << ": the orc never moves";
+            EXPECT_EQ(320, o->ypos()) << "tick " << t;
+        }
+        const walker* o = world().find_by_id(orc_id);
+        const walker* foe = world().find_by_id(soldier_id);
+        ASSERT_TRUE(o != nullptr && foe != nullptr);
+        ASSERT_FALSE(foe->dead()) << "the staging: the soldier cannot die in this test";
+        if (fixes) {
+            EXPECT_EQ((std::vector<int>{1, 1 + period, 1 + 2 * period}), starts)
+                << "one swing per weapon pause, P = " << period;
+            EXPECT_EQ((std::vector<int>{1 + lands_after, 1 + period + lands_after, 1 + 2 * period + lands_after}), landed)
+                << "each blow lands when the attack row ends";
+            EXPECT_EQ(COMMAND_ATTACK, front_of(o).type) << "the order still holds";
+        } else {
+            EXPECT_TRUE(starts.empty()) << "the classic order starts no swing";
+            EXPECT_TRUE(landed.empty()) << "the classic order lands no blow";
+            EXPECT_FLOAT_EQ(hp0, foe->stats()->hitpoints());
+            EXPECT_TRUE(o->stats()->commands.empty()) << "the order is spent, one round an act";
+        }
+    }
+}
+
+// Gameplay Fixes BC (#447): the rule reads nothing from the order, so an
+// ATTACK order a mode's script or a pack queues (com1 and com2 0) fights the
+// same way. Test 6's scene and asserts with the order queued as (30, 0, 0).
+TEST_F(SemAi5, an_attack_order_queued_by_a_script_fights_the_same_way)
+{
+    faced_swing_round(0);
+}
+
+// The guard-standoff fix, kept on both settings by
+// statistics::attack_face_or_fight: a shooter refused for its facing only
+// snaps to face its foe. A team-0 soldier bot (a knife thrower) at (320,320)
+// facing UP, holding its foe, a team-1 orc 1 px off its right side, boxes
+// level; the order aims RIGHT and the line check refuses Facing (the reach,
+// the melee-only and the magic gates pass first; twin world). One round, both
+// settings: curdir, enddir and the heading point RIGHT, at the foe; no step,
+// no throw; only the waver is drawn. Fix BC's "already faced" term is what
+// keeps it out of this case (a bot refused Facing never already faced its
+// foe; with that term gone the thrower would swing at the orc on its pad);
+// the test pins the snap-face that stays here on both settings.
+TEST_F(SemAi5, a_shooter_turned_off_its_foe_still_only_faces)
+{
+    const auto stage = [this](short fixes) {
+        Scene sc;
+        fresh_world(fixes);
+        sc.bot = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        if (sc.bot == nullptr)
+            return sc;
+        sc.soldier = living_at(FAMILY_ORC, 1, static_cast<short>(320 + sc.bot->sizex() + 1), 320);
+        if (sc.soldier == nullptr)
+            return sc;
+        face(sc.bot, FACE_UP);
+        sc.bot->set_foe(sc.soldier);
+        return sc;
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene twin = stage(fixes);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::Facing)
+            << "the staging: refused for the facing alone";
+
+        Scene sc = stage(fixes);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* thrower = sc.bot;
+        const Aim aim = order_aim(thrower, sc.soldier);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims RIGHT";
+        ASSERT_EQ(0, aim.dy);
+        ASSERT_EQ(FACE_UP, thrower->curdir()) << "the staging: the thrower faces UP, off its foe";
+        hold_attack(thrower);
+        const std::uint32_t waver = waver_bound_of(thrower);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, thrower->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+        EXPECT_EQ(FACE_RIGHT, thrower->curdir()) << "it snaps to face its foe";
+        EXPECT_EQ(FACE_RIGHT, thrower->enddir());
+        EXPECT_EQ(FACE_RIGHT, thrower->facing(static_cast<short>(thrower->lastx()), static_cast<short>(thrower->lasty())))
+            << "its heading points at its foe";
+        EXPECT_EQ(320, thrower->xpos()) << "no step";
+        EXPECT_EQ(320, thrower->ypos());
+        EXPECT_FLOAT_EQ(0.0f, thrower->busy()) << "no throw";
+        EXPECT_EQ(ANI_WALK, thrower->ani_type()) << "no throw";
+        EXPECT_EQ(kOrder - 1, front_of(thrower).count);
+    }
+}
+
+// Gameplay Fixes BC (#447), a step that meets the foe's own body beside the
+// pad; both settings. A team-1 orc at (320,320) facing DOWN_RIGHT, holding its
+// foe, a team-0 elf (a smaller box) just right of the orc and as low as its
+// box can stand while staying off the orc's corner pad. Asserted first: the
+// order aims DOWN_RIGHT (both deltas inside 3:1) and the orc faces that way;
+// the pad is clear; the line check refuses NoRanged (twin world); the full
+// step's box meets the elf and the one-unit step's box does not (the obmap's
+// test). One round:
+//  Setting on: the pad is clear, so the orc steps: the full step is refused by
+//    the elf's own body, and that loud step into a hostile body is a bump
+//    (living::collide: init_fire, busy charged the fire delay, the attack
+//    animation); walkstep's one-unit step is then taken: moved one pixel on
+//    each axis.
+//  Setting off: it only faces: not moved, busy 0.
+// Both: only the waver is drawn.
+TEST_F(SemAi5, a_small_foe_beside_the_pad_is_bumped_by_the_step)
+{
+    const auto stage = [this](short fixes) {
+        Scene sc;
+        fresh_world(fixes);
+        sc.bot = living_at(FAMILY_ORC, 1, 320, 320);
+        if (sc.bot == nullptr)
+            return sc;
+        sc.soldier = living_at(FAMILY_ELF, 0, 480, 480);
+        if (sc.soldier == nullptr)
+            return sc;
+        face(sc.bot, FACE_DOWN_RIGHT);
+        // The elf's lowest spot whose box stays off the pad: the pad's box is
+        // one pixel below the orc's, and the obmap shrinks each box by one.
+        place(sc.soldier, static_cast<short>(320 + sc.bot->sizex() + 1),
+              static_cast<short>(320 + sc.bot->sizey() + 2 - sc.soldier->sizey()));
+        sc.bot->set_foe(sc.soldier);
+        return sc;
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene twin = stage(fixes);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_TRUE(refusal(twin.bot, 1, 1) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach";
+
+        Scene sc = stage(fixes);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* orc = sc.bot;
+        walker* elf = sc.soldier;
+        ASSERT_LT(elf->sizex(), orc->sizex()) << "the staging: a smaller foe";
+        const Aim aim = order_aim(orc, elf);
+        ASSERT_EQ(1, aim.dx) << "the staging: the order aims DOWN_RIGHT";
+        ASSERT_EQ(1, aim.dy);
+        ASSERT_EQ(FACE_DOWN_RIGHT, orc->curdir()) << "the staging: the orc already faces that way";
+        ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Clear) << "the staging: the pad misses the elf";
+        ASSERT_FALSE(box_meets(pad_box(orc), elf));
+        const int step = static_cast<int>(orc->stepsize());
+        ASSERT_GT(step, 1);
+        ASSERT_TRUE(meets(orc, 320 + step, 320 + step, elf)) << "the staging: the full step meets the elf";
+        ASSERT_FALSE(meets(orc, 321, 321, elf)) << "the staging: the one-unit step does not";
+        hold_attack(orc);
+        const std::uint32_t waver = waver_bound_of(orc);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_EQ(1, orc->stats()->do_command());
+
+        EXPECT_EQ(state_after(s, {waver}), world().rng_.state_) << "the waver alone";
+        if (fixes) {
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "the step into the elf's body is a bump";
+            EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "the step into the elf's body is a bump";
+            EXPECT_EQ(321, orc->xpos()) << "the one-unit step is taken";
+            EXPECT_EQ(321, orc->ypos()) << "the one-unit step is taken";
+        } else {
+            EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "the classic round only faces";
+            EXPECT_EQ(ANI_WALK, orc->ani_type());
+            EXPECT_EQ(320, orc->xpos()) << "the classic round only faces: not moved";
+            EXPECT_EQ(320, orc->ypos());
+        }
+        EXPECT_EQ(FACE_DOWN_RIGHT, orc->curdir());
+        EXPECT_EQ(kOrder - 1, front_of(orc).count);
     }
 }

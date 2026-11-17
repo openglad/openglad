@@ -2226,7 +2226,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// The reach gate runs before the NO_RANGED / magic gates so that a
 	// NoRanged or NoMagic denial always means "the foe IS within this
 	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
-	// face a bump-range foe instead of sliding around it (guard-standoff
+	// face a foe inside its reach instead of sliding around it (guard-standoff
 	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
 	// gate consumes RNG, so all other callers see identical behavior.
 	distance = distance_to_ob(foe());
@@ -2234,7 +2234,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   finalized reach = the weapon's step x line of sight after the shooter's profile). The reach
 	//   gate runs BEFORE the NO_RANGED and mana gates, so a NoRanged or NoMagic denial always means
 	//   'the foe IS in reach' (COMMAND_ATTACK's guard-standoff fix keys off this to face a
-	//   bump-range foe instead of sliding).
+	//   foe inside its reach instead of sliding).
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: WalkerCombat.walker_fire_check_all_dirs
 	// tests: SemWalker2.a_foe_beyond_reach_is_out_of_range_before_any_other_denial
@@ -2246,7 +2246,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	}
 
 	// rule: A NO_RANGED family (ghost, slimes, ...) never takes a ranged shot even at a foe in
-	//   reach; the NoRanged denial tells COMMAND_ATTACK to face/bump instead.
+	//   reach; the NoRanged denial tells COMMAND_ATTACK to face it, or with Gameplay Fixes BC to fight.
 	// tests: WalkerMore.walker_init_fire_and_fire_check_gate_branches
 	// tests: WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches
 	// tests: SemWalker2.a_no_ranged_shooter_is_denied_no_ranged_with_its_foe_in_reach

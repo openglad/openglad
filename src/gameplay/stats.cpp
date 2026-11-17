@@ -904,12 +904,12 @@ short statistics::do_command()
 					deltay = (deltay > 0) ? 1 : -1;
 			{
 				walker::FireCheckDenial denial = walker::FireCheckDenial::None;
-				// rule: An attacking walker shoots when the shot is clear (queues a FIRE of rng(5)
-				//   rounds in front and fires now); when the only reason it cannot is its
-				//   orientation (a thrower facing off the foe, or a melee-only family at bump
-				//   range) it turns to face the foe without moving (guard-standoff fix, always on);
-				//   when the foe is out of range, behind a wall or it lacks mana it walks one step
-				//   toward the foe.
+				// rule: An attacking walker shoots when the shot is clear (queues a FIRE of rng(5) rounds in
+				//   front and fires now); when the only reason it cannot is its orientation (a thrower facing
+				//   off the foe, or a melee-only family with its foe inside its weapon's reach) it turns to
+				//   face the foe without moving (guard-standoff fix, always on; with Gameplay Fixes on a
+				//   melee-only bot that already faced its foe then fights: fix BC, attack_face_or_fight); when
+				//   the foe is out of range, behind a wall or it lacks mana it walks one step toward the foe.
 				// tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
 				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 				// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
@@ -917,7 +917,7 @@ short statistics::do_command()
 				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
 				// tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 				// tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
-				// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
+				// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving, SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
 				if (!controller_->fire_check(deltax, deltay, &denial))
 				{
 					// Guard-standoff melee deadlock fix (2026-07-07, see
@@ -926,8 +926,8 @@ short statistics::do_command()
 					// to face the foe and swing next tick. Two denials mean
 					// exactly that:
 					//  - Facing: a thrown-weapon family pointed off the foe;
-					//  - NoRanged: a melee-only family (orc, ghost, slime) at
-					//    bump range — its hit lands through fire()'s blocked
+					//  - NoRanged: a melee-only family (orc, ghost, slime) with its foe inside its weapon's reach,
+					//    which is tens of pixels, not only touching; its hit lands through fire()'s blocked
 					//    weapon-spawn cell, which also requires facing.
 					// The classic fallback walked instead; with the foe's own
 					// body blocking that step, walkstep's blocked-NPC branch
@@ -969,21 +969,21 @@ short statistics::do_command()
 					             // tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 					             // tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 					             // tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						// Note for NoRanged (melee-only) families: this only FACES the
-						// bump-range foe. Their swings are bumps: a step of their own
-						// that runs into a body (living::walk's probe); with Gameplay
-						// Fixes on, the right-hand walk's probe that finds their own foe
-						// (statistics::path_probe; off, every loud probe bumps) and
-						// walk_to_foe's near branch when a foe's body stands on their
-						// weapon's pad (Gameplay Fixes BB, near_swing; off, that branch's
-						// init_fire() only turns the bot back). Wiring init_fire() here
-						// as well was tried and rejected: it roughly doubles melee swing
-						// rate over classic and swung campaign balance hard (Westlands
-						// L2's fight-through crew started losing members). For #447 a
-						// swing here at a body on the pad, else a step, was measured
-						// against the setting-on game before Gameplay Fixes BB: blows per
-						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255.
-						controller_->face_delta(deltax, deltay);
+						// Note for NoRanged (melee-only) families: classic, this arm only FACES a foe inside
+						// the weapon's reach. Their swings are bumps: a step of their own that runs into a body
+						// (living::walk's probe); with Gameplay Fixes on, the right-hand walk's probe that
+						// finds their own foe (statistics::path_probe; off, every loud probe bumps) and
+						// walk_to_foe's near branch when a foe's body stands on their weapon's pad (Gameplay
+						// Fixes BB, near_swing; off, that branch's init_fire() only turns the bot back). Wiring
+						// init_fire() here as well was tried in July 2026 and rejected then: it roughly doubles
+						// the melee swing rate over classic and swung campaign balance hard (Westlands L2's
+						// fight-through crew started losing members). For #447 a swing here at a body on the
+						// pad, else a step, was measured against the setting-on game before fix BB: blows per
+						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255. Gameplay Fixes BC
+						// (#447) does it behind the setting: a swing at a body on the pad, else a step
+						// (attack_face_or_fight, at the end of this file), and the levels whose crews fell were
+						// eased in their builders (docs/gameplay-fixes.md, Balance). Off, nothing changed.
+						attack_face_or_fight(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
 						// tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
@@ -2572,7 +2572,7 @@ void statistics::near_swing(bool faced, short xdelta, short ydelta)
 	// tests: SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
 	// tests: parity:mage_bot_far_foe_fixes_scen99
 	const bool lands = query_bit_flags(BIT_NO_RANGED)
-	        ? controller_->fire_pad_answer() == walker::PadAnswer::Body
+	        ? foe_on_pad()
 	        : controller_->fire_check(xdelta, ydelta);
 	if (lands)
 		controller_->init_fire();
@@ -2634,4 +2634,73 @@ bool statistics::keep_turn(short aim)
 	controller_->set_enddir(static_cast<char>(aim));
 	controller_->turn(aim);
 	return false;
+}
+
+// Gameplay Fixes BB (#497) and BC (#447): is a foe's body on this bot's weapon
+// pad? It is the one place a melee-only bot's swing can land: fire() places its
+// weapon on that pad and strikes the body it meets there. Asked quietly
+// (walker::fire_pad_answer: no draw, nothing built, nothing eaten or opened).
+// walk_to_foe's near branch (near_swing) and the ATTACK order
+// (attack_face_or_fight) both ask it: one rule. Appended at the end of the file
+// so the parity pins above never shift.
+bool statistics::foe_on_pad() const
+{
+	// rule: A melee-only bot's blow can land only on a foe's body standing on its weapon's pad
+	//   (own-team bodies, terrain and a clear pad are all "no").
+	// tests: SemAi4.a_melee_only_chaser_swings_from_the_near_branch_only_at_a_body_on_its_pad
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_wall_or_an_ally_on_the_pad_is_stepped_at_not_swung_at
+	return controller_->fire_pad_answer() == walker::PadAnswer::Body;
+}
+
+// Gameplay Fixes BC (#447): the ATTACK order's round when its shot is refused
+// for the bot's facing (Facing) or because the bot is melee-only with its foe
+// inside its weapon's reach (NoRanged). Classic, the guard-standoff fix
+// (2026-07-07): the bot only faces its foe, so a melee-only bot stands for the
+// whole order. With the setting on a melee-only bot that already faced its foe
+// on its own floor fights, by the rule a shooter follows in the same order (it
+// fires when the blow can land, else it steps): it swings when a foe's body
+// stands on its weapon's pad and otherwise takes a step toward the foe. A bot
+// that had to turn spends the round on the turn (fix BB's rule), and a foe on
+// another floor is only faced (a flyer never changes floors). The weapon's
+// magic is not asked: an orc out of magic swings and lands nothing until its
+// magic returns, as a player's orc does, and its step into a body would start
+// the same swing. Appended at the end of the file so the parity pins above
+// never shift.
+void statistics::attack_face_or_fight(short deltax, short deltay)
+{
+	const walker* const foe = controller_->foe();
+	// A bot refused for its facing does not face its foe, so in this arm "already faced" is true
+	// only for a melee-only bot whose foe is inside its weapon's reach.
+	const bool fights = og::sim::session_gameplay_fixes() != 0 &&
+	                    controller_->curdir() == controller_->facing(deltax, deltay) &&
+	                    foe != nullptr && foe->floor() == controller_->floor();
+	controller_->face_delta(deltax, deltay);  // the heading the pad and the swing read
+	// rule: Gameplay Fixes BC (#447): in its ATTACK order a melee-only bot that already faced its
+	//   foe on its own floor fights: it swings when a foe's body stands on its weapon's pad (while
+	//   its weapon's pause runs that starts nothing, and it does not step), else it takes a step
+	//   toward the foe. Classic, a shooter turned off its foe, a bot that had to turn this round
+	//   and a foe on another floor: it only faces (the guard-standoff fix).
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_faced_melee_only_attacker_steps_toward_a_foe_off_its_pad_with_the_setting_on
+	// tests: SemAi5.a_melee_only_attacker_that_must_turn_only_turns_on_both_settings
+	// tests: SemAi5.a_busy_melee_only_attacker_neither_swings_nor_steps
+	// tests: SemAi5.a_melee_only_attacker_whose_foe_is_on_another_floor_only_faces_it
+	// tests: SemAi5.a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_order
+	// tests: SemAi5.an_attack_order_queued_by_a_script_fights_the_same_way
+	// tests: SemAi5.a_shooter_turned_off_its_foe_still_only_faces
+	// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
+	if (!fights)
+		return;
+	// rule: Gameplay Fixes BC (#447): a foe's body on the pad is swung at with no step; anything
+	//   else on the pad (a wall, an ally), or nothing, is stepped at, and a step that runs into the
+	//   foe's own body beside the pad bumps it.
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_faced_melee_only_attacker_steps_toward_a_foe_off_its_pad_with_the_setting_on
+	// tests: SemAi5.a_wall_or_an_ally_on_the_pad_is_stepped_at_not_swung_at
+	// tests: SemAi5.a_small_foe_beside_the_pad_is_bumped_by_the_step
+	if (foe_on_pad())
+		controller_->init_fire();
+	else
+		controller_->walkstep(deltax, deltay);
 }

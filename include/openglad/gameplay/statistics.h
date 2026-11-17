@@ -142,6 +142,16 @@ class statistics
 		// shooter asks fire_check, a melee-only bot (which fire_check always
 		// refuses) asks whether a foe's body stands on its weapon's pad.
 		void near_swing(bool faced, short xdelta, short ydelta);
+		// A foe's body stands on this bot's weapon pad: the one place a melee-only bot's swing
+		// can land (walker::fire_pad_answer: quiet, no draw, nothing built). walk_to_foe's near
+		// branch (fix BB) and the ATTACK order (fix BC) ask it. Defined at the end of stats.cpp.
+		[[nodiscard]] bool foe_on_pad() const;
+		// The ATTACK order's round when the shot is refused for the bot's facing, or because the
+		// bot is melee-only with its foe inside its weapon's reach. Classic: it faces the foe (the
+		// guard-standoff fix). With Gameplay Fixes on a bot that already faced its foe on its own
+		// floor fights (fix BC); in this arm only a melee-only bot can already face its foe.
+		// Defined at the end of stats.cpp.
+		void attack_face_or_fight(short deltax, short deltay);
 		// walk_to_foe's near branch: does the chaser take the foe find_near_foe
 		// answered in place of the one it holds? A strictly nearer one (#320);
 		// and, for a flyer whose held foe is on another floor, one on its own
