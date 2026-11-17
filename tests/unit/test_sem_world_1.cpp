@@ -48,7 +48,9 @@
 #include <algorithm>
 #include <initializer_list>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -1374,6 +1376,14 @@ std::uint32_t state_after_draws(std::uint32_t state, std::uint32_t bound, int dr
     return probe.state_;
 }
 
+// Where `w` stands in the object list (the order the full scan walks), or -1.
+std::ptrdiff_t list_index(const GameWorld::EntityList& list, const walker* w)
+{
+    const auto it = std::find_if(list.begin(), list.end(),
+                                 [w](const auto& p) { return p.get() == w; });
+    return it == list.end() ? -1 : std::distance(list.begin(), it);
+}
+
 }  // namespace
 
 // #512 (this game only, both settings), game_world.cpp
@@ -1388,6 +1398,12 @@ std::uint32_t state_after_draws(std::uint32_t state, std::uint32_t bound, int dr
 //  * `distant` moved to floor 1: nobody stands on the ghost's floor, and the
 //    ghost is answered the nearest foe on any floor, `above` (the rule of
 //    floors);
+//  * the ghost on floor 1, `below` on floor 0 at (320,340), 20 px off, and
+//    `distant` on floor 1 at (320,620), 300 px off: its own floor is the one
+//    it stands on, not the ground floor, so both searches answer `distant`;
+//  * two foes on the ghost's floor at different distances, (320,520) 200 px
+//    off and (320,620) 300 px off, `above` still 20 px off on floor 1: the
+//    nearer of the two, whichever of them is earlier in the object list;
 //  * two foes on the ghost's floor at one distance, (320,620) and (620,320),
 //    300 px each: the earlier in the object list, in either order;
 //  * a hostile tent (a generator) in `distant`'s place is taken.
@@ -1420,6 +1436,67 @@ TEST(SemWorld, the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floo
                                    : "no foe on its floor: the nearest on any floor");
             EXPECT_EQ(want, world.find_near_foe(ghost))
                 << "the quick search falls back to the full scan and answers the same";
+        }
+        {
+            SCOPED_TRACE("the ghost on floor 1, `below` on floor 0, `distant` on floor 1");
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 1);
+            walker* below = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 0);
+            walker* distant = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 1);
+            ASSERT_TRUE(ghost && below && distant);
+            ASSERT_EQ(2, world.floor_count()) << "the staging: a level with two floors";
+            ASSERT_NE(0, ghost->stats()->query_bit_flags(BIT_FLYING)) << "the staging: the ghost flies";
+            ASSERT_EQ(1, ghost->floor()) << "the staging: the ghost is on the upper floor";
+            ASSERT_EQ(0, below->floor()) << "the staging: `below` is on the ground floor";
+            ASSERT_EQ(1, distant->floor()) << "the staging: `distant` is on the ghost's floor";
+            ASSERT_EQ(20, ghost->distance_to_ob(below)) << "the staging: `below` is the nearer";
+            ASSERT_EQ(300, ghost->distance_to_ob(distant)) << "the staging: `distant` is 300 px off";
+            EXPECT_EQ(distant, world.find_nearest_foe(ghost))
+                << "its own floor is floor 1: the nearest foe there, not the nearer one on floor 0";
+            EXPECT_EQ(distant, world.find_near_foe(ghost))
+                << "the quick search, whose spiral on floor 1 meets nobody, falls back and answers the same";
+        }
+        for (bool farther_first : {true, false})
+        {
+            SCOPED_TRACE(farther_first ? "two on the ghost's floor at 200 and 300 px, the farther made first"
+                                       : "two on the ghost's floor at 200 and 300 px, the nearer made first");
+            TestGameWorld tw;
+            floors_field(tw, 2, fixes);
+            GameWorld& world = tw.world();
+            walker* ghost = add_living_on(tw, FAMILY_GHOST, 1, 320, 320, 0);
+            walker* above = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* nearer = nullptr;
+            walker* farther = nullptr;
+            if (farther_first)
+            {
+                farther = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 0);
+                nearer = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 520, 0);
+            }
+            else
+            {
+                nearer = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 520, 0);
+                farther = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, 0);
+            }
+            ASSERT_TRUE(ghost && above && nearer && farther);
+            ASSERT_EQ(0, ghost->floor());
+            ASSERT_EQ(1, above->floor());
+            ASSERT_EQ(0, nearer->floor()) << "the staging: both stand on the ghost's floor";
+            ASSERT_EQ(0, farther->floor()) << "the staging: both stand on the ghost's floor";
+            ASSERT_EQ(20, ghost->distance_to_ob(above)) << "the staging: `above` is the nearest of all";
+            ASSERT_EQ(200, ghost->distance_to_ob(nearer)) << "the staging";
+            ASSERT_EQ(300, ghost->distance_to_ob(farther)) << "the staging";
+            const std::ptrdiff_t nearer_at = list_index(world.oblist, nearer);
+            const std::ptrdiff_t farther_at = list_index(world.oblist, farther);
+            ASSERT_GE(nearer_at, 0) << "the staging: both are in the object list";
+            ASSERT_GE(farther_at, 0) << "the staging: both are in the object list";
+            ASSERT_EQ(farther_first, farther_at < nearer_at)
+                << "the staging: the walker made first is the earlier in the object list";
+            EXPECT_EQ(nearer, world.find_nearest_foe(ghost))
+                << "the nearest foe on its own floor, not the first one the scan meets there";
+            EXPECT_EQ(nearer, world.find_near_foe(ghost))
+                << "the quick search, whose spiral meets nobody, falls back and answers the same";
         }
         for (bool a_first : {true, false})
         {
