@@ -2511,33 +2511,33 @@ walker::act_fire()
 		set_dead(1);
 		death();
 	}
-	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))  // rule: A projectile that cannot take
-		//   its step (it met a body or a wall), or a NO_COLLIDE projectile on every tick, strikes
-		//   the live body its step met (attack: damage, score, effects); a wall or an already-dead
-		//   body takes no hit. Cross-reference below: every stock NO_COLLIDE weapon
-		//   family (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
+	else  // rule: A projectile takes one step a tick (flight_step): a step it could not take (it
+		//   met a body or a wall), or any step of a NO_COLLIDE projectile, strikes the live body the
+		//   step met (attack: damage, score, effects); a wall or an already-dead body takes no hit.
+		//   Cross-reference below: every stock NO_COLLIDE weapon family
+		//   (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
 		//   holds for stock content only because 1654 keeps them alive after the hit.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
 	{
+		const FlightStep step = flight_step();
 		// Hit the collide_ob;
 		// rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
-		//   projectile on every tick, strikes the live body its step met (attack.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
-		if (collide_ob() && !collide_ob()->dead())
+		//   projectile on every tick, strikes the live body its step met (flight_step's Struck).
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
+		if (step == FlightStep::Struck)
 		{
 			attack(collide_ob());
 		}
-		// rule: An ordinary projectile is spent by its hit (dies); an IMMORTAL one (WAVE family,
-		//   circles of protection) survives the hit and keeps flying until its range runs out. See
-		//   above: the stock NO_COLLIDE weapons are all IMMORTAL, which is what lets them
-		//   hit every tick.
+		// rule: An ordinary projectile is spent by a step it could not take or that struck, and a
+		//   NO_COLLIDE one by every step (dies); an IMMORTAL one (WAVE family, circles of protection)
+		//   survives the hit and keeps flying until its range runs out. See above: the stock
+		//   NO_COLLIDE weapons are all IMMORTAL, which is what lets them hit every tick.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
 		// tests: WalkerCombat.walker_act_with_commands
-		if (!stats_->query_bit_flags(BIT_IMMORTAL))
+		if ((step != FlightStep::Flew || stats_->query_bit_flags(BIT_NO_COLLIDE)) &&
+		    !stats_->query_bit_flags(BIT_IMMORTAL))
 		{
 			set_dead(1);
 			death();

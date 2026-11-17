@@ -215,6 +215,11 @@ class walker : public og::sim::SimEntity
 		};
 		bool fire_check(short xdelta, short ydelta,
 		                FireCheckDenial* denial = nullptr);
+		// What one step of a flying weapon met (flight_step).
+		enum class FlightStep : std::uint8_t { Flew, Struck, Stopped };
+		// One step of a weapon in flight: walk() along its heading, and what that met.
+		// act_fire takes it every act. Defined at the end of walker_movement.cpp.
+		[[nodiscard]] FlightStep flight_step();
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

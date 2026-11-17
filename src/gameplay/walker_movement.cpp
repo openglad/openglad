@@ -745,3 +745,20 @@ void walker::face_delta(short xdelta, short ydelta)
     set_lastx(static_cast<float>(xdelta) * scale);
     set_lasty(static_cast<float>(ydelta) * scale);
 }
+
+// One step of a weapon in flight (walker.h): what stops it and what it strikes
+// are written here once. Appended at the end so the parity pins above never shift.
+walker::FlightStep walker::flight_step()
+{
+    const bool walked = walk();
+    // rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
+    //   projectile on every step, has struck the live body that step met; a wall, the map's edge
+    //   or a corpse is no strike. A step that was taken and struck nothing flew.
+    // tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
+    // tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
+    // tests: SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
+    if ((!walked || stats_->query_bit_flags(BIT_NO_COLLIDE)) && collide_ob() != nullptr &&
+        !collide_ob()->dead())
+        return FlightStep::Struck;
+    return walked ? FlightStep::Flew : FlightStep::Stopped;
+}
