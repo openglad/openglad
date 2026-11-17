@@ -117,8 +117,8 @@ void build_dead_marshes(const LevelDataHooks& hooks)
     paint_marsh(w.grid, 48, 34, 49, 37); // I3, north to the ground south of C
     paint_marsh(w.grid, 76, 39, 77, 44); // I4, south to the P6 south shore
 
-    // Marsh-lights (team 2): ghosts drifting over every mere, levels 3/4
-    // alternating, with one elder light in the great mere and one in P6.
+    // Marsh-lights (team 2): ghosts drifting over every mere, levels 1 to 3,
+    // with one elder light in the great mere and one in P6 (eased below).
     // (F4 fresh-team calibration: 4/5 -> 3/4, elders 6 -> 5, the second
     // rising 5 -> 4 and its hour 400 -> 600 — every light on the map
     // converges on the causeway fight, and at the old levels the curve-6
@@ -130,8 +130,9 @@ void build_dead_marshes(const LevelDataHooks& hooks)
     // shed two levels (3/4 -> 1/2), the great mere's three (3/4 -> 1/1,
     // its elder 5 -> 2), P3's and P4's one (3/4 -> 2/3), the small mere's
     // pair one each (4 -> 3) and P6's two (3/4 -> 1/2, its elder 5 -> 3).
-    // It reads 4.78, still under today's average, and the easing stops
-    // there. With the setting off it reads 7.53, from 5.80.)
+    // It reads 4.78, still under the 5.35 it read before these fixes, and
+    // the easing stops there. With the setting off it reads 7.53, from
+    // 5.80.)
     static constexpr int p1[5][2] = {{12, 15}, {24, 20}, {14, 22}, {26, 14},
                                      {22, 12}};
     for (int i = 0; i < 5; ++i)
@@ -745,8 +746,9 @@ void build_ash_plains(const LevelDataHooks& hooks)
     // 2.58 survivors. Half of the easing this level allows: the central
     // files below shed one level (3 -> 2), the two river 1 ford watches
     // three and two (5 -> 2, 5 -> 3) and the fire-river wraiths one
-    // (4 -> 3). It reads 5.22, still under today's average, and the
-    // easing stops there. With the setting off it reads 7.17, from 6.22.)
+    // (4 -> 3). It reads 5.22, still under the 5.90 it read before these
+    // fixes, and the easing stops there. With the setting off it reads
+    // 7.17, from 6.22.)
     for (int i = 0; i < 6; ++i)
     {
         place_living(w, FAMILY_ORC, 2, 0, 44, 6 + i * 6, 2, true);

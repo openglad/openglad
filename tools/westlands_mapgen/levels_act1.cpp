@@ -205,7 +205,7 @@ void build_forest_road(const LevelDataHooks& hooks)
     // beats the crew's ~342-tick road time on every wave (worst margin
     // x1.69; see the design doc's intercept table) — the riders hunt the
     // runners, they never hold the finish line. Rider levels stay low
-    // (2/2/3) and their scare special is SHEATHED (a frozen or fleeing
+    // (1/1/3) and their scare special is SHEATHED (a frozen or fleeing
     // company mid-melee is a death sentence): an entry-power company must
     // survive being CAUGHT once and still run on.
     // (Eased 2026-11-17: with Gameplay Fixes on, a melee-only bot that
@@ -213,8 +213,9 @@ void build_forest_road(const LevelDataHooks& hooks)
     // The curve-2 company's forty-seed average here fell from 8.00 to
     // 6.97 survivors. These four pursuit riders and pocket 2's three
     // wolves shed one level each (2 -> 1), half of the easing this level
-    // allows; it reads 7.05, still under today's average, and the easing
-    // stops there. With the setting off it reads 7.97, from 8.00.)
+    // allows; it reads 7.05, still under the 8.00 it read before these
+    // fixes, and the easing stops there. With the setting off it reads
+    // 7.97, from 8.00.)
     place_living(w, FAMILY_GHOST, 2, 0, 3, 18, 1, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 3, 22, 1, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 2, 20, 1, false, true, 550);
@@ -422,9 +423,9 @@ void build_last_ford(const LevelDataHooks& hooks)
     // faces its foe swings or steps in its ATTACK order (fix BC, #447).
     // The curve-2 company's forty-seed average here fell from 7.62 to
     // 6.08 survivors. These five Riders shed two levels (4 -> 2), half of
-    // the easing this level allows; it reads 7.08, still under today's
-    // average, and the easing stops there. With the setting off it reads
-    // 7.47, from 7.40.)
+    // the easing this level allows; it reads 7.08, still under the 7.62
+    // it read before these fixes, and the easing stops there. With the
+    // setting off it reads 7.47, from 7.40.)
     static constexpr int wave1[5][2] = {{10, 18}, {10, 26}, {10, 22},
                                         {12, 16}, {12, 28}};
     for (const auto& c : wave1) // Riders fly: they cross anywhere
@@ -645,9 +646,9 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     // faces its foe swings or steps in its ATTACK order (fix BC, #447).
     // The curve-3 company's forty-seed average here fell from 7.67 to
     // 7.03 survivors. These six scouts shed one level (2 -> 1), half of
-    // the easing this level allows; it reads 7.50, still under today's
-    // average, and the easing stops there. With the setting off it reads
-    // 7.60, from 7.70.)
+    // the easing this level allows; it reads 7.50, still under the 7.67
+    // it read before these fixes, and the easing stops there. With the
+    // setting off it reads 7.60, from 7.70.)
     static constexpr int scouts[6][2] = {{10, 23}, {10, 26}, {14, 22},
                                          {14, 27}, {12, 20}, {12, 29}};
     for (const auto& c : scouts)

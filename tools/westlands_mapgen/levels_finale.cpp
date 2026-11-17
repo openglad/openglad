@@ -208,9 +208,9 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // 2.73 survivors. Half of the easing this level allows: the plain
     // ranks below shed one level (3/4 -> 2/3), the ghost outriders three
     // (5/6 -> 2/3), the Undergate chamber guards two (6 -> 4) and the two
-    // caldera ghosts four each (8 -> 4). It reads 4.12, still under
-    // today's average, and the easing stops there. With the setting off
-    // it reads 5.00, from 4.75.)
+    // caldera ghosts four each (8 -> 4). It reads 4.12, still under the
+    // 4.83 it read before these fixes, and the easing stops there. With
+    // the setting off it reads 5.00, from 4.75.)
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 6; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 26 + col * 3, 14 + row * 5,

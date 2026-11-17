@@ -581,8 +581,9 @@ void build_white_city(const LevelDataHooks& hooks)
     // 0.55 survivors. Half of the easing this level allows: the breach
     // column below shed one level (3 -> 2), the plain lattice two
     // (2/3/4 -> 1/1/2) and the town ghosts two (4 -> 2). It reads 0.85,
-    // still under today's average, and the easing stops there. With the
-    // setting off it now reads 1.52, from 3.10 (2.83 before these fixes).)
+    // still under the 2.80 it read before these fixes, and the easing
+    // stops there. With the setting off it now reads 1.52, from 3.10
+    // (2.83 before these fixes).)
     for (int i = 0; i < 6; ++i)
     {
         place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 2); // the breach

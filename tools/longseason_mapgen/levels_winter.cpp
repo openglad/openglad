@@ -410,8 +410,8 @@ void build_frozen_ford(const LevelDataHooks& hooks)
     // 0.03 survivors. Half of the easing this level allows: the bank
     // wolves below and the ice wraiths shed three levels each (6 -> 3),
     // the river dead of the first pursuit two (6 -> 4). It reads 4.47,
-    // still under today's average, and the easing stops there. With the
-    // setting off it reads 4.17, from 5.70.)
+    // still under the 5.90 it read before these fixes, and the easing
+    // stops there. With the setting off it reads 4.17, from 5.70.)
     static constexpr int wolves[6][2] = {{30, 8},  {30, 11}, {30, 19},
                                          {30, 22}, {30, 30}, {30, 33}};
     for (const auto& p : wolves)
