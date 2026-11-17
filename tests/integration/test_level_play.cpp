@@ -27,8 +27,9 @@
 // FAERIE HASTE SELF and TELEPORT MARKER, 6 casts against a floor of 1, and
 // ARCHMAGE HEARTBURST, 7 against a floor of 2):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
-//      casters, >= 30 casters with two or more specials, a crew member alive
-//      at the end;
+//      casters, a crew member alive at the end; pooled over the six seeds:
+//      >= 180 casters with two or more specials (six times the per-seed 30
+//      it replaces, #515);
 //   B  pooled: the families with two or more rollable specials show them,
 //      each special the level should see is cast, each Shift arm is cast on
 //      its own, and the crew's own bots cast (HEARTBURST) and save up for
