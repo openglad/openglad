@@ -808,8 +808,11 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     // rule: Gameplay Fixes BD (#538): then the steps a fresh shot moves, each the shot's own
     //   (flight_step): a step that strikes a live body passes, a step stopped by terrain or the
     //   map's edge refuses (WallBlocked), a taken step onto the mode ball passes, and when the
-    //   steps run out the check refuses (RayMiss).
+    //   steps run out the check refuses (RayMiss). The bound is the steps a fresh shot moves, no
+    //   more and no fewer (the check's side: the_check_flies_as_far_as_a_fresh_shot...; the
+    //   shot's side, that it moves lineofsight - 1 steps: a_fresh_shot_moves_one_step_fewer...).
     // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
+    // tests: SemLineCheck.the_check_flies_as_far_as_a_fresh_shot_and_no_further_with_the_setting_on
     // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
     // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
     // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on

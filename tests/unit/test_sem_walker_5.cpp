@@ -341,6 +341,21 @@ protected:
         return n;
     }
 
+    // fire_check as a bot asks it, and what its answer leaves behind,
+    // whichever way it ends (a wall or a body on the pad, a step that strikes
+    // or is stopped, the mode ball after a step, the steps run out): the test
+    // weapon it built is dead, so asking launched no shot, and no walker is
+    // still named as the line check's probe (GameWorld::slit_open_for, which
+    // would open arrow slits for whatever weapon later sits at that address).
+    bool ask(walker* shooter, short dx, short dy, Denial* why)
+    {
+        const int before = live_weapons();
+        const bool passes = shooter->fire_check(dx, dy, why);
+        EXPECT_EQ(nullptr, world().slit_open_for) << "the check's answer leaves no probe marked at the slits";
+        EXPECT_EQ(before, live_weapons()) << "the check's answer leaves its test weapon dead";
+        return passes;
+    }
+
     // fire() from the pinned stream, then the shot acts until it ends (as
     // weap::act does each tick). True when the shot ended.
     bool fire_and_fly(walker* shooter, int max_acts)
@@ -485,6 +500,10 @@ TEST_F(SemLineCheck, a_fresh_shot_moves_one_step_fewer_than_its_line_of_sight)
                 ASSERT_EQ(frame, archer->frame()) << "the staging: the shooter's frame";
                 walker* shot = archer->fire();
                 ASSERT_NE(nullptr, shot) << "the staging: the arrow flies";
+                // The stream is not pinned: an arrow's waver (a few pixels across a step of
+                // about eleven) never takes its heading out of the facing's 45-degree sector.
+                ASSERT_EQ(dir, shot->facing(shot->lastx(), shot->lasty()))
+                    << "the staging: the arrow's heading faces " << dir_name(dir);
                 const int los = shot->lineofsight();
                 ASSERT_GT(los, 1) << "the staging: a line of sight read from the arrow";
                 const bool faces_heading = ((frame + 1) % 2) == dir;
@@ -634,6 +653,103 @@ TEST_F(SemLineCheck, the_check_passes_exactly_where_the_shot_lands_with_the_sett
     }
 }
 
+// Gameplay Fixes BD, setting on: the check flies as many steps as a fresh
+// shot moves, and not one more. An archer facing right: a fresh shot's facing
+// is 0 or 1 (UP or UP_RIGHT) and FACE_RIGHT is 2, so its first act always
+// turns it and it moves lineofsight - 1 steps. Its foe, a sitting soldier,
+// stands inside the reach gate and off every box the flight tests (and off
+// the box of one step more), so the foe decides nothing. A second hostile
+// soldier sits on the line far out, where only the end of the flight reaches
+// (the reach gate asks about the foe alone, so a body that is not the foe can
+// stand there in play). Each spot is searched from the arrow's numbers and
+// asserted:
+//  (i) only the box of the last step a fresh shot takes meets it, no earlier
+//      box: the check passes, and a fired arrow (waver 0) strikes it;
+//  (ii) further out, where no box of the flight meets it but the box of one
+//      step more would: the check refuses (RayMiss), and a fired arrow leaves
+//      its hit points as they were.
+// A check that flew one step more would pass in (ii); one that flew one step
+// fewer would refuse in (i). With the setting off the classic loop runs; its
+// rule is classic_the_check_steps_over_a_foe_between_two_of_its_spots.
+TEST_F(SemLineCheck, the_check_flies_as_far_as_a_fresh_shot_and_no_further_with_the_setting_on)
+{
+    constexpr short kX = 480;
+    constexpr short kY = 480;
+    ASSERT_GT(static_cast<int>(FACE_RIGHT), 1) << "the staging: no fresh shot already faces right";
+    for (bool last : {true, false}) {
+        SCOPED_TRACE(last ? "(i) met by the last step's box only" : "(ii) met by the box of one step more only");
+        fresh_world(1);
+        walker* archer = living_at(FAMILY_ARCHER, 0, kX, kY);
+        ASSERT_NE(nullptr, archer);
+        face(archer, FACE_RIGHT);
+        const ShotPlan p = plan_of(archer, FACE_RIGHT);
+        ASSERT_GT(p.los, 2);
+        const std::vector<Box> flown = flown_boxes(p);
+        ShotPlan one_more = p;
+        one_more.los = p.los + 1;
+        const std::vector<Box> flown_one_more = flown_boxes(one_more);
+        ASSERT_EQ(flown.size() + 1, flown_one_more.size());
+        const Box further = flown_one_more.back();  // the box the step after the last one tests
+        // The far soldier's spot: centred on the line, the first x past the pad's side where
+        // the case's boxes meet it.
+        const short fy = static_cast<short>(p.pad_y + p.sy / 2 - 8);
+        const auto box_hits = [&](const Box& b, int x) {
+            return ::collide(static_cast<short>(b.x), static_cast<short>(b.y), p.sx, p.sy, static_cast<short>(x), fy,
+                             16, 16) != 0;
+        };
+        int far_x = -1;
+        for (int x = flown.front().x; x <= further.x + p.sx && far_x < 0; ++x) {
+            bool earlier = false;
+            for (std::size_t k = 0; k + 1 < flown.size(); ++k)
+                earlier = earlier || box_hits(flown[k], x);
+            const bool at_last = box_hits(flown.back(), x);
+            if (last ? (at_last && !earlier) : (!at_last && !earlier && box_hits(further, x)))
+                far_x = x;
+        }
+        ASSERT_GE(far_x, 0) << "the staging: a spot for the far soldier";
+        walker* far = living_at(FAMILY_SOLDIER, 1, static_cast<short>(far_x), fy, 16, 16);
+        ASSERT_NE(nullptr, far);
+        far->set_act_type(ACT_SIT);
+        far->stats()->set_armor(0.0f);
+        for (std::size_t k = 0; k + 1 < flown.size(); ++k)
+            ASSERT_FALSE(box_meets(flown[k], p.sx, p.sy, far)) << "the staging: no earlier box meets it (step " << k + 1 << ")";
+        if (last) {
+            ASSERT_TRUE(box_meets(flown.back(), p.sx, p.sy, far)) << "the staging: the last step's box meets it";
+        } else {
+            ASSERT_FALSE(box_meets(flown.back(), p.sx, p.sy, far)) << "the staging: the last step's box does not meet it";
+            ASSERT_TRUE(box_meets(further, p.sx, p.sy, far)) << "the staging: the box of one step more would";
+        }
+        walker* foe = living_at(FAMILY_SOLDIER, 1, static_cast<short>(p.pad_x + 10),
+                                static_cast<short>(kY + archer->sizey() + 8), 16, 16);
+        ASSERT_NE(nullptr, foe);
+        foe->set_act_type(ACT_SIT);
+        archer->set_foe(foe);
+        ASSERT_LE(archer->distance_to_ob(foe), p.reach) << "the staging: the foe is inside the reach gate";
+        for (const Box& b : flown_one_more)
+            ASSERT_FALSE(box_meets(b, p.sx, p.sy, foe)) << "the staging: the foe is off the flight's line";
+        const std::uint32_t straight = state_where({{p.waver_bound, p.waver_zero}});
+        world().rng_.state_ = straight;
+        Denial why = Denial::NoFoe;
+        const bool passes = ask(archer, 1, 0, &why);
+        drop_weapons();
+        if (last) {
+            EXPECT_TRUE(passes) << "the last step a fresh shot takes meets the far soldier";
+            EXPECT_EQ(Denial::None, why);
+        } else {
+            EXPECT_FALSE(passes) << "only a step no fresh shot takes would meet the far soldier";
+            EXPECT_EQ(Denial::RayMiss, why);
+        }
+        world().rng_.state_ = straight;
+        ASSERT_TRUE(fire_and_fly(archer, 4 * p.los)) << "the staging: the arrow ends inside its range";
+        drop_weapons();
+        if (last)
+            EXPECT_LT(far->stats()->hitpoints(), 400.0f) << "the arrow strikes it on its last step";
+        else
+            EXPECT_FLOAT_EQ(400.0f, far->stats()->hitpoints()) << "the arrow ends one step short of it";
+        EXPECT_FLOAT_EQ(400.0f, foe->stats()->hitpoints()) << "the staging: the foe is off the line";
+    }
+}
+
 // fire_check, the classic loop (walker.cpp), and line_check_flight's gate.
 // A tower facing up on a field 160 tiles tall (every spot of the classic loop
 // stays on the map, asserted spot by spot) and a 16 px soldier on the shot's
@@ -697,7 +813,7 @@ TEST_F(SemLineCheck, classic_the_check_steps_over_a_foe_between_two_of_its_spots
         ASSERT_FALSE(classic_meets()) << "the staging: between two classic spots";
         world().rng_.state_ = straight;
         Denial why = Denial::None;
-        const bool passes = tower->fire_check(0, -1, &why);
+        const bool passes = ask(tower, 0, -1, &why);
         drop_weapons();
         if (fixes) {
             EXPECT_TRUE(passes) << "gap " << g.blind << ": the flown check meets the soldier";
@@ -715,7 +831,7 @@ TEST_F(SemLineCheck, classic_the_check_steps_over_a_foe_between_two_of_its_spots
         body->stats()->set_hitpoints(400.0f);
         world().rng_.state_ = straight;
         why = Denial::NoFoe;
-        EXPECT_TRUE(tower->fire_check(0, -1, &why)) << "control, gap " << g.seen << ": a classic spot meets it";
+        EXPECT_TRUE(ask(tower, 0, -1, &why)) << "control, gap " << g.seen << ": a classic spot meets it";
         EXPECT_EQ(Denial::None, why);
         drop_weapons();
     }
@@ -778,7 +894,7 @@ TEST_F(SemLineCheck, the_pad_passes_on_a_body_and_refuses_on_a_wall_on_both_sett
             const std::uint32_t straight = state_where({{p.waver_bound, p.waver_zero}});
             world().rng_.state_ = straight;
             Denial why = Denial::NoFoe;
-            const bool passes = archer->fire_check(1, -1, &why);
+            const bool passes = ask(archer, 1, -1, &why);
             drop_weapons();
             if (wall) {
                 EXPECT_FALSE(passes) << "a wall on the pad: the shot would be wasted";
@@ -851,7 +967,7 @@ TEST_F(SemLineCheck, a_wall_the_shot_stops_on_refuses_with_the_setting_on)
         const std::uint32_t straight = state_where({{p.waver_bound, p.waver_zero}});
         world().rng_.state_ = straight;
         Denial why = Denial::NoFoe;
-        const bool passes = tower->fire_check(0, -1, &why);
+        const bool passes = ask(tower, 0, -1, &why);
         drop_weapons();
         if (fixes) {
             EXPECT_FALSE(passes) << "the shot would stop on the wall";
@@ -933,7 +1049,7 @@ TEST_F(SemLineCheck, the_map_edge_refuses_only_when_the_shot_would_leave_the_map
             }
             world().rng_.state_ = state_where({{p.waver_bound, p.waver_zero}});
             Denial why = Denial::NoFoe;
-            const bool passes = tower->fire_check(0, -1, &why);
+            const bool passes = ask(tower, 0, -1, &why);
             if (fixes && !moved) {
                 EXPECT_TRUE(passes) << "the flight meets the archer before the edge";
                 EXPECT_EQ(Denial::None, why);
@@ -983,7 +1099,7 @@ TEST_F(SemLineCheck, the_check_draws_its_waver_and_nothing_else_in_open_ground)
             const std::uint32_t s = state_where({{p.waver_bound, p.waver_zero}});
             world().rng_.state_ = s;
             Denial why = Denial::NoFoe;
-            const bool passes = soldier->fire_check(1, 0, &why);
+            const bool passes = ask(soldier, 1, 0, &why);
             EXPECT_EQ(on_line, passes);
             EXPECT_EQ(on_line ? Denial::None : Denial::RayMiss, why);
             EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver, and nothing else";
@@ -991,8 +1107,9 @@ TEST_F(SemLineCheck, the_check_draws_its_waver_and_nothing_else_in_open_ground)
     }
 }
 
-// Gameplay Fixes BD, setting on (D6, a deliberate rule): an enemy weapon in
-// flight on the line is met as the shot would meet it. No living on the line;
+// Gameplay Fixes BD, setting on, a deliberate rule: the check meets on its
+// line what the shot would meet, so an enemy weapon in flight on the line is
+// met as the shot would meet it. No living on the line;
 // one enemy arrow parked in a 32 px collision cell the flight crosses beyond
 // the pad, where the first flight box that covers the cell also meets it (its
 // place is computed from the arrow's step and asserted). A weapon meeting an
@@ -1062,7 +1179,7 @@ TEST_F(SemLineCheck, an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_t
             s = state_where_then(p.waver_bound, p.waver_zero, 10, covering, [](std::uint32_t r) { return r > 3; });
         world().rng_.state_ = s;
         Denial why = Denial::NoFoe;
-        const bool passes = archer->fire_check(0, -1, &why);
+        const bool passes = ask(archer, 0, -1, &why);  // the parked arrow stays live: compared before and after
         og::sim::SimRandom expect(s);
         (void)expect.next(p.waver_bound);
         for (int i = 0; i < (lost ? 1 : covering); ++i)
@@ -1080,10 +1197,13 @@ TEST_F(SemLineCheck, an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_t
 }
 
 // Gameplay Fixes BD: the mode ball (an ignored, live, hostile foe that is
-// not in the collision table) on the line. An archer facing up and an
-// ignored orc as its foe, (a) on the pad (its box meets the pad's), (b) three
-// steps out (its box meets the flight's position after its third step and
-// none before: asserted). Setting on: passes in both. Setting off: passes
+// not in the collision table) on the line, as an archer's foe. (a) On a
+// DIAGONAL pad, where the pad's question decides alone (for a cardinal
+// facing the first step would meet the same ball): the archer faces up and
+// right, and the ball's box meets the pad's and neither any box a step tests
+// nor any place the flight stands after a step (asserted). (b) Facing up,
+// three steps out: its box meets the flight's position after its third step
+// and none before (asserted). Setting on: passes in both. Setting off: passes
 // exactly when a classic spot's box meets it (computed from the classic
 // spots), else RayMiss.
 TEST_F(SemLineCheck, a_mode_ball_on_the_line_passes_the_flown_check)
@@ -1091,22 +1211,25 @@ TEST_F(SemLineCheck, a_mode_ball_on_the_line_passes_the_flown_check)
     for (short fixes : {short{0}, short{1}}) {
         for (bool on_pad : {true, false}) {
             SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
-                         (on_pad ? "(a) the ball on the pad" : "(b) the ball three steps out"));
+                         (on_pad ? "(a) the ball on a diagonal pad" : "(b) the ball three steps out"));
             fresh_world(fixes);
+            const int dir = on_pad ? FACE_UP_RIGHT : FACE_UP;
             walker* archer = living_at(FAMILY_ARCHER, 0, 512, 640);
             ASSERT_NE(nullptr, archer);
-            face(archer, FACE_UP);
-            const ShotPlan p = plan_of(archer, FACE_UP);
+            face(archer, dir);
+            const ShotPlan p = plan_of(archer, dir);
             ASSERT_GT(p.los, 4);
             // Where the flight stands after each step (its whole-pixel position).
             std::vector<Box> at{{p.pad_x, p.pad_y}};
+            float wx = p.pad_x;
             float wy = p.pad_y;
             for (int k = 1; k < p.los; ++k) {
+                wx += p.lx;
                 wy += p.ly;
-                at.push_back({p.pad_x, static_cast<short>(wy)});
+                at.push_back({static_cast<short>(wx), static_cast<short>(wy)});
             }
-            const short bx = static_cast<short>(p.pad_x + p.sx / 2 - 8);
-            const short by = on_pad ? static_cast<short>(p.pad_y - 8) : static_cast<short>(at[2].y - 15);
+            const short bx = on_pad ? static_cast<short>(p.pad_x + 3) : static_cast<short>(p.pad_x + p.sx / 2 - 8);
+            const short by = on_pad ? static_cast<short>(p.pad_y + 3) : static_cast<short>(at[2].y - 15);
             walker* ball = living_at(FAMILY_ORC, 1, bx, by, 16, 16);
             ASSERT_NE(nullptr, ball);
             ball->set_act_type(ACT_SIT);
@@ -1116,6 +1239,12 @@ TEST_F(SemLineCheck, a_mode_ball_on_the_line_passes_the_flown_check)
                 << "the staging: the ball is not in the collision table";
             if (on_pad) {
                 ASSERT_TRUE(box_meets(at[0], p.sx, p.sy, ball)) << "the staging: the ball is on the pad";
+                for (std::size_t k = 1; k < at.size(); ++k)
+                    ASSERT_FALSE(box_meets(at[k], p.sx, p.sy, ball))
+                        << "the staging: and not where the flight stands after step " << k;
+                for (const Box& b : flown_boxes(p))
+                    ASSERT_FALSE(box_meets(b, p.sx, p.sy, ball)) << "the staging: and under no step's box";
+                ASSERT_FALSE(meets(archer, archer->xpos(), archer->ypos(), ball)) << "the staging: clear of the archer";
             } else {
                 for (int k = 0; k <= 2; ++k)
                     ASSERT_FALSE(box_meets(at[static_cast<std::size_t>(k)], p.sx, p.sy, ball))
@@ -1129,7 +1258,7 @@ TEST_F(SemLineCheck, a_mode_ball_on_the_line_passes_the_flown_check)
                 classic_meets = classic_meets || box_meets(b, p.sx, p.sy, ball);
             world().rng_.state_ = state_where({{p.waver_bound, p.waver_zero}});
             Denial why = Denial::NoFoe;
-            const bool passes = archer->fire_check(0, -1, &why);
+            const bool passes = ask(archer, static_cast<short>(kStep[dir][0]), static_cast<short>(kStep[dir][1]), &why);
             const bool expected = fixes ? true : classic_meets;
             EXPECT_EQ(expected, passes) << (fixes ? "the flown check meets the ball"
                                                   : (classic_meets ? "a classic spot meets the ball"
@@ -1321,7 +1450,7 @@ TEST_F(SemLineCheck, an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_g
                 const std::uint32_t s = state_where({{p.waver_bound, p.waver_zero}});
                 world().rng_.state_ = s;
                 Denial why = Denial::NoFoe;
-                EXPECT_TRUE(archer->fire_check(0, -1, &why)) << "the check takes the slit as open";
+                EXPECT_TRUE(ask(archer, 0, -1, &why)) << "the check takes the slit as open";
                 EXPECT_EQ(Denial::None, why);
                 EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "no slit roll drawn by the check";
                 drop_weapons();
@@ -1355,7 +1484,7 @@ TEST_F(SemLineCheck, an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_g
                 const std::uint32_t s = state_where({{p.waver_bound, p.waver_zero}});
                 world().rng_.state_ = s;
                 Denial why = Denial::NoFoe;
-                EXPECT_TRUE(archer->fire_check(0, -1, &why)) << "no classic spot is on the slit";
+                EXPECT_TRUE(ask(archer, 0, -1, &why)) << "no classic spot is on the slit";
                 EXPECT_EQ(Denial::None, why);
                 EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "no slit roll drawn";
             } else {
@@ -1368,7 +1497,7 @@ TEST_F(SemLineCheck, an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_g
                     const std::uint32_t s = state_where({{p.waver_bound, p.waver_zero}, {classic_bound, lost ? kNonZero : 0u}});
                     world().rng_.state_ = s;
                     Denial why = Denial::NoFoe;
-                    const bool passes = archer->fire_check(0, -1, &why);
+                    const bool passes = ask(archer, 0, -1, &why);
                     EXPECT_EQ(!lost, passes);
                     EXPECT_EQ(lost ? Denial::WallBlocked : Denial::None, why);
                     EXPECT_EQ(state_after(s, {p.waver_bound, classic_bound}), world().rng_.state_)
