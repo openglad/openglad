@@ -773,7 +773,7 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     // rule: Gameplay Fixes BD (#538): classic (the setting off) nothing is asked here and
     //   fire_check's own loop tests 0, 1, 3, 6 ... steps out.
     // tests: SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
-    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on
+    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on, parity:tower_foe_between_spots_scen99, parity:tower_foe_between_spots_fixes_scen99
     if (og::sim::session_gameplay_fixes() == 0)
         return std::nullopt;
     GameWorld& world = *current_game->world;

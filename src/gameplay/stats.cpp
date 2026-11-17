@@ -2524,7 +2524,7 @@ bool statistics::turn_to_foe(short aim)
 	// rule: Gameplay Fixes BB (#497) and BE (#513): a bot not yet facing its foe keeps the foe's
 	//   direction for good (keep_turn, at the end of this file), so its turn is not undone and its
 	//   next acts finish it. Classic: enddir is left as it was and the bot is turned back.
-	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on, SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
+	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on, SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on, parity:orc_refused_shot_turn_scen99, parity:orc_refused_shot_turn_fixes_scen99
 	if (og::sim::session_gameplay_fixes() != 0 && !faced)
 		return keep_turn(aim);
 	controller_->turn(aim);
@@ -2690,6 +2690,7 @@ void statistics::attack_face_or_fight(short deltax, short deltay)
 	// tests: SemAi5.an_attack_order_queued_by_a_script_fights_the_same_way
 	// tests: SemAi5.a_shooter_turned_off_its_foe_still_only_faces
 	// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
+	// tests: parity:orc_attack_order_blows_scen99, parity:orc_attack_order_blows_fixes_scen99
 	if (!fights)
 		return;
 	// rule: Gameplay Fixes BC (#447): a foe's body on the pad is swung at with no step; anything
