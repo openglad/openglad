@@ -410,15 +410,26 @@ protected:
         return state_where({{5, kNonZero}, {5, 0}, {80, kNonZero}, {waver, kAny}, {300, kNonZero}});
     }
 
-    // BC tests 6 and 13, one body: the orc of orc_scene facing RIGHT, its foe
-    // 1 px off its right side (the soldier's body on the orc's pad), not
-    // busy, holding the ATTACK order with com1 and com2 `com`; one round.
-    void faced_swing_round(int com)
+    // One body for a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+    // and an_attack_order_queued_by_a_script_fights_the_same_way: the orc of
+    // orc_scene facing RIGHT, its foe 1 px off its right side (the soldier's
+    // body on the orc's pad), not busy, holding the ATTACK order with com1
+    // and com2 `com`; one round. With `stale_heading` the orc's heading
+    // (lastx, lasty) then points DOWN while curdir and enddir stay RIGHT, so
+    // its pad along that heading holds nothing; the round's snap points the
+    // heading back at the foe before the pad is asked.
+    void faced_swing_round(int com, bool stale_heading = false)
     {
+        const auto point_heading_down = [](walker* w) {
+            w->set_lastx(0.0f);
+            w->set_lasty(w->stepsize());
+        };
         for (short fixes : {short{0}, short{1}}) {
             SCOPED_TRACE(setting(fixes));
             Scene twin = orc_scene(fixes, FACE_RIGHT, 1);
             ASSERT_TRUE(twin.bot && twin.soldier);
+            if (stale_heading)
+                point_heading_down(twin.bot);
             ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
                 << "the staging: refused as melee only, the foe in reach";
 
@@ -433,6 +444,15 @@ protected:
                 << "the staging: the soldier's body is on the orc's pad";
             ASSERT_FLOAT_EQ(0.0f, orc->busy()) << "the staging: not busy";
             ASSERT_EQ(ANI_WALK, orc->ani_type());
+            if (stale_heading) {
+                point_heading_down(orc);
+                ASSERT_EQ(FACE_DOWN, orc->facing(static_cast<short>(orc->lastx()), static_cast<short>(orc->lasty())))
+                    << "the staging: the heading points DOWN";
+                ASSERT_EQ(FACE_RIGHT, orc->curdir()) << "the staging: the orc still faces its foe";
+                ASSERT_EQ(FACE_RIGHT, orc->enddir());
+                ASSERT_TRUE(orc->fire_pad_answer() == walker::PadAnswer::Clear)
+                    << "the staging: the pad along that heading holds nothing";
+            }
             hold_attack(orc, com);
             const std::uint32_t waver = waver_bound_of(orc);
             ASSERT_GT(waver, 0u);
@@ -444,6 +464,9 @@ protected:
             EXPECT_EQ(320, orc->xpos()) << "not moved";
             EXPECT_EQ(320, orc->ypos()) << "not moved";
             EXPECT_EQ(FACE_RIGHT, orc->curdir());
+            EXPECT_EQ(FACE_RIGHT, orc->enddir());
+            EXPECT_FLOAT_EQ(orc->stepsize(), orc->lastx()) << "the heading points at the foe";
+            EXPECT_FLOAT_EQ(0.0f, orc->lasty()) << "the heading points at the foe";
             if (fixes) {
                 EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "the swing started: the fire delay is charged";
                 EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "the swing started: the attack animation runs";
@@ -1014,7 +1037,8 @@ TEST_F(SemAi5, a_melee_only_attacker_that_must_turn_only_turns_on_both_settings)
 }
 
 // Gameplay Fixes BC (#447) and init_fire's busy gate (walker.cpp); the setting
-// on only (off, the round only faces, as test 6 shows). The scene of test 6
+// on only (off, the round only faces, as the swing test above shows). The
+// scene of a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
 // with the orc busy 3: the order's round neither starts a swing (busy stays 3,
 // the walk animation) nor steps (not moved); the round itself drains nothing
 // (busy drains in living::act_round, not in the order).
@@ -1257,26 +1281,49 @@ TEST_F(SemAi5, a_melee_only_attacker_whose_foe_is_on_another_floor_only_faces_it
 }
 
 // Gameplay Fixes BC (#447) in a ticking world; both settings. The orc of
-// test 6 (the soldier's body on its pad, not busy, the ATTACK order of 30
-// rounds) with only enough magic for the blows this test counts: three swings
-// at its weapon's cost, which is less than HOWL costs (asserted), so no
-// special can ever fire. The soldier is a seat with nobody at it (ACT_CONTROL:
-// it does not act, and a seat's hit response does nothing) with 400 hp, so it
-// cannot die here. Walkers are read by entity id after each world.tick().
-// P, the acts from one swing's start to the next, is the fire delay (busy
-// drains one an act once the animation is over) plus the attack animation's
-// further acts; a blow lands when the animation's row ends, its length minus
-// one acts after the swing starts. Both are counted from the orc's own
-// animation row.
-//  Setting on, 3P ticks: swings start on ticks 1, 1 + P and 1 + 2P, and the
-//    blows land on those ticks plus the row's further acts; the orc never
-//    moves (a body on its pad is never stepped at) and the order still holds.
+// a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+// (the soldier's body on its pad, not busy, the ATTACK order of 30 rounds)
+// with magic for three swings at its weapon's cost, which is less than HOWL
+// costs (asserted), so no special can ever fire. No magic returns and no hit
+// point heals during the test: each regen delay starts at 0 and is longer
+// than the test (asserted). The soldier is a seat with nobody at it
+// (ACT_CONTROL: it does not act, and a seat's hit response does nothing) with
+// 400 hp, so it cannot die here. Asserted first, in a twin world: the line
+// check refuses the orc NoRanged with that magic and with none (the
+// melee-only gate comes before the magic gate, so a dry orc stays in this arm
+// of the order). Walkers are read by entity id after each world.tick().
+// P, the acts from one swing's start to the next, is the fire delay (a whole
+// number, asserted; busy drains one an act once the animation is over) plus
+// the attack animation's further acts; a blow lands when the animation's row
+// ends, its length minus one acts after the swing starts. Both are counted
+// from the orc's own animation row. The order spends a round only on an act
+// that does not animate, so a fire delay's worth of rounds each period.
+//  Setting on, 4P ticks: swings start on ticks 1, 1 + P, 1 + 2P and 1 + 3P,
+//    each charging busy its fire delay. The first three blows land on their
+//    start plus the row's further acts, and the third spends the orc's last
+//    magic. The fourth swing is not paid for and still starts (the weapon's
+//    magic is not asked; that an unpaid swing still costs its animation and
+//    its pause is #574): it lands nothing, so the soldier's hit points do not
+//    change after the third blow. The orc never moves (a body on its pad is
+//    never stepped at) and the order still holds, four fire delays of rounds
+//    spent.
 //  Setting off, the order's 30 ticks: no swing starts and no blow lands; the
 //    order is spent, one round an act.
 TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_order)
 {
+    const int blows = 3;
+    const int periods = blows + 1;
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(setting(fixes));
+        Scene twin = orc_scene(fixes, FACE_RIGHT, 1);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        twin.bot->stats()->set_magicpoints(static_cast<float>(blows * twin.bot->stats()->weapon_cost()));
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: refused as melee only, the foe in reach, with magic for three swings";
+        twin.bot->stats()->set_magicpoints(0.0f);
+        ASSERT_TRUE(refusal(twin.bot, 1, 0) == walker::FireCheckDenial::NoRanged)
+            << "the staging: with no magic still refused as melee only (that gate comes before the magic gate)";
+
         Scene sc = orc_scene(fixes, FACE_RIGHT, 1);
         ASSERT_TRUE(sc.bot && sc.soldier);
         walker* orc = sc.bot;
@@ -1286,7 +1333,6 @@ TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_orde
         ASSERT_FLOAT_EQ(0.0f, orc->busy());
         const int cost = orc->stats()->weapon_cost();
         ASSERT_GT(cost, 0) << "the staging: a swing costs magic";
-        const int blows = 3;
         ASSERT_LT(blows * cost, static_cast<int>(og::sim::cast_cost(*orc, 1, false)))
             << "the staging: less magic than HOWL costs";
         orc->stats()->set_magicpoints(static_cast<float>(blows * cost));
@@ -1301,27 +1347,45 @@ TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_orde
         ASSERT_GE(row_len, 1) << "the staging: the attack row has frames";
         const int fire_delay = static_cast<int>(std::ceil(orc->fire_frequency()));
         ASSERT_GE(fire_delay, 1);
+        ASSERT_FLOAT_EQ(static_cast<float>(fire_delay), orc->fire_frequency()) << "the staging: a whole fire delay";
         const int lands_after = row_len - 1;
         const int period = fire_delay + lands_after;
+        const int ticks = fixes ? periods * period : kOrder;
+        ASSERT_LT(periods * fire_delay, kOrder) << "the staging: the order outlasts the four periods";
+        orc->stats()->set_current_magic_delay(0);
+        ASSERT_FLOAT_EQ(0.0f, orc->stats()->magic_per_round()) << "the staging: no magic returns";
+        ASSERT_GT(orc->stats()->max_magic_delay(), ticks) << "the staging: no magic returns during the test";
+        sc.soldier->stats()->set_current_heal_delay(0);
+        ASSERT_FLOAT_EQ(0.0f, sc.soldier->stats()->heal_per_round()) << "the staging: no hit point heals";
+        ASSERT_GT(sc.soldier->stats()->max_heal_delay(), ticks) << "the staging: no hit point heals during the test";
         hold_attack(orc);
         const std::uint32_t orc_id = orc->entity_id();
         const std::uint32_t soldier_id = sc.soldier->entity_id();
         const float hp0 = sc.soldier->stats()->hitpoints();
 
         std::vector<int> starts;
+        std::vector<float> busy_at_start;
         std::vector<int> landed;
         float busy_before = 0.0f;
         float hp_before = hp0;
-        const int ticks = fixes ? 3 * period : kOrder;
+        float hp_after_third = -1.0f;
+        float magic_after_third = -1.0f;
         for (int t = 1; t <= ticks; ++t) {
             world().tick();
             const walker* o = world().find_by_id(orc_id);
             const walker* foe = world().find_by_id(soldier_id);
             ASSERT_TRUE(o != nullptr && foe != nullptr) << "tick " << t;
-            if (o->busy() > busy_before)
+            if (o->busy() > busy_before) {
                 starts.push_back(t);
-            if (foe->stats()->hitpoints() < hp_before)
+                busy_at_start.push_back(o->busy());
+            }
+            if (foe->stats()->hitpoints() < hp_before) {
                 landed.push_back(t);
+                if (landed.size() == static_cast<std::size_t>(blows)) {
+                    hp_after_third = foe->stats()->hitpoints();
+                    magic_after_third = o->stats()->magicpoints();
+                }
+            }
             busy_before = o->busy();
             hp_before = foe->stats()->hitpoints();
             EXPECT_EQ(320, o->xpos()) << "tick " << t << ": the orc never moves";
@@ -1332,11 +1396,19 @@ TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_orde
         ASSERT_TRUE(o != nullptr && foe != nullptr);
         ASSERT_FALSE(foe->dead()) << "the staging: the soldier cannot die in this test";
         if (fixes) {
-            EXPECT_EQ((std::vector<int>{1, 1 + period, 1 + 2 * period}), starts)
-                << "one swing per weapon pause, P = " << period;
+            ASSERT_EQ((std::vector<int>{1, 1 + period, 1 + 2 * period, 1 + 3 * period}), starts)
+                << "one swing per weapon pause, P = " << period << "; the fourth is not paid for and still starts";
+            for (std::size_t i = 0; i < busy_at_start.size(); ++i)
+                EXPECT_FLOAT_EQ(o->fire_frequency(), busy_at_start[i]) << "swing " << i + 1 << " charges busy its fire delay";
             EXPECT_EQ((std::vector<int>{1 + lands_after, 1 + period + lands_after, 1 + 2 * period + lands_after}), landed)
-                << "each blow lands when the attack row ends";
+                << "each paid blow lands when the attack row ends; the unpaid fourth lands nothing";
+            EXPECT_FLOAT_EQ(0.0f, magic_after_third) << "the third blow spends the orc's last magic";
+            EXPECT_FLOAT_EQ(0.0f, o->stats()->magicpoints()) << "the fourth swing spends nothing";
+            EXPECT_FLOAT_EQ(hp_after_third, foe->stats()->hitpoints())
+                << "the soldier's hit points do not change after the third blow";
             EXPECT_EQ(COMMAND_ATTACK, front_of(o).type) << "the order still holds";
+            EXPECT_EQ(kOrder - periods * fire_delay, front_of(o).count)
+                << "a round on each act that does not animate: a fire delay's worth each period";
         } else {
             EXPECT_TRUE(starts.empty()) << "the classic order starts no swing";
             EXPECT_TRUE(landed.empty()) << "the classic order lands no blow";
@@ -1346,12 +1418,22 @@ TEST_F(SemAi5, a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_orde
     }
 }
 
-// Gameplay Fixes BC (#447): the rule reads nothing from the order, so an
+// Gameplay Fixes BC (#447): the rule reads nothing from the order and snaps
+// the bot to face its foe, heading included, before it asks the pad, so an
 // ATTACK order a mode's script or a pack queues (com1 and com2 0) fights the
-// same way. Test 6's scene and asserts with the order queued as (30, 0, 0).
+// same way, also when it finds the bot's heading pointing away from where
+// the bot faces. The scene and asserts of
+// a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+// with the order queued as (30, 0, 0) and the orc's heading pointing DOWN
+// while it faces RIGHT (asserted: along that heading its pad holds nothing).
+// One round, both settings: the heading points at the foe again and the orc
+// has not moved; setting on, the swing starts; off, it only faces. Without
+// the snap the orc would ask the pad below it, find it clear and step: the
+// step bumps the soldier (a swing all the same) and moves the orc a pixel, so
+// "not moved" is the assert that tells the two apart.
 TEST_F(SemAi5, an_attack_order_queued_by_a_script_fights_the_same_way)
 {
-    faced_swing_round(0);
+    faced_swing_round(0, /*stale_heading=*/true);
 }
 
 // The guard-standoff fix, kept on both settings by
