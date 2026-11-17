@@ -8696,9 +8696,9 @@ inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
 // passes or not on its own waver draw, Gameplay Fixes BD) met rocks in the
 // air and sounded among the throws, and the pin no longer changed a fact.
 // The volley needs no foe, and the elf's magic is all its own: a placed
-// walker's stats gain 1 MP on its first act (the regeneration count starts
-// full) and the next only 1000 acts later, so the throws are counted from the
-// MP alone.
+// walker below its maximum of 50 MP gains 1 on its first act (the
+// regeneration count starts full) and the next only 1000 acts later, so the
+// throws are counted from the MP alone.
 inline constexpr SpawnSpec kFamilySpawns_elf_volley_refund_fixes_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 600, 680, 0, 0 },           // far away: holds the level open and never shoots
     { FAMILY_ELF,    0, kOrderLiving, 120, 120, 0, 0, 4, 21 },    // caster LAST -> player
@@ -9441,8 +9441,9 @@ inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
 // its blast reaches 31 px (15 + 16) and never its own caster, so each one
 // strikes its tower and the two towers 17 px from it around the ring, and
 // each tower takes three. Nothing else strikes a tower: the archmage is the
-// player and only casts, and a tower's arrows strike only the archmage, whose
-// armour takes them whole.
+// player and only casts, and no tower looses an arrow: the archmage's body
+// holds the pad of each tower that fires, so the tower strikes it with its own
+// blow, and a tower's own damage is 0.
 inline constexpr InputEvent kInputs_archmage_summon_no_room_early[] = {
     {  1, 0, K_SPECIAL_SWITCH }, {  2, 0, K_NONE },
     {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },
@@ -10879,16 +10880,15 @@ inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
 // right_blocked's FACE_UP probe (the orc's box moved one pixel right) does. The
 // classic probe is loud: it eats the potion. With the setting on (fix Y) the
 // right-hand walk's probes ask quietly and the potion stands to the end.
-// The setting-on twin takes seed 16 (0x10). On 0x42 the ATTACK order
-// (Gameplay Fixes BC) lets the orc swing at the tower's body on its pad, so
-// it kills the tower and walks off toward the idle player over the potion,
-// which is gone with or without the quiet probes, and the pin changed
-// nothing. Seed 16 is the first from 0 where the potion stands with the
-// setting on and the mutation's loud probe eats it: at tick 5 the orc, at
-// (120,120) heading UP, takes a right-hand-walk act (walk_to_foe between two
-// re-plans) whose right-side probe covers the potion; it kills the tower at
-// tick 59 and its walk toward the player passes below the potion. Of seeds 0
-// to 199, 54 do so.
+// The setting-on twin keeps its twin's seed and ends at tick 25. With 150
+// ticks the ATTACK order (Gameplay Fixes BC) lets the orc swing at the
+// tower's body on its pad: on 0x42 it kills the tower at tick 52 and its walk
+// toward the idle player eats the potion at tick 59, with or without the
+// quiet probes. Inside 25 ticks the tower stands and the orc, before its first
+// re-plan, takes right-hand-walk acts (walk_to_foe); at tick 6, at (120,120)
+// heading UP, its right-side probe covers the potion: quiet with the setting
+// on, loud under the pin. Every seed from 0 to 199 keeps the potion with the
+// setting on and loses it under the pin, the tower standing at tick 25.
 inline constexpr SpawnSpec kFamilySpawns_orc_right_walk_potion_scen99[] = {
     { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and heading UP; level 10 outlives the budget
     { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 135, 124, 0, 0 },         // 7x13, one pixel outside the orc's right side: only right_blocked's FACE_UP probe meets it
@@ -10912,7 +10912,7 @@ inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
     "bool statistics::right_walk()"
 };
 inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
-    pred::TickReached(150),
+    pred::TickReached(25),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1,
         "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
@@ -10922,7 +10922,7 @@ inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
     "src/gameplay/stats.cpp", 1479,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = false;",
-    "right_walk's probes are loud again with the setting on, so right_blocked's probe at tick 5 eats the potion: WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
+    "right_walk's probes are loud again with the setting on, so right_blocked's probe at tick 6 eats the potion: WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
     "bool statistics::right_walk()"
 };
 
@@ -11440,8 +11440,8 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_scen99 = {
 // Gameplay Fixes BD) were all the pin's extra draw could move, so the pin no
 // longer changed a fact. Here the tower stands far away, where it only holds
 // the level open, and the elf holds fire after the second press, which spends
-// what the first press left: a placed walker's stats gain 1 MP on its first
-// act and the next only 1000 acts later, so the elf's magic is its own.
+// what the first press left: a placed walker below its maximum of 50 MP gains
+// 1 on its first act and the next 1000 acts later; the elf's magic is its own.
 inline constexpr InputEvent kInputs_elf_rocks_edge_pad_then_fire[] = {
     {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // heading UP (the spawn heading): the rock's pad is off the map
     { 12, 0, K_DOWN },    { 13, 0, K_NONE },     // one step DOWN sets the heading
@@ -15302,8 +15302,8 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_right_walk_potion_scen99, std::size(kFacts_orc_right_walk_potion_scen99),
       kMut_orc_right_walk_potion_scen99 },
-    { "orc_right_walk_potion_fixes_scen99", "scen/scen1.fss", 0x00000010u,
-      kInputsEmpty, std::size(kInputsEmpty), 150,
+    { "orc_right_walk_potion_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 25,
       CompareMode::SemanticParity, false,
       kFamilySpawns_orc_right_walk_potion_scen99, std::size(kFamilySpawns_orc_right_walk_potion_scen99),
       0, false, true, Exercises::None,
