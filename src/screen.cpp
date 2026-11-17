@@ -132,6 +132,7 @@ screen::screen(short howmany)
 	
 	enemy_freeze = 0;
 	gameplay_fixes = 0; // port of the current game's 0721756c
+	slit_open_for = NULL; // port of the current game's 2b36b5d09 (Gameplay Fixes BD)
 
 	level_done = 0;
 	
@@ -554,7 +555,11 @@ bool screen::query_grid_passable(float x, float y, walker  *ob, bool quiet)
 						// the pad is under 40 px from the shooter's corner, so
 						// dist / GRID_SIZE is 0 or 1 after the adjustment below,
 						// and random(0) and random(1) both answer 0 (passable).
-						if (!quiet)
+						// With Gameplay Fixes on the line check's probe
+						// (slit_open_for, fix BD) is answered the same way: the
+						// check takes the slit as open and the shot takes the
+						// gamble (port of the current game's 2b36b5d09).
+						if (!quiet && ob != slit_open_for)
 						{
 							if (abs(ob->xpos - ob->owner->xpos)>
 							        abs(ob->ypos - ob->owner->ypos))

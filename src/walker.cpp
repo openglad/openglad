@@ -4823,6 +4823,14 @@ short walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	*/
 
 	// Run weapon through where it would go if all went well ..
+	// Gameplay Fixes BD (#538): with the setting on the ray is the shot's own
+	// flight (line_check_flight); off, the classic loop below, which places the
+	// test weapon 0, 1, 3, 6, 10 ... steps out.
+	{
+		short flown = line_check_flight(weapon, denial);
+		if (flown >= 0)
+			return flown;
+	}
 	for (i=0; i < weapon->lineofsight; i++)
 	{
 		weapon->setxy(weapon->xpos + i*weapon->lastx,
@@ -4904,14 +4912,22 @@ walker::act_fire()
 		dead = 1;
 		death();
 	}
-	else if (!walk() || stats->query_bit_flags(BIT_NO_COLLIDE))
+	else
 	{
+		// One step (flight_step): a step the weapon could not take, or any
+		// step of a NO_COLLIDE weapon, strikes the live body it met; an
+		// ordinary weapon is spent by a step it could not take or that struck,
+		// a NO_COLLIDE one by every step, unless it is IMMORTAL. (Port of the
+		// current game's b0a1001d8: the same statements, the step written once
+		// for the shot and for the line check that predicts it.)
+		short step = flight_step();
 		// Hit the collide_ob;
-		if (collide_ob && !collide_ob->dead)
+		if (step == 1)
 		{
 			attack(collide_ob);
 		}
-		if (!stats->query_bit_flags(BIT_IMMORTAL))
+		if ((step != 0 || stats->query_bit_flags(BIT_NO_COLLIDE)) &&
+		        !stats->query_bit_flags(BIT_IMMORTAL))
 		{
 			dead = 1;
 			death();
@@ -5733,4 +5749,73 @@ bool walker::pad_room(char order, char family, short weapon)
 	body.xpos = px;   // the plain fields: never setxy, which would file the body in the obmap
 	body.ypos = py;
 	return myscreen->query_passable(px, py, &body, true);
+}
+
+// One step of a weapon in flight (walker.h): 0 flew, 1 struck, 2 stopped.
+// A step the weapon could not take (it met a body or a wall), or any step of
+// a NO_COLLIDE weapon, has struck the live body that step met; a wall, the
+// map's edge or a corpse is no strike. (Port of the current game's
+// b0a1001d8.)
+short walker::flight_step()
+{
+	bool walked = walk();
+	if ((!walked || stats->query_bit_flags(BIT_NO_COLLIDE)) && collide_ob && !collide_ob->dead)
+		return 1;
+	return walked ? 0 : 2;
+}
+
+// Gameplay Fixes BD (#538; port of the current game's 2b36b5d09):
+// fire_check's ray, flown the way the shot flies (walker.h). The classic loop
+// places its test weapon 0, 1, 3, 6, 10 ... steps out, each spot cut to a
+// whole pixel, so it steps over a body the shot would strike and over a
+// one-tile wall the shot would stop on. With the setting on the check asks
+// the pad first, as fire() does (terrain there refuses, a body there
+// passes), then flies the steps a fresh shot moves, lineofsight - 1 (fire()
+// gives a fresh shot a facing its first act only turns to), each the shot's
+// own step: a step that strikes a live body passes, a step stopped by a wall
+// or the map's edge refuses, and when the steps run out the check refuses.
+// From the pad on, an arrow slit is open to the check and draws nothing
+// (screen::slit_open_for, read where the gamble is rolled): the shot itself
+// takes the slit's gamble. This game has no mode ball, so the current game's
+// questions about one are absent here.
+short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
+{
+	if (!myscreen->gameplay_fixes)
+		return -1;
+	short lands = 0;
+	FireCheckDenial why = FireCheckDenial::RayMiss;
+	myscreen->slit_open_for = weapon;
+	if (!myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon))
+		why = FireCheckDenial::WallBlocked;
+	else if (!myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon))
+	{
+		lands = 1;
+		why = FireCheckDenial::None;
+	}
+	else
+	{
+		// the test weapon is pointed along its heading, so walk() steps at once
+		weapon->curdir = (char) weapon->facing(weapon->lastx, weapon->lasty);
+		for (short step = 1; step < weapon->lineofsight; ++step)
+		{
+			weapon->collide_ob = NULL;  // weap::act clears it before every act
+			short met = weapon->flight_step();
+			if (met == 1)
+			{
+				lands = 1;
+				why = FireCheckDenial::None;
+				break;
+			}
+			if (met == 2)
+			{
+				why = FireCheckDenial::WallBlocked;
+				break;
+			}
+		}
+	}
+	myscreen->slit_open_for = NULL;
+	weapon->dead = 1;
+	if (denial)
+		*denial = why;
+	return lands;
 }

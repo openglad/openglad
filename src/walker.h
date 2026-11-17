@@ -143,6 +143,18 @@ class walker : public pixieN
 		};
 		short fire_check(short xdelta, short ydelta,
 		                 FireCheckDenial* denial = NULL);
+		// One step of a weapon in flight: walk() along its heading, and what
+		// that met: 0 it flew, 1 it struck a live body, 2 it was stopped (a
+		// wall, the map's edge, a corpse). act_fire takes it every act; with
+		// Gameplay Fixes on, line_check_flight's test weapon takes the same
+		// step (port of the current game's b0a1001d8 and 2b36b5d09, the line
+		// check, Gameplay Fixes BD, #538).
+		short flight_step();
+		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot
+		// flies. -1 with the setting off (fire_check's classic loop asks);
+		// else 1 the shot lands, 0 it does not, with the test weapon set dead
+		// and *denial written.
+		short line_check_flight(walker* weapon, FireCheckDenial* denial);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

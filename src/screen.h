@@ -124,6 +124,11 @@ class screen : public video
 		char alternate_name[NUM_FAMILIES][NUM_SPECIALS][20];
 		unsigned short enemy_freeze; // stops enemies from acting
 		short gameplay_fixes; // port of the current game's 0721756c: the Gameplay Fixes setting, 0 = classic; the golden capture tool sets it per row
+		// While walker::line_check_flight flies its test weapon (Gameplay Fixes
+		// BD, port of the current game's 2b36b5d09) this names that weapon:
+		// query_grid_passable takes an arrow slit as open for it and draws
+		// nothing, as it does for a quiet question. NULL at every other time.
+		walker *slit_open_for;
 		soundob *soundp;
 		short redrawme;
 		viewscreen  * viewob[5];
