@@ -490,21 +490,39 @@ short statistics::do_command()
 					}
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)
-						// Note for NoRanged (melee-only) families: this only
-						// FACES the bump-range foe. Their swings are bumps: a
-						// step of their own that runs into a body (living::walk's
-						// probe); with Gameplay Fixes on, the right-hand walk's
-						// probe that finds their own foe (statistics::path_probe;
-						// off, every loud probe bumps) and walk_to_foe's near
-						// branch when a foe's body stands on their weapon's pad
-						// (Gameplay Fixes BB; off, that branch's init_fire() only
-						// turns the bot back: measured 2026-11-01, walker::turn
-						// moves a notch even when the bot already faces the foe).
-						// Wiring init_fire()
+						// Note for NoRanged (melee-only) families: classic, this
+						// arm only FACES a foe inside the weapon's reach. Their
+						// swings are bumps: a step of their own that runs into a
+						// body (living::walk's probe); with Gameplay Fixes on, the
+						// right-hand walk's probe that finds their own foe
+						// (statistics::path_probe; off, every loud probe bumps)
+						// and walk_to_foe's near branch when a foe's body stands
+						// on their weapon's pad (Gameplay Fixes BB; off, that
+						// branch's init_fire() only turns the bot back: measured
+						// 2026-11-01, walker::turn moves a notch even when the
+						// bot already faces the foe). Wiring init_fire()
 						// here as well was tried and rejected: it roughly
 						// doubles melee swing rate over classic and swung
-						// campaign balance hard.
+						// campaign balance hard. Gameplay Fixes BC (#447) does
+						// it behind the setting: a swing at a body on the pad,
+						// else a step (port of the current game's 618370c5d,
+						// the ATTACK order). Off, nothing changed.
+					{
+						// A bot refused for its facing does not face its foe, so "already
+						// faced" is true here only for a melee-only bot in reach of its foe.
+						bool fights = myscreen->gameplay_fixes
+						        && controller->curdir == controller->facing(deltax, deltay);
 						controller->face_delta(deltax, deltay);
+						if (fights)
+						{
+							// one rule with the near branch's swing (fire_pad_answer() == 2
+							// there too): a foe's body on the pad
+							if (controller->fire_pad_answer() == 2)
+								controller->init_fire();
+							else
+								controller->walkstep(deltax, deltay);
+						}
+					}
 					else
 						controller->walkstep(deltax, deltay);
 				}
@@ -1341,6 +1359,8 @@ bool statistics::walk_to_foe()
 						short ux = 0, uy = 0;
 						facing_step_delta((char) controller->curdir, ux, uy);
 						controller->face_delta(ux, uy);
+						// a foe's body on the pad (fire_pad_answer() == 2): one
+						// rule with COMMAND_ATTACK's fight (Gameplay Fixes BC)
 						if (query_bit_flags(BIT_NO_RANGED)
 						        ? controller->fire_pad_answer() == 2
 						        : controller->fire_check((short) xdelta, (short) ydelta))
