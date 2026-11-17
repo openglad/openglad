@@ -1281,7 +1281,10 @@ The parity goldens are captures from the old game (branch
   `740af495` (BC), one per commit, each moving only rows with the setting
   on (the lists below), and the table mirror `941e2d2b` (the facts of the
   moved rows; nothing moved). Six new goldens and 53 recaptured; no
-  setting-off golden moved at any step. `941e2d2b` is the commit the
+  setting-off golden moved at any step. Then the table mirror `e6663739`
+  (fourteen setting-on rows given a fact of their own rule again, see
+  [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1: twelve
+  recaptured, no setting-off golden moved). `e6663739` is the commit the
   goldens are captured from: 390 of 390 goldens `cmp` equal to a full
   capture there, and every capture there `cmp`s equal to this game's run
   of the same row.
@@ -1668,7 +1671,10 @@ the rest were dropped where the value hangs on a line check's waver draw or a fi
 each changed array of the table says which. In `archmage_mind_control_berserk`, `cleric_raise_blocked_corpse`,
 `elemental_struck_short_pool`, `orc_right_walk_potion`, `soldier_whirlwind_no_foe` and
 `thief_bot_charm_or_taunt` the staging no longer reaches the rule the row was written for. No setting-off row
-moves.
+moves. Fourteen of the fifteen rows whose own pin then changed no fact were given a fact of their own rule again,
+with an arena, inputs, a budget or a seed of their own or a worked-out value of the fixed stream, and the twelve
+whose run changed were captured again at `e6663739` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1);
+`soldier_charge_ally` was not.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -3476,6 +3482,47 @@ where an entry was only told to him, or is still open, it says so.
     give the two re-seeded rows spawns of their own that reach the rule
     on any stream, and re-stage the two re-aimed rows so that the walkers
     they read before stay alive.
+
+## Rulings (2026-11-16)
+
+The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
+BC; #538, #513, #447). Each entry below is what the maintainer said, or
+what was only told to him, and what the game or its tests do because of it.
+
+1. **Fourteen setting-on recordings took an arena, inputs, a budget or a
+   seed of their own after the three fixes were ported:** the ports moved
+   them so that their own pin no longer changed a fact. Each now states the
+   consequence of its own rule again, by the first of three cures that
+   works. Two keep their arena and seed, because their rule leaves nothing
+   but one draw fewer: each reads one value of the fixed stream, worked out
+   from its blows (`elemental_struck_short_pool_fixes_scen99` the struck
+   orc's 84 hp, `cleric_bot_raise_or_turn_fixes_scen99` the big orc's 164).
+   Seven take an arena, inputs or a budget of their own that reach the rule
+   whatever the towers' line checks draw:
+   `soldier_whirlwind_no_foe_fixes_scen99` (a foe that never moves, which
+   the caster walks up to), `elf_volley_refund_fixes_scen99`,
+   `elf_rocks_edge_pad_fixes_scen99` and `archer_bolt_edge_pad_fixes_scen99`
+   (the tower far away, and the elf at the edge then holds fire),
+   `archmage_summon_no_room_fixes_scen99` (the eight blockers are the
+   hostile towers, and the summon and the burst come early),
+   `soldier_bot_charge_unaimed_fixes_scen99` (the run ends after tick 0)
+   and `mage_bot_heartburst_fixes_scen99` (the run ends after tick 4).
+   Five take a seed of their own, each the first from 0 where the row
+   reaches its rule and its own pin changes what its fact reads:
+   `thief_bot_charm_or_taunt_fixes_scen99` seed 135 (0x87),
+   `archmage_mind_control_berserk_fixes_scen99` 30 (0x1E),
+   `cleric_bot_resurrect_foe_stain_fixes_scen99` 15 (0xF),
+   `cleric_raise_blocked_corpse_fixes_scen99` 2 and
+   `orc_right_walk_potion_fixes_scen99` 16 (0x10); for the first three the
+   rule is a bot's own roll or the cast's own rolls, which no arena can take
+   out of the question. The setting-off twins keep their arenas, seeds and
+   recordings. `soldier_charge_ally_fixes_scen99` is not cured: in its arena
+   the rush's walk shoves the ally as well, so fix Z leaves one damage draw
+   fewer, which moves no hit point, and only the ally's later path, which
+   no rule gives, differs. Alternatives: seeds of their own for the seven
+   restaged rows (four of the fifteen had taken another seed twice already),
+   and for the ally an arena where the walk cannot shove it. The maintainer
+   was told of this and has not ruled on it.
 
 ## Out of scope
 

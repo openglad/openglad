@@ -8474,8 +8474,8 @@ inline constexpr Mutation kMut_thief_charm_expires_on_timer_scen99 = {
 // while its foe is still 160 px away, outside the 46 px ring, then holds the
 // special again from tick 45, when the foe has walked into the ring. The
 // classic spin at nobody spends the 120 MP, so the second one cannot be paid;
-// with the setting on the first is refused (NO FOE IN RANGE) for free and the
-// second spin lands on the foe. special_soldier_3_scen99 cannot carry this
+// with the setting on the first is refused (NO FOE IN RANGE) for free, so a
+// second spin can be paid (the setting-on twin's own arena, below, shows it). special_soldier_3_scen99 cannot carry this
 // contrast: its foe walks into the ring before tick 20, so both values spin
 // at it. A spin with nobody in reach leaves nothing else in the dump: the
 // player's walk commands do not move it.
@@ -8501,16 +8501,38 @@ inline constexpr Mutation kMut_soldier_whirlwind_no_foe_scen99 = {
     "name = \"WHIRLWIND\", mp_cost = 1",
     "Makes WHIRLWIND cost 1 MP, so the classic spin at nobody leaves enough for the held second one: it lands on the foe and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10300, 10300) fails."
 };
+// The setting-on twin has an arena and inputs of its own. On the shared arena
+// the line check (Gameplay Fixes BD) lets the foe soldier throw its knives from
+// 48 px, so it stops there and never walks into the 46 px ring: both presses
+// were refused for free and the pin changed nothing. Here the foe is a TOWER1,
+// which never moves, 80 px east of the caster (outside the ring at tick 20),
+// and the caster holds RIGHT from tick 25 to tick 36: two acts turn it east
+// and ten steps of 4 px take it to x 160, so the tower stands 40 px off,
+// inside the ring, before the held special at tick 45. The spin's only draw
+// is its blow's damage roll.
+inline constexpr InputEvent kInputs_soldier_whirlwind_walk_in[] = {
+    {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
+    {  8, 0, K_SPECIAL_SWITCH }, {  9, 0, K_NONE },
+    { 20, 0, K_SPECIAL },        { 21, 0, K_NONE },
+    { 25, 0, K_RIGHT },          { 37, 0, K_NONE },
+    { 45, 0, K_SPECIAL },        { 60, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_whirlwind_no_foe_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 200, 120, 0, 0 },          // a foe that never moves, 80 px east: outside the ring at tick 20
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 7, 130 },  // caster LAST -> player; 130 MP = one spin
+};
 inline constexpr FactPredicate kFacts_soldier_whirlwind_no_foe_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the second spin, paid, no longer meets the foe on this stream (the foe ends at 104, the 16 the trees take alone), so the rule's consequence is not reached; reduced to what still derives.
     pred::TickReached(70),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10900, 11200,
+        "consequence: with the setting on the spin at nobody on tick 20 is refused for free, so the 130 MP pay the held spin at tick 45, the tower inside the ring: one blow of the soldier's 20 (17.76 + rng(4), so 18 to 21) leaves it at 109 to 112 hp, and nothing else strikes it; its regeneration waits 50 ticks after the blow"),
+    // rng_drift: the spin's blow is compute_base_damage's roll on the soldier's 20, 17.76 + rng(4) against no armour, so the rule allows exactly 18 to 21 and the band is those values; commit d758bcb17
 };
 inline constexpr Mutation kMut_soldier_whirlwind_no_foe_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 79,
     "if gf.on() and #foes == 0 then",
     "if false then",
-    "Removes the refusal, so the spin at nobody spends the 120 MP and the second one cannot be paid: the foe never takes the spin and ends at 104 hp, the 16 the trees take alone, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8400, 8400) fails."
+    "Removes the refusal, so the spin at nobody on tick 20 spends 120 of the 130 MP and the held spin at tick 45 cannot be paid: the tower is never struck and ends at 130 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10900, 11200) fails."
 };
 
 // --- soldier_disarm_higher_foe (fix A: DISARM) -----------------------------
@@ -8641,14 +8663,11 @@ inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
 // --- elf_volley_refund (fix H: the volleys refund the rocks they throw) -----
 // A level-4 elf with 21 MP throws BOUNCING ROCKS (slot 2 at tick 20) toward a
 // TOWER1 80 px above (a spawned walker throws upward), then holds fire from
-// tick 30. The classic volley refunds three rocks for the two it throws (2 MP
-// left), the fixed one two (1 MP left); the held fire is paid rock by rock, so
-// the classic elf throws one more rock. With the setting on the tower shoots
-// twice (27, 40): its re-plan at tick 7 asks its line check (Gameplay Fixes BB)
-// and holds the arrow fix AT alone loosed there. The fixed run ends with 6
-// sounds and one rock in flight: four rock throws and two arrows, against the
-// classic's five throws, one arrow and the tower's death cry; the fixed row's
-// pin, the classic overpay on that stream, gives 7 sounds and two rocks.
+// tick 30. The classic volley refunds three rocks for the two it throws (3 MP
+// left, with the 1 MP a placed walker gains on its first act), the fixed one
+// two (2 MP left); the held fire is paid rock by rock, so the classic elf
+// throws one more rock. The setting-on twin plays it with the tower far away
+// (below).
 inline constexpr InputEvent kInputs_elf_volley_refund[] = {
     {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
     { 20, 0, K_SPECIAL },        { 21, 0, K_NONE },
@@ -8672,16 +8691,29 @@ inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
     "local refund = cost_mult - 1",
     "Makes the classic refund one rock short (cost_mult - 1 = 2, the fixed amount), so the elf ends the volley one MP lower and throws one rock fewer: EventKindExactly(play_sound, 7) reads 6 and no rock is in flight at the end."
 };
+// The setting-on twin has spawns of its own: the tower stands far away, where
+// it only holds the level open. Beside the elf its arrows (each flown check
+// passes or not on its own waver draw, Gameplay Fixes BD) met rocks in the
+// air and sounded among the throws, and the pin no longer changed a fact.
+// The volley needs no foe, and the elf's magic is all its own: a placed
+// walker's stats gain 1 MP on its first act (the regeneration count starts
+// full) and the next only 1000 acts later, so the throws are counted from the
+// MP alone.
+inline constexpr SpawnSpec kFamilySpawns_elf_volley_refund_fixes_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 600, 680, 0, 0 },           // far away: holds the level open and never shoots
+    { FAMILY_ELF,    0, kOrderLiving, 120, 120, 0, 0, 4, 21 },    // caster LAST -> player
+};
 inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's flown checks (BD) pass on their own waver draws, so its arrows and the stream after them are no longer derivable; reduced to what still derives.
     pred::TickReached(72),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 4,
+        "consequence: with the setting on the volley refunds exactly the two rocks it throws: the 21 MP and the first act's 1 make 22, BOUNCING ROCKS' 20 and its two rocks at 1 each leave 2 after the refund of 2, and the held fire from tick 30 throws one rock for each of those 2 MP: four throws, and nothing else sounds"),
 };
 inline constexpr Mutation kMut_elf_volley_refund_fixes_scen99 = {
     "packs/core/families/living-01-elf.lua", 98,
     "refund = count",
     "refund = count + 1",
-    "Refunds one rock more than the volley throws, the classic overpay, so the held fire throws one more rock (tick 49): EventKindExactly(play_sound, 6) reads 7 and WeaponFamilyCount(FAMILY_ROCK, 1, 1) sees two rocks in flight.",
+    "Refunds one rock more than the volley throws, the classic overpay, so 3 MP are left and the held fire throws a third rock: EventKindExactly(play_sound, 4) reads 5.",
     "      -- Gameplay Fixes: refund the rocks that will fly, not one more."
 };
 
@@ -8953,12 +8985,8 @@ inline constexpr Mutation kMut_mage_bot_freeze_engaged_fixes_scen99 = {
 // fireballs only. With the setting on WARP SPACE and ENERGY WAVE want a foe in
 // reach (they have three; FREEZE TIME waits for allies at blows, and this
 // mage has none) and a 5 is HEARTBURST, whose
-// explosions open the run at tick 0. With the setting on all three towers
-// fall: each explosion strikes its tower for 78.44 + rng(9), the three rolls
-// are 5, so each is left at 47 hp, and the mage's fireballs finish them by
-// tick 33 (with fix AT alone
-// the third tower, at (80, 120), was left at 48 hp; before fix AT all three
-// fell and the mage left its marker where it stood (120, 120)).
+// explosions open the run at tick 0 and strike on tick 3; the setting-on twin
+// ends there (below).
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },           // three stationary foes inside 110 px
     { FAMILY_TOWER1,  0, kOrderLiving, 120, 160, 0, 0 },
@@ -8980,18 +9008,23 @@ inline constexpr Mutation kMut_mage_bot_heartburst_scen99 = {
     "Lets the classic gate answer yes with three foes in reach, so the mage casts its specials at the towers: EventKindExactly(play_sound, 17) fails.",
     "  -- TP if away from guys .. or too many enemies!"
 };
+// The setting-on twin has a budget of its own: it ends after tick 4, when the
+// HEARTBURST cast on tick 0 has struck and nothing else can have. The mage
+// acts before the towers (the list runs against the spawn order), so its
+// slot roll on tick 0 comes before any draw of theirs. With 150 ticks every
+// tower fell on both values and the facts left could not see the burst.
 inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the towers' flown checks (BD) pass on their own waver draws and the fight's stream parts, so the mage's hp and the sound count are no longer derivable; reduced to what still derives.
-    pred::TickReached(150),
+    pred::TickReached(5),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
-    // All three towers fall; team 0 keeps the idle player alone.
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4400, 5200,
+        "consequence: with the setting on the roll of 5 on tick 0 is HEARTBURST: a pool of (600 - 100) / 2 = 250 split over the three towers in reach, 83 a tower, and each explosion strikes its tower on tick 3 for 78.44 + rng(9), 78 to 86, so each tower stands at 44 to 52; the mage, busy 5 after the cast, has thrown nothing yet, and a tower's own arrows strike only the mage"),
+    // rng_drift: each explosion is compute_base_damage's roll on 83, 78.44 + rng(9) against no armour, so the rule allows exactly 78 to 86 a tower and the band is 130 less those values; commit d758bcb17
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
     "src/gameplay/living.cpp", 576,
     "(current_special() > 4 && og::sim::session_gameplay_fixes() == 0)",
     "(current_special() > 4)",
-    "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): the fireball fight still kills all three towers, but it gives 15 sounds and leaves the mage at 69 hp, so WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3500, 3500) and EventKindExactly(play_sound, 22) fail."
+    "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): no explosion strikes, a tower is whole or killed by a fireball (each strikes for hundreds), and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4400, 5200) fails."
 };
 
 // --- cleric_turn_undead_reach (fix E: TURN UNDEAD's reach) -----------------
@@ -9081,11 +9114,8 @@ inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
 // The two fights part there: the classic one ends with the cleric's mystic
 // mace out and the tower dead. With the setting on the raise also wants the
 // corpse it would raise within reach and a foe for the risen to fight, so the
-// slot-2 rolls before the faerie dies are refused, and the fight ends with
-// the faerie dead and the tower alive at 34 hp (with fix AT alone the tower
-// fell and the faerie lived at 22 hp; the setting-on tower lived at 11 hp
-// before fix AT, and at 20 hp until the second bugs batch, whose fixes Y and
-// AB change the setting-on fight here).
+// slot-2 rolls with no corpse in reach are refused; what that leaves on the
+// setting-on stream is worked out at its facts below.
 inline constexpr SpawnSpec kFamilySpawns_cleric_bot_raise_or_turn_scen99[] = {
     { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },           // the cleric's ally: kills the faerie
     { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },           // dies beside the cleric: the corpse
@@ -9101,15 +9131,17 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
     // negative_assertion: the classic fight kills the hostile tower
 };
 inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower's line checks (BD) part the fight's stream; the tower's hp and the faerie's fall are no longer derivable; reduced to what still derives.
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) the fight is another one, and no corpse lies in the cleric's reach inside the budget: every slot-2 roll the gate refuses for want of a corpse draws nothing on the hit path, which is all the rule leaves in this arena, so the fact is the fixed stream's value, worked out below.
     pred::TickReached(130),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16400, 16400,
+        "consequence: on the fixed stream the big orc takes the faerie's sprinkle at tick 6 (1), the tower's arrows at ticks 13, 18 and 23 (3.88 + rng(2) on the arrow's 5: 5, 4, 5), regenerates 1 once its 50-tick wait after the last has run (the stats' heal count starts full, the next point comes 1000 acts later), and takes two more sprinkles at ticks 102 and 113 (1 each): 164 of its 180"),
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 620,
     "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the gate's raise_spot test, so the slot-2 roll at tick 0, with no corpse in reach, gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)), first at the faerie's blow on the cleric at tick 57. The fight changes from there and the tower ends at 5 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3400, 3400) fails (with fix AT alone it was the faerie, 22 hp unmutated and 11 mutated; before fix AT the tower, 11 and 9 hp, and 20 and 39 until the second bugs batch)."
+    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)). On the parted stream nothing strikes the big orc and it ends at 180 hp, so WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 16400, 16400) fails (until the line check the fact read the tower's hit points: 34 unmutated and 5 mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -9215,12 +9247,17 @@ inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
 // acted yet, so it still carries its spawn team as its real team and no charm
 // could take it, whatever the level test says. With seed 97 the bot rolled
 // slot 3 at tick 9 until fix AT parted the setting-on stream; on 97 it now
-// rolls no slot 3 inside the run. The twin now takes seed 107 (0x6B), the
+// rolls no slot 3 inside the run. The twin took seed 107 (0x6B), where the
+// bot rolled slot 3 at tick 8, until the kept turn (Gameplay Fixes BE) parted
+// the setting-on stream: on 107 the soldier now kills the thief and its orc
+// by tick 18 and no slot 3 comes. The twin now takes seed 135 (0x87), the
 // first from 0 where the bot taunts after tick 0 and the mutation turns the
-// taunt into a resisted charm: the bot rolls slot 3 at tick 8; the thief
-// charms only a foe it can take, the level-9 soldier is above it, so it
-// taunts ("Nyah Nyah!"), and at tick 20 the thief, its orc and the soldier
-// (110 hp) are all alive.
+// taunt into a resisted charm; of seeds 0 to 399 three do (135, 292, 357):
+// the cast is the bot's own roll, which no staging can take out of the
+// question. On 135 the soldier strikes the thief at tick 6, the bot rolls
+// slot 3 at tick 7, the thief charms only a foe it can take and the level-9
+// soldier is above it, so it taunts ("Nyah Nyah!"), and the soldier strikes
+// it again at tick 14; at tick 20 the thief and its orc are alive.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_or_taunt_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0, 9, 0 },     // higher-level foe, 40 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
@@ -9242,16 +9279,19 @@ inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
     "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the thief's orc is still alive at tick 20: WalkerOfTeamAlive(1, 0, 0) fails."
 };
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the soldier bot's tower and the thief's orc (BC) part the stream before tick 8 and no slot-3 cast comes in the budget, so the charm rule is not reached; reduced to what still derives.
     pred::TickReached(20),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2,
-        "anchor: the two spawned soldiers, the idle player and the level-9 bot, are in the list at the end"),
+    pred::EventKindExactly(/*notification*/2, 1, "anchor: one slot-3 cast, at tick 7 (seed 135)"),
+    pred::WalkerOfTeamAlive(1, 2, 2,
+        "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3300, 3900,
+        "consequence: a taunt gives the soldier no free hit, so only its two blows of the run strike the thief, at ticks 6 and 14, each 17.76 + rng(4) on its 20, 18 to 21: the thief ends at 33 to 39 of its 75; a resisted charm's free hit would be a third"),
+    // rng_drift: each blow is compute_base_damage's roll on the soldier's 20, 17.76 + rng(4) against no armour, so the rule allows exactly 18 to 21 a blow and the band is two such blows; commit d758bcb17
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 74,
     "eligible = foe.level <= max_level",
     "eligible = foe.level >= max_level",
-    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so at tick 8 the gate sends the bot at the level-9 soldier's charm: it is resisted (\"Thief failed to charm!\"), the soldier gets its free hit (the thief ends at 15 hp) and takes no blow in the run, so no soldier is at 110 hp (both are at 120) and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11000, 11000) fails."
+    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so at tick 7 the gate sends the bot at the level-9 soldier's charm: it is resisted (\"Thief failed to charm!\") and the soldier gets its free hit, a third blow, so the thief ends at 17 hp and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3300, 3900) fails."
 };
 
 // --- thief_bot_charm_hero (#355: a hero a player drives resists a charm) ----
@@ -9349,11 +9389,8 @@ inline constexpr Mutation kMut_orc_howl_no_foe_fixes_scen99 = {
 // and keeps it; with the setting on the surcharge is paid only once the
 // elemental stands, so the refusal costs nothing. The HEARTBURST at tick 40
 // shows the difference: its pool is what is left, split over the four hostile
-// towers 100 px away. With the setting on the struck towers' answers differ
-// too (fix AB: a tower short of its special's price says no), so the fight
-// after the HEARTBURST is not the classic one: the surviving hostile tower
-// ends at 17 hp, and at 52 when the refused summon keeps its surcharge (4 and
-// 39 with fix AT alone; 7 and 35 before fix AT).
+// towers 100 px away. The setting-on twin shows it on an arena of its own
+// (below).
 inline constexpr InputEvent kInputs_archmage_summon_no_room[] = {
     {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
     {  8, 0, K_SPECIAL_SWITCH }, {  9, 0, K_NONE },
@@ -9393,18 +9430,55 @@ inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
     "Skips the classic surcharge before the placement, so the refused summon costs nothing and the HEARTBURST at tick 40 spends the larger pool: the surviving hostile tower ends at 23 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3900, 3900) fails.",
     "    if self:has_guy() and self:g_intelligence() < t.summon_int_req then"
 };
+// The setting-on twin has an arena, inputs and a budget of its own. On the
+// shared arena the allied blockers' arrows strike the hostile towers before
+// the HEARTBURST at tick 40, and with the line check (Gameplay Fixes BD) each
+// of them flies or not on its own waver draw, so the burst's share could no
+// longer be read off a tower and the pin changed no fact. Here the eight
+// blockers are themselves the hostile towers, and nothing else stands: the
+// shifted SUMMON (slot 3 at tick 5) finds no room, the HEARTBURST (slot 2 at
+// tick 13) splits its pool over the eight, and the run ends at tick 19, after
+// the explosions have struck on tick 16. A HEARTBURST explosion is magical:
+// its blast reaches 31 px (15 + 16) and never its own caster, so each one
+// strikes its tower and the two towers 17 px from it around the ring, and
+// each tower takes three. Nothing else strikes a tower: the archmage is the
+// player and only casts, and a tower's arrows strike only the archmage, whose
+// armour takes them whole.
+inline constexpr InputEvent kInputs_archmage_summon_no_room_early[] = {
+    {  1, 0, K_SPECIAL_SWITCH }, {  2, 0, K_NONE },
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },
+    {  5, 0, K_SPECIAL | K_SHIFT }, { 6, 0, K_NONE },
+    {  7, 0, K_SPECIAL_SWITCH }, {  8, 0, K_NONE },
+    {  9, 0, K_SPECIAL_SWITCH }, { 10, 0, K_NONE },
+    { 11, 0, K_SPECIAL_SWITCH }, { 12, 0, K_NONE },
+    { 13, 0, K_SPECIAL }, { 14, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_archmage_summon_no_room_fixes_scen99[] = {
+    { FAMILY_TOWER1,   1, kOrderLiving, 103, 103, 0, 0 },          // the eight hostile blockers, the burst's targets
+    { FAMILY_TOWER1,   1, kOrderLiving, 103, 120, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 103, 137, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 120, 103, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 120, 137, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 137, 103, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 137, 120, 0, 0 },
+    { FAMILY_TOWER1,   1, kOrderLiving, 137, 137, 0, 0 },
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 12, 900 }, // caster LAST -> player
+};
 inline constexpr FactPredicate kFacts_archmage_summon_no_room_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the towers' line checks (BD) part the stream before the tick-40 HEARTBURST; the surviving tower's hp is no longer derivable; reduced to what still derives.
-    pred::TickReached(60),
+    pred::TickReached(19),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
     // negative_assertion: no room: the summon is refused, no elemental stands
+    pred::WalkerOfTeamAlive(/*team=*/1, 0, 0,
+        "consequence: with the setting on the surcharge is paid only once the elemental stands, so the refused summon costs nothing and the HEARTBURST spends the whole pool: (900 - 80) / 2 = 410 split over the eight towers, 51 an explosion, each blow 47.43 + rng(7), 47 to 53, so three blows take at least 141 of a tower's 130 and every tower falls on tick 16"),
+    // negative_assertion: no hostile tower stands with the setting on; the pin's smaller pool leaves all eight standing (0 -> 8).
+    pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 701,
     "if not gf.on() then",
     "if true then",
-    "Takes the surcharge before the placement again, so the refused summon keeps it (700 MP left) and the HEARTBURST pool shrinks to 77 a tower: the surviving hostile tower takes 73 and one arrow, ends at 52 hp, and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1700, 1700) fails.",
+    "Takes the surcharge before the placement again, so the refused summon keeps half the spare, (900 - 500) / 2 = 200 (700 MP left), and the HEARTBURST pool shrinks to (700 - 80) / 2 = 310, 38 an explosion: each blow is 34.92 + rng(6), 35 to 40, three take at most 120 of a tower's 130, all eight stand and the level goes on, so WalkerOfTeamAlive(1, 0, 0) and LevelDoneEquals(2) fail.",
     "    if self:has_guy() and self:g_intelligence() < t.summon_int_req then"
 };
 
@@ -9415,12 +9489,17 @@ inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
 // caster's own team: the classic game hands the orc to the caster and the
 // level ends. With the setting on that colour becomes 1, the orc's own, and it
 // stays a foe.
-// Both twins take seed 198. With fix AT alone the setting-on twin needed seed
-// 176 (0xB0): the orc's near-branch swing at the air, 60 px off, parted the
-// stream before the cast and on 198 the control roll succeeded, so fix F was
-// never reached. Gameplay Fixes BB holds that swing (the melee-only orc asks
-// whether a body stands on its pad), and 198 is again the first seed from 0
-// where the setting-on orc stays a foe and the mutation hands it to the caster.
+// With fix AT alone the setting-on twin needed seed 176 (0xB0): the orc's
+// near-branch swing at the air, 60 px off, parted the stream before the cast
+// and on 198 the control roll succeeded, so fix F was never reached. Gameplay
+// Fixes BB held that swing and the twin took 198 again, until the ATTACK
+// order (Gameplay Fixes BC) let the orc swing at the archmage's body on its
+// pad before the cast: on 198 the berserk colour no longer lands on the
+// caster's team. The twin now takes seed 30 (0x1E), the first from 0 where the
+// setting-on orc stays a foe and the mutation hands it to the caster: the
+// control roll fails and the colour roll lands on 0, which the setting makes
+// 1. Of seeds 0 to 599 seven do so; the two rolls are the rule's own input,
+// so no staging can take them out of the question.
 inline constexpr SpawnSpec kFamilySpawns_archmage_mind_control_berserk_scen99[] = {
     { FAMILY_ORC,      1, kOrderLiving, 180, 120, 0, 0, 10, 0 },   // equal-level melee-only foe, 60 px east
     { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 }, // caster LAST -> player
@@ -9440,18 +9519,18 @@ inline constexpr Mutation kMut_archmage_mind_control_berserk_scen99 = {
     "Shifts the berserk colour roll up by one, so the failed control sends the orc to team 1, its own: it stays a foe and WalkerOfTeamAlive(0, 2, 2) and LevelDoneEquals(2) fail."
 };
 inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orc's ATTACK order (BC) now strikes the archmage before the cast, the stream parts and the berserk colour no longer lands on the caster's team, so fix F is not reached; reduced to what still derives.
     pred::TickReached(40),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: with the setting on a berserk colour equal to the caster's team becomes the next one (1), so the orc stays hostile"),
     pred::LevelDoneEquals(0),
 };
 inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 1016,
     "colour = og.mod(colour + 1, 8)",
     "colour = colour",
-    "Keeps the rolled colour, so a berserk roll of 0 puts the orc on the caster's team again: WalkerOfTeamAlive(1, 1, 1) and LevelDoneEquals(0) fail."
+    "Keeps the rolled colour, so the berserk roll of 0 puts the orc on the caster's team and the level ends: WalkerOfTeamAlive(1, 1, 1) and LevelDoneEquals(0) fail."
 };
 
 // --- archmage_bot_summon_no_foe (fix B: the archmage's slot-3 gate) --------
@@ -9649,8 +9728,7 @@ inline constexpr Mutation kMut_archmage_bot_struck_fixes_scen99 = {
 // rush runs nowhere. The classic bot charges anyway (25 MP and the charge
 // sound); with the setting on CHARGE wants a living foe in the path its rush
 // runs, and with no heading the rush walks nowhere, so the bot holds the 25 MP.
-// With the setting on the friendly tower also turns to the bot at once (fix
-// AT), and its first arrow sounds at tick 4.
+// The setting-on twin ends after tick 0 (below).
 inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_unaimed_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },          // the foe, 40 px east: inside the 20-75 window
     { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },  // hostile bot, no heading at spawn
@@ -9667,17 +9745,23 @@ inline constexpr Mutation kMut_soldier_bot_charge_unaimed_scen99 = {
     "G.with_classic(ai.foe_in_window(20, 25), fixed)",
     "Narrows the classic window to 20-25 px, so the tower 40 px off is refused and the bot never charges: EventKindExactly(play_sound, 1) reads 0."
 };
+// The setting-on twin has a budget of its own: it ends after tick 0, the bot's
+// first act and its CHARGE roll. With the line check (Gameplay Fixes BD) the
+// tower's first arrow, from tick 3, passes or not on its own waver draw, and
+// with five ticks the pin no longer changed the sound count. On tick 0 the
+// tower cannot shoot: it faces down at spawn, the bot is west of it, and a
+// shot refused for its facing only turns it.
 inline constexpr FactPredicate kFacts_soldier_bot_charge_unaimed_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces its foe through its own walk and its flown check (BD) passes on its own waver draw, so no arrow is derivable by tick 5; reduced to what still derives.
-    pred::TickReached(5),
-    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
-        "anchor: the spawned tower is in the list at the end"),
+    pred::TickReached(1),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on CHARGE wants a living foe in the path its rush runs; with no heading on tick 0 the rush walks nowhere, so the roll is refused and nothing sounds on tick 0"),
+    // negative_assertion: no sound on tick 0 with the setting on; the pin drops the rush-path test and the charge sounds (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_charge_unaimed_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 296,
     "G.rush_strikes(self, RUSH_STEPS) ~= nil",
     "true",
-    "Drops the rush-path test, so the bot charges on tick 0 with no heading as the classic one does: the charge sound joins the tower's arrow and EventKindExactly(play_sound, 1) reads 2."
+    "Drops the rush-path test, so the bot charges on tick 0 with no heading as the classic one does: the charge sounds and EventKindExactly(play_sound, 0) reads 1."
 };
 
 // --- soldier_bot_boomerang_far (bot gates: BOOMERANG wants a foe inside the orbit) ---
@@ -10085,11 +10169,15 @@ inline constexpr Mutation kMut_cleric_bot_mace_alone_fixes_scen99 = {
 // never casts near the stain, and the mutation changed nothing. The twin took
 // seed 3 (0x3). Gameplay Fixes BB parted the stream once more: on 3 the faerie
 // now dies at tick 75 and the cleric walks off without asking for RESURRECT
-// near its stain, so the mutation changed nothing there either. The twin now
-// takes seed 84 (0x54), the first from 0 where the mutation raises a ghost
-// with the setting on (the classic game raises none on 84): the faerie dies at
-// tick 57, its stain is left at (80,184), and at tick 59 the cleric, at
-// (82,173), asks for RESURRECT with the stain in reach and is refused.
+// near its stain, so the mutation changed nothing there either. The twin took
+// seed 84 (0x54), until the line check and the kept turn (Gameplay Fixes BD,
+// BE) parted the stream again: on 84 the cleric no longer asks for RESURRECT
+// with the stain in reach. The twin now takes seed 15 (0xF), the first from 0
+// where the mutation raises a ghost with the setting on: the faerie dies at
+// tick 154 at (109,105), and at tick 156 the cleric, at (118,90), rolls
+// RESURRECT with its stain in reach and is refused. Of seeds 0 to 399 eight do
+// so; the roll is the bot's own, which no staging can take out of the
+// question.
 inline constexpr SpawnSpec kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99[] = {
     { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },          // the cleric's ally, kills the faerie
     { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },          // a foe that dies beside the cleric: a hostile stain
@@ -10465,10 +10553,13 @@ inline constexpr Mutation kMut_elemental_bot_starburst_one_foe_fixes_scen99 = {
 // until fix AT parted the setting-on stream: on 15 the faerie now dies at
 // tick 60, 30 px east of the cleric and beyond the corpse finder's reach, so
 // the tick-110 raise finds no corpse (NO CORPSE NEARBY) and the mutation
-// changed nothing again. The twin now takes seed 20 (0x14), the first from 0
-// where the mutation refuses a raise the setting-on game makes: the faerie
-// dies at tick 22 and leaves its stain at (112,120), its box reaching into
-// the cleric, and the skeleton rises at (105,113).
+// changed nothing again. The twin took seed 20 (0x14), until the kept turn
+// (Gameplay Fixes BE) parted the setting-on stream: on 20 no skeleton stands
+// at tick 130. The twin now takes seed 2 (0x2), the first from 0 where the
+// mutation refuses a raise the setting-on game makes: the faerie dies at tick
+// 22 and leaves its stain at (106,120), its box reaching into the cleric, and
+// the skeleton rises at (105,120). Of seeds 0 to 299, 56 do so (where the
+// faerie dies is the fight's, which no staging fixes).
 inline constexpr SpawnSpec kFamilySpawns_cleric_raise_blocked_corpse_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 560, 440, 0, 0 },           // far hostile: keeps level_done at 0
     { FAMILY_BIG_ORC, 0, kOrderLiving,  88, 120, 0, 0 },           // executioner, west of the victim
@@ -10493,9 +10584,12 @@ inline constexpr Mutation kMut_cleric_raise_blocked_corpse_scen99 = {
     "Skips the classic stain probe, so the corpse under the cleric's edge counts as clear and the skeleton rises at the stain's corner: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) reads 1 and team 0 has 3 alive."
 };
 inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the fight's stream parts (BD, BE) and no skeleton stands at the end; reduced to what still derives.
     pred::TickReached(130),
     pred::LevelDoneEquals(0),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: with the setting on the raise probes the skeleton's own box, nudged off the caster, and raises it beside the stain"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
+        "consequence: cleric, executioner and the raised skeleton alive on team 0"),
 };
 inline constexpr Mutation kMut_cleric_raise_blocked_corpse_fixes_scen99 = {
     "packs/core/lib/corpses.lua", 18,
@@ -10600,7 +10694,7 @@ inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
 // probes the pad first and says no; the roll takes the bot's ordinary act
 // (fix W), which strikes nothing in the budget: no sound, the tower at 130.
 inline constexpr SpawnSpec kFamilySpawns_elf_bot_rocks_blocked_scen99[] = {
-    { FAMILY_TOWER1,  0, kOrderLiving, 115, 104, 0, 0 },           // touching above, centred: the rock's pad
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 104, 0, 0 },           // overlapping: the 25x29 tower covers y 104 to 132 and the elf's box inside it, the centres in line; its body is the rock's pad
     { FAMILY_ELF,     1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
     { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
 };
@@ -10783,6 +10877,16 @@ inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
 // right_blocked's FACE_UP probe (the orc's box moved one pixel right) does. The
 // classic probe is loud: it eats the potion. With the setting on (fix Y) the
 // right-hand walk's probes ask quietly and the potion stands to the end.
+// The setting-on twin takes seed 16 (0x10). On 0x42 the ATTACK order
+// (Gameplay Fixes BC) lets the orc swing at the tower's body on its pad, so
+// it kills the tower and walks off toward the idle player over the potion,
+// which is gone with or without the quiet probes, and the pin changed
+// nothing. Seed 16 is the first from 0 where the potion stands with the
+// setting on and the mutation's loud probe eats it: at tick 5 the orc, at
+// (120,120) heading UP, takes a right-hand-walk act (walk_to_foe between two
+// re-plans) whose right-side probe covers the potion; it kills the tower at
+// tick 59 and its walk toward the player passes below the potion. Of seeds 0
+// to 199, 54 do so.
 inline constexpr SpawnSpec kFamilySpawns_orc_right_walk_potion_scen99[] = {
     { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and heading UP; level 10 outlives the budget
     { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 135, 124, 0, 0 },         // 7x13, one pixel outside the orc's right side: only right_blocked's FACE_UP probe meets it
@@ -10806,16 +10910,17 @@ inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
     "bool statistics::right_walk()"
 };
 inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orc now fights in its ATTACK order (BC) and the stream parts, and the potion is eaten on this stream; reduced to what still derives.
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1,
+        "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
     // negative_assertion: the potion stands to the end with the setting on; the pin makes the probe loud again and it is eaten (1 -> 0).
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
     "src/gameplay/stats.cpp", 1479,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = false;",
-    "right_walk's probes are loud again with the setting on, so right_blocked's probe eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
+    "right_walk's probes are loud again with the setting on, so right_blocked's probe at tick 5 eats the potion: WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
     "bool statistics::right_walk()"
 };
 
@@ -11219,9 +11324,8 @@ inline constexpr Mutation kMut_druid_bot_tree_pad_body_fixes_scen99 = {
 // response: the gate, then rng(3); a 0 casts and the cast refuses NOT ENOUGH MP
 // (twice in this run). With the setting on (fix AB) the gate answers no for a
 // slot the bot cannot pay, so no rng(3) is drawn for it. Every later draw
-// shifts: the classic run ends with 10 sounds and the struck orc at 82 hp, the
-// fixed one with 8 sounds and that orc at 77 (7 and 92 with fix AT alone; 8
-// sounds and 67 before fix AT, 96 before fix Y's melee bump).
+// shifts: the classic run ends with 10 sounds and the struck orc at 82 hp; the
+// fixed run's value is worked out at its facts below.
 inline constexpr SpawnSpec kFamilySpawns_elemental_struck_short_pool_scen99[] = {
     { FAMILY_FIREELEMENTAL, 1, kOrderLiving, 120, 120, 0, 0, 1, 30 },  // hostile level-1 bot, 30 MP: under STARBURST's 50 and under the act path's slot-1 guard, so only hits reach the gate
     { FAMILY_ORC,           2, kOrderLiving, 120, 137, 0, 0 },         // at blows below, a third team: nothing is friendly
@@ -11244,16 +11348,18 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
     "	// Default: attack our attacker"
 };
 inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the orcs now fight in their ATTACK orders (BC), the elemental falls inside the budget and the stream parts before the hit responses this row was written for; reduced to what still derives.
+    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) the fight is another one: the orcs swing in their ATTACK orders (BC) and the elemental falls inside the budget. The orcs' four blows on it, at ticks 5 and 14, still ask its hit response, which with the setting on draws no rng(3) for the STARBURST it cannot pay; the rule leaves nothing but that missing draw, so the fact is the fixed stream's value, worked out below.
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_ORC, 2, 2,
         "anchor: the two spawned orcs are in the list at the end"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 8400, 8400,
+        "consequence: with the setting on the hit responses draw nothing, and on the fixed stream the orc below the elemental takes its two blows, at ticks 39 and 40 (25.35 + rng(5) on its 28: 28 and 28), and nothing else: 84 of its 140 at the end"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
     "src/gameplay/living.cpp", 942,
     "stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
     "false)",
-    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again at the orcs' two blows: on the parted stream the struck orc ends at 94 hp, so WalkerHpRangeAtFinalTick(FAMILY_ORC, 7700, 7700) fails (that stream gives 8 sounds too).",
+    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again at the orcs' blows: on the parted stream that orc ends at 85 hp, so WalkerHpRangeAtFinalTick(FAMILY_ORC, 8400, 8400) fails.",
     "	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold"
 };
 
@@ -11263,15 +11369,11 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
 // classic cast refunds two rocks, fire() charges its swing and draws the
 // waver, and the cast refuses COULD NOT FIRE: 11 MP. With the setting on (fix
 // AC) the cast asks the pad first and refuses before it pays: 10 MP, no draw.
-// The elf then steps down and the second press throws its two rocks at the
-// hostile TOWER1 below on both values. The extra waver draw parts the classic
-// stream: it ends with 4 sounds, the tower at 127 hp and the elf at 71 (an
-// arrow of the tower's lands). With the setting on the tower's re-plan at
-// tick 8 asks its line check (Gameplay Fixes BB) and holds the arrow fix AT
-// alone loosed there: the fixed run ends with 4 sounds, the tower at 127 and
-// the elf at 71 (5, 127 and 71 with fix AT alone; 3 sounds, 126 and 75 before
-// fix AT); the classic payment on that stream (the pin) ends with 3 sounds,
-// the tower whole and the elf at 75.
+// The elf then steps down and the second press throws its two rocks down on
+// both values. In the classic twin the extra waver draw parts the stream: it
+// ends with 4 sounds, the tower below at 127 hp and the elf at 71 (an arrow of
+// the tower's lands). The setting-on twin plays the presses with the tower far
+// away and a held fire after them (below).
 inline constexpr InputEvent kInputs_elf_rocks_edge_pad[] = {
     {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // heading UP (the spawn heading): the rock's pad is off the map
     { 12, 0, K_DOWN },    { 13, 0, K_NONE },     // one step DOWN sets the heading
@@ -11295,17 +11397,33 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_scen99 = {
     "The classic ROCKS never fires, so neither press throws a rock and the tower stays at 130 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700) fails.",
     "local function some_rocks(self)"
 };
+// The setting-on twin has spawns and inputs of its own. Beside the elf the
+// tower's arrows (each flown check passes or not on its own waver draw,
+// Gameplay Fixes BD) were all the pin's extra draw could move, so the pin no
+// longer changed a fact. Here the tower stands far away, where it only holds
+// the level open, and the elf holds fire after the second press, which spends
+// what the first press left: a placed walker's stats gain 1 MP on its first
+// act and the next only 1000 acts later, so the elf's magic is its own.
+inline constexpr InputEvent kInputs_elf_rocks_edge_pad_then_fire[] = {
+    {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // heading UP (the spawn heading): the rock's pad is off the map
+    { 12, 0, K_DOWN },    { 13, 0, K_NONE },     // one step DOWN sets the heading
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },     // ROCKS down, at nobody
+    { 25, 0, K_FIRE },    { 45, 0, K_NONE },     // held fire: one rock for each MP left
+};
+inline constexpr SpawnSpec kFamilySpawns_elf_rocks_edge_pad_fixes_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 600, 680, 0, 0 },            // far away: holds the level open and never shoots
+    { FAMILY_ELF,    0, kOrderLiving, 176,  2, 0, 0, 1, 10 },      // the player LAST, level 1, exactly 10 MP = ROCKS' price; row 0, grass
+};
 inline constexpr FactPredicate kFacts_elf_rocks_edge_pad_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each flown check (BD) passes on its own waver draw, so its arrows, and which of them a rock meets, are no longer derivable; reduced to what still derives.
-    pred::TickReached(40),
-    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
-        "anchor: the spawned tower is in the list at the end"),
+    pred::TickReached(50),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so the 10 MP and the first act's 1 stay 11; the second press pays ROCKS' 10 with its refund of 2 and its two rocks at 1 each, which leaves 1, and the held fire throws one rock for it: three throws, and nothing else sounds"),
 };
 inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 128,
     "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
     "return false",
-    "The press at the map's edge pays fire()'s swing and draws its waver again, so the stream parts: the run gives 3 sounds, no rock reaches the tower and no arrow the elf (the tower whole, the elf at 75), so all three facts fail."
+    "The press at the map's edge goes to fire() again, which charges its swing of 1 before the setting takes the refund of 2 back, so 10 MP stand before the second press and none after it: the held fire throws nothing and EventKindExactly(play_sound, 3) reads 2."
 };
 
 // --- thief_charm_tent_troop (fix AD: a charmed walker heads its own chain) ---
@@ -11439,9 +11557,8 @@ inline constexpr Mutation kMut_elf_forest_haste_fixes_scen99 = {
 // pays: 70 MP, no draw. The archer then steps down and presses again: the
 // classic archer cannot pay the 70 and nothing flies, so only the hostile
 // TOWER1's nine bow shots sound and its arrows leave the archer at 55 hp;
-// the fixed archer's bolt flies down and meets a tower arrow (a clang), so
-// the run sounds nine bow shots and the clang and the archer ends at 59 (57
-// with fix AT alone, whose tower also shot at tick 8; 59 before fix AT).
+// the fixed archer's bolt flies down (in the setting-on twin, below, the
+// tower stands far away and nothing meets it).
 inline constexpr InputEvent kInputs_archer_bolt_edge_pad[] = {
     {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },   // slot 2
     {  6, 0, K_SPECIAL_SWITCH }, {  7, 0, K_NONE },   // slot 3: EXPLODING BOLT
@@ -11466,17 +11583,26 @@ inline constexpr Mutation kMut_archer_bolt_edge_pad_scen99 = {
     "return self:fire_pad_answer(weapon) == \"terrain\"",
     "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires the bolt: the clang makes 11 sounds and the archer ends at 59 hp, so EventKindExactly(play_sound, 9) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5500, 5500) fail."
 };
+// The setting-on twin has spawns of its own: the tower stands far away, where
+// it only holds the level open. Beside the archer its arrows (each flown check
+// passes or not on its own waver draw, Gameplay Fixes BD) met the bolt in the
+// air on its first tick, before any track of it was taken, and the pin no
+// longer changed a fact. The archer's magic is its own: a placed walker gains
+// its next MP only 1000 acts after its first.
+inline constexpr SpawnSpec kFamilySpawns_archer_bolt_edge_pad_fixes_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 600, 680, 0, 0 },            // far away: holds the level open and never shoots
+    { FAMILY_ARCHER, 0, kOrderLiving, 176,  2, 0, 0, 7, 70 },      // the player LAST, level 7 (slot 3 open), exactly 70 MP = EXPLODING BOLT's price; row 0, grass
+};
 inline constexpr FactPredicate kFacts_archer_bolt_edge_pad_fixes_scen99[] = {
-    // After the line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE, BC) this row moved; the tower faces up on its first act (BE) and each of its flown checks (BD) passes on its own waver draw, so its shots and the arrows that strike the archer are no longer derivable; reduced to what still derives (the byte compare holds the row).
     pred::TickReached(60),
-    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
-        "anchor: the spawned tower is in the list at the end"),
+    pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW,
+        "consequence: with the setting on the press at the map's edge refuses before fire() charges its 1 MP shot, so the second press can pay the 70 and the bolt flies down"),
 };
 inline constexpr Mutation kMut_archer_bolt_edge_pad_fixes_scen99 = {
     "packs/core/families/living-02-archer.lua", 81,
     "if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
     "if false and gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
-    "The press at the map's edge goes to fire() again, which charges its 1 MP shot, so the second press cannot pay the 70: 9 sounds (the tower's shots, no clang) and the archer at 62 hp, so EventKindExactly(play_sound, 10) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5900, 5900) fail."
+    "The press at the map's edge goes to fire() again, which charges its 1 MP shot, so the second press cannot pay the 70 and no bolt flies: WeaponFamilyEmitted(FAMILY_FIRE_ARROW) fails."
 };
 
 // --- archer_barrage_edge_pad (fix AS, #436: BARRAGE at the map's edge) ---
@@ -14274,9 +14400,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_soldier_whirlwind_no_foe_scen99 },
 
     { "soldier_whirlwind_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputs_soldier_whirlwind_twice, std::size(kInputs_soldier_whirlwind_twice), 70,
+      kInputs_soldier_whirlwind_walk_in, std::size(kInputs_soldier_whirlwind_walk_in), 70,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_soldier_whirlwind_no_foe_scen99, std::size(kFamilySpawns_soldier_whirlwind_no_foe_scen99),
+      kFamilySpawns_soldier_whirlwind_no_foe_fixes_scen99, std::size(kFamilySpawns_soldier_whirlwind_no_foe_fixes_scen99),
       0, false, true, Exercises::Special_Soldier_3,
       kFacts_soldier_whirlwind_no_foe_fixes_scen99, std::size(kFacts_soldier_whirlwind_no_foe_fixes_scen99),
       kMut_soldier_whirlwind_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -14340,7 +14466,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "elf_volley_refund_fixes_scen99", "scen/scen1.fss", 0x00000042u,
       kInputs_elf_volley_refund, std::size(kInputs_elf_volley_refund), 72,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_elf_volley_refund_scen99, std::size(kFamilySpawns_elf_volley_refund_scen99),
+      kFamilySpawns_elf_volley_refund_fixes_scen99, std::size(kFamilySpawns_elf_volley_refund_fixes_scen99),
       0, false, true, Exercises::Special_Elf_2,
       kFacts_elf_volley_refund_fixes_scen99, std::size(kFacts_elf_volley_refund_fixes_scen99),
       kMut_elf_volley_refund_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -14434,7 +14560,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_mage_bot_heartburst_scen99 },
 
     { "mage_bot_heartburst_fixes_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEmpty, std::size(kInputsEmpty), 150,
+      kInputsEmpty, std::size(kInputsEmpty), 5,
       CompareMode::SemanticParity, false,
       kFamilySpawns_mage_bot_heartburst_scen99, std::size(kFamilySpawns_mage_bot_heartburst_scen99),
       0, false, true, Exercises::None,
@@ -14537,7 +14663,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_thief_bot_charm_or_taunt_scen99, std::size(kFacts_thief_bot_charm_or_taunt_scen99),
       kMut_thief_bot_charm_or_taunt_scen99 },
 
-    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000006Bu,
+    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x00000087u,
       kInputsEmpty, std::size(kInputsEmpty), 20,
       CompareMode::SemanticParity, false,
       kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
@@ -14602,9 +14728,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_archmage_summon_no_room_scen99 },
 
     { "archmage_summon_no_room_fixes_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputs_archmage_summon_no_room, std::size(kInputs_archmage_summon_no_room), 60,
+      kInputs_archmage_summon_no_room_early, std::size(kInputs_archmage_summon_no_room_early), 19,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_archmage_summon_no_room_scen99, std::size(kFamilySpawns_archmage_summon_no_room_scen99),
+      kFamilySpawns_archmage_summon_no_room_fixes_scen99, std::size(kFamilySpawns_archmage_summon_no_room_fixes_scen99),
       0, false, true, Exercises::Special_Archmage_3 | Exercises::Special_Archmage_2,
       kFacts_archmage_summon_no_room_fixes_scen99, std::size(kFacts_archmage_summon_no_room_fixes_scen99),
       kMut_archmage_summon_no_room_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -14617,7 +14743,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_archmage_mind_control_berserk_scen99, std::size(kFacts_archmage_mind_control_berserk_scen99),
       kMut_archmage_mind_control_berserk_scen99 },
 
-    { "archmage_mind_control_berserk_fixes_scen99", "scen/scen1.fss", 0x000000C6u,
+    { "archmage_mind_control_berserk_fixes_scen99", "scen/scen1.fss", 0x0000001Eu,
       kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 40,
       CompareMode::SemanticParity, false,
       kFamilySpawns_archmage_mind_control_berserk_scen99, std::size(kFamilySpawns_archmage_mind_control_berserk_scen99),
@@ -14698,7 +14824,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_soldier_bot_charge_unaimed_scen99 },
 
     { "soldier_bot_charge_unaimed_fixes_scen99", "scen/scen1.fss", 0x0000000Au,
-      kInputsEmpty, std::size(kInputsEmpty), 5,
+      kInputsEmpty, std::size(kInputsEmpty), 1,
       CompareMode::SemanticParity, false,
       kFamilySpawns_soldier_bot_charge_unaimed_scen99, std::size(kFamilySpawns_soldier_bot_charge_unaimed_scen99),
       0, false, true, Exercises::None,
@@ -14873,7 +14999,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_cleric_bot_resurrect_foe_stain_scen99, std::size(kFacts_cleric_bot_resurrect_foe_stain_scen99),
       kMut_cleric_bot_resurrect_foe_stain_scen99 },
 
-    { "cleric_bot_resurrect_foe_stain_fixes_scen99", "scen/scen1.fss", 0x00000054u,
+    { "cleric_bot_resurrect_foe_stain_fixes_scen99", "scen/scen1.fss", 0x0000000Fu,
       kInputsEmpty, std::size(kInputsEmpty), 250,
       CompareMode::SemanticParity, false,
       kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99, std::size(kFamilySpawns_cleric_bot_resurrect_foe_stain_scen99),
@@ -15033,7 +15159,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_cleric_raise_blocked_corpse_scen99, std::size(kFacts_cleric_raise_blocked_corpse_scen99),
       kMut_cleric_raise_blocked_corpse_scen99 },
 
-    { "cleric_raise_blocked_corpse_fixes_scen99", "scen/scen1.fss", 0x00000014u,
+    { "cleric_raise_blocked_corpse_fixes_scen99", "scen/scen1.fss", 0x00000002u,
       kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
       CompareMode::SemanticParity, false,
       kFamilySpawns_cleric_raise_blocked_corpse_scen99, std::size(kFamilySpawns_cleric_raise_blocked_corpse_scen99),
@@ -15139,7 +15265,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_right_walk_potion_scen99, std::size(kFacts_orc_right_walk_potion_scen99),
       kMut_orc_right_walk_potion_scen99 },
-    { "orc_right_walk_potion_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+    { "orc_right_walk_potion_fixes_scen99", "scen/scen1.fss", 0x00000010u,
       kInputsEmpty, std::size(kInputsEmpty), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_orc_right_walk_potion_scen99, std::size(kFamilySpawns_orc_right_walk_potion_scen99),
@@ -15280,9 +15406,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_elf_rocks_edge_pad_scen99, std::size(kFacts_elf_rocks_edge_pad_scen99),
       kMut_elf_rocks_edge_pad_scen99 },
     { "elf_rocks_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputs_elf_rocks_edge_pad, std::size(kInputs_elf_rocks_edge_pad), 40,
+      kInputs_elf_rocks_edge_pad_then_fire, std::size(kInputs_elf_rocks_edge_pad_then_fire), 50,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_elf_rocks_edge_pad_scen99, std::size(kFamilySpawns_elf_rocks_edge_pad_scen99),
+      kFamilySpawns_elf_rocks_edge_pad_fixes_scen99, std::size(kFamilySpawns_elf_rocks_edge_pad_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_elf_rocks_edge_pad_fixes_scen99, std::size(kFacts_elf_rocks_edge_pad_fixes_scen99),
       kMut_elf_rocks_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -15324,7 +15450,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "archer_bolt_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
       kInputs_archer_bolt_edge_pad, std::size(kInputs_archer_bolt_edge_pad), 60,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_archer_bolt_edge_pad_scen99, std::size(kFamilySpawns_archer_bolt_edge_pad_scen99),
+      kFamilySpawns_archer_bolt_edge_pad_fixes_scen99, std::size(kFamilySpawns_archer_bolt_edge_pad_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_archer_bolt_edge_pad_fixes_scen99, std::size(kFacts_archer_bolt_edge_pad_fixes_scen99),
       kMut_archer_bolt_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
