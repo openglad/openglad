@@ -1039,14 +1039,14 @@ std::vector<Scene> scenes()
     // or so; once the rest is over the second wail scatters that pack too.
     // Both packs are props of the scene: posted and held from fighting for
     // the whole of it, and walked by the staging. The first walks in from
-    // the first frame and the second sets off during the rest. Once an orc
-    // of the first pack has fled the first wail, the staging walks it on
-    // east, more than a hop (the wail's wail_fork_px) from where the second
-    // pack stops. So the second wail goes for an orc of the second pack (a
-    // wail homes on the nearest foe) and hops only through that pack (a hop
-    // reaches a foe within wail_fork_px of the one struck): each wail takes
-    // only the pack in front of the ghost, which the staging asserts on the
-    // frames the second wail may be pressed.
+    // the first frame and the second sets off during the rest. The first
+    // wail's fright carries the first pack off east, more than a hop (the
+    // wail's wail_fork_px) from where the second pack stops. So the second
+    // wail goes for an orc of the second pack (a wail homes on the nearest
+    // foe) and hops only through that pack (a hop reaches a foe within
+    // wail_fork_px of the one struck): each wail takes only the pack in
+    // front of the ghost, which the scene asserts on the frames the second
+    // wail may be pressed.
     {
         // After the first wail the ghost walks left on frames wail 1 + 10 to
         // wail 1 + 21, and the second pack sets off on wail 1 + 20. The
@@ -1122,10 +1122,8 @@ std::vector<Scene> scenes()
         // still to come are a step each). The three walk together, keeping
         // their places in the pack, for as many steps as bring the last of
         // them within kCueGap of that spot, centre to centre (what the
-        // second wail's cue asks of the nearest). From then on, an orc of
-        // the first pack whose flight from the first wail is over (or that
-        // never fled) and that stands short of a hop past the second pack's
-        // stop walks on east to it. Every orc a wail strikes is remembered.
+        // second wail's cue asks of the nearest). Every orc a wail strikes
+        // is remembered.
         sc.before_tick = [fork_px, pack_wailed](Run& run, int f) {
             const int w1 = cued(run, "wail1");
             for (int i = 0; i < 6; ++i)
@@ -1140,7 +1138,6 @@ std::vector<Scene> scenes()
                 const float spot_y = centre_y(ghost);
                 int steps = 0;
                 float front_edge = -1.0e9f;   // the pack's rightmost edge
-                float front_corner = -1.0e9f; // the pack's eastmost corner
                 for (int i = 3; i < 6; ++i)
                 {
                     const walker* const o = run.actor("orc" + std::to_string(i + 1));
@@ -1151,7 +1148,6 @@ std::vector<Scene> scenes()
                     steps = std::max(steps, steps_to_within(o, 1, spot_x, spot_y, kCueGap));
                     front_edge = std::max(front_edge,
                                           static_cast<float>(o->xpos() + o->sizex()));
-                    front_corner = std::max(front_corner, static_cast<float>(o->xpos()));
                 }
                 const walker* const orc4 = run.actor("orc4");   // all three step alike
                 const float walked = static_cast<float>(steps) * orc4->stepsize();
@@ -1162,31 +1158,7 @@ std::vector<Scene> scenes()
                        steps, spot_x, spot_y);
                 for (int i = 3; i < 6; ++i)
                     order_walk(run.actor("orc" + std::to_string(i + 1)), 1, steps);
-                // A hop past the second pack's stop: an orc whose corner
-                // stands there or east of it is more than fork_px from every
-                // orc of the second pack by the game's measure
-                // (walker::distance_to_ob, corner to corner, the two axes
-                // added).
-                run.marks["clear_x"] = front_corner + walked + static_cast<float>(fork_px) + 1.0f;
             }
-            if (run.marks.count("clear_x") != 0)
-                for (int i = 0; i < 3; ++i)
-                {
-                    const std::string n = "orc" + std::to_string(i + 1);
-                    walker* const o = run.actor(n);
-                    if (o == nullptr || o->dead() || run.marks.count("clear." + n) != 0 ||
-                        forced_walk(o))
-                        continue;
-                    run.marks["clear." + n] = 1.0f;
-                    const float short_by = run.mark("clear_x") - static_cast<float>(o->xpos());
-                    if (short_by <= 0.0f)
-                        continue;
-                    const int steps = static_cast<int>(std::ceil(short_by / o->stepsize()));
-                    printf("  ghost_wail: frame %d, %s walks %d steps east, a hop past the "
-                           "second pack\n",
-                           f, n.c_str(), steps);
-                    order_walk(o, 1, steps);
-                }
             // On each frame the second wail may be pressed: it homes on an
             // orc of the second pack (a wail goes for the nearest foe by
             // walker::distance_to_ob, a tie to the one first in the list:
@@ -1217,9 +1189,10 @@ std::vector<Scene> scenes()
                         if (p == nullptr || p->dead())
                             continue;
                         ASSERT_GT(o->distance_to_ob(p), fork_px)
-                            << "the staging: on frame " << f << " orc" << i + 1
-                            << " of the first pack stands more than a hop from orc"
-                            << j + 1 << " of the second";
+                            << "on frame " << f << " orc" << i + 1
+                            << " of the first pack, which the first wail must have driven"
+                            << " off, stands more than a hop from orc" << j + 1
+                            << " of the second";
                         closest_hop = std::min(closest_hop, o->distance_to_ob(p));
                     }
                 }
