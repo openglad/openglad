@@ -2300,3 +2300,166 @@ TEST_F(SemLineCheck, a_refused_check_at_a_door_tells_no_one_a_key_is_needed)
     EXPECT_FALSE(world().query_passable(static_cast<float>(door->xpos()), static_cast<float>(door->ypos()), archer));
     EXPECT_EQ(1u, notifications()) << "control: a seat bumping the locked door is told";
 }
+
+// Gameplay Fixes BF: the foe exception is reached in play, not only through a
+// level script. walker::attack makes whatever a weapon strikes its owner's foe,
+// a door included, on both settings. The staging of
+// the_shot_itself_still_takes_the_clash_roll_at_a_door with a hostile soldier
+// beyond the door (stage_door_line), the soldier the archer's foe. Setting on:
+// the check is refused at the door (WallBlocked). Both settings: one real
+// arrow, on the stream whose first clash roll at the door is lost, strikes the
+// door, and the archer's foe is then the door. Setting on: the check then
+// passes on the door (None, its test weapon stopped by the door, the waver
+// alone), so the archer shoots at the door until it takes another foe or the
+// door falls.
+TEST_F(SemLineCheck, a_shot_that_lands_on_a_door_makes_it_the_shooters_foe_and_the_check_then_passes)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* archer = up_archer(fixes);
+        ASSERT_NE(nullptr, archer);
+        const ShotPlan p = plan_of(archer, FACE_UP);
+        ASSERT_GT(p.los, 1);
+        walker* door = nullptr;
+        walker* soldier = nullptr;
+        ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, FAMILY_SOLDIER, door, soldier));
+        archer->set_foe(soldier);
+        ASSERT_EQ(soldier, archer->foe()) << "the staging: the soldier is the archer's foe";
+        ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+        const std::uint32_t lost =
+            state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
+        if (fixes) {
+            world().rng_.state_ = lost;
+            Denial why = Denial::NoFoe;
+            EXPECT_FALSE(ask(archer, 0, -1, &why)) << "with the soldier its foe, the door refuses the check";
+            EXPECT_EQ(Denial::WallBlocked, why);
+            drop_dead_weapons();
+        }
+        const float whole = door->stats()->hitpoints();
+        world().rng_.state_ = lost;
+        walker* shot = archer->fire();
+        ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
+        for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
+            shot->act();
+        ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
+        ASSERT_LT(door->stats()->hitpoints(), whole) << "the staging: the lost roll, the arrow strikes the door";
+        EXPECT_EQ(door, archer->foe()) << "the blow makes the door the archer's foe";
+        if (fixes) {
+            drop_dead_weapons();
+            world().rng_.state_ = lost;
+            Denial why = Denial::NoFoe;
+            EXPECT_TRUE(ask(archer, 0, -1, &why)) << "the check then passes on the door, its foe";
+            EXPECT_EQ(Denial::None, why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            EXPECT_EQ(door, probe->collide_ob()) << "its test weapon was stopped by the door";
+            EXPECT_EQ(state_after(lost, {p.waver_bound}), world().rng_.state_) << "the waver alone: no roll at the door";
+        }
+    }
+}
+
+// Gameplay Fixes BF asks a body's order as well as its family number, because
+// a door's family number is a golem's (FAMILY_DOOR and FAMILY_GOLEM are both
+// 18). A hostile golem, sitting, in a 16 x 16 box as the soldiers of these
+// tests, and not the archer's foe: the foe is a hostile soldier in reach off
+// the line, met by no box the check or the classic loop tests. (a) On the
+// flight: an archer facing up, the golem at up_line_spot's place (met by the
+// first flight box over its cell, and by a classic spot's box); (b) on a
+// diagonal pad, as in a_door_on_the_pad_refuses_the_check_with_the_setting_on:
+// the golem's box meets the pad's box, no flight box and not the archer. Both
+// settings: the check passes (None), its test weapon stopped by the golem, and
+// the stream after is the waver alone (a living takes no clash roll).
+TEST_F(SemLineCheck, a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors)
+{
+    ASSERT_EQ(FAMILY_DOOR, FAMILY_GOLEM) << "the staging: a golem's family number is a door's";
+    for (bool on_pad : {false, true}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(on_pad ? "(b) on the pad, " : "(a) on the flight, ") +
+                         (fixes ? "Gameplay Fixes on" : "Gameplay Fixes off"));
+            walker* archer = nullptr;
+            ShotPlan p;
+            short dx = 0;
+            Box at;
+            if (on_pad) {
+                fresh_world(fixes);
+                archer = living_at(FAMILY_ARCHER, 0, 320, 329);
+                ASSERT_NE(nullptr, archer);
+                face(archer, FACE_UP_RIGHT);
+                p = plan_of(archer, FACE_UP_RIGHT);
+                dx = 1;
+                const std::vector<Box> boxes = flown_boxes(p);
+                bool found = false;
+                for (int oy = -8; oy <= 8 && !found; ++oy)
+                    for (int ox = -8; ox <= 8 && !found; ++ox) {
+                        const Box b{p.pad_x + ox, p.pad_y + oy};
+                        const auto box16 = [&](Box o, short osx, short osy) {
+                            return ::collide(static_cast<short>(b.x), static_cast<short>(b.y), 16, 16,
+                                             static_cast<short>(o.x), static_cast<short>(o.y), osx, osy) != 0;
+                        };
+                        bool fits = box16(Box{p.pad_x, p.pad_y}, p.sx, p.sy) &&
+                                    !box16(Box{static_cast<int>(archer->xpos()), static_cast<int>(archer->ypos())},
+                                           archer->sizex(), archer->sizey());
+                        for (const Box& f : boxes)
+                            fits = fits && !box16(f, p.sx, p.sy);
+                        if (fits) {
+                            at = b;
+                            found = true;
+                        }
+                    }
+                ASSERT_TRUE(found) << "the staging: a place for the golem on the pad";
+            } else {
+                archer = up_archer(fixes);
+                ASSERT_NE(nullptr, archer);
+                p = plan_of(archer, FACE_UP);
+                const LineSpot s = up_line_spot(p, 16, 16, 0);
+                ASSERT_GE(s.k, 0) << "the staging: a spot for the golem on the flight";
+                at = Box{s.x, s.y};
+            }
+            ASSERT_GT(p.los, 1);
+            walker* golem = living_at(FAMILY_GOLEM, 1, static_cast<short>(at.x), static_cast<short>(at.y), 16, 16);
+            ASSERT_NE(nullptr, golem);
+            golem->set_act_type(ACT_SIT);
+            ASSERT_EQ(Order::Living, golem->query_order()) << "the staging: the golem is a living";
+            ASSERT_EQ(FAMILY_DOOR, golem->family()) << "the staging: and carries the door's family number";
+            const Box pad{p.pad_x, p.pad_y};
+            const std::vector<Box> boxes = flown_boxes(p);
+            const std::vector<Box> spots = classic_spots(p);
+            if (on_pad) {
+                ASSERT_TRUE(box_meets(pad, p.sx, p.sy, golem)) << "the staging: the golem is under the pad's box";
+                for (const Box& b : boxes)
+                    ASSERT_FALSE(box_meets(b, p.sx, p.sy, golem)) << "the staging: and under no step's box";
+            } else {
+                ASSERT_FALSE(box_meets(pad, p.sx, p.sy, golem)) << "the staging: the golem is off the pad";
+                bool flown = false;
+                for (const Box& b : boxes)
+                    flown = flown || box_meets(b, p.sx, p.sy, golem);
+                ASSERT_TRUE(flown) << "the staging: a flight box meets the golem";
+                bool classic = false;
+                for (const Box& b : spots)
+                    classic = classic || box_meets(b, p.sx, p.sy, golem);
+                ASSERT_TRUE(classic) << "the staging: a classic spot's box meets the golem";
+            }
+            walker* soldier = living_at(FAMILY_SOLDIER, 1, static_cast<short>(archer->xpos() + 40),
+                                        static_cast<short>(archer->ypos() + 40), 16, 16);
+            ASSERT_NE(nullptr, soldier);
+            soldier->set_act_type(ACT_SIT);
+            ASSERT_FALSE(box_meets(pad, p.sx, p.sy, soldier)) << "the staging: the foe is off the pad";
+            for (const Box& b : boxes)
+                ASSERT_FALSE(box_meets(b, p.sx, p.sy, soldier)) << "the staging: the foe is off the flight's line";
+            for (const Box& b : spots)
+                ASSERT_FALSE(box_meets(b, p.sx, p.sy, soldier)) << "the staging: and off the classic spots";
+            archer->set_foe(soldier);
+            ASSERT_NE(golem, archer->foe()) << "the staging: the golem is not the archer's foe";
+            ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+            const std::uint32_t s = state_where({{p.waver_bound, p.waver_zero}});
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            EXPECT_TRUE(ask(archer, dx, -1, &why)) << "the check passes on the golem, a body";
+            EXPECT_EQ(Denial::None, why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            EXPECT_EQ(golem, probe->collide_ob()) << "its test weapon was stopped by the golem";
+            EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: a living takes no clash roll";
+        }
+    }
+}

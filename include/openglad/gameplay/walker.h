@@ -211,7 +211,8 @@ class walker : public og::sim::SimEntity
 			NoMagic,     // weapon costs more magic than we have
 			OutOfRange,  // foe beyond weapon stepsize*lineofsight
 			Facing,      // in reach, but curdir is not toward the foe
-			WallBlocked, // the shot ray hits terrain first
+			WallBlocked, // the shot ray hits terrain first, or with Gameplay Fixes on
+			             // an enemy door that is not the foe (fix BF)
 			RayMiss,     // the shot ray ran full range without a hit
 		};
 		bool fire_check(short xdelta, short ydelta,
@@ -224,7 +225,8 @@ class walker : public og::sim::SimEntity
 		[[nodiscard]] FlightStep flight_step();
 		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies. No
 		// answer with the setting off (the classic loop asks). When it answers it sets
-		// the probe dead and writes *denial. Defined at the end of walker_movement.cpp.
+		// the probe dead and writes *denial. Gameplay Fixes BF: an enemy door that is not
+		// the foe refuses it (WallBlocked). Defined at the end of walker_movement.cpp.
 		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, walker* ignored_foe,
 		                                                    FireCheckDenial* denial);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
