@@ -125,9 +125,12 @@ class screen : public video
 		unsigned short enemy_freeze; // stops enemies from acting
 		short gameplay_fixes; // port of the current game's 0721756c: the Gameplay Fixes setting, 0 = classic; the golden capture tool sets it per row
 		// While walker::line_check_flight flies its test weapon (Gameplay Fixes
-		// BD, port of the current game's 2b36b5d09) this names that weapon:
-		// query_grid_passable takes an arrow slit as open for it and draws
-		// nothing, as it does for a quiet question. NULL at every other time.
+		// BD, port of the current game's 2b36b5d09) this names that weapon, and
+		// two answers differ for it: query_grid_passable takes an arrow slit as
+		// open and draws nothing, as it does for a quiet question (fix BD), and
+		// ob_pass_check meets a live enemy door without the clash roll, so the
+		// door stops it and nothing is drawn (fix BF, port of the current
+		// game's e205957c6). NULL at every other time.
 		walker *slit_open_for;
 		soundob *soundp;
 		short redrawme;

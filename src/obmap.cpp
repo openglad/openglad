@@ -281,7 +281,8 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
             // Allow weapons to sometimes 'miss' opposing team's weapons
             // (a quiet probe never rolls: an enemy weapon in flight passes it)
             // port of the current game's b5e29f3c (Gameplay Fixes AV, #451): asked with weapons_block, a quiet probe takes the roll as lost
-            else if(targetorder == ORDER_WEAPON && myorder == ORDER_WEAPON && (quiet ? !weapons_block : random(10) > 3))
+            // port of the current game's e205957c6 (Gameplay Fixes BF): the line check's test weapon (screen::slit_open_for, named only while a check flies with the setting on) is offered no roll at a live enemy door and draws nothing for it: it goes on to the box test, so a door its box meets stops it; a grown tree or a shot in flight still rolls for it, and the shot itself still rolls at a door
+            else if(targetorder == ORDER_WEAPON && myorder == ORDER_WEAPON && (quiet ? !weapons_block : (!(w->query_family() == FAMILY_DOOR && ob == myscreen->slit_open_for) && random(10) > 3)))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == ORDER_TREASURE && myorder == ORDER_WEAPON)

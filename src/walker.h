@@ -138,7 +138,8 @@ class walker : public pixieN
 			NoMagic,     // weapon costs more magic than we have
 			OutOfRange,  // foe beyond weapon stepsize*lineofsight
 			Facing,      // in reach, but curdir is not toward the foe
-			WallBlocked, // the shot ray hits terrain first
+			WallBlocked, // the shot ray hits terrain first, or with Gameplay Fixes on
+			             // an enemy door that is not the foe (fix BF)
 			RayMiss,     // the shot ray ran full range without a hit
 		};
 		short fire_check(short xdelta, short ydelta,
@@ -153,7 +154,9 @@ class walker : public pixieN
 		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot
 		// flies. -1 with the setting off (fire_check's classic loop asks);
 		// else 1 the shot lands, 0 it does not, with the test weapon set dead
-		// and *denial written.
+		// and *denial written. Gameplay Fixes BF (port of the current game's
+		// e205957c6): an enemy door that is not the foe refuses it
+		// (WallBlocked).
 		short line_check_flight(walker* weapon, FireCheckDenial* denial);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-

@@ -5778,38 +5778,78 @@ short walker::flight_step()
 // (screen::slit_open_for, read where the gamble is rolled): the shot itself
 // takes the slit's gamble. This game has no mode ball, so the current game's
 // questions about one are absent here.
+// Gameplay Fixes BF (port of the current game's e205957c6): an enemy door on
+// the shot's path refuses the check, as a wall does, unless it is the
+// shooter's foe. The test weapon meets that door without the clash roll.
 short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
 {
 	if (!myscreen->gameplay_fixes)
 		return -1;
 	short lands = 0;
 	FireCheckDenial why = FireCheckDenial::RayMiss;
+	// The same mark has ob_pass_check meet a live enemy door without the
+	// clash roll (fix BF).
 	myscreen->slit_open_for = weapon;
+	// Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which
+	// the door arm of ob_pass_check records) is a live enemy door that is not
+	// the shooter's own foe. A door of the shooter's side never stops it:
+	// ob_pass_check lets a weapon pass its own side. The order is asked as
+	// well as the family because a golem's family number is a door's.
+	const auto stopped_by_a_door = [&]() {
+		walker* met = weapon->collide_ob;
+		return met != NULL && !met->dead && met->query_order() == ORDER_WEAPON &&
+		       met->query_family() == FAMILY_DOOR && met != foe;
+	};
 	if (!myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon))
 		why = FireCheckDenial::WallBlocked;
-	else if (!myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon))
-	{
-		lands = 1;
-		why = FireCheckDenial::None;
-	}
 	else
 	{
-		// the test weapon is pointed along its heading, so walk() steps at once
-		weapon->curdir = (char) weapon->facing(weapon->lastx, weapon->lasty);
-		for (short step = 1; step < weapon->lineofsight; ++step)
+		weapon->collide_ob = NULL;  // as fire_check did: the pad reads this question's answer
+		if (!myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon))
 		{
-			weapon->collide_ob = NULL;  // weap::act clears it before every act
-			short met = weapon->flight_step();
-			if (met == 1)
+			// Gameplay Fixes BF: a pad held by a live enemy door that is not
+			// the shooter's foe refuses (WallBlocked: to a shot a shut door is
+			// a wall); a door that is the foe, and every other body, passes, a
+			// golem too though its family number is a door's.
+			if (stopped_by_a_door())
+				why = FireCheckDenial::WallBlocked;
+			else
 			{
 				lands = 1;
 				why = FireCheckDenial::None;
-				break;
 			}
-			if (met == 2)
+		}
+		else
+		{
+			// the test weapon is pointed along its heading, so walk() steps at once
+			weapon->curdir = (char) weapon->facing(weapon->lastx, weapon->lasty);
+			for (short step = 1; step < weapon->lineofsight; ++step)
 			{
-				why = FireCheckDenial::WallBlocked;
-				break;
+				weapon->collide_ob = NULL;  // weap::act clears it before every act
+				short met = weapon->flight_step();
+				if (met == 1)
+				{
+					// Gameplay Fixes BF: a step struck by a live enemy door
+					// that is not the shooter's foe refuses (WallBlocked), as
+					// a step a wall stops does; a door that is the foe passes,
+					// as every foe does (a shot that lands on a door makes the
+					// door its shooter's foe, walker::attack); a golem, whose
+					// family number is a door's, passes as every other body
+					// does.
+					if (stopped_by_a_door())
+						why = FireCheckDenial::WallBlocked;
+					else
+					{
+						lands = 1;
+						why = FireCheckDenial::None;
+					}
+					break;
+				}
+				if (met == 2)
+				{
+					why = FireCheckDenial::WallBlocked;
+					break;
+				}
 			}
 		}
 	}
