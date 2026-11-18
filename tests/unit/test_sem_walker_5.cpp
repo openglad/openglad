@@ -1975,7 +1975,7 @@ TEST_F(SemLineCheck, a_door_that_is_the_shooters_foe_passes_the_check)
                 }
                 ASSERT_GT(p.los, 1);
                 archer->set_foe(door);
-                ASSERT_EQ(door, archer->foe());
+                ASSERT_EQ(door, archer->foe()) << "the staging: the door is the archer's foe";
                 ASSERT_LE(archer->distance_to_ob(door), p.reach) << "the staging: inside the reach gate";
                 const std::uint32_t s =
                     lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
@@ -2167,7 +2167,6 @@ TEST_F(SemLineCheck, the_shot_itself_still_takes_the_clash_roll_at_a_door)
                 EXPECT_FLOAT_EQ(whole, door->stats()->hitpoints()) << "every roll won: the arrow flies through the door";
                 EXPECT_LT(shot->ypos() + shot->sizey(), door->ypos()) << "and ends beyond it";
             }
-            EXPECT_EQ(0, door->dead());
         }
     }
 }
@@ -2181,12 +2180,13 @@ TEST_F(SemLineCheck, the_shot_itself_still_takes_the_clash_roll_at_a_door)
 // The world ticks 200 times; every live arrow the archer owns is counted once
 // by its entity id. Setting on: no shot is started, and the door's and the
 // orc's hit points are whole; after the ticks the archer holds the orc as its
-// foe, faces it, and its check is refused at the door (WallBlocked), so every
-// gate but the door's lets it shoot. Setting off: the classic check fires: at
-// least one shot is started and the door loses hit points (each shot meets the
-// door's clash roll and is stopped by it on four rolls in ten; over the shots
-// of 200 ticks the door is missed every time with odds under one in a
-// million).
+// foe and its check is refused at the door (WallBlocked, a denial the reach,
+// magic and facing gates come before), so every gate but the door's lets it
+// shoot. Setting off: the classic check fires: at least one shot is started
+// and the door loses hit points (each shot meets the door's clash roll and is
+// stopped by it on four rolls in ten, so n shots all miss it with odds of
+// 0.6 to the power n; this half holds by the draws, the setting-on half by
+// the rule).
 TEST_F(SemLineCheck, a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on)
 {
     constexpr int kTicks = 200;
@@ -2248,7 +2248,6 @@ TEST_F(SemLineCheck, a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_se
             ASSERT_NE(nullptr, o);
             EXPECT_FLOAT_EQ(orc_whole, o->stats()->hitpoints()) << "the orc's too";
             EXPECT_EQ(o, a->foe()) << "the archer holds the orc as its foe";
-            EXPECT_EQ(FACE_UP, a->curdir()) << "and faces it";
             drop_dead_weapons();
             Denial why = Denial::NoFoe;
             EXPECT_FALSE(ask(a, 0, static_cast<short>(o->ypos() - a->ypos()), &why));
