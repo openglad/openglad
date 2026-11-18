@@ -213,9 +213,10 @@ void build_forest_road(const LevelDataHooks& hooks)
     // #447). The curve-2 company's forty-seed average here fell from 8.00
     // to 6.97 survivors. With these four pursuit riders and pocket 2's
     // three wolves at level 1 it reads 7.05, and the four guard wolves of
-    // bend 3 and seg D at level 1 as well change no seed: nothing this
-    // level can shed brings it back, so the levels were left as they
-    // were. With the setting off it reads 8.00, as before these fixes.)
+    // bend 3 and seg D at level 1 as well change no seed: no group that
+    // fights before tick 600 brings it back, so the levels were left as
+    // they were. With the setting off it reads 8.00, as before these
+    // fixes.)
     place_living(w, FAMILY_GHOST, 2, 0, 3, 18, 2, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 3, 22, 2, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 2, 20, 2, false, true, 550);
@@ -422,10 +423,10 @@ void build_last_ford(const LevelDataHooks& hooks)
     // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
     // faces its foe swings or steps in its ATTACK order (fix BC, #447).
     // The curve-2 company's forty-seed average here fell from 7.62 to
-    // 6.08 survivors. These five Riders shed three levels (4 -> 1), all
-    // the easing this level allows; it reads 7.38, still 0.25 under the
-    // 7.62 it read before these fixes (the measure's error there is
-    // 0.19), and nothing is left to lower. With the setting off it reads
+    // 6.08 survivors. These five Riders shed three levels (4 -> 1); it
+    // reads 7.38, still 0.25 under the 7.62 it read before these fixes
+    // (the measure's error there is 0.19), and no group that fights
+    // before tick 600 is left to lower. With the setting off it reads
     // 7.47, from 7.40.)
     static constexpr int wave1[5][2] = {{10, 18}, {10, 26}, {10, 22},
                                         {12, 16}, {12, 28}};
@@ -647,9 +648,9 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     // faces its foe swings or steps in its ATTACK order (fix BC, #447).
     // The curve-3 company's forty-seed average here fell from 7.67 to
     // 7.03 survivors. These six scouts and the twelve dawn orcs below
-    // shed one level each (2 -> 1), all the easing this level allows,
-    // which brings it back to 7.58. With the setting off it reads 7.67,
-    // from 7.70.)
+    // shed one level each (2 -> 1), all that its groups fighting before
+    // tick 600 can shed, which brings it back to 7.58. With the setting
+    // off it reads 7.67, from 7.70.)
     static constexpr int scouts[6][2] = {{10, 23}, {10, 26}, {14, 22},
                                          {14, 27}, {12, 20}, {12, 29}};
     for (const auto& c : scouts)

@@ -581,9 +581,9 @@ void build_white_city(const LevelDataHooks& hooks)
     // to 0.55 survivors. With the breach column below, the plain lattice,
     // the town ghosts and the plain ghosts all at level 1 it reads only
     // 1.55, and with the setting off it then falls from 3.10 to 1.32:
-    // nothing this level can shed brings it back, so the levels were left
-    // as they were. With the setting off it reads 3.10 (2.83 before these
-    // fixes).)
+    // no group that fights before tick 600 brings it back, so the levels
+    // were left as they were. With the setting off it reads 3.10 (2.83
+    // before these fixes).)
     for (int i = 0; i < 6; ++i)
     {
         place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 3); // the breach

@@ -982,7 +982,7 @@ short statistics::do_command()
 						// near a foe 0.97 to 2.06, Westlands survivors 322 to 255. Gameplay Fixes BC (#447) does it
 						// behind the setting: a swing at a body on the pad, else a step (attack_face_or_fight, at
 						// the end of this file), and the levels whose crews fell were eased in their builders where
-						// a group could be lowered (docs/gameplay-fixes.md, Balance). Off, nothing changed.
+						// lowering a group brought them back or nearer (docs/gameplay-fixes.md, Balance). Off, nothing changed.
 						attack_face_or_fight(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
