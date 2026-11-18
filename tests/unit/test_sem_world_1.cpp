@@ -1306,8 +1306,8 @@ TEST(SemWorld, the_full_foe_scan_breaks_a_tie_by_list_order)
     }
 }
 
-// game_world.cpp:1236. The full scan is floor-blind: a foe on another floor
-// is still found.
+// GameWorld::find_nearest_foe is floor-blind but for a flyer on a level with
+// floors (#512): this searcher walks, so a foe on another floor is found.
 TEST(SemWorld, the_full_foe_scan_finds_a_foe_on_another_floor)
 {
     TestGameWorld tw;

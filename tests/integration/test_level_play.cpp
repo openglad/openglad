@@ -127,6 +127,13 @@
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
 //   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
+//   Measured 2026-11-18 with fixes BC, BD and BE (the ATTACK order, the line
+//   check, the kept turn) and the flyer's own-floor foe (#512) in, per seed
+//   42 / 1337 / 2025 / 1 / 2 / 3 [pooled]: total casts 464 / 418 / 525 / 445
+//   / 523 / 540 [2915]; distinct (family, special) 39 / 38 / 42 / 36 / 35 /
+//   37 [52]; distinct casters 98 / 92 / 99 / 100 / 99 / 90; casters with >= 2
+//   specials 41 / 41 / 34 / 33 / 29 / 33 [211, against the pooled floor of
+//   180]; crew alive at tick 2400 11 / 8 / 3 / 3 / 5 / 6.
 //
 // The classic bots (OG_CALIBRATION_GAMEPLAY_FIXES=0) cast MORE and show MORE
 // different specials, because they cast at nobody: A and B alone cannot tell

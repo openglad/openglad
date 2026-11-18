@@ -1932,9 +1932,9 @@ walker* GameWorld::find_near_foe(walker* ob)
             // piles no matter where `ob` stood: upper-floor walkers were
             // blind to foes standing beside them and latched whatever was on
             // the ground floor beneath their 2D position instead. Cross-floor
-            // acquisition stays available via find_nearest_foe (the floor-blind
-            // full-list scan). ob->floor()==0 on single-floor levels, so
-            // legacy behavior is byte-identical.
+            // acquisition stays available via find_nearest_foe (the full-list
+            // scan, floor-blind but for a flyer: #512). ob->floor()==0 on
+            // single-floor levels, so legacy behavior is byte-identical.
             // #427: the pile first forgets every walker the world no longer
             //   holds (out of every pile and walker_to_pos, a stale pointer
             //   never read), then the search reads it with find_list, which

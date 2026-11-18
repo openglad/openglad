@@ -110,10 +110,10 @@ usual pause.
 | AW | The experience an owned effect's blow pays | A blow by an effect a hero owns (a thief's bomb or mine blast and POISON CLOUD, a magic shield or boomerang, chain lightning's or an exploding shot's blast) pays the hero its attack experience twice: once as a thrown thing, once more as a summon's blow. | It pays once, as a thrown thing does: the experience of one melee blow of the same damage. |
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
 | AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. The one exception is a thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife on its way home, the F2 cheat's shield): it goes with him and fights for whatever side he is on now. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
-| BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act. A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
-| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does. Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way. A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. |
-| BD | The line check a tower or shooting bot asks before it fires | The check moves its test weapon 0, 1, 3, 6, 10 ... steps out from the pad, each spot cut to a whole pixel, while the shot flies one step an act. A foe between two tested spots is stepped over: a tower's arrow misses about two in five of the distances inside its reach, a druid's lightning about half, a golem's boulder, a fire elemental's meteor and a faerie's sprinkle a fifth to a quarter. The tower stands silent; a bot that can walk walks closer instead of shooting. The same loop can step over a one-tile wall and pass a shot that then hits the wall. | The check flies its test weapon the way the shot flies: the pad, then the shot's own step once for each step a fresh shot moves. It passes when the pad or a step meets a body the shot would strike and refuses at a wall, at the map's edge or when the flight runs out. What it still does not share with the shot: it draws its own sideways waver, so far shots are judged as often right as shots land, not shot for shot; it takes an arrow slit as open and the shot itself takes the slit's gamble, so an arrow can still break on a slit wall; it does not count the range a shot loses over trees and shrub, nor a rock or knife that drops a floor over open air; and it does not ask a family's own veto (a soldier with no knife left). It still passes on an enemy tree, door or shot in its line on the same roll the real shot makes there. A tower that shoots more runs out of magic sooner and then waits for it. |
-| BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. |
+| BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act (a tower faces it at once, fix BE). A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
+| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does. Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way. A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so it understates the change; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where a group of fighters could be lowered (see [Balance](#balance)). |
+| BD | The line check a tower or shooting bot asks before it fires | The check moves its test weapon 0, 1, 3, 6, 10 ... steps out from the pad, each spot cut to a whole pixel, while the shot flies one step an act. A foe between two tested spots is stepped over: a tower's arrow misses about two in five of the distances inside its reach, a druid's lightning about half, a golem's boulder, a fire elemental's meteor and a faerie's sprinkle a fifth to a quarter. The tower stands silent; a bot that can walk walks closer instead of shooting. The same loop can step over a one-tile wall and pass a shot that then hits the wall. | The check flies its test weapon the way the shot flies: the pad, then the shot's own step once for each step a fresh shot moves. It passes when the pad or a step meets a body the shot would strike and refuses at a wall, at the map's edge or when the flight runs out. What it still does not share with the shot: it draws its own sideways waver, so far shots are judged as often right as shots land, not shot for shot; it takes an arrow slit as open and the shot itself takes the slit's gamble, so an arrow can still break on a slit wall; it does not count the range a shot loses over trees and shrub, nor a rock or knife that drops a floor over open air; and it does not ask a family's own veto (a soldier with no knife left). It still passes on an enemy tree, door or shot in its line on the same roll the real shot makes there. A tower that shoots more runs out of magic sooner and then waits for it. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: checks refused, at a wall or as a miss, although a quiet flight of the same weapon lands on the foe, 8,092 for the levels' shooters and 8,846 for the crew, to 0 and 0 (The Long Season 6,628 and 10,860 to 0 and 0); on the one measured level with arrow slits, The Tryxian Chronicles' first level (six seeds of 2,400 ticks), 1,422 and 209 to 0 and 0. A tower's shots per 100 ticks near a foe, on the Imaginations level whose two towers see a foe: with the setting on, 7.3 before these fixes and 8.8 after; the setting off reads 8.7 there; that level's towers' checks refused for want of magic go from 6 to 425. On Gladiator 8, 9, 10 and 12, whose towers see a foe (twenty seeds, after these fixes), the towers fire 7.63 shots per 100 ticks near a foe with the setting off and 10.52 with it on. What a check meets when it passes although its flight meets no fighter or tent: on Gladiator and The Tryxian Chronicles, with the setting on, 98,695 of 104,342 such passes ended on an enemy door (a door has 5,000 hit points, so the shot is spent on it) and 5,582 on an enemy shot in flight; on the four generated campaigns, which have no doors, 2,726 of 2,731 on a shot in flight. The classic check's false passes were of another kind: 22,431 of its 118,220 on the classic campaigns ended on a fighter the shot could not reach (see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). |
+| BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts spent turning back after a refused shot's turn 41,803 to 0; acts until a bot that did not face its foe faces it 2.80 to 1.12 for the melee-only bots, 2.68 to 1.13 for the levels' shooters and 2.51 to 1.12 for the crew. That mean counts only the bots that faced their foe within 12 acts of the turn: before, about one in eight had not (5,544 of 42,038), after about one in 170 (247 of 40,970). |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -193,10 +193,11 @@ Fixes X to BE, in play:
   then a thrown knife) and turns the bot. With the setting on the
   questions are asked quietly: the same answers, so the same way round,
   and nothing eaten, no swing, no turn. One exception, measured
-  2026-11-01: an orc, ghost or slime has no aimed attack (its shot is
-  refused before any aim; the attack order only faces a foe at bump
-  range), so its blows are bumps, and the right-hand walk's probes were
-  about 43 % of them in the classic. Asked wholly quietly, those bots
+  2026-11-01, before fix BC: an orc, ghost or slime has no aimed attack
+  (its shot is refused before any aim; the attack order only faces a foe
+  inside its weapon's reach), so its blows are bumps, and the right-hand
+  walk's probes were about 43 % of them in the classic. Asked wholly
+  quietly, those bots
   started a third fewer swings, landed an eighth fewer blows and dealt a
   fifth less damage across the four campaigns, and one that stopped
   exactly against a standing foe never swung again. So a melee-only bot
@@ -663,7 +664,8 @@ Fixes X to BE, in play:
   whatever stood between: at the air, into a wall, at a foe out of reach.
   With the setting on the turn and the swing agree. A bot not facing its
   foe keeps the foe's direction as the facing it turns to, so its next acts
-  finish the turn, one notch an act, and the turn is its act. This does not
+  finish the turn, one notch an act, and the turn is its act (a tower faces
+  it at once, fix BE). This does not
   make the bots aim faster: before, the ATTACK order snapped such a bot
   round on its next act, so a bot one notch off now reaches its first blow
   an act sooner and one three or four notches off an act or two later;
@@ -700,9 +702,15 @@ Fixes X to BE, in play:
   moves, and it passes when the pad or a step meets a body the shot would
   strike. At an arrow slit the check takes the slit as open and the shot
   itself takes the slit's gamble, as the classic check did at most
-  distances. With the setting off the classic statements run in the
-  classic order, so no setting-off golden moves; the rows it moves with the
-  setting on are listed under [Parity](#parity).
+  distances. What the check costs, measured on The Tryxian Chronicles'
+  first level (six seeds of 2,400 ticks, after these fixes): its flights
+  test 26.4 boxes a tick with the setting on, where the classic loop tests
+  23.1 with it off; on a few levels (Tryxian 109, 114 and 115, Gladiator
+  17, the Tower's floor 20) single ticks test far more on either setting,
+  up to 2,838 boxes in one tick on Tryxian 114 with the setting on and
+  1,790 there with it off. With the setting off the classic statements run
+  in the classic order, so no setting-off golden moves; the rows it moves
+  with the setting on are listed under [Parity](#parity).
 - **BE.** A bot that sees a foe inside its sight box but cannot shoot it,
   and does not face it, turns a notch toward it (#513). The turn never
   records the facing the bot is turning to, so its very next act turns it
@@ -1016,6 +1024,28 @@ change of #447 included; the game as shipped plays the four calibration
 suites and the level-play test below exactly as that build did, row for row
 and line for line.
 
+Measured again after fixes BC, BD and BE (2026-11-17), with the flyer's
+own-floor foe (#512) in, over the Westlands calibration (25 levels, twenty
+seeds, 600 ticks), per 100 ticks a bot spends within 100 px of its foe on
+its floor, as swings or shots started / blows landed / damage / kills:
+melee-only bots 1.79 / 0.91 / 20.54 / 0.03 with the setting off, 1.69 /
+0.98 / 21.66 / 0.03 with it on before these fixes and 3.11 / 2.20 / 45.39 /
+0.08 after; the level's shooters 5.42 / 5.00 / 166.28 / 0.39, 5.23 / 4.79 /
+154.76 / 0.37 and 5.31 / 4.87 / 163.37 / 0.40; the crew 8.10 / 8.08 /
+102.12 / 0.36, 7.78 / 7.80 / 97.93 / 0.35 and 7.98 / 7.94 / 101.14 / 0.37.
+On The Long Season the melee-only bots read 2.68 / 1.17 / 39.62 / 0.03,
+2.29 / 1.20 / 39.12 / 0.03 and 4.20 / 2.82 / 79.56 / 0.13, and the level's
+shooters 6.19 / 5.58 / 133.95 / 0.31, 6.02 / 5.49 / 131.75 / 0.32 and 6.19 /
+5.57 / 133.56 / 0.33. Fix BC about doubles what the melee-only bots do; the
+shooters and the crew move by a few percent. The setting-off figures are
+the game after these fixes, where only #512 acts with the setting off
+(before them the Westlands melee-only bots read 1.78 / 0.90 / 20.46 with
+it off). These figures were counted on a build with counters added, and
+every battle it counted, in the four calibration suites and in the
+level-play test, plays exactly as the game's own, line for line; "before
+these fixes" is master `d6d0741b7`, counted the same way. The fixes' own
+counts are in their rows under [The fixes](#the-fixes).
+
 What the gates still do not see:
 
 - A door, a grown tree or an enemy weapon in flight on the pad, for the
@@ -1033,15 +1063,16 @@ What the gates still do not see:
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
 104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
 ticks on six seeds, and counts every cast, every refusal and every roll a
-gate holds. On the shipped default the bots cast about 480 times a seed (2887 on
-the six seeds) and 47 different specials, among them the eight Shift arms the level
-reaches (MYSTIC MACE 31, CHARM OPPONENT 31, MINE 24, CHAIN LIGHTNING 20, TURN
-UNDEAD 15, WAIL 10, TELEPORT MARKER 9, HASTE SELF 7) and the crew's slot-5 HEARTBURST
-and FREEZE TIME, none at nobody (each special whose rule names a foe has
+gate holds. On the shipped default the bots cast about 490 times a seed (2915 on
+the six seeds) and 52 different specials, among them the eight Shift arms the level
+reaches (MYSTIC MACE 34, MINE 31, CHARM OPPONENT 30, TURN UNDEAD 23, CHAIN
+LIGHTNING 20, HASTE SELF 13, TELEPORT MARKER 8, WAIL 4) and the crew's slot-5
+HEARTBURST (the crew mages roll FREEZE TIME too, and its gate held all 28 rolls),
+none at nobody (each special whose rule names a foe has
 one within its reach, worked from the gate's own arithmetic), REVEAL never,
 and no gate says yes to a cast that then refuses for the fact the gate
-reads. With the setting off the same level shows 245 casts at
-nobody, REVEAL 30 times and 199 such refusals, so the test
+reads. With the setting off the same six seeds show 397 casts at
+nobody, REVEAL 46 times and 375 such refusals, so the test
 tells the rules from their absence.
 
 The same run counts the refusals fixes V and W are about. Pooled over the
@@ -1100,7 +1131,11 @@ FIRE` reads 1 (cap 3). It is a druid bot's GROW TREE on seed 2, tick 154,
 whose bolt's pad held an enemy knife in flight: the gate's quiet question
 passes a weapon in flight, and `fire()` met the knife and lost the weapon
 clash roll to it, the first shape under "What the gates still do not
-see" above.
+see" above. Measured again with fixes BC, BD and BE and the flyer's
+own-floor foe (#512) in: the bots cast 464, 418, 525, 445, 523 and 540
+times on seeds 42, 1337, 2025, 1, 2 and 3, BARRAGE 69, ROCKS 79 and
+SUMMON FAERIE 16, the rules hold 5516 rolls, and every capped count
+reads 0.
 
 ## Charm and seats
 
@@ -1290,7 +1325,7 @@ The parity goldens are captures from the old game (branch
   the table mirror `fb6473a0` (the same entry once more: one of the
   fifteen reads a band of its blows instead of one value, one fact that
   stated a fight's outcome is dropped, comments corrected; nothing
-  moved) and the table mirror `adfa676e` (the same entry after its second
+  moved), the table mirror `adfa676e` (the same entry after its second
   review: `orc_right_walk_potion` ends at tick 25 on its twin's seed in
   place of a seed of its own; one recaptured, no setting-off golden
   moved), the table mirror `7c33f42b` (the moved rows after their
@@ -1307,29 +1342,29 @@ The rows with the setting on, by fix:
 
 | fix | rows (setting on) |
 |---|---|
-| K | `soldier_whirlwind_no_foe_fixes_scen99`, `thief_taunt_no_foe_fixes_scen99`, `ghost_scare_no_foe_fixes_scen99`, `orc_howl_no_foe_fixes_scen99` |
+| K | `soldier_whirlwind_no_foe_fixes_scen99`, `thief_taunt_no_foe_fixes_scen99`, `ghost_scare_no_foe_fixes_scen99`, `orc_howl_no_foe_fixes_scen99` (the setting-on twin of `soldier_whirlwind_no_foe` has an arena and inputs of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | A | `soldier_disarm_higher_foe_fixes_scen99`, `soldier_disarm_resisted_price_fixes_scen99`, `soldier_disarm_resisted_busy_fixes_scen99` |
 | J | `special_cleric_heal_ally_fixes_scen99` |
 | E | `cleric_turn_undead_reach_fixes_scen99`, `cleric_turn_no_undead_fixes_scen99` |
-| D | `archmage_summon_no_room_fixes_scen99` |
-| F | `archmage_mind_control_berserk_fixes_scen99` |
-| G | `thief_charm_nearest_fixes_scen99` |
-| H | `elf_volley_refund_fixes_scen99`, `elf_rocks_blocked_fixes_scen99` |
+| D | `archmage_summon_no_room_fixes_scen99` (the setting-on twin has an arena, inputs and a budget of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
+| F | `archmage_mind_control_berserk_fixes_scen99` (the setting-on twin has a seed of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
+| G | `thief_charm_nearest_fixes_scen99` (the setting-on twin has spawns and a budget of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
+| H | `elf_volley_refund_fixes_scen99`, `elf_rocks_blocked_fixes_scen99` (the setting-on twin of `elf_volley_refund` has spawns of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | I | `druid_tree_blocked_fixes_scen99` |
-| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` (the first two in arenas of their own since fixes X to AD: see below) |
+| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` (the first two in arenas of their own since fixes X to AD: see below; the setting-on twin of `mage_bot_heartburst` has a budget of its own and that of `thief_bot_charm_or_taunt` a seed of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
-| Q | `archer_bot_bolt_at_blows_fixes_scen99`, `archer_bot_ring_one_foe_fixes_scen99`, `archmage_bot_image_one_foe_fixes_scen99`, `barbarian_bot_boulder_far_fixes_scen99`, `barbarian_bot_explode_lone_fixes_scen99`, `cleric_bot_mace_alone_fixes_scen99`, `cleric_bot_resurrect_foe_stain_fixes_scen99`, `druid_bot_faerie_alone_fixes_scen99`, `druid_bot_protection_idle_fixes_scen99`, `druid_bot_tree_behind_fixes_scen99`, `elemental_bot_starburst_one_foe_fixes_scen99`, `elf_bot_rocks_far_fixes_scen99`, `mage_bot_marker_home_fixes_scen99`, `mage_bot_warp_two_at_blows_fixes_scen99`, `soldier_bot_boomerang_far_fixes_scen99`, `soldier_bot_charge_unaimed_fixes_scen99`, `soldier_bot_disarm_front_fixes_scen99`, `soldier_bot_whirlwind_one_foe_fixes_scen99`, `thief_bot_bomb_ally_fixes_scen99`, `thief_bot_bomb_far_fixes_scen99`, `thief_bot_cloud_alone_fixes_scen99` (21 new arenas, each with its setting-off twin `<arena>_scen99`) |
+| Q | `archer_bot_bolt_at_blows_fixes_scen99`, `archer_bot_ring_one_foe_fixes_scen99`, `archmage_bot_image_one_foe_fixes_scen99`, `barbarian_bot_boulder_far_fixes_scen99`, `barbarian_bot_explode_lone_fixes_scen99`, `cleric_bot_mace_alone_fixes_scen99`, `cleric_bot_resurrect_foe_stain_fixes_scen99`, `druid_bot_faerie_alone_fixes_scen99`, `druid_bot_protection_idle_fixes_scen99`, `druid_bot_tree_behind_fixes_scen99`, `elemental_bot_starburst_one_foe_fixes_scen99`, `elf_bot_rocks_far_fixes_scen99`, `mage_bot_marker_home_fixes_scen99`, `mage_bot_warp_two_at_blows_fixes_scen99`, `soldier_bot_boomerang_far_fixes_scen99`, `soldier_bot_charge_unaimed_fixes_scen99`, `soldier_bot_disarm_front_fixes_scen99`, `soldier_bot_whirlwind_one_foe_fixes_scen99`, `thief_bot_bomb_ally_fixes_scen99`, `thief_bot_bomb_far_fixes_scen99`, `thief_bot_cloud_alone_fixes_scen99` (21 new arenas, each with its setting-off twin `<arena>_scen99`; the setting-on twin of `soldier_bot_charge_unaimed` has a budget of its own and that of `cleric_bot_resurrect_foe_stain` a seed of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | R | `archmage_bot_struck_fixes_scen99` (its setting-off twin, `archmage_bot_struck_scen99`, came with fix AE: see below) |
-| T | `cleric_raise_blocked_corpse_fixes_scen99` (a new arena, with its setting-off twin) |
+| T | `cleric_raise_blocked_corpse_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has a seed of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | U | `soldier_charge_front_foe_fixes_scen99` (a new arena, with its setting-off twin) |
 | V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
 | W | `soldier_bot_refused_roll_acts_fixes_scen99` (a new arena, with its setting-off twin) |
 | X | `orc_stale_shove_fixes_scen99` (a new arena, with its setting-off twin) |
-| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below; the amendment (a melee-only bot bumps its own foe) recaptured `orc_right_walk_potion_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99` and `elemental_struck_short_pool_fixes_scen99` again |
-| Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
+| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below; the amendment (a melee-only bot bumps its own foe) recaptured `orc_right_walk_potion_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99` and `elemental_struck_short_pool_fixes_scen99` again; the setting-on twin of `orc_right_walk_potion` has a budget of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1 |
+| Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own, with inputs, a budget and a player team of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
-| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
+| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin); the setting-on twins of `elf_rocks_edge_pad` and `archer_bolt_edge_pad` have spawns of their own, the first inputs too: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1 |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
 | AQ | `player_slide_potion_fixes_scen99` (a new arena, with its setting-off twin) |
@@ -1694,7 +1729,8 @@ fight whose stream the ports parted; each changed array of the table says which.
 and `thief_bot_charm_or_taunt` no longer reached the rule the row was written for. No setting-off row
 moves. The fifteen rows whose own pin then changed no fact were each given a fact of their own rule again,
 with an arena, inputs, a budget or a seed of their own or a worked-out reading of the fixed stream: the twelve
-whose run changed first were captured again at `e6663739`, and `soldier_charge_ally`, given an arena of its own
+whose run changed first were captured again at `e6663739` (`orc_right_walk_potion` once more at `adfa676e`, on
+its twin's seed with a budget of 25 ticks), and `soldier_charge_ally`, given an arena of its own
 last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1). After the review of the ports,
 `mage_wave_edge_pad` reads the band of the wave's four strikes in place of one value, and `thief_charm_nearest`,
 whose own pin had changed only whether the thief lived, took an arena and a budget of its own and was captured
@@ -2278,10 +2314,20 @@ record differences kept on purpose (#484, #440, #491):
   guard's, the special gates that ask for a foe within some distance, and
   what a pack's script is answered when it asks for a near foe. A flyer
   far from the spot under its foe still flies there first and takes the
-  foe on its own floor when it re-plans within 100 px. With no foe on its
-  floor it keeps the foe it has: the rule of floors. A tower, which cannot
-  leave its floor either, is not part of this change. A flyer that holds a
-  foe on its own floor keeps #320's rule (a strictly nearer foe) alone.
+  foe on its own floor when it re-plans within 100 px (#584). With no foe
+  on its floor it keeps the foe it has: the rule of floors. A tower, which
+  cannot leave its floor either, is not part of this change. A flyer that
+  holds a foe on its own floor keeps #320's rule (a strictly nearer foe)
+  alone.
+  Measured on the Westlands levels (twenty seeds, 600 ticks), the ticks a
+  flyer held a foe on another floor while a hostile stood on its own floor
+  went from 192,973 to 43,303 with the setting on and from 174,149 to
+  37,074 with it off. Of what is left, about seven ticks in ten are a flyer
+  searching or walking, and 7,120 are a flyer in its ATTACK order facing a
+  foe on another floor while a hostile stands on its own floor (53,066
+  before): a flyer that holds a foe on another floor is asked for one on
+  its own floor only near the spot under that foe and not during that
+  order (#584).
   Only a level with more than one floor has a flyer here, so no recording
   moves on either value, and the old game has one floor, so nothing is
   ported.
@@ -3018,6 +3064,264 @@ holding its fire over an ally: the same run with only that check taken
 out of the pack read `2 1 2` again. Level 8's floor is 0, so no test
 moves.
 
+**After fixes BC, BD and BE and the flyer's own-floor foe (2026-11-17).**
+The four calibration suites were measured on the game before these fixes
+(master `d6d0741b7`) and after them (the line check, the kept turn, the
+ATTACK order and #512, on the same level files), on both values of the
+setting, with New Specials on. Each battle is the suites' stand-in crew of
+eight (four soldiers, an elf, an archer, a cleric and a barbarian, at the
+level's crew level) for 600 ticks, on forty seeds: the twenty these docs
+have always used (42, 1337, 2025 and 1 to 17), then 101 to 120. Both games
+play the same seeds on the same layouts, so a level is judged by the
+paired difference: for each seed the survivors after less the survivors
+before, their mean m, and its error se (the standard deviation of the
+forty differences over the square root of 40). A level fell when m is
+three errors or more below zero (m <= -3 se), is back when m >= -se, and
+reads too far when m is positive and at least two errors (m >= 2 se).
+Under the maintainer's rulings ([Rulings (2026-11-16)](#rulings-2026-11-16),
+entries 2 and 3) a level is eased only when all three of these hold: it
+fell with the setting on; its fall came with the ATTACK order (fix BC's
+own commit moved it by two errors or more); and it read at least one
+survivor of eight before these fixes. One step of the easing lowers one
+placement group of the level's hostile orcs, ghosts or small slimes by one
+level, the strongest group first, and no fighter is taken away. The tools
+are committed: each suite prints its per-seed survivors and damage taken
+when `OG_CALIBRATION_SEEDS` names the seeds, and
+`scripts/calibration/seed_table.py` plays a suite on a seed list and
+judges two runs.
+
+In the tables "before" and "after" are the two games and "on" and "off"
+the setting. Each cell is the crew's survivors at tick 600, the mean over
+the forty seeds with its error, and the mean over the docs' twenty in
+brackets; "difference" is m with its error. "Moved by" names each fix
+whose own commit moved the level by two errors or more with the setting
+on, with the difference that commit made and its error: BD the line check,
+BE the kept turn, BC the ATTACK order, #512 the flyer's own-floor foe.
+With the setting off only #512 can act (the other three are behind the
+setting), and only on a level with floors and flyers.
+
+**Westlands** (forty seeds)
+
+| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 7.95 (0.03) [8.00] | 7.15 (0.13) [7.20] | -0.80 (0.14) | 7.97 (0.03) | 7.97 (0.03) | BC -0.78 (0.15) |
+| 2 | 2 | 8.00 (0.00) [8.00] | 6.97 (0.16) [6.85] | -1.02 (0.16) | 8.00 (0.00) | 8.00 (0.00) | BC -1.02 (0.16) |
+| 3 | 2 | 7.62 (0.11) [7.70] | 6.08 (0.22) [6.20] | -1.55 (0.26) | 7.40 (0.13) | 7.40 (0.13) | BC -1.32 (0.22) |
+| 4 | 3 | 7.67 (0.07) [7.75] | 7.03 (0.15) [6.95] | -0.65 (0.16) | 7.70 (0.07) | 7.70 (0.07) | BC -0.60 (0.19) |
+| 5 | 3 | 5.85 (0.33) [6.05] | 4.95 (0.33) [4.95] | -0.90 (0.43) | 6.72 (0.21) | 6.72 (0.21) | BD +0.97 (0.38), BC -1.55 (0.45) |
+| 6 | 4 | 6.95 (0.16) [7.05] | 6.40 (0.23) [6.40] | -0.55 (0.28) | 6.55 (0.23) | 6.55 (0.23) |  |
+| 7 | 4 | 0.15 (0.06) [0.10] | 0.15 (0.08) [0.10] | 0.00 (0.10) | 0.23 (0.08) | 0.15 (0.07) | BC -0.33 (0.08) |
+| 8 | 5 | 2.58 (0.40) [2.20] | 2.70 (0.38) [3.20] | +0.12 (0.57) | 2.88 (0.40) | 3.38 (0.34) | BE -1.07 (0.49) |
+| 9 | 6 | 1.02 (0.21) [1.10] | 0.85 (0.18) [0.95] | -0.17 (0.28) | 1.05 (0.24) | 1.05 (0.24) |  |
+| 10 | 5 | 0.10 (0.05) [0.05] | 0.00 (0.00) [0.00] | -0.10 (0.05) | 0.20 (0.09) | 0.20 (0.09) | BC -0.15 (0.06) |
+| 11 | 6 | 5.35 (0.24) [5.40] | 3.50 (0.32) [3.60] | -1.85 (0.40) | 4.72 (0.25) | 4.72 (0.25) | BC -1.15 (0.42) |
+| 12 | 6 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  |
+| 13 | 6 | 0.12 (0.06) [0.20] | 0.00 (0.00) [0.00] | -0.12 (0.06) | 0.35 (0.09) | 0.35 (0.09) | BC -0.12 (0.05) |
+| 14 | 7 | 0.20 (0.18) [0.05] | 0.12 (0.12) [0.25] | -0.07 (0.22) | 0.23 (0.16) | 0.23 (0.16) |  |
+| 15 | 7 | 1.85 (0.22) [1.70] | 1.85 (0.25) [2.00] | 0.00 (0.28) | 2.42 (0.21) | 2.42 (0.21) |  |
+| 16 | 8 | 2.80 (0.21) [2.65] | 0.55 (0.12) [0.70] | -2.25 (0.26) | 2.83 (0.18) | 3.10 (0.13) | BC -2.40 (0.21) |
+| 17 | 8 | 5.45 (0.20) [5.25] | 5.30 (0.24) [5.60] | -0.15 (0.32) | 5.97 (0.21) | 5.97 (0.21) | BD +0.62 (0.28), BC -0.70 (0.29) |
+| 19 | 6 | 5.35 (0.16) [5.15] | 0.60 (0.12) [0.55] | -4.75 (0.20) | 5.80 (0.14) | 5.80 (0.14) | BC -4.55 (0.25) |
+| 20 | 7 | 1.82 (0.37) [1.60] | 1.07 (0.27) [1.30] | -0.75 (0.38) | 1.45 (0.32) | 1.45 (0.32) |  |
+| 21 | 7 | 7.45 (0.13) [7.40] | 7.42 (0.11) [7.45] | -0.03 (0.18) | 7.55 (0.11) | 7.55 (0.11) |  |
+| 22 | 8 | 0.42 (0.13) [0.60] | 0.15 (0.08) [0.10] | -0.28 (0.16) | 0.68 (0.16) | 0.68 (0.16) |  |
+| 23 | 8 | 5.90 (0.23) [5.95] | 2.58 (0.30) [2.55] | -3.33 (0.42) | 6.22 (0.20) | 6.22 (0.20) | BC -3.35 (0.37) |
+| 24 | 8 | 4.83 (0.27) [4.75] | 2.73 (0.23) [2.95] | -2.10 (0.39) | 4.75 (0.24) | 4.75 (0.24) | BC -1.75 (0.28) |
+| 25 | 9 | 6.65 (0.19) [6.85] | 6.80 (0.20) [7.15] | +0.15 (0.25) | 6.60 (0.17) | 6.60 (0.17) |  |
+| 26 | 9 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  |
+
+**The Long Season** (forty seeds)
+
+| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 7.95 (0.03) [8.00] | 7.75 (0.08) [7.80] | -0.20 (0.08) | 7.97 (0.03) | 7.97 (0.03) | BC -0.25 (0.08) |
+| 2 | 1 | 6.17 (0.17) [6.30] | 6.47 (0.18) [6.50] | +0.30 (0.26) | 6.75 (0.17) | 6.75 (0.17) |  |
+| 3 | 2 | 7.88 (0.05) [8.00] | 7.75 (0.07) [7.75] | -0.12 (0.09) | 7.90 (0.05) | 7.90 (0.05) |  |
+| 4 | 2 | 2.52 (0.28) [2.10] | 1.38 (0.24) [1.40] | -1.15 (0.33) | 3.55 (0.28) | 3.55 (0.28) | BC -1.77 (0.38) |
+| 5 | 3 | 6.00 (0.31) [6.35] | 6.15 (0.27) [6.00] | +0.15 (0.46) | 6.72 (0.20) | 6.72 (0.20) |  |
+| 6 | 3 | 6.08 (0.17) [6.30] | 5.95 (0.19) [6.45] | -0.12 (0.21) | 5.65 (0.22) | 5.65 (0.22) | BD -0.93 (0.33), BE +0.80 (0.32) |
+| 7 | 4 | 7.53 (0.12) [7.65] | 7.80 (0.08) [7.85] | +0.28 (0.16) | 7.83 (0.06) | 7.83 (0.06) |  |
+| 8 | 4 | 6.30 (0.29) [6.35] | 6.33 (0.25) [6.10] | +0.03 (0.35) | 6.30 (0.24) | 6.30 (0.24) |  |
+| 9 | 5 | 7.95 (0.03) [7.95] | 7.90 (0.05) [7.95] | -0.05 (0.05) | 7.95 (0.03) | 7.95 (0.03) |  |
+| 10 | 5 | 5.10 (0.27) [5.05] | 5.33 (0.32) [5.50] | +0.23 (0.38) | 5.50 (0.25) | 5.50 (0.25) |  |
+| 11 | 5 | 6.38 (0.18) [6.40] | 6.75 (0.20) [6.55] | +0.38 (0.28) | 6.62 (0.15) | 6.70 (0.14) |  |
+| 12 | 6 | 6.12 (0.24) [6.05] | 6.00 (0.27) [6.25] | -0.12 (0.40) | 6.20 (0.24) | 6.20 (0.24) |  |
+| 13 | 6 | 5.40 (0.32) [5.50] | 5.12 (0.29) [5.10] | -0.28 (0.38) | 4.72 (0.28) | 4.72 (0.28) |  |
+| 14 | 7 | 7.67 (0.11) [7.45] | 7.53 (0.12) [7.40] | -0.15 (0.10) | 7.67 (0.11) | 7.67 (0.11) |  |
+| 15 | 7 | 8.00 (0.00) [8.00] | 7.92 (0.04) [8.00] | -0.07 (0.04) | 8.00 (0.00) | 8.00 (0.00) |  |
+| 16 | 7 | 5.90 (0.24) [5.60] | 0.03 (0.03) [0.05] | -5.88 (0.24) | 5.70 (0.25) | 5.70 (0.25) | BC -5.72 (0.26) |
+| 17 | 8 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  |
+| 18 | 8 | 0.05 (0.03) [0.00] | 0.12 (0.12) [0.00] | +0.07 (0.13) | 0.07 (0.04) | 0.07 (0.04) |  |
+| 19 | 8 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  |
+
+**Imaginations** (forty seeds)
+
+| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 6.53 (0.14) [6.60] | 5.97 (0.20) [5.95] | -0.55 (0.22) | 6.30 (0.16) | 6.30 (0.16) | BC -0.72 (0.25) |
+| 2 | 1 | 7.95 (0.03) [7.95] | 8.00 (0.00) [8.00] | +0.05 (0.03) | 8.00 (0.00) | 8.00 (0.00) |  |
+| 3 | 1 | 7.75 (0.09) [7.75] | 7.28 (0.12) [7.25] | -0.47 (0.14) | 7.65 (0.10) | 7.65 (0.10) | BC -0.33 (0.13) |
+
+**The Tower** (forty seeds)
+
+| floor | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | 7.35 (0.14) [7.35] | 7.25 (0.12) [7.35] | -0.10 (0.14) | 7.42 (0.12) | 7.42 (0.12) |  |
+| 5 | 2 | 1.38 (0.37) [1.40] | 1.30 (0.40) [1.45] | -0.07 (0.21) | 1.75 (0.38) | 1.75 (0.38) |  |
+| 10 | 3 | 0.70 (0.28) [0.90] | 0.75 (0.30) [1.00] | +0.05 (0.38) | 1.20 (0.37) | 1.18 (0.37) |  |
+| 15 | 4 | 1.05 (0.30) [1.00] | 1.12 (0.30) [1.20] | +0.07 (0.33) | 1.10 (0.27) | 1.27 (0.30) | BC -0.68 (0.24) |
+| 20 | 6 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  |
+
+Summed over the levels, per run of the campaign, with the setting on:
+Westlands 104.10 before and 82.95 after (m -21.15, se 1.30), The Long
+Season 111.00 and 104.28 (-6.72, 1.20), Imaginations 22.23 and 21.25
+(-0.97, 0.26), the Tower 10.47 and 10.43 (-0.05, 0.54). Commit by commit,
+in the order they landed (the line check, the kept turn, the ATTACK order,
+#512): Westlands +0.53 (1.10), -1.73 (1.31), -20.27 (1.26) and +0.33
+(0.38); The Long Season +0.88 (1.22), +1.90 (1.17), -9.53 (0.97) and +0.03
+(0.04); Imaginations +0.03 (0.29), +0.05 (0.28), -1.05 (0.25) and 0.00;
+the Tower +0.28 (0.49), +0.23 (0.51), -0.68 (0.24) and +0.12 (0.21). The
+ATTACK order carries the cost. With the setting off: Westlands 106.28 and
+106.97 (+0.70, 0.34), The Long Season 113.12 and 113.20 (+0.07, 0.04),
+Imaginations 21.95 both, the Tower 11.47 and 11.62 (+0.15, 0.21). With the
+setting on these levels fell: Westlands 1, 2, 3, 4, 11, 16, 19, 23 and 24,
+The Long Season 4 and 16, and Imaginations 3; no Tower floor fell. With
+the setting off no level of any campaign fell.
+
+The three playtest sweeps (`scripts/westlands_playtest.sh` and its two
+siblings) drive the text client over every level of a campaign on seeds
+42, 1337 and 2025 for up to 6,000 ticks, with the setting on. Before these
+fixes and after them, on the same level files: Westlands cleared its foes
+on 29 of its 75 runs and on 14 after, ended with 39 crew members alive and
+14 after, and lost a protected hero on 21 runs and on 26 after (levels 1,
+2, 4, 8, 10, 11, 13, 17 and 20 read differently; levels 2 and 8 lost the
+hero on all three seeds after the fixes and on none before); The Long
+Season cleared 27 of its 57 runs and 23 after, with 58 crew members alive
+and 43, and lost no hero (levels 1, 3, 10, 14, 15 and 19 read
+differently); Imaginations cleared 3 of its 9 runs before and after, with
+8 crew members alive and 9.
+
+The tower's snap-face (fix BE: a tower faces its foe at once) was measured
+alone, with the setting on, on the docs' twenty seeds: the kept turn's
+commit against the same commit with the tower's case taken out. The
+Tower's five floors read the same survivors seed for seed; Imaginations 1,
+whose two towers see a foe, reads 6.70 with it and 6.30 without (+0.40,
+error 0.17); four of the fifty classic levels (Gladiator 8, 9 and 10 and
+Tryxian 105) move by a seed or two, inside their error. No level falls.
+
+The arrow slit, measured both ways after these fixes with the setting on:
+the line check takes a slit as open, as built, against a check that takes
+the slit's gamble too. 24 of the 50 classic levels have slit cells (20 of
+the 37 Gladiator levels the campaign lists, and Tryxian 103, 104, 108 and
+115). On those 24, twenty seeds each: crew survivors 1,467 as built
+against 1,494 (of 3,840); checks whose flight crossed a slit passed 13,801
+and refused 9,192, against 11,231 and 11,244 (4,573 of those test flights
+lost the gamble); real shots that reached a slit 7,217, of which 2,043
+broke on it, against 6,840 and 1,443. Golems started 373 shots against
+255, fire elementals 2,156 against 1,760. As built no check is refused at
+a slit although the shot would land; with the gamble 672 of the levels'
+shooters' checks and 110 of the crew's are, every one at a slit. One slit
+level moves by two errors, Gladiator 3 (0.70 survivors as built against
+1.50, error 0.39), one level in 24, which is what chance gives; with the
+gamble the campaigns move by Gladiator +1.45 (1.64) and Tryxian -0.10
+(0.50), per run of the campaign. On The
+Tryxian Chronicles' first level (six seeds of 2,400 ticks) the crew ends
+with 36 alive against 37 (of 72). The classic check, the setting off, on
+the same 24 levels: crew survivors 1,599, checks over a slit passed 11,612
+and refused 15,662.
+
+**Gladiator and The Tryxian Chronicles.** No calibration suite plays them,
+so `tests/unit/test_classic_campaigns_calibration.cpp` measures every level
+the two campaigns list with the same stand-in crew, 600 ticks on the docs'
+twenty seeds, before these fixes and after them. Its crew level per level
+(`kClassicCrewLevel`) is a measuring device, fitted once on the game
+before these fixes as the level at which the eight average nearest four
+survivors on three seeds; it says nothing about what crew a player brings.
+With the setting off both campaigns read exactly as before, seed by seed
+(they have one floor, so #512 cannot act). With the setting on, summed per
+run of the campaign, Gladiator reads 127.40 before and 117.50 after (m
+-9.90, se 3.72) and The Tryxian Chronicles 44.45 and 38.90 (-5.55, 1.33).
+On twenty seeds these levels fell by two errors or more: Gladiator 7 (3.85
+to 2.30) and 18 (6.25 to 3.40), Tryxian 105 (2.10 to 0.60) and 111 (3.95
+to 0.15); Tryxian 108 went from 0.45 to 0.00 (2.9 errors, under one
+survivor before); Gladiator 8 (3.15 to 4.50) and 40 (2.70 to 4.15) rose by
+two errors or more. Nothing there is eased: the maintainer's ruling leaves
+the classic campaigns as they are (entry 2 of the
+[Rulings (2026-11-16)](#rulings-2026-11-16)). In the table survivors are
+the mean per battle with its error, and damage taken is the crew's mean
+per battle, rounded; with the setting off the two games read the same.
+
+| campaign, level | crew | survivors, on: before | after | difference | damage taken, on: before | after | setting off: survivors | damage taken |
+|---|---|---|---|---|---|---|---|---|
+| Gladiator 1 | 1 | 7.75 (0.10) | 7.85 (0.08) | +0.10 (0.14) | 278 | 299 | 7.70 (0.11) | 415 |
+| Gladiator 2 | 1 | 1.45 (0.52) | 2.20 (0.55) | +0.75 (0.68) | 1,290 | 1,253 | 6.40 (0.31) | 672 |
+| Gladiator 3 | 1 | 1.15 (0.33) | 0.70 (0.24) | -0.45 (0.23) | 1,563 | 1,586 | 3.65 (0.56) | 1,458 |
+| Gladiator 4 | 1 | 7.55 (0.15) | 7.15 (0.22) | -0.40 (0.27) | 737 | 829 | 7.65 (0.11) | 723 |
+| Gladiator 5 | 1 | 3.95 (0.55) | 4.05 (0.52) | +0.10 (0.75) | 1,085 | 1,090 | 4.55 (0.48) | 1,060 |
+| Gladiator 6 | 4 | 4.80 (0.63) | 5.40 (0.60) | +0.60 (0.88) | 1,844 | 1,634 | 5.45 (0.56) | 1,797 |
+| Gladiator 7 | 2 | 3.85 (0.66) | 2.30 (0.42) | -1.55 (0.74) | 1,610 | 1,767 | 4.05 (0.44) | 1,693 |
+| Gladiator 8 | 7 | 3.15 (0.38) | 4.50 (0.46) | +1.35 (0.45) | 2,537 | 2,387 | 4.55 (0.48) | 2,196 |
+| Gladiator 9 | 3 | 4.80 (0.60) | 3.40 (0.72) | -1.40 (0.81) | 1,748 | 1,915 | 3.60 (0.69) | 1,729 |
+| Gladiator 10 | 9 | 6.15 (0.30) | 6.20 (0.25) | +0.05 (0.43) | 1,596 | 1,618 | 5.95 (0.28) | 1,695 |
+| Gladiator 11 | 9 | 4.65 (0.53) | 4.90 (0.39) | +0.25 (0.61) | 2,492 | 2,330 | 4.70 (0.39) | 2,442 |
+| Gladiator 12 | 1 | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) | 1,305 | 1,286 | 0.00 (0.00) | 1,292 |
+| Gladiator 13 | 12 | 3.80 (0.68) | 2.65 (0.65) | -1.15 (1.01) | 3,292 | 3,504 | 2.40 (0.60) | 3,590 |
+| Gladiator 14 | 3 | 4.45 (0.47) | 3.05 (0.43) | -1.40 (0.72) | 1,712 | 1,893 | 5.10 (0.35) | 1,640 |
+| Gladiator 15 | 2 | 5.20 (0.43) | 4.85 (0.48) | -0.35 (0.67) | 1,219 | 1,209 | 5.75 (0.22) | 1,134 |
+| Gladiator 16 | 15 | 1.70 (0.45) | 0.95 (0.33) | -0.75 (0.53) | 4,376 | 4,759 | 0.95 (0.26) | 5,033 |
+| Gladiator 17 | 2 | 1.50 (0.56) | 0.60 (0.35) | -0.90 (0.73) | 1,306 | 1,401 | 1.70 (0.52) | 1,321 |
+| Gladiator 18 | 1 | 6.25 (0.23) | 3.40 (0.41) | -2.85 (0.41) | 508 | 950 | 6.35 (0.33) | 464 |
+| Gladiator 19 | 7 | 2.05 (0.42) | 2.25 (0.42) | +0.20 (0.61) | 3,021 | 2,935 | 2.90 (0.54) | 2,848 |
+| Gladiator 20 | 10 | 1.05 (0.44) | 0.55 (0.33) | -0.50 (0.55) | 3,057 | 3,089 | 0.45 (0.33) | 3,141 |
+| Gladiator 21 | 12 | 4.35 (0.42) | 3.80 (0.55) | -0.55 (0.54) | 3,436 | 3,438 | 4.40 (0.43) | 3,442 |
+| Gladiator 22 | 8 | 3.15 (0.55) | 4.25 (0.67) | +1.10 (0.84) | 3,079 | 2,784 | 3.70 (0.59) | 3,080 |
+| Gladiator 23 | 15 | 2.50 (0.49) | 1.60 (0.47) | -0.90 (0.68) | 4,605 | 4,471 | 1.70 (0.44) | 4,727 |
+| Gladiator 24 | 4 | 5.15 (0.53) | 5.70 (0.41) | +0.55 (0.67) | 1,511 | 1,460 | 3.35 (0.64) | 2,146 |
+| Gladiator 25 | 4 | 1.25 (0.35) | 0.75 (0.32) | -0.50 (0.47) | 1,946 | 1,964 | 1.40 (0.28) | 1,941 |
+| Gladiator 30 | 5 | 2.40 (0.41) | 3.05 (0.45) | +0.65 (0.55) | 1,716 | 1,490 | 3.10 (0.45) | 1,617 |
+| Gladiator 35 | 10 | 2.45 (0.54) | 1.70 (0.47) | -0.75 (0.68) | 3,479 | 3,872 | 1.35 (0.37) | 3,625 |
+| Gladiator 36 | 9 | 3.05 (0.61) | 3.55 (0.66) | +0.50 (0.85) | 3,101 | 2,907 | 1.10 (0.38) | 3,914 |
+| Gladiator 37 | 13 | 4.45 (0.37) | 4.40 (0.45) | -0.05 (0.61) | 3,169 | 3,076 | 4.80 (0.46) | 3,230 |
+| Gladiator 38 | 1 | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) | 1,260 | 1,255 | 0.00 (0.00) | 1,282 |
+| Gladiator 39 | 10 | 0.10 (0.07) | 0.00 (0.00) | -0.10 (0.07) | 3,128 | 3,101 | 0.00 (0.00) | 3,106 |
+| Gladiator 40 | 15 | 2.70 (0.47) | 4.15 (0.35) | +1.45 (0.57) | 4,133 | 3,773 | 3.05 (0.50) | 4,072 |
+| Gladiator 41 | 3 | 2.40 (0.43) | 2.25 (0.37) | -0.15 (0.52) | 1,913 | 1,958 | 2.20 (0.41) | 1,855 |
+| Gladiator 42 | 5 | 4.75 (0.45) | 4.30 (0.57) | -0.45 (0.84) | 2,018 | 1,859 | 4.30 (0.49) | 1,973 |
+| Gladiator 43 | 2 | 1.80 (0.53) | 1.25 (0.41) | -0.55 (0.71) | 1,872 | 1,746 | 1.85 (0.54) | 1,810 |
+| Gladiator 44 | 8 | 5.05 (0.58) | 4.05 (0.64) | -1.00 (0.84) | 2,367 | 2,419 | 5.45 (0.44) | 2,211 |
+| Gladiator 45 | 2 | 6.60 (0.41) | 5.75 (0.45) | -0.85 (0.57) | 687 | 748 | 6.70 (0.36) | 506 |
+| Tryxian 103 | 5 | 6.70 (0.35) | 7.05 (0.39) | +0.35 (0.53) | 646 | 668 | 7.60 (0.17) | 486 |
+| Tryxian 104 | 1 | 7.45 (0.28) | 7.45 (0.26) | 0.00 (0.38) | 198 | 225 | 7.20 (0.25) | 224 |
+| Tryxian 105 | 13 | 2.10 (0.51) | 0.60 (0.31) | -1.50 (0.48) | 3,932 | 4,585 | 1.95 (0.57) | 3,896 |
+| Tryxian 106 | 3 | 7.50 (0.21) | 7.75 (0.12) | +0.25 (0.25) | 329 | 199 | 6.90 (0.31) | 644 |
+| Tryxian 107 | 5 | 6.60 (0.37) | 7.35 (0.33) | +0.75 (0.43) | 702 | 460 | 0.05 (0.05) | 2,330 |
+| Tryxian 108 | 14 | 0.45 (0.15) | 0.00 (0.00) | -0.45 (0.15) | 4,082 | 4,118 | 0.45 (0.17) | 4,196 |
+| Tryxian 109 | 15 | 0.05 (0.05) | 0.00 (0.00) | -0.05 (0.05) | 4,769 | 4,489 | 0.00 (0.00) | 4,629 |
+| Tryxian 110 | 7 | 2.70 (0.52) | 2.25 (0.47) | -0.45 (0.71) | 2,177 | 2,422 | 3.20 (0.35) | 2,393 |
+| Tryxian 111 | 3 | 3.95 (0.46) | 0.15 (0.08) | -3.80 (0.44) | 1,368 | 1,920 | 3.65 (0.50) | 1,442 |
+| Tryxian 112 | 6 | 3.45 (0.60) | 3.40 (0.69) | -0.05 (0.77) | 2,554 | 2,427 | 1.10 (0.40) | 2,777 |
+| Tryxian 113 | 1 | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) | 1,315 | 1,296 | 0.00 (0.00) | 1,297 |
+| Tryxian 114 | 13 | 3.30 (0.48) | 2.80 (0.42) | -0.50 (0.59) | 3,420 | 3,782 | 2.25 (0.31) | 4,416 |
+| Tryxian 115 | 6 | 0.20 (0.12) | 0.10 (0.07) | -0.10 (0.14) | 2,290 | 2,267 | 0.10 (0.07) | 2,266 |
+
+**The mode courts.** The twelve bot games of the seven modes (CTF, Team
+Deathmatch, Free For All, Mutant, the six basketball courts 824 to 829,
+soccer and Onslaught) were each played before these fixes and after them,
+with the setting on (`OG_MODES_GAMEPLAY_FIXES=1`) and as CI plays them,
+with the setting off. Each is one stream, so the lines show whether the
+games still work, not by how much they changed. Every game's own test
+passes on both values, before and after, and with the setting off every
+line reads as before. With it on: CTF's captures 1 and 1 before, 1 and 0
+after; Team Deathmatch's kills 4 and 3, then 3 and 4; Free For All's frags
+16, then 18; Mutant one crowning both times; the basketball courts'
+baskets 6 then 7 (court 824), 9 then 10 (825, whose game ends on tick
+8,155 against 7,690), 19 then 15 (826), 9 and 9 (827), 5 then 7 (828) and
+4 and 4 (829), the winning team changing on five of the six courts.
+Soccer and Onslaught: each game's own test holds with the setting on. An
+earlier measurement for this work, on trial builds, found that the mode
+games pass; every mode game there played with the setting off, so it said
+nothing about these fixes.
+
 ## The scene tests
 
 Fixes A to M, S and U each have a scene that plays them in the real game,
@@ -3381,7 +3685,8 @@ where an entry was only told to him, or is still open, it says so.
    fixed on both settings: a flyer that had a foe on its own floor within
    its quick foe search (about 160 px) kept the one it could not reach.
    Beyond that reach it still keeps it, so the change is partial (see
-   GAMEPLAY_FIXES_FROM_CLASSIC.md). The rest of the count, on one floor with
+   GAMEPLAY_FIXES_FROM_CLASSIC.md; #512 later took that part, see
+   [Not gated](#not-gated)). The rest of the count, on one floor with
    nothing between, is a melee-only bot standing in its ATTACK order, which
    only faces the foe (both games); see the next entry. None of it was a
    guard at its post, a frozen bot or a bot that did not act. The issue's
@@ -3510,12 +3815,16 @@ where an entry was only told to him, or is still open, it says so.
 ## Rulings (2026-11-16)
 
 The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
-BC; #538, #513, #447). Each entry below is what the maintainer said, or
-what was only told to him, and what the game or its tests do because of it.
+BC; #538, #513, #447), and the flyer's own-floor foe (#512). Each entry
+below is what the maintainer said, or what was only told to him, and what
+the game or its tests do because of it. He answered the re-balance on
+2026-11-16 and how a level is eased on 2026-11-17.
 
-1. **Fifteen setting-on rows were given a fact of their own rule again
-   after the three fixes were ported; thirteen of them took an arena,
-   inputs, a budget or a seed of their own.** The ports had moved all
+1. **Sixteen setting-on rows were given a fact of their own rule again
+   after the three fixes were ported: of the fifteen the ports left with
+   none, thirteen took an arena, inputs, a budget or a seed of their own
+   and two keep both their arena and their seed; the review of the ports
+   found a sixteenth.** The ports had moved all
    fifteen so that their own pin no longer changed a fact. Each now states
    the consequence of its own rule again, by the first of three cures that
    works. Two keep their arena and seed, because their rule leaves nothing
@@ -3564,9 +3873,10 @@ what was only told to him, and what the game or its tests do because of it.
    steps from sliding off. With the setting on the archer keeps its spawn
    point; under the row's own pin, which strikes it as the classic rush
    does, it is walked 16 px west. The row keeps its seed 24, and every
-   seed from 0 to 199 reaches the rule. A bot's own CHARGE cannot stage
-   it: with the setting on the bot's CHARGE rule (Gameplay Fixes V)
-   refuses a rush whose path meets an ally before a foe.
+   seed from 0 to 199 reaches the rule. A bot's own CHARGE did not stage
+   it in the arrangement tried, the hero between the bot and its foe: with
+   the setting on the bot's CHARGE rule (Gameplay Fixes V) refuses a rush
+   whose path meets an ally before a foe.
    `thief_charm_nearest_fixes_scen99`, a sixteenth row, was found after
    the fifteen: its facts still changed under its own pin, but only in
    whether the thief lived, a fight's outcome. It took an arena of its
@@ -3581,6 +3891,150 @@ what was only told to him, and what the game or its tests do because of it.
    with an orc above the caster's level, which takes the control roll out
    and still needs a seed for the colour roll. The maintainer was told of
    this and has not ruled on it.
+2. **The re-balance: "A is good".** The maintainer's answer, on
+   2026-11-16, to what is done about the crews' loss under fix BC: the
+   levels are re-balanced in the generators of Westlands, The Long Season,
+   Imaginations and the Tower. Only a level whose average of crew
+   survivors fell under the fixes is eased, and only until the shipped
+   default (the setting on) is back to the average that level read before
+   these fixes, within the error of that average. A level file serves both
+   settings, so an eased level gets easier with the setting off too, and
+   he accepted that. Gladiator, The Tryxian Chronicles and the mode courts
+   are not touched; what the fixes do to them is measured and recorded
+   (see [Balance](#balance)). No survivor number becomes a test pin again
+   (those pins were deleted on 2026-11-02, ruling 16 of the
+   [rulings](#rulings-2026-11-01)); the result is recorded in these docs
+   and in a dated note in each eased builder. No level is eased through
+   its script, by a percent laid over every fighter, or by a change to a
+   family's own numbers.
+3. **How a level is eased: "i would say b".** His answer, on 2026-11-17:
+   group by group, and no fighter is ever taken away. One step lowers one
+   placement group of the level's hostile orcs, ghosts or small slimes,
+   the fighters fix BC made stronger, by one level, the group with the
+   strongest fighters first. A level whose fighters are already at level
+   1 has no step: it stays a little harder, and it is reported to him with
+   its numbers. A level that is not back after half its steps stops there
+   and is brought to him. The other answers he was offered: where every
+   group is already at level 1, up to two fighters fewer; or every step to
+   the end, however far. The easing stands at half its steps on the levels
+   that were not back by then, and he has been asked how to finish it.
+4. **The shape of fix BC, and why the gentler shapes were not taken.** In
+   its ATTACK order a melee-only bot that already faces its foe on its own
+   floor swings when a foe's body stands on its weapon's pad, and
+   otherwise steps toward the foe: the remedy the maintainer was shown
+   when he answered "let's do A and handle that later" (Rulings
+   (2026-11-14), entry 2). Three gentler shapes were built beside it, and
+   each of the four was measured on a trial build, 2026-11-16 (Westlands,
+   twenty seeds, 600 ticks; the sixth column sums the four generated
+   campaigns, per run of all four):
+
+   | shape | ticks a melee-only bot stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks | acts its ATTACK order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks | acts its ATTACK order spent only facing, all ticks | its damage per 100 ticks near a foe | crew survivors, against the game before these fixes | Westlands 19 / The Long Season 16, crew survivors |
+   |---|---|---|---|---|---|---|
+   | before these fixes | 98,023 | 27,692 | the whole order | 21.66 | 0 | 5.15 / 5.60 |
+   | swing at a body on the pad, else step (fix BC's shape) | 42,578 | 2,319 | 0 | 44.85 | -28.8 | 1.35 / 0.00 |
+   | one blow per order, then face | 43,618 | 2,070 | 89,703 | 37.49 | -16.2 | 2.85 / 0.10 |
+   | keep the search, no order | 59,999 | 676 | no order (61,130 searches kept; its standing ticks spent following a wall rise from 11,850 to 19,048) | 30.09 | -13.2 | 2.30 / 0.50 |
+   | swing at a body on the pad, never step | 48,994 | 693 | 177,914 | 34.97 | -19.8 | 1.90 / 0.10 |
+
+   Two cautions on the table. The 60-tick count skips a bot while it is
+   busy, and fix BC keeps these bots busy far more often, so the second
+   column is not like for like; the third, the acts the order only faced,
+   is the direct count. And fix BC's 0 in the fourth column is 0 by
+   construction, since its rule has no branch that only faces a bot
+   already facing its foe; what is left in its third column are rounds on
+   which the bot still had to turn. Why this shape: it is the only one
+   that leaves no stand in the order (the two shapes that pause after a
+   blow still spend the acts of the fourth column only facing, in stands
+   too short for the 60-tick count to see); the shape that drops the order
+   does not stand but circles its foe, because the foe's own body is a
+   blocked front to the right-hand walk, and it removes the least
+   standing; and
+   none of them spares the levels: the same levels fall under all four
+   (the last column), so the re-balance is the same work whichever is
+   built. It is also the rule a shooter already follows in the same order
+   (shoot when the shot can land, else step) and the rate a player gets
+   by holding the key into a foe, one blow per weapon pause. Dropping the
+   order would undo part of fix BB, whose near-branch tests turn red
+   under that shape.
+5. **Level play's "two or more specials" floor is pooled over the six
+   seeds (#515).** The level-play test asked each of its six seeds for at
+   least 30 casters with two or more specials, a floor one seed alone can
+   miss. It now asks the six seeds together for at least 180, six times
+   the same 30, and still prints each seed's line. That is a looser bound
+   than six floors of 30, and the remedy the test's own header gives for
+   a change of the game: more seeds pooled, never a narrower test. With
+   fixes BC, BD and BE and the flyer's own-floor foe (#512) in, the six
+   seeds read 41, 41, 34, 33, 29 and 33 casters with two or more specials
+   (pooled 211), where the game before them read 45, 48, 45, 36, 39 and
+   41 (pooled 254); seed 2's 29 is under the old per-seed floor. The crew
+   alive at tick 2400 reads 11, 8, 3, 3, 5 and 6 (before: 10, 6, 4, 10, 8
+   and 10); that floor, at least one crew member, stays per seed. Decided
+   in this work under the test's own rule.
+6. **The questions, and the defaults built.**
+   - Arrow slits: asked 2026-11-17, still open; the default was built:
+     the line check takes a slit as open, and the shot itself takes the
+     slit's gamble. The other rule, a check that takes the gamble too,
+     makes golems and fire elementals shoot through slits less; both are
+     measured under [Balance](#balance).
+   - What a shooter may fire at: not yet asked; the default was built: a
+     line check passes on any body it meets, as before, an enemy door,
+     grown tree or shot in flight included. With the setting on, on
+     Gladiator and The Tryxian Chronicles (twenty seeds of each level),
+     98,695 of the 104,342 checks that passed although no fighter or tent
+     stood in the flight ended on an enemy door, 5,582 on an enemy shot in
+     flight and 40 on a grown tree; on The Tryxian Chronicles' first level
+     (six seeds of 2,400 ticks) 7,166 of 7,235 ended on a door, a third of
+     the soldiers' passed checks there (4,169 of 12,371) and nearly two
+     thirds of the thieves' (2,394 of 3,733). A door has 5,000 hit points,
+     so those shots are spent on it. The other rule, that only fighters
+     and tents count, would be new in both games and would be measured
+     before it shipped.
+   - When a level counts as fallen or back: decided in this work, and told
+     to the maintainer. The ruling's "twenty-seed average" is read as the
+     average over forty seeds, the twenty these docs use and 101 to 120,
+     and a level is judged by the paired difference of the two runs and
+     its error (see [Balance](#balance)): it fell when the difference is
+     three errors or more below zero, and it is back when it is no more
+     than one error below. The other reading, within the error of the
+     earlier average alone, is a smaller yardstick and would ease further.
+7. **Found on the way and filed** (none is fixed here):
+   - #571: a tower whose foe is on another floor stops shooting and plans
+     a way there that it can never walk; a guard holding its post does the
+     same.
+   - #572: the line check does not know three things the shot meets: the
+     range it loses over trees and shrub (the trees' range is read from a
+     wrong cell), a knife or rock that drops a floor over open air, and
+     the soldier's limit on blades in the air.
+   - #573: a yell, a follower's leader and a knife or rock that drops a
+     floor hand a walker a foe on another floor.
+   - #574: a swing or shot that cannot be paid for in magic still costs the
+     animation and the weapon's pause.
+   - #575: the short cut for a crowded map counts the dead test weapons of
+     the line checks asked earlier in the same tick.
+   - #576: a walker stuck in terrain gets one tick of flight and is treated
+     as a flyer for that act.
+   - #577: a tower turned one notch keeps its old heading.
+   - #578: the ghost's wail scene checks each pack's flight by counting a
+     strike, so the second pack's flight is asserted by nothing.
+   - #579: an arrow slit's gamble measures the shot's distance from where
+     it stands, not from the cell it enters (in both games).
+   - #580: a bot's even snap turns its facing to an axis and leaves its
+     heading on the diagonal.
+   - #581: the difficulty percentages are written twice (the dedicated
+     server keeps its own copy).
+   - #582: with fix BC a melee-only bot whose foe is in reach behind a wall
+     pushes against the wall for as long as the foe stays in reach, up to
+     its whole ATTACK order.
+   - #583: with fix BC a melee-only bot beside a smaller foe bumps it and
+     shuffles for a few acts before its pad meets the body.
+   - #584: on a level with floors a flyer that holds a foe on another floor
+     is asked for a foe on its own floor only near the spot under that
+     foe, and not during its ATTACK order.
+   - #585: with fix BC a melee-only bot that a mod sends at a mode ball
+     with an ATTACK order walks over the ball and back (no stock mode does
+     it).
+   - #586: two pack scripts write out what flying is instead of asking
+     `walker::flies` (they agree for every value the game writes).
 
 ## Out of scope
 
