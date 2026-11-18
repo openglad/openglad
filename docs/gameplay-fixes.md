@@ -1332,9 +1332,10 @@ The parity goldens are captures from the old game (branch
   moved), the table mirror `7c33f42b` (the moved rows after their
   review: `thief_charm_nearest` takes an arena and a budget of its own,
   the same entry; two rows read the bands their rule gives and a third
-  counts the heal's notice; one recaptured, no setting-off golden moved)
-  and the table mirror `608060fd` (the texts of four moved rows after the
-  second review; nothing moved). `608060fd` is the commit the goldens are
+  counts the heal's notice; one recaptured, no setting-off golden moved),
+  the table mirror `608060fd` (the texts of four moved rows after the
+  second review; nothing moved) and the table mirror `447be5aa` (the words
+  of three rows; nothing moved). `447be5aa` is the commit the goldens are
   captured from: 390 of 390 goldens `cmp` equal to a full capture there,
   and every capture there `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
