@@ -10679,9 +10679,31 @@ inline constexpr Mutation kMut_soldier_charge_front_foe_fixes_scen99 = {
 // asks only the window and charges into the door (the charge sound); with the
 // setting on the gate walks the rush's nine steps, meets the door before the
 // tower and holds the 25 MP.
+// The setting-on twin has an arena and a seed of its own since Gameplay Fixes
+// BF (a shooter does not fire at a door). In the arena above the soldier is a
+// shooter too, and its own foe stands behind the door: with the setting on the
+// door refuses its knife's line check, so it walks toward the tower until the
+// door stops it, a SEARCH or an ATTACK order on every act, and it never rolls
+// CHARGE with a heading and its front clear (on none of seeds 0 to 240 does
+// the row's pin change its recording). In its own arena the door stands 14 px
+// lower, at (144,134): its top row (y 134) still meets the bottom row of the
+// soldier's 16 px box (y 120 to 135), so the rush's path meets it, while the
+// 6 px knife, which leaves the soldier's pad at y 125, flies above it; the
+// tower stands 8 px higher, at (164,112), still across the rush's path, and
+// its 7 px arrows, which leave its west pad at y 123, fly above the door too
+// and strike the soldier. Its seed (0) is the first from 0 at which the gate
+// is asked with the door in the rush's path and the row's pin changes the
+// sound count; the setting-off twin keeps its arena, its seed and its
+// recording.
 inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_door_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 164, 120, 0, 0 },           // the foe, 44 px east: inside the 20-75 window
     { FAMILY_DOOR,    2, kOrderWeapon, 144, 120, 0, 0 },           // a closed door in the rush's path; team 2, so no key opens it
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_door_fixes_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 164, 112, 0, 0 },           // the foe, 44 px east: inside the 20-75 window; its box (y 112 to 140) crosses the rush's path
+    { FAMILY_DOOR,    2, kOrderWeapon, 144, 134, 0, 0 },           // a closed door whose top row meets the soldier's bottom row; team 2, so no key opens it
     { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot
     { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
 };
@@ -10696,16 +10718,25 @@ inline constexpr Mutation kMut_soldier_bot_charge_door_scen99 = {
     "G.with_classic(ai.foe_in_window(20, 25), fixed)",
     "Narrows the classic window to 20-25 px, so the tower 44 px off is refused and the bot never charges: EventKindExactly(play_sound, 4) reads 3."
 };
+// In its own arena, on its seed: the tower faces the soldier at once (Gameplay
+// Fixes BE) and shoots at ticks 2 and 7, five ticks apart, its fire delay (the
+// third shot would leave at tick 12); each arrow strikes the soldier. The
+// soldier throws one knife, at tick 6, above the door. At tick 4 its coin falls
+// on CHARGE while it faces the tower, with a heading toward it and its front
+// clear (a 1 px step east meets nothing). The gate walks the rush's nine steps
+// of 4 px along that heading: the third (x 132) meets the door's top row
+// before any step reaches the tower (the eighth, x 152, would), so the gate
+// refuses and holds the 25 MP. Three sounds by tick 10: two bows and one throw.
 inline constexpr FactPredicate kFacts_soldier_bot_charge_door_fixes_scen99[] = {
     pred::TickReached(10),
     pred::EventKindExactly(/*play_sound*/1, 3,
-        "consequence: with the setting on the gate walks the rush's path, meets the door before the tower and refuses the charge: no charge sound in the budget"),
+        "consequence: with the setting on the gate walks the rush's path, meets the door before the tower and refuses the charge: no charge sound in the budget, only the tower's two shots and the soldier's knife"),
 };
 inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
     "packs/core/lib/gates.lua", 680,
     "if not og.quiet_passable(ax - 1, ay - 1, self) then",
     "if false then",
-    "Drops the path test, so the rush's steps run through the door to the tower and the bot charges as the classic one does, at tick 5 (the classic bot at tick 6): EventKindExactly(play_sound, 3) reads 4."
+    "Drops the path test, so the rush's steps run past the door's top row to the tower and the bot charges at tick 4, when its coin falls on CHARGE: EventKindExactly(play_sound, 3) reads 4."
 };
 
 // --- elf_bot_rocks_blocked (fix V: the rock gate asks the rock's pad) ---
@@ -10901,7 +10932,7 @@ inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
 
 // --- orc_right_walk_potion (fix Y: the right-hand walk asks quietly) ---
 // A hostile level-1 orc bot is at blows with a level-10 TOWER1 directly above it
-// (a one-pixel gap), so it stays heading UP and alternates its attack windows
+// (a one-pixel gap), so from tick 6 it stays heading UP and alternates its attack windows
 // with right-hand walk ticks. A magic potion (7x13) stands one pixel outside the
 // orc's right side: the orc's own box and its steps never cover it, but
 // right_blocked's FACE_UP probe (the orc's box moved one pixel right) does. The
@@ -10917,7 +10948,7 @@ inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
 // on, loud under the pin. Every seed from 0 to 199 keeps the potion with the
 // setting on and loses it under the pin, the tower standing at tick 25.
 inline constexpr SpawnSpec kFamilySpawns_orc_right_walk_potion_scen99[] = {
-    { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and heading UP; level 10 outlives the budget
+    { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and, from tick 6, heading UP; level 10 outlives the budget
     { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 135, 124, 0, 0 },         // 7x13, one pixel outside the orc's right side: only right_blocked's FACE_UP probe meets it
     { FAMILY_ORC,          1, kOrderLiving,   120, 120, 0, 0, 1, 0 },   // hostile melee bot: faces DOWN at spawn and on its first act, turns UP over ticks 2 to 5, then its right is +x
     { FAMILY_SOLDIER,      0, kOrderLiving,   560, 440, 0, 0 },         // idle player LAST
@@ -11462,7 +11493,7 @@ inline constexpr Mutation kMut_elf_rocks_edge_pad_scen99 = {
     "The classic ROCKS never fires, so neither press throws a rock and the tower stays at 130 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700) fails.",
     "local function some_rocks(self)"
 };
-// The setting-on twin has spawns and inputs of its own. Beside the elf the
+// The setting-on twin has spawns, inputs and a budget of its own. Beside the elf the
 // tower's arrows (each flown check passes or not on its own waver draw,
 // Gameplay Fixes BD) were all the pin's extra draw could move, so the pin no
 // longer changed a fact. Here the tower stands far away, where it only holds
@@ -12531,6 +12562,95 @@ inline constexpr Mutation kMut_orc_refused_shot_turn_fixes_scen99 = {
     "if (og::sim::session_gameplay_fixes() != 0 && !faced)",
     "if (og::sim::session_gameplay_fixes() == 0 && !faced)",
     "The setting-on row loses the kept turn: tick 2 turns the orc back, its walk turns it from tick 3 and it steps from tick 6, four steps to (132, 188), so WalkerPositionMoved(FAMILY_ORC, 138, 182) fails on x."
+};
+
+// --- tower_foe_behind_door (fix BF: a shooter does not fire at a door) ---
+// A hostile level-1 TOWER1 (25x29, stepsize 0, fire delay 5) at (173, 100),
+// facing DOWN (the spawn facing), a closed team-2 door (16x16) at (178, 150)
+// below it, and the idle player soldier (16x16) at (178, 166) straight below
+// the door: the door's bottom row and the soldier's top row are one pixel
+// apart. Neither the tower nor the idle player moves, so the soldier cannot
+// reach the tower and nothing reaches the soldier but the tower's arrows; no
+// key opens a team-2 door. The tower's arrow is the table's step 8 and range
+// 12, a straight shot's scaled by 362/256 and 309/256: 11.3125 px a step and
+// 14 steps, a reach of 154 px (the soldier's corner is 5 + 66 = 71 px off).
+// fire() and the line check put the 7x7 arrow on the tower's pad, one pixel
+// below it and centred: (182, 130).
+// The classic check (the setting off) tests the pad and then spots 1, 3, 6
+// ... steps out, each cut to a whole pixel: y 130, 141, 163, 196 ... The pad
+// and the spot at 141 meet nothing; the spot at 163 (its box y 164 to 169
+// after the obmap's one-pixel shrink) meets both the door (y 151 to 165) and
+// the soldier (y 167 to 181), for every sideways waver the check draws (3w
+// px for a waver w of -2 to 3, against two 16 px boxes centred on the pad).
+// So the classic check passes there whatever the draws: on the door when the
+// door is asked first and its clash roll is lost, on the soldier otherwise.
+// The flown check (Gameplay Fixes BD) takes the shot's own steps: its first
+// (y 141) meets nothing; its second (y 152, box y 153 to 158) meets the door
+// for every waver, and with Gameplay Fixes BF the check's test weapon meets
+// the door without the clash roll, so the door stops it and the check is
+// refused (WallBlocked) on every try: the tower never shoots.
+// Tick by tick, on this seed (0, the first from 0 at which the classic row
+// reaches its rule): the tower's first act queues the hunt (SEARCH) on both
+// settings, and tick 2's hunt, a throttled walk (direct_walk in open
+// ground), asks the line check. Classic, the check passes, so the hunt turns
+// the tower toward the soldier (classic, a walker asked to face the way it
+// faces still turns a notch) and starts an ATTACK order; tick 3 turns it
+// back and tick 4's order fires: the bow sounds on tick 4, the arrow stands
+// on the pad on tick 5 and its third step, on tick 8, ends on the door or
+// the soldier (the real shot still takes the clash roll at the door). The
+// shot charges the fire delay, so the next arrow cannot leave before tick 9.
+// With the setting on the check is refused on tick 2 and on every later try:
+// the refusal is a wall's, so the hunt steps toward the foe, which for a
+// tower is a turn to the facing it already has, and later the near branch's
+// ATTACK order does the same; no shot leaves. The budget B = 8: one shot
+// started with the setting off, none with it on. A launch is the only sound
+// either row can make: the pad is clear, so no blow clangs, an arrow that
+// strikes makes no sound, and the soldier, a player that presses nothing,
+// never acts. The dump carries neither the door's hit points nor the tower's
+// magic, so the facts count the shots by their sound.
+// The classic row's pin turns the flown check on with the setting off, so
+// its check is refused at the door as the setting-on row's is and its tower
+// starts no shot. The setting-on row's pin lets a check whose test weapon
+// the door stopped pass, as before Gameplay Fixes BF: tick 2's check passes
+// at the door, the hunt starts the ATTACK order, the turn stays put with the
+// setting on (fix AT), and the order fires on tick 3; no second shot leaves by
+// tick 8.
+inline constexpr SpawnSpec kFamilySpawns_tower_foe_behind_door_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 173, 100, 0, 0 },          // hostile level-1 tower, facing DOWN at spawn; its pad is (182, 130)
+    { FAMILY_DOOR,    2, kOrderWeapon, 178, 150, 0, 0 },          // a closed door on the shot's path, centred on the pad; team 2, so no key opens it
+    { FAMILY_SOLDIER, 0, kOrderLiving, 178, 166, 0, 0 },          // the idle player LAST, straight below the door: its top row is y 166
+};
+inline constexpr FactPredicate kFacts_tower_foe_behind_door_scen99[] = {
+    pred::TickReached(8),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands between the tower and the soldier"),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic check passes at the door or at the soldier behind it, so the tower starts one shot by tick 8, its bow on tick 4; the fire delay holds the next to tick 9"),
+};
+inline constexpr Mutation kMut_tower_foe_behind_door_scen99 = {
+    "src/gameplay/walker_movement.cpp", 777,
+    "if (og::sim::session_gameplay_fixes() == 0)",
+    "if (og::sim::session_gameplay_fixes() != 0)",
+    "The flown check answers with the setting off, so the door on the flight refuses the classic row's check as it refuses the setting-on row's (Gameplay Fixes BF) and the tower starts no shot: EventKindExactly(play_sound, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_tower_foe_behind_door_fixes_scen99[] = {
+    pred::TickReached(8),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands between the tower and the soldier"),
+    // negative_assertion: no shot is started by tick 8 with the setting on (no bow sounds); the pin lets a check the door stopped pass, and the tower's bow sounds on tick 3.
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the door on the shot's path refuses every line check, so the tower starts no shot"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: no arrow leaves, so the soldier behind the door keeps its 120 hp"),
+};
+inline constexpr Mutation kMut_tower_foe_behind_door_fixes_scen99 = {
+    "src/gameplay/walker_movement.cpp", 877,
+    "if (stopped_by_a_door())",
+    "if (false)",
+    "A flight step the door stopped passes again, as before Gameplay Fixes BF: the check passes at the door and the tower fires on tick 3, so EventKindExactly(play_sound, 0) reads 1.",
+    "        if (met == FlightStep::Struck)"
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -15263,10 +15383,10 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_soldier_bot_charge_door_scen99, std::size(kFacts_soldier_bot_charge_door_scen99),
       kMut_soldier_bot_charge_door_scen99 },
 
-    { "soldier_bot_charge_door_fixes_scen99", "scen/scen1.fss", 0x00000007u,
+    { "soldier_bot_charge_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
       kInputsEmpty, std::size(kInputsEmpty), 10,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_soldier_bot_charge_door_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_scen99),
+      kFamilySpawns_soldier_bot_charge_door_fixes_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_soldier_bot_charge_door_fixes_scen99, std::size(kFacts_soldier_bot_charge_door_fixes_scen99),
       kMut_soldier_bot_charge_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -15708,6 +15828,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_refused_shot_turn_fixes_scen99, std::size(kFacts_orc_refused_shot_turn_fixes_scen99),
       kMut_orc_refused_shot_turn_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "tower_foe_behind_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 8,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_foe_behind_door_scen99, std::size(kFamilySpawns_tower_foe_behind_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_tower_foe_behind_door_scen99, std::size(kFacts_tower_foe_behind_door_scen99),
+      kMut_tower_foe_behind_door_scen99 },
+    { "tower_foe_behind_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 8,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_foe_behind_door_scen99, std::size(kFamilySpawns_tower_foe_behind_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_tower_foe_behind_door_fixes_scen99, std::size(kFacts_tower_foe_behind_door_fixes_scen99),
+      kMut_tower_foe_behind_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
