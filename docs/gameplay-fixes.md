@@ -3221,11 +3221,11 @@ Seven levels end eased. The Forest Road (Westlands 2) and The White City
 (Westlands 16) are left as they were, because no step brought them back,
 down to every group that fights before tick 600 at level 1. Two end states
 leave the order of the steps, as he approved: The Dead Marshes lowers the
-four lights of one mere (P3) without those of the next (P4), which share
-one loop with them in the builder, and The Mountain of Fire keeps its two
-strongest groups at their old levels. No fighter was taken away and no
-count of a level changed. A dated note above the changed placements in
-each builder says what the level ends at.
+four marsh-lights (ghosts) of one mere (P3) without those of the next
+(P4), which share one loop with them in the builder, and The Mountain of
+Fire keeps its two strongest groups at their old levels. No fighter was
+taken away and no count of a level changed. A dated note above the
+changed placements in each builder says what the level ends at.
 
 Every step measured, on the forty seeds, with the docs' twenty in
 brackets. "Steps" counts the steps taken in their order (the group with
@@ -3260,7 +3260,7 @@ Marshes, P2 the great mere and P5 the small one.
 |  | 10 of 10 | every group at level 1 | 1.55 (0.27) [1.45] | -1.25 (0.37), fell | 1.32 (0.24) [1.20] |
 |  | not a step | the fighters as they were and the three tents at level 5, from 7 (a tent is a generator, which no step lowers) | 0.60 (0.16) [0.70] | -2.20 (0.31), fell | 2.73 (0.17) [2.70] |
 | The Dead Marshes (Westlands 19) | none | nothing | 0.60 (0.12) [0.55] | -4.75 (0.20), fell | 5.80 (0.14) [5.95] |
-|  | 10 of 20 (half) | P1's five lights at levels 1 and 2, from 3 and 4; the great mere's five lights at 1 and its elder at 2, from 3 and 4 and the elder's 5; P3's and P4's eight lights at 2 and 3, from 3 and 4; the small mere's pair at 3, from 4; P6's three lights at 1 and 2 and its elder at 3, from 3 and 4 and the elder's 5 | 4.78 (0.24) [5.05] | -0.57 (0.31), not back | 7.53 (0.10) [7.55] |
+|  | 10 of 20 (half) | P1's five lights (ghosts) at levels 1 and 2, from 3 and 4; the great mere's five lights at 1 and its elder light at 2, from 3 and 4 and the elder's 5; P3's and P4's eight lights at 2 and 3, from 3 and 4; the small mere's pair at 3, from 4; P6's three lights at 1 and 2 and its elder at 3, from 3 and 4 and the elder's 5 | 4.78 (0.24) [5.05] | -0.57 (0.31), not back | 7.53 (0.10) [7.55] |
 |  | 11 of 20 | as at half, and P3's and P4's eight lights (one loop) at 1 and 2 | 6.33 (0.21) [6.45] | +0.97 (0.27), too far | 7.90 (0.05) [7.85] |
 |  | 12 of 20 | as above, and one of the small mere's pair at 2 | 6.40 (0.27) [6.30] | +1.05 (0.32), too far | 7.92 (0.04) [7.90] |
 |  | 13 of 20 | as above, and the other at 2 | 6.90 (0.17) [6.90] | +1.55 (0.25), too far | 7.95 (0.03) [7.90] |
@@ -3281,7 +3281,7 @@ Marshes, P2 the great mere and P5 the small one.
 |  | 14 of 14 | every group at level 1 | 7.03 (0.17) [7.15] | +1.12 (0.27), too far | 7.45 (0.11) [7.35] |
 | The Mountain of Fire (Westlands 24) | none | nothing | 2.73 (0.23) [2.95] | -2.10 (0.39), fell | 4.75 (0.24) [4.70] |
 |  | 14 of 27 (half) | the plain ranks' thirty orcs at levels 2 and 3, from 3 and 4; the six ghost outriders at 2 and 3, from 5 and 6; the four Undergate chamber guards (orcs) at 4, from 6; the two caldera ghosts at 4, from 8 | 4.12 (0.27) [3.75] | -0.70 (0.41), not back | 5.00 (0.22) [5.15] |
-|  | 27 of 27 | every group at level 1 | 5.53 (0.20) [5.45] | +0.70 (0.35), back | 5.28 (0.27) [5.05] |
+|  | 27 of 27 | every group at level 1 | 5.53 (0.20) [5.45] | +0.70 (0.35), back (1.97 errors) | 5.28 (0.27) [5.05] |
 |  | ranks one level, outriders three (the end state) | the ranks and the outriders as at half; the chamber guards at 6 and the caldera ghosts at 8, as they were | 4.50 (0.24) [4.55] | -0.33 (0.37), back | 5.58 (0.23) [5.45] |
 |  | ranks one level, outriders two | the ranks at 2 and 3 and the outriders at 3 and 4; nothing else | 4.08 (0.23) [4.10] | -0.75 (0.36), two to three errors under | 5.75 (0.24) [5.60] |
 |  | outriders two levels | the outriders at 3 and 4; nothing else | 3.15 (0.23) [3.25] | -1.68 (0.38), fell | 4.92 (0.26) [4.85] |
@@ -3316,16 +3316,17 @@ the level before these fixes it reads and the error of that gap):
   back. It is the fewest steps that read back: at one step it read 4.53
   [4.10], and at three it read back as well, 5.30 [5.10].
 - **The Dead Marshes (Westlands 19)**: half its twenty steps, and P3's
-  four lights one level more. P1's five lights go from levels 3 and 4 to 1
-  and 2, the great mere's five from 3 and 4 to 1 and its elder from 5 to
-  2, P3's four from 3 and 4 to 1 and 2, P4's four from 3 and 4 to 2 and 3,
-  the small mere's pair from 4 to 3, and P6's three from 3 and 4 to 1 and
-  2 with its elder from 5 to 3: 5.35 [5.15], 0.60 [0.55], 5.33 [4.95];
-  0.03 under, error 0.29, back. Half its steps read 4.78 [5.05], not back;
-  the next step lowers P3's and P4's lights together, one loop in the
-  builder, and read 6.33 [6.45], too far. Of the groups lowered alone from
-  half, P3 came nearest: P4 read 5.25 [5.75], the small mere's pair 5.05
-  [5.30], one of the pair 4.78 [5.05] and P6 4.65 [4.80].
+  four marsh-lights (ghosts) one level more. P1's five lights go from
+  levels 3 and 4 to 1 and 2, the great mere's five from 3 and 4 to 1 and
+  its elder light from 5 to 2, P3's four from 3 and 4 to 1 and 2, P4's
+  four from 3 and 4 to 2 and 3, the small mere's pair from 4 to 3, and
+  P6's three from 3 and 4 to 1 and 2 with its elder from 5 to 3: 5.35
+  [5.15], 0.60 [0.55], 5.33 [4.95]; 0.03 under, error 0.29, back. Half
+  its steps read 4.78 [5.05], not back; the next step lowers P3's and
+  P4's lights together, one loop in the builder, and read 6.33 [6.45], too
+  far. Of the groups lowered alone from half, P3 came nearest: P4 read
+  5.25 [5.75], the small mere's pair 5.05 [5.30], one of the pair 4.78
+  [5.05] and P6 4.65 [4.80].
 - **The Ash Plains (Westlands 23)**: one step past half: the central
   host's twelve orcs from level 3 to 2, the two orcs that watch the first
   river's north ford from 5 to 2, and the six wraiths from 4 to 3; the
@@ -3374,8 +3375,9 @@ under, error 0.48.
 before these fixes and after them; their level files did not change, so
 they read the same after the easing.
 
-- Fell, but their fighters that fight before tick 600 are already at level
-  1, and the maintainer ruled that no fighter is taken away: Westlands 1,
+- Fell, but their orcs, ghosts and small slimes that fight before tick
+  600 are already at level 1 (a step lowers no other fighter), and the
+  maintainer ruled that no fighter is taken away: Westlands 1,
   7.95 to 7.15 (m -0.80, se 0.14), whose two ghosts at level 2 wake at
   tick 600; The Long Season 4, 2.52 to 1.38 (-1.15, 0.33); Imaginations 3,
   7.75 to 7.28 (-0.47, 0.14).
@@ -3423,8 +3425,9 @@ steps 4.17 [4.20]: with the setting off its reading falls when the bank
 wolves go from 4 to 3. Why is not traced.
 
 Summed over the levels, per run of the campaign, at four points (before
-these fixes; after them, on the level files before any easing; at half the
-steps, 2026-11-17; after the easing): Westlands with the setting on
+these fixes; after them, on the level files before any easing; at the
+state of 2026-11-17 (half the steps, The Great River at two of its
+fifteen); after the easing): Westlands with the setting on
 104.10, 82.95, 94.80 and 96.03 (after the easing against before these
 fixes, m -8.07, se 1.23), with it off 106.28, 106.97, 109.30 and 111.85
 (+5.58, 0.52); The Long Season with the setting on 111.00, 104.28, 108.72
@@ -3467,14 +3470,15 @@ differently); Imaginations cleared 3 of its 9 runs before and after, with
 
 After the easing, on the eased level files: Westlands cleared its foes on
 17 of its 75 runs, ended with 16 crew members alive and lost a protected
-hero on 28 runs (at half the steps: 17, 14 and 27). Against the game after
-the fixes four Westlands levels read differently, all of them eased: The
-Last Ford ends with 2 crew members alive over its three runs (none at the
-earlier points), The Hidden Refuge clears its foes on all three runs again
-(on two after the fixes), The Great River on two (on none after the fixes,
-on all three before them), and The Mountain of Fire loses the Bearer on
-two of its three runs, where it lost him on none before these fixes or
-after them and on one at half the steps. Why is not traced: the count of
+hero on 28 runs (at the state of 2026-11-17: 17, 14 and 27). Against the
+game after the fixes four Westlands levels read differently, all of them
+eased: The Last Ford ends with 2 crew members alive over its three runs
+(none at the earlier points), The Hidden Refuge clears its foes on all
+three runs again (on two after the fixes), The Great River on two (on none
+after the fixes, on all three before them), and The Mountain of Fire loses
+the Bearer, the campaign's protected hero, on two of its three runs, where
+it lost him on none before these fixes or after them and on one at the
+state of 2026-11-17 (half its steps). Why is not traced: the count of
 its first 600 ticks reads the level back, and the Bearer is first counted
 dead at ticks 2,400 and 2,700 (the sweep counts every 300 ticks). The
 Forest Road cleared its foes on all three runs before these fixes and on
