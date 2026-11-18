@@ -255,25 +255,25 @@ bool walker::walkstep(float x, float y)
     set_lastx(x * stepsize());
     set_lasty(y * stepsize());
 
+    // A stationary living is walker::stationary(), the one test that walk() and turn() below
+    // and the kept turn of Gameplay Fixes BE also ask. The old game wrote it here as "order
+    // LIVING and family TOWER1"; the family's descriptor (is_stationary) says it now, and only a
+    // living is asked because a weapon can carry a living's family number (the bone wall has the
+    // tower's). A tower's stepsize is 0, so the heading just written is 0,0, which faces UP: the
+    // arm below writes the unscaled step instead, the heading that the tower's line check and
+    // shot are aimed along (set_weapon_heading).
     // rule: A stationary living (tower) never moves: a step only turns it to face the step
     //   direction (curdir and enddir), records the unscaled step as its heading, and reports
     //   success.
     // tests: WalkerMovement.stationary_family_walk_and_turn_branches
     // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
-    if (order() == Order::Living)
+    if (stationary())
     {
-        const auto* fd = get_family_descriptor(family());
-        // rule: A stationary living (tower) never moves.
-        // tests: WalkerMovement.stationary_family_walk_and_turn_branches
-        // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
-        if (fd && fd->is_stationary)
-        {
-            set_curdir(static_cast<signed char>(facing(x, y)));
-            set_enddir(static_cast<char>(curdir()));
-            set_lastx(x);
-            set_lasty(y);
-            return 1;
-        }
+        set_curdir(static_cast<signed char>(facing(x, y)));
+        set_enddir(static_cast<char>(curdir()));
+        set_lastx(x);
+        set_lasty(y);
+        return 1;
     }
     returnvalue = walk(x * stepsize(), y * stepsize());
     halfstep = 1;
@@ -496,20 +496,20 @@ bool walker::walk(float x, float y)
 
     dir = facing(x, y);
 
+    // living::walk overrides this walk, so a living reaches it only through walk() above, which
+    // names this one (the repeat of its last step: a seated hero's bonus rounds), and walkstep()
+    // answers a tower before it would call either. The old game wrote this test as "order
+    // LIVING and family TOWER1" too; walker::stationary() asks the family's descriptor, and only
+    // for a living. A tower's heading is the unscaled step that its last walkstep() or snap-face
+    // wrote (its stepsize is 0), so the repeated step turns it to face where it aims and moves
+    // nothing, as the old game's tower did.
     // rule: A stationary living's walk only sets its facing (same rule as above)
     //   and succeeds.
     // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
-    if (order() == Order::Living)
+    if (stationary())
     {
-        const auto* fd = get_family_descriptor(family());
-        // rule: A stationary living's walk only sets its facing (same rule as
-        //   above) and succeeds.
-        // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
-        if (fd && fd->is_stationary)
-        {
-            set_curdir(static_cast<signed char>(dir));
-            return 1;
-        }
+        set_curdir(static_cast<signed char>(dir));
+        return 1;
     }
 
     // rule: A zero step succeeds without moving or turning.
@@ -651,10 +651,10 @@ bool walker::turn(short targetdir)
     set_curdir(static_cast<signed char>(currentdir));
 
     // Now set our lastx and lasty (facing) variables correctly
-    const bool stationary = (order() == Order::Living) && [&]{
-        const auto* fd = get_family_descriptor(family());
-        return fd && fd->is_stationary;
-    }();
+    // A stationary living (walker::stationary(): a tower) keeps the heading its last step or
+    // snap-face gave it: its stepsize is 0, so the arms below would write 0,0, which faces UP,
+    // and its line check and its shot are aimed along that heading. With Gameplay Fixes BE the
+    // kept turn snap-faces a tower (face_delta) instead of turning it here.
     // rule: After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim
     //   weapons) is one stepsize along the new facing; a stationary living keeps its old heading;
     //   an invalid facing heads up.
@@ -663,7 +663,7 @@ bool walker::turn(short targetdir)
     // tests: WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths
     // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
     // tests: SemWalker4.a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing
-    if (!stationary)
+    if (!stationary())
     {
         // rule: After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim
         //   weapons) is one stepsize along the new facing.
