@@ -1652,8 +1652,8 @@ bool statistics::right_walk()
 // pixel (CHECK_STEP_SIZE) toward `side`, counted round from its facing: the
 // same box facing_step_delta names, and the same collide() rule the classic
 // probe met the body with (og::sim::step_meets). A melee-only bot has no aimed
-// shot (fire_check refuses it): its blows are the bumps, its own step's and, with the
-// setting on, this one at its own foe, and its ATTACK order's swing at a body on its pad.
+// shot (fire_check refuses it). Its blows: its own step's bump; with the setting on also this
+// bump at its own foe and a swing at a body on its pad (near_swing, the ATTACK order).
 // Measured 2026-11-01: the quiet probes alone took a third of the orc, ghost
 // and slime swings and a fifth of their damage, and left an orc stopped
 // exactly against a standing foe swinging never. Off, the probe alone.
