@@ -111,7 +111,7 @@ usual pause.
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
 | AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. The one exception is a thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife on its way home, the F2 cheat's shield): it goes with him and fights for whatever side he is on now. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
 | BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act (a tower faces it at once, fix BE). A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
-| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does (#574). Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way (#587). A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so the two sides of that count are not like for like; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where lowering a group of fighters brought them back or nearer, and two of them stay harder (see [Balance](#balance)). |
+| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does (#574). Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way (#587). A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so the two sides of that count are not like for like; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where lowering a group of fighters brought them back or nearer; five levels that fell were not eased and stay harder, two because no step brought them back and three because their orcs, ghosts and small slimes that fight before tick 600 are already at level 1 (see [Balance](#balance)). |
 | BD | The line check a tower or shooting bot asks before it fires | The check moves its test weapon 0, 1, 3, 6, 10 ... steps out from the pad, each spot cut to a whole pixel, while the shot flies one step an act. A foe between two tested spots is stepped over: a tower's arrow misses about two in five of the distances inside its reach, a druid's lightning about half, a golem's boulder, a fire elemental's meteor and a faerie's sprinkle a fifth to a quarter. The tower stands silent; a bot that can walk walks closer instead of shooting. The same loop can step over a one-tile wall and pass a shot that then hits the wall. | The check flies its test weapon the way the shot flies: the pad, then the shot's own step once for each step a fresh shot moves. It passes when the pad or a step meets a body the shot would strike and refuses at a wall, at the map's edge or when the flight runs out. What it still does not share with the shot: it draws its own sideways waver, so far shots are judged as often right as shots land, not shot for shot; it takes an arrow slit as open and the shot itself takes the slit's gamble, so an arrow can still break on a slit wall; it does not count the range a shot loses over trees and shrub, nor a rock or knife that drops a floor over open air; and it does not ask a family's own veto (a soldier with no knife left). The range, the drop and the veto are #572. It still passes on an enemy tree, door or shot in its line on the same roll the real shot makes there. A tower that shoots more runs out of magic sooner and then waits for it. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: checks refused, at a wall or as a miss, although a quiet flight of the same weapon lands on the foe, 8,092 for the levels' shooters and 8,846 for the crew, to 0 and 0 (The Long Season 6,628 and 10,860 to 0 and 0); on the one level with arrow slits whose checks were counted before these fixes as well as after, The Tryxian Chronicles' first level (six seeds of 2,400 ticks), 1,422 and 209 to 0 and 0. A tower's shots per 100 ticks near a foe, on the Imaginations level whose two towers see a foe: with the setting on, 7.3 before these fixes and 8.8 after; the setting off reads 8.7 there; that level's towers' checks refused for want of magic go from 6 to 425 with the setting on (135 with it off). On Gladiator 8, 9, 10 and 12, whose towers see a foe (twenty seeds, after these fixes), the towers fire 7.63 shots per 100 ticks near a foe with the setting off and 10.52 with it on. What a check meets when it passes although its flight meets no fighter or tent: on Gladiator and The Tryxian Chronicles, with the setting on, 98,695 of 104,342 such passes ended on an enemy door (a door has 5,000 hit points, so the shot is spent on it) and 5,582 on an enemy shot in flight; on the four generated campaigns, which have no doors, 2,726 of 2,731 on a shot in flight (see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). The classic check's false passes were of another kind: 22,431 of its 118,220 on the classic campaigns ended on a fighter the shot could not reach. |
 | BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts spent turning back after a refused shot's turn 41,803 to 0; acts until a bot that did not face its foe faces it 2.80 to 1.12 for the melee-only bots, 2.68 to 1.13 for the levels' shooters and 2.51 to 1.12 for the crew. That mean counts only the bots that faced their foe within 12 acts of the turn: before, about one in eight had not (5,544 of 42,038), after about one in 170 (247 of 40,970). |
 
@@ -3200,10 +3200,13 @@ Westlands 1, 2, 3, 4, 11, 16, 19, 23 and 24, The Long Season 4 and 16, and
 Imaginations 3; no Tower floor fell. With the setting off no level of any
 campaign fell.
 
-**The easing (2026-11-17 and 2026-11-18).** Nine levels met all three
-conditions: Westlands 2, 3, 4, 11, 16, 19, 23 and 24 and level 16 of The
-Long Season. No Imaginations level and no Tower floor did, and no level
-fell without the ATTACK order. Each was eased in its builder
+**The easing (2026-11-17 and 2026-11-18).** Twelve levels met all three
+conditions. Nine of them have a group of orcs, ghosts or small slimes
+above level 1 that fights before tick 600, and so have steps: Westlands
+2, 3, 4, 11, 16, 19, 23 and 24 and level 16 of The Long Season. The other
+three, Westlands 1, The Long Season 4 and Imaginations 3, have none
+(listed below). No Tower floor fell, and no level fell without the ATTACK
+order. Each of the nine was eased in its builder
 (`tools/westlands_mapgen`, `tools/longseason_mapgen`) one step at a time,
 and each step tried was generated and measured on the forty seeds. A level's
 steps lower only its groups that fight before tick 600: a fighter that
@@ -3217,12 +3220,12 @@ on 2026-11-18 ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 3).
 Seven levels end eased. The Forest Road (Westlands 2) and The White City
 (Westlands 16) are left as they were, because no step brought them back,
 down to every group that fights before tick 600 at level 1. Two end states
-leave the order of the steps, as he approved: The Dead Marshes lowers P3's
-four lights without P4's, which share one loop with them in the builder,
-and The Mountain of Fire keeps its two strongest groups at their old
-levels. No fighter was taken away and no count of a level changed. A dated
-note above the changed placements in each builder says what the level ends
-at.
+leave the order of the steps, as he approved: The Dead Marshes lowers the
+four lights of one mere (P3) without those of the next (P4), which share
+one loop with them in the builder, and The Mountain of Fire keeps its two
+strongest groups at their old levels. No fighter was taken away and no
+count of a level changed. A dated note above the changed placements in
+each builder says what the level ends at.
 
 Every step measured, on the forty seeds, with the docs' twenty in
 brackets. "Steps" counts the steps taken in their order (the group with
@@ -3383,7 +3386,7 @@ they read the same after the easing.
   bring them back: The Forest Road and The White City (above).
 - Fell, but not with the ATTACK order: none.
 - Under one survivor before these fixes, where the count cannot show a
-  fall or an easing; in brackets the crew's damage taken per battle,
+  fall or an easing; in parentheses the crew's damage taken per battle,
   before and after: Westlands 7, 0.15 to 0.15 (2,041 to 2,053); 10, 0.10
   to 0.00 (2,236 to 2,218); 12, 0.00 to 0.00 (2,590 to 2,719); 13, 0.12 to
   0.00 (2,437 to 2,344); 14, 0.20 to 0.12 (2,941 to 2,826); 22, 0.42 to
@@ -3407,9 +3410,10 @@ and 7.83 [7.85] (+2.02, 0.15), The Ash Plains 6.22 [6.05] and 7.17 [7.05]
 (+0.95, 0.24) and The Mountain of Fire 4.75 [4.70] and 5.58 [5.45] (+0.82,
 0.34): easier, each by two errors or more. The Last Ford 7.40 [7.45] and
 7.47 [7.55] (+0.07, 0.06) and The Hidden Refuge 7.70 [7.60] and 7.67
-[7.75] (-0.03, 0.10) read as before within their error. The Forest Road
-and The White City, not eased, read 8.00 [8.00] and 3.10 [3.05], as after
-the fixes (8.00 [8.00] and 2.83 [2.90] before them).
+[7.75] (-0.03, 0.10) read as before: neither moved by two errors, and
+the measure calls both back. The Forest Road and The White City, not
+eased, read 8.00 [8.00] and 3.10 [3.05], as after the fixes (8.00 [8.00]
+and 2.83 [2.90] before them).
 
 The Frozen Ford reads lower with the setting off after the easing, not
 easier: 5.70 [5.45] before these fixes and after them, 4.92 [5.05] after
@@ -3437,10 +3441,12 @@ Hidden Refuge six ghosts at level 3 and ten skeletons (1000); on The Dead
 Marshes six ghosts at level 4 (800); on The Ash Plains six orcs at level 3
 (700); on The Frozen Ford the second pursuit's three ghosts at level 7
 (700) and four barbarians (1000). The Great River and The Mountain of Fire
-place none that late (their last arrivals, the risen ghosts and the
-outriders, come at ticks 500 and 400). And the steps lower placed fighters
-only, never what a generator spawns: bone piles, which spawn ghosts, stand
-on The Last Ford, The Hidden Refuge, The Great River, The Dead Marshes
+place no foe that late (their last hostile arrivals, the risen ghosts and
+the outriders, come at ticks 500 and 400); on The Mountain of Fire the
+crew's ally the White Rider, an archmage at level 10, arrives at tick 900,
+outside the count as well. And the steps lower placed fighters only,
+never what a generator spawns: bone piles, which spawn ghosts, stand on
+The Last Ford, The Hidden Refuge, The Great River, The Dead Marshes
 (four), The Ash Plains and The Mountain of Fire; tents, which spawn
 skeletons, on all of those but The Dead Marshes; The Mountain of Fire has
 a mage tower as well, and The Frozen Ford has no generator. The playtest
@@ -3469,9 +3475,10 @@ earlier points), The Hidden Refuge clears its foes on all three runs again
 on all three before them), and The Mountain of Fire loses the Bearer on
 two of its three runs, where it lost him on none before these fixes or
 after them and on one at half the steps. Why is not traced: the count of
-its first 600 ticks reads the level back, and the Bearer falls at ticks
-2,400 and 2,700. The Forest Road cleared its foes on all three runs before
-these fixes and on none since, and loses the Bearer on all three. The Long
+its first 600 ticks reads the level back, and the Bearer is first counted
+dead at ticks 2,400 and 2,700 (the sweep counts every 300 ticks). The
+Forest Road cleared its foes on all three runs before these fixes and on
+none since, and loses the Bearer on all three. The Long
 Season (23 of 57 runs cleared, 43 crew members alive, no hero lost) and
 Imaginations (3 of 9 cleared, 9 alive) read level for level as after the
 fixes. A sweep is three seeds per level: a record, not the measure a level
