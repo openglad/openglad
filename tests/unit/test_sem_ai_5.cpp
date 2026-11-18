@@ -743,6 +743,71 @@ TEST_F(SemAi5, a_bot_already_facing_its_foe_is_left_as_it_is)
     }
 }
 
+// living.cpp living::act_random, a living whose stats have lost their owner
+// (the stats' controller): statistics::turn_to_foe turns the stats' owner,
+// so such a living turns itself the classic notch when its shot is refused,
+// on both settings, as the statement before Gameplay Fixes BE did. The game
+// keeps every live walker's stats owned by it (statistics::do_command
+// guards the same state). The orc of orc_scene facing UP, its foe 16 px off
+// its right side (the aim RIGHT, two notches off); act_random reached
+// through act() as the tests above reach it, its stream the two 1-in-5s, the
+// 1-in-80 and the probe's waver. First the orc's stats name another walker,
+// a team-1 soldier standing apart facing DOWN; then they name nobody. Both:
+// the orc turns UP to UP_RIGHT, its heading one stepsize along UP_RIGHT,
+// enddir left UP; a SEARCH(200) is queued and nothing is fired; the other
+// walker is not turned; and nothing reads the missing owner (no crash).
+TEST_F(SemAi5, a_living_whose_stats_have_lost_their_owner_turns_the_classic_notch_on_both_settings)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool other_owner : {true, false}) {
+            SCOPED_TRACE(std::string(setting(fixes)) +
+                         (other_owner ? ", the stats name another walker" : ", the stats name nobody"));
+            Scene twin = orc_scene(fixes, FACE_UP, 16);
+            ASSERT_TRUE(twin.bot && twin.soldier);
+            ASSERT_FALSE(twin.bot->fire_check(twin.dx, twin.dy)) << "the staging: the line check refuses";
+
+            Scene sc = orc_scene(fixes, FACE_UP, 16);
+            ASSERT_TRUE(sc.bot && sc.soldier);
+            walker* orc = sc.bot;
+            walker* other = living_at(FAMILY_SOLDIER, 1, 600, 600);
+            ASSERT_NE(nullptr, other);
+            face(other, FACE_DOWN);
+            ASSERT_EQ(orc, orc->stats()->controller()) << "the staging: the game gives a walker's stats their owner";
+            walker* const owner = other_owner ? other : nullptr;
+            orc->stats()->set_controller(owner);
+            ASSERT_EQ(owner, orc->stats()->controller()) << "the staging: the orc's stats have lost their owner";
+            ASSERT_EQ(FACE_RIGHT, orc->facing(sc.dx, sc.dy)) << "the staging: the aim is RIGHT";
+            ASSERT_EQ(FACE_UP, orc->curdir()) << "the staging: the orc faces UP, away from its foe";
+            ASSERT_EQ(FACE_UP, orc->enddir());
+            ASSERT_TRUE(orc->stats()->commands.empty()) << "the staging: no order runs before the think";
+            const std::uint32_t waver = waver_bound_of(orc);
+            ASSERT_GT(waver, 0u);
+            const std::uint32_t s = state_where({{5, kNonZero}, {5, 0}, {80, kNonZero}, {waver, kAny}});
+            world().rng_.state_ = s;
+
+            (void)orc->act();
+
+            EXPECT_EQ(state_after(s, {5, 5, 80, waver}), world().rng_.state_) << "the two 1-in-5s, the 1-in-80, the waver";
+            EXPECT_EQ(FACE_UP_RIGHT, orc->curdir()) << "the classic notch toward the foe";
+            EXPECT_EQ(FACE_UP, orc->enddir()) << "the classic turn leaves enddir as it was";
+            EXPECT_FLOAT_EQ(orc->stepsize(), orc->lastx()) << "the heading follows the new facing";
+            EXPECT_FLOAT_EQ(-orc->stepsize(), orc->lasty()) << "the heading follows the new facing";
+            const Cmd f = front_of(orc);
+            EXPECT_EQ(1u, f.size);
+            EXPECT_EQ(COMMAND_SEARCH, f.type) << "the SEARCH is queued";
+            EXPECT_EQ(200, f.count);
+            EXPECT_EQ(0, live_weapons()) << "nothing fired";
+            EXPECT_EQ(320, orc->xpos());
+            EXPECT_EQ(320, orc->ypos());
+            EXPECT_EQ(FACE_DOWN, other->curdir()) << "the other walker is not turned";
+            EXPECT_EQ(FACE_DOWN, other->enddir()) << "the other walker is not turned";
+            EXPECT_FLOAT_EQ(0.0f, other->lastx()) << "the other walker's heading is not touched";
+            EXPECT_FLOAT_EQ(other->stepsize(), other->lasty()) << "the other walker's heading is not touched";
+            orc->stats()->set_controller(orc);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // A tower (stats.cpp statistics::keep_turn's stationary arm)
 // ---------------------------------------------------------------------------

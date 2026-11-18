@@ -1101,8 +1101,17 @@ bool living::act_random()
 			return 1;
 		}
 		else
+		{
 			// Nearest foe is blocked
-			stats_->turn_to_foe(facing(xdist,ydist));
+			// plumbing: statistics::turn_to_foe turns the stats' owner (their controller), so a
+			//   living whose stats have lost their owner, or name another, turns itself as the
+			//   classic statement did. The game keeps every live walker's stats owned by it;
+			//   statistics::do_command guards the same state.
+			if (stats_->controller() == this)
+				stats_->turn_to_foe(facing(xdist,ydist));
+			else
+				turn(facing(xdist,ydist));
+		}
 	}
 
 	stats_->try_command(COMMAND_SEARCH,200,0,0);
