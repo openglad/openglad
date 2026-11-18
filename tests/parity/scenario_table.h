@@ -10311,7 +10311,7 @@ inline constexpr Mutation kMut_thief_bot_bomb_ally_fixes_scen99 = {
     "packs/core/families/living-11-thief.lua", 66,
     "return G.foes_within(self, 1, reach, true) and clear",
     "return G.foes_within(self, 1, reach, true) and true",
-    "Drops the ally test, so the thief bombs the tower with the orc in the blast, at ticks 3 and 8: the two bombs go off at ticks 53 and 58 and hurt the orc (103 hp), so WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1) reads 0 and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fails."
+    "Drops the ally test, so the thief bombs the tower with the orc in the blast, at ticks 3 and 8: the two bombs go off at ticks 53 and 58, and the first one's blast, the only one that strikes inside the run, hurts the orc (103 hp), so WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 1, 1) reads 0 and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fails."
 };
 
 // --- thief_bot_cloud_alone (bot gates: POISON CLOUD wants two foes at blows) ---
@@ -10919,7 +10919,7 @@ inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
 inline constexpr SpawnSpec kFamilySpawns_orc_right_walk_potion_scen99[] = {
     { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and heading UP; level 10 outlives the budget
     { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 135, 124, 0, 0 },         // 7x13, one pixel outside the orc's right side: only right_blocked's FACE_UP probe meets it
-    { FAMILY_ORC,          1, kOrderLiving,   120, 120, 0, 0, 1, 0 },   // hostile melee bot, heading UP at spawn (its right is +x)
+    { FAMILY_ORC,          1, kOrderLiving,   120, 120, 0, 0, 1, 0 },   // hostile melee bot: faces DOWN at spawn and on its first act, turns UP over ticks 2 to 5, then its right is +x
     { FAMILY_SOLDIER,      0, kOrderLiving,   560, 440, 0, 0 },         // idle player LAST
 };
 inline constexpr FactPredicate kFacts_orc_right_walk_potion_scen99[] = {
@@ -11029,7 +11029,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_ally_scen99[] = {
     pred::TickReached(30),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 18000, 18000),
     pred::WalkerPositionMoved(FAMILY_BIG_ORC, 194, 162,
-        "consequence: the classic rush's strikes at the ally erase its orders and force-walk it; its AI then takes it to (194, 162), below where the fixed run's orc ends"),
+        "consequence: the classic rush's strikes at the ally erase its orders and force-walk it; its own acts then take it, on this seed, to (194, 162), where it ends"),
 };
 inline constexpr Mutation kMut_soldier_charge_ally_scen99 = {
     "src/gameplay/stats.cpp", 785,
@@ -11039,9 +11039,9 @@ inline constexpr Mutation kMut_soldier_charge_ally_scen99 = {
 };
 // The setting-on twin has an arena of its own (2026-11-17). In the arena above
 // the rush's own walk shoves the orc as well (living::shove, two times in
-// three, on the same tick as the classic strike), so with the setting on the
-// strike's erased orders and forced walk changed nothing and its pin left one
-// damage draw fewer. Here the rush runs into a body no walk ever shoves: the
+// three, on the same tick as the classic strike), so the strike its pin brings
+// back with the setting on (erased orders, a forced walk) only spent one damage
+// draw more. Here the rush runs into a body no walk ever shoves: the
 // seated hero (living::shove refuses a walker in ACT_CONTROL and still draws
 // its rng(3)). The soldier and an archer are both of team 255, so SWITCH can
 // hand the seat from one to the other (a switch takes only a walker whose real
