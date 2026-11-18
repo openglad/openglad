@@ -1718,7 +1718,7 @@ TEST(SemWorld, the_own_floor_preference_draws_what_the_scan_always_drew)
     }
 }
 
-// walker.cpp walker::flies, the one test of what flying is (#512): the FLYING
+// walker.cpp walker::flies, the simulation's one test of flying (#512, #586): the FLYING
 // flag or flight ticks left. A ghost and a faerie fly, a soldier does not,
 // a soldier with flight ticks left does, a tower does not. One terrain
 // question that asks it: the water cell (5,5) stops the soldier given flight

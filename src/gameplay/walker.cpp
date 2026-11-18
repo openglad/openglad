@@ -4124,10 +4124,10 @@ bool walker::stationary() const
 }
 
 // A walker flies while it has the FLYING flag or flight ticks left (a flight
-// potion; the one tick a walker stuck in a wall is given). The one test of
-// what flying is: the terrain questions, the stairs, the pathing graph, the
-// chase and the foe search all ask it. Appended at EOF so the parity canary
-// pins above never shift.
+// potion; the one tick a walker stuck in a wall is given). The simulation's
+// one test: the terrain questions, the stairs, the pathing graph, the chase
+// and the foe search ask it (the drawing code and two pack scripts still
+// write their own, #586). Appended at EOF so the parity canary pins above never shift.
 bool walker::flies() const
 {
 	// rule: A walker flies while it has the FLYING flag or flight ticks left: it takes no stair,
