@@ -3855,9 +3855,13 @@ void GameWorld::NearestFoePick::offer(walker* foe, std::int32_t distance)
         any = foe;
     }
     // rule: #447, #512: in the same pass, with the same filters and cloak rolls, it keeps the
-    //   strictly nearest on the searcher's own floor (ties to list order).
+    //   strictly nearest on the searcher's own floor (ties to list order). It does so only when
+    //   the searcher has a floor of its own (own_floor 0 or more): -1 says the rule is not for
+    //   this searcher, and a walker a script set on floor -1 (set_floor does not clamp) is not
+    //   on that searcher's floor.
     // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
-    if (foe->floor() == own_floor && distance < own_distance)
+    // tests: SemWorld.a_foe_on_floor_minus_one_is_not_on_the_floor_of_a_searcher_the_rule_is_not_for
+    if (own_floor >= 0 && foe->floor() == own_floor && distance < own_distance)
     {
         own_distance = distance;
         own = foe;

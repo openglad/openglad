@@ -1626,6 +1626,47 @@ TEST(SemWorld, the_own_floor_preference_is_for_a_living_that_flies_on_a_level_wi
     }
 }
 
+// #512, game_world.cpp GameWorld::NearestFoePick::offer: the pick keeps a
+// foe on the searcher's own floor only for a searcher with a floor of its
+// own. A team-1 orc at (320,320) on floor 0: it does not fly, so the rule is
+// not for it and its pick holds no floor (-1). `farther`, a team-0 soldier
+// at (320,620) that a script set on floor -1 (set_floor does not clamp; the
+// obmap files it as floor 0), 300 px off and made first; `nearer`, one at
+// (320,340) on floor 0, 20 px off. The orc is answered `nearer`, the nearest
+// foe on any floor: floor -1 is no floor, so `farther` is not taken for one
+// on the orc's own. On a level with one floor and with two, both settings.
+TEST(SemWorld, a_foe_on_floor_minus_one_is_not_on_the_floor_of_a_searcher_the_rule_is_not_for)
+{
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        for (int floors : {1, 2})
+        {
+            SCOPED_TRACE(floors == 1 ? "a level with one floor" : "a level with two floors");
+            TestGameWorld tw;
+            floors_field(tw, floors, fixes);
+            GameWorld& world = tw.world();
+            walker* orc = add_living_on(tw, FAMILY_ORC, 1, 320, 320, 0);
+            walker* farther = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 620, -1);
+            walker* nearer = add_living_on(tw, FAMILY_SOLDIER, 0, 320, 340, 0);
+            ASSERT_TRUE(orc && farther && nearer);
+            ASSERT_EQ(floors, world.floor_count()) << "the staging";
+            ASSERT_FALSE(orc->flies()) << "the staging: the orc does not fly, so the rule is not for it";
+            ASSERT_EQ(0, orc->floor());
+            ASSERT_EQ(-1, farther->floor()) << "the staging: a script set it on floor -1";
+            ASSERT_EQ(0, nearer->floor());
+            ASSERT_EQ(20, orc->distance_to_ob(nearer)) << "the staging: `nearer` is the nearer";
+            ASSERT_EQ(300, orc->distance_to_ob(farther)) << "the staging: `farther` is 300 px off";
+            const std::ptrdiff_t farther_at = list_index(world.oblist, farther);
+            ASSERT_GE(farther_at, 0) << "the staging: `farther` is in the object list";
+            ASSERT_LT(farther_at, list_index(world.oblist, nearer))
+                << "the staging: `farther` is the earlier in the object list";
+            EXPECT_EQ(nearer, world.find_nearest_foe(orc))
+                << "floor -1 is no floor: the orc is answered the nearest foe on any floor";
+        }
+    }
+}
+
 // #512: the preference draws nothing. A cloaked hostile on each floor
 // (invisibility 40: the cloak roll is a die of 40 / 20 = 2, and only a 0
 // shows it), `above` (320,340) on floor 1 made before `distant` (320,620) on
