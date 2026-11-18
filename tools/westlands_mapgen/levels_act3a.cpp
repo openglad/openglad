@@ -575,19 +575,19 @@ void build_white_city(const LevelDataHooks& hooks)
     // the gate span (the drafted cell would plant it on the wall).
     place_living(w, FAMILY_GIANT_SKELETON, 2, 0, 37, 23, 9);
     place_living(w, FAMILY_GIANT_SKELETON, 2, 0, 37, 24, 9);
-    // (Eased 2026-11-17: with Gameplay Fixes on, a melee-only bot that
-    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
-    // The curve-8 company's forty-seed average here fell from 2.80 to
-    // 0.55 survivors. Half of the easing this level allows: the breach
-    // column below shed one level (3 -> 2), the plain lattice two
-    // (2/3/4 -> 1/1/2) and the town ghosts two (4 -> 2). It reads 0.85,
-    // still under the 2.80 it read before these fixes, and the easing
-    // stops there. With the setting off it now reads 1.52, from 3.10
-    // (2.83 before these fixes).)
+    // (Not eased, 2026-11-18: with Gameplay Fixes on, a melee-only bot
+    // that faces its foe swings or steps in its ATTACK order (fix BC,
+    // #447). The curve-8 company's forty-seed average here fell from 2.80
+    // to 0.55 survivors. With the breach column below, the plain lattice,
+    // the town ghosts and the plain ghosts all at level 1 it reads only
+    // 1.55, and with the setting off it then falls from 3.10 to 1.32:
+    // nothing this level can shed brings it back, so the levels were left
+    // as they were. With the setting off it reads 3.10 (2.83 before these
+    // fixes).)
     for (int i = 0; i < 6; ++i)
     {
-        place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 2); // the breach
-        place_living(w, FAMILY_ORC, 2, 0, 38, 22 + i, 2); // column
+        place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 3); // the breach
+        place_living(w, FAMILY_ORC, 2, 0, 38, 22 + i, 3); // column
     }
     // The breach champions; the northern one is NAMED — "Breach-Lord",
     // the captain who tore the gate and now drives the column through it
@@ -600,7 +600,7 @@ void build_white_city(const LevelDataHooks& hooks)
     for (int row = 0; row < 6; ++row) // the plain lattice
         for (int col = 0; col < 5; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 18 + col * 4, 14 + row * 4,
-                         ((row + col) % 3 == 2) ? 2 : 1);
+                         2 + ((row + col) % 3));
     for (int i = 0; i < 5; ++i) // big-orc wings
     {
         place_living(w, FAMILY_BIG_ORC, 2, 0, 20 + i * 3, 9, 4 + (i % 2));
@@ -614,7 +614,7 @@ void build_white_city(const LevelDataHooks& hooks)
     static constexpr int town_ghosts[6][2] = {{47, 10}, {53, 20}, {47, 30},
                                               {53, 40}, {65, 10}, {65, 40}};
     for (const auto& g : town_ghosts) // already over the walls
-        place_living(w, FAMILY_GHOST, 2, 0, g[0], g[1], 2);
+        place_living(w, FAMILY_GHOST, 2, 0, g[0], g[1], 4);
     static constexpr int plain_ghosts[4][2] = {{24, 20}, {24, 30}, {30, 15},
                                                {30, 35}};
     for (const auto& g : plain_ghosts)

@@ -202,15 +202,13 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // (F4 batch 2: plain ranks 3-5 -> 3/4 and the big-orc wings flat 5 —
     // the horde must be a battle the WHOLE war host wins, not a wedge
     // execution before the relief hour.)
-    // (Eased 2026-11-17: with Gameplay Fixes on, a melee-only bot that
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
     // faces its foe swings or steps in its ATTACK order (fix BC, #447).
     // The curve-8 company's forty-seed average here fell from 4.83 to
-    // 2.73 survivors. Half of the easing this level allows: the plain
-    // ranks below shed one level (3/4 -> 2/3), the ghost outriders three
-    // (5/6 -> 2/3), the Undergate chamber guards two (6 -> 4) and the two
-    // caldera ghosts four each (8 -> 4). It reads 4.12, still under the
-    // 4.83 it read before these fixes, and the easing stops there. With
-    // the setting off it reads 5.00, from 4.75.)
+    // 2.73 survivors. The plain ranks below shed one level (3/4 -> 2/3)
+    // and the ghost outriders three (5/6 -> 2/3), which brings it back to
+    // 4.50; the Undergate chamber guards and the two caldera ghosts keep
+    // their levels. With the setting off it reads 5.58, from 4.75.)
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 6; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 26 + col * 3, 14 + row * 5,
@@ -245,7 +243,7 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     static constexpr int chamber_guards[4][2] = {
         {54, 21}, {54, 28}, {58, 21}, {58, 28}};
     for (const auto& c : chamber_guards)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 4, true);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 6, true);
     place_living(w, FAMILY_BIG_ORC, 2, 1, 57, 24, 8, true); // stair-down ward
     static constexpr int terrace_watch[4][2] = {
         {60, 16}, {60, 33}, {73, 16}, {73, 33}};
@@ -261,8 +259,8 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     place_living(w, FAMILY_FIREELEMENTAL, 2, 2, 71, 28, 9, true);
     place_living(w, FAMILY_BIG_ORC, 2, 2, 74, 21, 10, true); // the summit guard
     // Ghosts hovering OVER the caldera lava — flyers, legal footing.
-    place_living(w, FAMILY_GHOST, 2, 2, 63, 22, 4);
-    place_living(w, FAMILY_GHOST, 2, 2, 63, 27, 4);
+    place_living(w, FAMILY_GHOST, 2, 2, 63, 22, 8);
+    place_living(w, FAMILY_GHOST, 2, 2, 63, 27, 8);
     // The host's camps: 96 seeded livings + generator headroom stays well
     // under the MAXOBS living cap. (The bone-pile sprite spreads four tiles
     // wide, so it anchors at x 42, clear of the easternmost orc rank.)
