@@ -191,6 +191,17 @@ asserts that each level loads and deploys the crew, fields an army, and
 that the crew takes and deals damage; `IMAGINATIONS_CALIBRATION_MEASURE=1`
 still prints the three-seed survivor counts.
 
+(2026-11-18, the ATTACK order: with the Gameplay Fixes setting on, a
+melee-only bot that faces its foe in its ATTACK order swings when a
+foe's body stands on its weapon's pad and otherwise steps toward the foe
+(Gameplay Fixes BC, #447). The stand-in crew of eight at crew level 1,
+survivors at tick 600 on forty seeds with the setting on: levels 1, 2
+and 3 read 6.53, 7.95 and 7.75 before these fixes and 5.97, 8.00 and
+7.28 after them. None was eased: level 3 fell, but its orcs and small
+slimes are already level 1 and the maintainer ruled that no fighter is
+taken away; level 1 fell by two to three errors, less than the measure
+can prove; level 2 did not fall. See `docs/gameplay-fixes.md`, Balance.)
+
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on 3/3 seeds. Measured with `scripts/imaginations_playtest.sh` on
 2026-08-11 (post-wake-fix geometry: 64x64, bailey + keep, 19 posted

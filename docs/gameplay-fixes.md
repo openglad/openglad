@@ -111,7 +111,7 @@ usual pause.
 | AX | A foe's raised ghost, elemental and phantom on Easy or Hard | The cleric's RAISE GHOST and the archmage's SUMMON ELEMENTAL and phantom scale the summon for the difficulty before it takes its caster's team, while it is still on team 0, which the difficulty never scales: a foe's ghost, elemental and phantom keep their Normal hit points, magic and damage while their caster takes the percent. | The summon takes its caster's team first, so a foe's takes the percent as its caster does: on Hard twice the hit points, magic and damage, on Easy half (a phantom keeps its one hit point). A summon of the player's side is on team 0 either way and is never scaled. |
 | AZ | Whose side a shot, a blast, a spell, a summon or a troop fights for, and whom its blow and its kill pay | A thing fights for the head of its owner chain, so a shot, a blast, a summon or a troop changes side when its maker is charmed, mind-controlled or killed, even in flight. A thief's bomb, its blast, a mine's or an exploding shot's blast, ENERGY WAVE, a boulder and a returning knife wear no colour (red): a dead thrower's blast strikes his own side in full and pays red. A blow's score goes to the colour the hitter wears while the gate that decides a score is due reads the chain's head. | Everything fights for the colour it wears, and nothing follows its maker. A shot, a bomb, a blast, a spell effect, a summon and a tent's troop take their maker's team when made and keep it: whom they hit and spare, whom a blast halves, which team a blow's score and a kill pay (a kill in every mode, even when the maker has died), and which team takes an Onslaught post all read that colour. The one exception is a thing that rides a walker (a ring of protection, a mace, a boomerang, a hook blade, a scare, IMMOLATE's fire, a returning knife on its way home, the F2 cheat's shield): it goes with him and fights for whatever side he is on now. Experience and kills on a hero's record, and whom the victim turns on, stay with the maker, and a walker is never credited with his own death. |
 | BB | A bot within 100 px of its foe, on the tick it re-plans | It turns a notch toward its foe, starts its ATTACK order and calls for a swing along its heading, asking nothing. That swing never starts: a bot already facing its foe is stepped a notch off it by the classic turn (the one fix AT removes: with it a walker asked to face the way it faces stays put) and the call only turns it back; a bot not facing its foe is turned a notch toward it and, by the same call, a notch back toward the facing it had, so it never completes its aim there (measured on Tryxian level 1, six seeds of 2400 ticks: 14,547 such calls, 0 swings). With fix AT alone, as the setting on played before this fix, the bot that faced its foe did swing or shoot from there, whatever stood between: melee-only bots started 181 swings, 172 of them from more than 20 px, and 17 landed; the others started 2,054 shots, 895 into a wall and 877 at a foe out of reach, and 234 hit anything; each paid its busy time and its weapon's magic. 11,968 calls turned and turned back. | The turn and the swing agree. A bot not yet facing its foe turns a notch toward it and keeps that aim, so its next acts finish the turn, one notch an act; the turn is its act (a tower faces it at once, fix BE). A bot facing its foe swings or shoots along that facing, and only when the blow can land: a bot that shoots asks its line check (the foe in the weapon's reach, the magic to pay, a clear line to a body); a melee-only bot asks whether a foe's body stands on its weapon's pad. Measured the same way: melee-only bots started 23 swings and 19 landed; the others started 186 shots and 133 hit; no call turned back. |
-| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does (#574). Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way. A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so the two sides of that count are not like for like; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where a group of fighters could be lowered (see [Balance](#balance)). |
+| BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does (#574). Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way (#587). A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so the two sides of that count are not like for like; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where lowering a group of fighters brought them back or nearer, and two of them stay harder (see [Balance](#balance)). |
 | BD | The line check a tower or shooting bot asks before it fires | The check moves its test weapon 0, 1, 3, 6, 10 ... steps out from the pad, each spot cut to a whole pixel, while the shot flies one step an act. A foe between two tested spots is stepped over: a tower's arrow misses about two in five of the distances inside its reach, a druid's lightning about half, a golem's boulder, a fire elemental's meteor and a faerie's sprinkle a fifth to a quarter. The tower stands silent; a bot that can walk walks closer instead of shooting. The same loop can step over a one-tile wall and pass a shot that then hits the wall. | The check flies its test weapon the way the shot flies: the pad, then the shot's own step once for each step a fresh shot moves. It passes when the pad or a step meets a body the shot would strike and refuses at a wall, at the map's edge or when the flight runs out. What it still does not share with the shot: it draws its own sideways waver, so far shots are judged as often right as shots land, not shot for shot; it takes an arrow slit as open and the shot itself takes the slit's gamble, so an arrow can still break on a slit wall; it does not count the range a shot loses over trees and shrub, nor a rock or knife that drops a floor over open air; and it does not ask a family's own veto (a soldier with no knife left). The range, the drop and the veto are #572. It still passes on an enemy tree, door or shot in its line on the same roll the real shot makes there. A tower that shoots more runs out of magic sooner and then waits for it. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: checks refused, at a wall or as a miss, although a quiet flight of the same weapon lands on the foe, 8,092 for the levels' shooters and 8,846 for the crew, to 0 and 0 (The Long Season 6,628 and 10,860 to 0 and 0); on the one level with arrow slits whose checks were counted before these fixes as well as after, The Tryxian Chronicles' first level (six seeds of 2,400 ticks), 1,422 and 209 to 0 and 0. A tower's shots per 100 ticks near a foe, on the Imaginations level whose two towers see a foe: with the setting on, 7.3 before these fixes and 8.8 after; the setting off reads 8.7 there; that level's towers' checks refused for want of magic go from 6 to 425 with the setting on (135 with it off). On Gladiator 8, 9, 10 and 12, whose towers see a foe (twenty seeds, after these fixes), the towers fire 7.63 shots per 100 ticks near a foe with the setting off and 10.52 with it on. What a check meets when it passes although its flight meets no fighter or tent: on Gladiator and The Tryxian Chronicles, with the setting on, 98,695 of 104,342 such passes ended on an enemy door (a door has 5,000 hit points, so the shot is spent on it) and 5,582 on an enemy shot in flight; on the four generated campaigns, which have no doors, 2,726 of 2,731 on a shot in flight (see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). The classic check's false passes were of another kind: 22,431 of its 118,220 on the classic campaigns ended on a fighter the shot could not reach. |
 | BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts spent turning back after a refused shot's turn 41,803 to 0; acts until a bot that did not face its foe faces it 2.80 to 1.12 for the melee-only bots, 2.68 to 1.13 for the levels' shooters and 2.51 to 1.12 for the crew. That mean counts only the bots that faced their foe within 12 acts of the turn: before, about one in eight had not (5,544 of 42,038), after about one in 170 (247 of 40,970). |
 
@@ -3068,8 +3068,9 @@ moves.
 
 **After fixes BC, BD and BE and the flyer's own-floor foe (2026-11-17).**
 The four calibration suites were measured on the game before these fixes
-(master `d6d0741b7`) and after them (the line check, the kept turn, the
-ATTACK order and #512, on the same level files), on both values of the
+(master `d6d0741b7`), after them (the line check, the kept turn, the
+ATTACK order and #512, on the same level files) and after the easing
+(the same game on the eased level files), on both values of the
 setting, with New Specials on. Each battle is the suites' stand-in crew of
 eight (four soldiers, an elf, an archer, a cleric and a barbarian, at the
 level's crew level) for 600 ticks, on forty seeds: the twenty these docs
@@ -3102,61 +3103,67 @@ whose own commit moved the level by two errors or more with the setting
 on, with the difference that commit made and its error: BD the line check,
 BE the kept turn, BC the ATTACK order, #512 the flyer's own-floor foe.
 With the setting off only #512 can act (the other three are behind the
-setting), and only on a level with floors and flyers.
+setting), and only on a level with floors and flyers. The "after"
+columns are the game with these fixes on the level files before any
+easing; the two columns "after the easing" of Westlands and The Long
+Season are the same game on the eased level files (a level whose file
+did not change reads there what it read after the fixes), and in those
+two columns the mean over the docs' twenty is in brackets with either
+setting.
 
 **Westlands** (forty seeds)
 
-| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
-|---|---|---|---|---|---|---|---|
-| 1 | 1 | 7.95 (0.03) [8.00] | 7.15 (0.13) [7.20] | -0.80 (0.14) | 7.97 (0.03) | 7.97 (0.03) | BC -0.78 (0.15) |
-| 2 | 2 | 8.00 (0.00) [8.00] | 6.97 (0.16) [6.85] | -1.02 (0.16) | 8.00 (0.00) | 8.00 (0.00) | BC -1.02 (0.16) |
-| 3 | 2 | 7.62 (0.11) [7.70] | 6.08 (0.22) [6.20] | -1.55 (0.26) | 7.40 (0.13) | 7.40 (0.13) | BC -1.32 (0.22) |
-| 4 | 3 | 7.67 (0.07) [7.75] | 7.03 (0.15) [6.95] | -0.65 (0.16) | 7.70 (0.07) | 7.70 (0.07) | BC -0.60 (0.19) |
-| 5 | 3 | 5.85 (0.33) [6.05] | 4.95 (0.33) [4.95] | -0.90 (0.43) | 6.72 (0.21) | 6.72 (0.21) | BD +0.97 (0.38), BC -1.55 (0.45) |
-| 6 | 4 | 6.95 (0.16) [7.05] | 6.40 (0.23) [6.40] | -0.55 (0.28) | 6.55 (0.23) | 6.55 (0.23) |  |
-| 7 | 4 | 0.15 (0.06) [0.10] | 0.15 (0.08) [0.10] | 0.00 (0.10) | 0.23 (0.08) | 0.15 (0.07) | BC -0.33 (0.08) |
-| 8 | 5 | 2.58 (0.40) [2.20] | 2.70 (0.38) [3.20] | +0.12 (0.57) | 2.88 (0.40) | 3.38 (0.34) | BE -1.07 (0.49) |
-| 9 | 6 | 1.02 (0.21) [1.10] | 0.85 (0.18) [0.95] | -0.17 (0.28) | 1.05 (0.24) | 1.05 (0.24) |  |
-| 10 | 5 | 0.10 (0.05) [0.05] | 0.00 (0.00) [0.00] | -0.10 (0.05) | 0.20 (0.09) | 0.20 (0.09) | BC -0.15 (0.06) |
-| 11 | 6 | 5.35 (0.24) [5.40] | 3.50 (0.32) [3.60] | -1.85 (0.40) | 4.72 (0.25) | 4.72 (0.25) | BC -1.15 (0.42) |
-| 12 | 6 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  |
-| 13 | 6 | 0.12 (0.06) [0.20] | 0.00 (0.00) [0.00] | -0.12 (0.06) | 0.35 (0.09) | 0.35 (0.09) | BC -0.12 (0.05) |
-| 14 | 7 | 0.20 (0.18) [0.05] | 0.12 (0.12) [0.25] | -0.07 (0.22) | 0.23 (0.16) | 0.23 (0.16) |  |
-| 15 | 7 | 1.85 (0.22) [1.70] | 1.85 (0.25) [2.00] | 0.00 (0.28) | 2.42 (0.21) | 2.42 (0.21) |  |
-| 16 | 8 | 2.80 (0.21) [2.65] | 0.55 (0.12) [0.70] | -2.25 (0.26) | 2.83 (0.18) | 3.10 (0.13) | BC -2.40 (0.21) |
-| 17 | 8 | 5.45 (0.20) [5.25] | 5.30 (0.24) [5.60] | -0.15 (0.32) | 5.97 (0.21) | 5.97 (0.21) | BD +0.62 (0.28), BC -0.70 (0.29) |
-| 19 | 6 | 5.35 (0.16) [5.15] | 0.60 (0.12) [0.55] | -4.75 (0.20) | 5.80 (0.14) | 5.80 (0.14) | BC -4.55 (0.25) |
-| 20 | 7 | 1.82 (0.37) [1.60] | 1.07 (0.27) [1.30] | -0.75 (0.38) | 1.45 (0.32) | 1.45 (0.32) |  |
-| 21 | 7 | 7.45 (0.13) [7.40] | 7.42 (0.11) [7.45] | -0.03 (0.18) | 7.55 (0.11) | 7.55 (0.11) |  |
-| 22 | 8 | 0.42 (0.13) [0.60] | 0.15 (0.08) [0.10] | -0.28 (0.16) | 0.68 (0.16) | 0.68 (0.16) |  |
-| 23 | 8 | 5.90 (0.23) [5.95] | 2.58 (0.30) [2.55] | -3.33 (0.42) | 6.22 (0.20) | 6.22 (0.20) | BC -3.35 (0.37) |
-| 24 | 8 | 4.83 (0.27) [4.75] | 2.73 (0.23) [2.95] | -2.10 (0.39) | 4.75 (0.24) | 4.75 (0.24) | BC -1.75 (0.28) |
-| 25 | 9 | 6.65 (0.19) [6.85] | 6.80 (0.20) [7.15] | +0.15 (0.25) | 6.60 (0.17) | 6.60 (0.17) |  |
-| 26 | 9 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  |
+| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on | after the easing, on | after the easing, off |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | 7.95 (0.03) [8.00] | 7.15 (0.13) [7.20] | -0.80 (0.14) | 7.97 (0.03) | 7.97 (0.03) | BC -0.78 (0.15) | 7.15 (0.13) [7.20] | 7.97 (0.03) [8.00] |
+| 2 | 2 | 8.00 (0.00) [8.00] | 6.97 (0.16) [6.85] | -1.02 (0.16) | 8.00 (0.00) | 8.00 (0.00) | BC -1.02 (0.16) | 6.97 (0.16) [6.85] | 8.00 (0.00) [8.00] |
+| 3 | 2 | 7.62 (0.11) [7.70] | 6.08 (0.22) [6.20] | -1.55 (0.26) | 7.40 (0.13) | 7.40 (0.13) | BC -1.32 (0.22) | 7.38 (0.14) [7.40] | 7.47 (0.11) [7.55] |
+| 4 | 3 | 7.67 (0.07) [7.75] | 7.03 (0.15) [6.95] | -0.65 (0.16) | 7.70 (0.07) | 7.70 (0.07) | BC -0.60 (0.19) | 7.58 (0.09) [7.60] | 7.67 (0.08) [7.75] |
+| 5 | 3 | 5.85 (0.33) [6.05] | 4.95 (0.33) [4.95] | -0.90 (0.43) | 6.72 (0.21) | 6.72 (0.21) | BD +0.97 (0.38), BC -1.55 (0.45) | 4.95 (0.33) [4.95] | 6.72 (0.21) [6.80] |
+| 6 | 4 | 6.95 (0.16) [7.05] | 6.40 (0.23) [6.40] | -0.55 (0.28) | 6.55 (0.23) | 6.55 (0.23) |  | 6.40 (0.23) [6.40] | 6.55 (0.23) [6.20] |
+| 7 | 4 | 0.15 (0.06) [0.10] | 0.15 (0.08) [0.10] | 0.00 (0.10) | 0.23 (0.08) | 0.15 (0.07) | BC -0.33 (0.08) | 0.15 (0.08) [0.10] | 0.15 (0.07) [0.10] |
+| 8 | 5 | 2.58 (0.40) [2.20] | 2.70 (0.38) [3.20] | +0.12 (0.57) | 2.88 (0.40) | 3.38 (0.34) | BE -1.07 (0.49) | 2.70 (0.38) [3.20] | 3.38 (0.34) [3.15] |
+| 9 | 6 | 1.02 (0.21) [1.10] | 0.85 (0.18) [0.95] | -0.17 (0.28) | 1.05 (0.24) | 1.05 (0.24) |  | 0.85 (0.18) [0.95] | 1.05 (0.24) [0.85] |
+| 10 | 5 | 0.10 (0.05) [0.05] | 0.00 (0.00) [0.00] | -0.10 (0.05) | 0.20 (0.09) | 0.20 (0.09) | BC -0.15 (0.06) | 0.00 (0.00) [0.00] | 0.20 (0.09) [0.20] |
+| 11 | 6 | 5.35 (0.24) [5.40] | 3.50 (0.32) [3.60] | -1.85 (0.40) | 4.72 (0.25) | 4.72 (0.25) | BC -1.15 (0.42) | 5.28 (0.30) [5.10] | 5.75 (0.26) [5.45] |
+| 12 | 6 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] |
+| 13 | 6 | 0.12 (0.06) [0.20] | 0.00 (0.00) [0.00] | -0.12 (0.06) | 0.35 (0.09) | 0.35 (0.09) | BC -0.12 (0.05) | 0.00 (0.00) [0.00] | 0.35 (0.09) [0.20] |
+| 14 | 7 | 0.20 (0.18) [0.05] | 0.12 (0.12) [0.25] | -0.07 (0.22) | 0.23 (0.16) | 0.23 (0.16) |  | 0.12 (0.12) [0.25] | 0.23 (0.16) [0.15] |
+| 15 | 7 | 1.85 (0.22) [1.70] | 1.85 (0.25) [2.00] | 0.00 (0.28) | 2.42 (0.21) | 2.42 (0.21) |  | 1.85 (0.25) [2.00] | 2.42 (0.21) [2.15] |
+| 16 | 8 | 2.80 (0.21) [2.65] | 0.55 (0.12) [0.70] | -2.25 (0.26) | 2.83 (0.18) | 3.10 (0.13) | BC -2.40 (0.21) | 0.55 (0.12) [0.70] | 3.10 (0.13) [3.05] |
+| 17 | 8 | 5.45 (0.20) [5.25] | 5.30 (0.24) [5.60] | -0.15 (0.32) | 5.97 (0.21) | 5.97 (0.21) | BD +0.62 (0.28), BC -0.70 (0.29) | 5.30 (0.24) [5.60] | 5.97 (0.21) [5.85] |
+| 19 | 6 | 5.35 (0.16) [5.15] | 0.60 (0.12) [0.55] | -4.75 (0.20) | 5.80 (0.14) | 5.80 (0.14) | BC -4.55 (0.25) | 5.33 (0.25) [4.95] | 7.83 (0.06) [7.85] |
+| 20 | 7 | 1.82 (0.37) [1.60] | 1.07 (0.27) [1.30] | -0.75 (0.38) | 1.45 (0.32) | 1.45 (0.32) |  | 1.07 (0.27) [1.30] | 1.45 (0.32) [1.95] |
+| 21 | 7 | 7.45 (0.13) [7.40] | 7.42 (0.11) [7.45] | -0.03 (0.18) | 7.55 (0.11) | 7.55 (0.11) |  | 7.42 (0.11) [7.45] | 7.55 (0.11) [7.65] |
+| 22 | 8 | 0.42 (0.13) [0.60] | 0.15 (0.08) [0.10] | -0.28 (0.16) | 0.68 (0.16) | 0.68 (0.16) |  | 0.15 (0.08) [0.10] | 0.68 (0.16) [0.60] |
+| 23 | 8 | 5.90 (0.23) [5.95] | 2.58 (0.30) [2.55] | -3.33 (0.42) | 6.22 (0.20) | 6.22 (0.20) | BC -3.35 (0.37) | 5.53 (0.28) [5.15] | 7.17 (0.16) [7.05] |
+| 24 | 8 | 4.83 (0.27) [4.75] | 2.73 (0.23) [2.95] | -2.10 (0.39) | 4.75 (0.24) | 4.75 (0.24) | BC -1.75 (0.28) | 4.50 (0.24) [4.55] | 5.58 (0.23) [5.45] |
+| 25 | 9 | 6.65 (0.19) [6.85] | 6.80 (0.20) [7.15] | +0.15 (0.25) | 6.60 (0.17) | 6.60 (0.17) |  | 6.80 (0.20) [7.15] | 6.60 (0.17) [6.90] |
+| 26 | 9 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] |
 
 **The Long Season** (forty seeds)
 
-| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on |
-|---|---|---|---|---|---|---|---|
-| 1 | 1 | 7.95 (0.03) [8.00] | 7.75 (0.08) [7.80] | -0.20 (0.08) | 7.97 (0.03) | 7.97 (0.03) | BC -0.25 (0.08) |
-| 2 | 1 | 6.17 (0.17) [6.30] | 6.47 (0.18) [6.50] | +0.30 (0.26) | 6.75 (0.17) | 6.75 (0.17) |  |
-| 3 | 2 | 7.88 (0.05) [8.00] | 7.75 (0.07) [7.75] | -0.12 (0.09) | 7.90 (0.05) | 7.90 (0.05) |  |
-| 4 | 2 | 2.52 (0.28) [2.10] | 1.38 (0.24) [1.40] | -1.15 (0.33) | 3.55 (0.28) | 3.55 (0.28) | BC -1.77 (0.38) |
-| 5 | 3 | 6.00 (0.31) [6.35] | 6.15 (0.27) [6.00] | +0.15 (0.46) | 6.72 (0.20) | 6.72 (0.20) |  |
-| 6 | 3 | 6.08 (0.17) [6.30] | 5.95 (0.19) [6.45] | -0.12 (0.21) | 5.65 (0.22) | 5.65 (0.22) | BD -0.93 (0.33), BE +0.80 (0.32) |
-| 7 | 4 | 7.53 (0.12) [7.65] | 7.80 (0.08) [7.85] | +0.28 (0.16) | 7.83 (0.06) | 7.83 (0.06) |  |
-| 8 | 4 | 6.30 (0.29) [6.35] | 6.33 (0.25) [6.10] | +0.03 (0.35) | 6.30 (0.24) | 6.30 (0.24) |  |
-| 9 | 5 | 7.95 (0.03) [7.95] | 7.90 (0.05) [7.95] | -0.05 (0.05) | 7.95 (0.03) | 7.95 (0.03) |  |
-| 10 | 5 | 5.10 (0.27) [5.05] | 5.33 (0.32) [5.50] | +0.23 (0.38) | 5.50 (0.25) | 5.50 (0.25) |  |
-| 11 | 5 | 6.38 (0.18) [6.40] | 6.75 (0.20) [6.55] | +0.38 (0.28) | 6.62 (0.15) | 6.70 (0.14) |  |
-| 12 | 6 | 6.12 (0.24) [6.05] | 6.00 (0.27) [6.25] | -0.12 (0.40) | 6.20 (0.24) | 6.20 (0.24) |  |
-| 13 | 6 | 5.40 (0.32) [5.50] | 5.12 (0.29) [5.10] | -0.28 (0.38) | 4.72 (0.28) | 4.72 (0.28) |  |
-| 14 | 7 | 7.67 (0.11) [7.45] | 7.53 (0.12) [7.40] | -0.15 (0.10) | 7.67 (0.11) | 7.67 (0.11) |  |
-| 15 | 7 | 8.00 (0.00) [8.00] | 7.92 (0.04) [8.00] | -0.07 (0.04) | 8.00 (0.00) | 8.00 (0.00) |  |
-| 16 | 7 | 5.90 (0.24) [5.60] | 0.03 (0.03) [0.05] | -5.88 (0.24) | 5.70 (0.25) | 5.70 (0.25) | BC -5.72 (0.26) |
-| 17 | 8 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  |
-| 18 | 8 | 0.05 (0.03) [0.00] | 0.12 (0.12) [0.00] | +0.07 (0.13) | 0.07 (0.04) | 0.07 (0.04) |  |
-| 19 | 8 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  |
+| level | crew | before, on | after, on | difference, on | before, off | after, off | moved by, on | after the easing, on | after the easing, off |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | 7.95 (0.03) [8.00] | 7.75 (0.08) [7.80] | -0.20 (0.08) | 7.97 (0.03) | 7.97 (0.03) | BC -0.25 (0.08) | 7.75 (0.08) [7.80] | 7.97 (0.03) [7.95] |
+| 2 | 1 | 6.17 (0.17) [6.30] | 6.47 (0.18) [6.50] | +0.30 (0.26) | 6.75 (0.17) | 6.75 (0.17) |  | 6.47 (0.18) [6.50] | 6.75 (0.17) [6.95] |
+| 3 | 2 | 7.88 (0.05) [8.00] | 7.75 (0.07) [7.75] | -0.12 (0.09) | 7.90 (0.05) | 7.90 (0.05) |  | 7.75 (0.07) [7.75] | 7.90 (0.05) [7.95] |
+| 4 | 2 | 2.52 (0.28) [2.10] | 1.38 (0.24) [1.40] | -1.15 (0.33) | 3.55 (0.28) | 3.55 (0.28) | BC -1.77 (0.38) | 1.38 (0.24) [1.40] | 3.55 (0.28) [3.70] |
+| 5 | 3 | 6.00 (0.31) [6.35] | 6.15 (0.27) [6.00] | +0.15 (0.46) | 6.72 (0.20) | 6.72 (0.20) |  | 6.15 (0.27) [6.00] | 6.72 (0.20) [6.55] |
+| 6 | 3 | 6.08 (0.17) [6.30] | 5.95 (0.19) [6.45] | -0.12 (0.21) | 5.65 (0.22) | 5.65 (0.22) | BD -0.93 (0.33), BE +0.80 (0.32) | 5.95 (0.19) [6.45] | 5.65 (0.22) [5.60] |
+| 7 | 4 | 7.53 (0.12) [7.65] | 7.80 (0.08) [7.85] | +0.28 (0.16) | 7.83 (0.06) | 7.83 (0.06) |  | 7.80 (0.08) [7.85] | 7.83 (0.06) [7.85] |
+| 8 | 4 | 6.30 (0.29) [6.35] | 6.33 (0.25) [6.10] | +0.03 (0.35) | 6.30 (0.24) | 6.30 (0.24) |  | 6.33 (0.25) [6.10] | 6.30 (0.24) [6.15] |
+| 9 | 5 | 7.95 (0.03) [7.95] | 7.90 (0.05) [7.95] | -0.05 (0.05) | 7.95 (0.03) | 7.95 (0.03) |  | 7.90 (0.05) [7.95] | 7.95 (0.03) [7.95] |
+| 10 | 5 | 5.10 (0.27) [5.05] | 5.33 (0.32) [5.50] | +0.23 (0.38) | 5.50 (0.25) | 5.50 (0.25) |  | 5.33 (0.32) [5.50] | 5.50 (0.25) [5.25] |
+| 11 | 5 | 6.38 (0.18) [6.40] | 6.75 (0.20) [6.55] | +0.38 (0.28) | 6.62 (0.15) | 6.70 (0.14) |  | 6.75 (0.20) [6.55] | 6.70 (0.14) [6.75] |
+| 12 | 6 | 6.12 (0.24) [6.05] | 6.00 (0.27) [6.25] | -0.12 (0.40) | 6.20 (0.24) | 6.20 (0.24) |  | 6.00 (0.27) [6.25] | 6.20 (0.24) [6.55] |
+| 13 | 6 | 5.40 (0.32) [5.50] | 5.12 (0.29) [5.10] | -0.28 (0.38) | 4.72 (0.28) | 4.72 (0.28) |  | 5.12 (0.29) [5.10] | 4.72 (0.28) [4.95] |
+| 14 | 7 | 7.67 (0.11) [7.45] | 7.53 (0.12) [7.40] | -0.15 (0.10) | 7.67 (0.11) | 7.67 (0.11) |  | 7.53 (0.12) [7.40] | 7.67 (0.11) [7.65] |
+| 15 | 7 | 8.00 (0.00) [8.00] | 7.92 (0.04) [8.00] | -0.07 (0.04) | 8.00 (0.00) | 8.00 (0.00) |  | 7.92 (0.04) [8.00] | 8.00 (0.00) [8.00] |
+| 16 | 7 | 5.90 (0.24) [5.60] | 0.03 (0.03) [0.05] | -5.88 (0.24) | 5.70 (0.25) | 5.70 (0.25) | BC -5.72 (0.26) | 4.90 (0.33) [5.05] | 4.92 (0.34) [5.05] |
+| 17 | 8 | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] | 0.00 (0.00) | 0.00 (0.00) | 0.00 (0.00) |  | 0.00 (0.00) [0.00] | 0.00 (0.00) [0.00] |
+| 18 | 8 | 0.05 (0.03) [0.00] | 0.12 (0.12) [0.00] | +0.07 (0.13) | 0.07 (0.04) | 0.07 (0.04) |  | 0.12 (0.12) [0.00] | 0.07 (0.04) [0.05] |
+| 19 | 8 | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] | 0.00 (0.00) | 8.00 (0.00) | 8.00 (0.00) |  | 8.00 (0.00) [8.00] | 8.00 (0.00) [8.00] |
 
 **Imaginations** (forty seeds)
 
@@ -3187,10 +3194,257 @@ in the order they landed (the line check, the kept turn, the ATTACK order,
 the Tower +0.28 (0.49), +0.23 (0.51), -0.68 (0.24) and +0.12 (0.21). The
 ATTACK order carries the cost. With the setting off: Westlands 106.28 and
 106.97 (+0.70, 0.34), The Long Season 113.12 and 113.20 (+0.07, 0.04),
-Imaginations 21.95 both, the Tower 11.47 and 11.62 (+0.15, 0.21). With the
-setting on these levels fell: Westlands 1, 2, 3, 4, 11, 16, 19, 23 and 24,
-The Long Season 4 and 16, and Imaginations 3; no Tower floor fell. With
-the setting off no level of any campaign fell.
+Imaginations 21.95 both, the Tower 11.47 and 11.62 (+0.15, 0.21). After
+the fixes and before the easing, with the setting on these levels fell:
+Westlands 1, 2, 3, 4, 11, 16, 19, 23 and 24, The Long Season 4 and 16, and
+Imaginations 3; no Tower floor fell. With the setting off no level of any
+campaign fell.
+
+**The easing (2026-11-17 and 2026-11-18).** Nine levels met all three
+conditions: Westlands 2, 3, 4, 11, 16, 19, 23 and 24 and level 16 of The
+Long Season. No Imaginations level and no Tower floor did, and no level
+fell without the ATTACK order. Each was eased in its builder
+(`tools/westlands_mapgen`, `tools/longseason_mapgen`) one step at a time,
+and each step tried was generated and measured on the forty seeds. A level's
+steps lower only its groups that fight before tick 600: a fighter that
+arrives at tick 600 or later is never lowered, because the count cannot
+judge a step on it, and neither is anything a generator spawns. On
+2026-11-17 every level was first set at half its steps (rounded up), and a
+level already back there was then set at the fewest steps that read back
+(The Great River); the eight levels that were not back at half were
+brought to the maintainer, and the end state below is the one he approved
+on 2026-11-18 ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 3).
+Seven levels end eased. The Forest Road (Westlands 2) and The White City
+(Westlands 16) are left as they were, because no step brought them back,
+down to every group that fights before tick 600 at level 1. Two end states
+leave the order of the steps, as he approved: The Dead Marshes lowers P3's
+four lights without P4's, which share one loop with them in the builder,
+and The Mountain of Fire keeps its two strongest groups at their old
+levels. No fighter was taken away and no count of a level changed. A dated
+note above the changed placements in each builder says what the level ends
+at.
+
+Every step measured, on the forty seeds, with the docs' twenty in
+brackets. "Steps" counts the steps taken in their order (the group with
+the strongest fighters first) out of the level's whole count; "as above"
+keeps the row above it; a row that names half and a group is half the
+steps with that group alone one level lower. The difference is against the
+game before these fixes, with the setting on, with the measure's word for
+it ("two to three errors under" is a fall less than the measure can
+prove). Where the setting off was not measured the row says so. The groups
+have their builders' names; P1 to P6 are the six meres of The Dead
+Marshes, P2 the great mere and P5 the small one.
+
+| level | steps | what is lowered | the setting on [twenty] | against before these fixes, on | the setting off [twenty] |
+|---|---|---|---|---|---|
+| The Forest Road (Westlands 2) | none (the end state) | nothing: the level as it was | 6.97 (0.16) [6.85] | -1.02 (0.16), fell | 8.00 (0.00) [8.00] |
+|  | 5 of 9 (half) | the four pursuit riders (ghosts) and pocket 2's three wolves (orcs) at level 1, from 2 | 7.05 (0.14) [7.10] | -0.95 (0.14), fell | 7.97 (0.03) [8.00] |
+|  | 9 of 9 | as at half, and the four guard wolves of bend 3 and seg D at level 1, from 2 | 7.05 (0.14) [7.10] | -0.95 (0.14), fell | 7.97 (0.03) [8.00] |
+| The Last Ford (Westlands 3) | none | nothing | 6.08 (0.22) [6.20] | -1.55 (0.26), fell | 7.40 (0.13) [7.45] |
+|  | 2 of 3 (half) | the five first-beat Riders (ghosts) at level 2, from 4 | 7.08 (0.18) [7.05] | -0.55 (0.21), two to three errors under | 7.47 (0.11) [7.55] |
+|  | 3 of 3 (the end state) | the five Riders at level 1 | 7.38 (0.14) [7.40] | -0.25 (0.19), not back | 7.47 (0.11) [7.55] |
+| The Hidden Refuge (Westlands 4) | none | nothing | 7.03 (0.15) [6.95] | -0.65 (0.16), fell | 7.70 (0.07) [7.60] |
+|  | 1 of 2 (half) | the six scouts (orcs) at level 1, from 2 | 7.50 (0.11) [7.55] | -0.17 (0.11), not back | 7.60 (0.10) [7.60] |
+|  | 2 of 2 (the end state) | as at half, and the twelve dawn orcs at level 1, from 2 | 7.58 (0.09) [7.60] | -0.10 (0.10), back | 7.67 (0.08) [7.75] |
+| The Great River (Westlands 11) | none | nothing | 3.50 (0.32) [3.60] | -1.85 (0.40), fell | 4.72 (0.25) [4.60] |
+|  | 1 of 15 | one of the two ghosts of isle B at level 4, from 5 | 4.53 (0.31) [4.10] | -0.82 (0.37), two to three errors under | not measured |
+|  | 2 of 15 (the end state) | both ghosts of isle B at level 4 | 5.28 (0.30) [5.10] | -0.07 (0.40), back | 5.75 (0.26) [5.45] |
+|  | 3 of 15 | as above, and the four risen ghosts at level 4, from 5 | 5.30 (0.30) [5.10] | -0.05 (0.40), back | not measured |
+|  | 4 of 15 | as above, and one ghost of isle B at level 3 | 5.65 (0.24) [5.25] | +0.30 (0.34), back | not measured |
+|  | 8 of 15 (half) | both ghosts of isle B at level 2 and the four risen ghosts at 3 | 5.17 (0.28) [5.05] | -0.17 (0.40), back | not measured |
+| The White City (Westlands 16) | none (the end state) | nothing: the level as it was | 0.55 (0.12) [0.70] | -2.25 (0.26), fell | 3.10 (0.13) [3.05] |
+|  | 5 of 10 (half) | the breach column's twelve orcs at level 2, from 3; the plain lattice's thirty orcs at 1, 1 and 2, from 2, 3 and 4; the six town ghosts at 2, from 4; the four plain ghosts stay at 3 | 0.85 (0.19) [1.05] | -1.95 (0.29), fell | 1.52 (0.21) [1.60] |
+|  | 10 of 10 | every group at level 1 | 1.55 (0.27) [1.45] | -1.25 (0.37), fell | 1.32 (0.24) [1.20] |
+|  | not a step | the fighters as they were and the three tents at level 5, from 7 (a tent is a generator, which no step lowers) | 0.60 (0.16) [0.70] | -2.20 (0.31), fell | 2.73 (0.17) [2.70] |
+| The Dead Marshes (Westlands 19) | none | nothing | 0.60 (0.12) [0.55] | -4.75 (0.20), fell | 5.80 (0.14) [5.95] |
+|  | 10 of 20 (half) | P1's five lights at levels 1 and 2, from 3 and 4; the great mere's five lights at 1 and its elder at 2, from 3 and 4 and the elder's 5; P3's and P4's eight lights at 2 and 3, from 3 and 4; the small mere's pair at 3, from 4; P6's three lights at 1 and 2 and its elder at 3, from 3 and 4 and the elder's 5 | 4.78 (0.24) [5.05] | -0.57 (0.31), not back | 7.53 (0.10) [7.55] |
+|  | 11 of 20 | as at half, and P3's and P4's eight lights (one loop) at 1 and 2 | 6.33 (0.21) [6.45] | +0.97 (0.27), too far | 7.90 (0.05) [7.85] |
+|  | 12 of 20 | as above, and one of the small mere's pair at 2 | 6.40 (0.27) [6.30] | +1.05 (0.32), too far | 7.92 (0.04) [7.90] |
+|  | 13 of 20 | as above, and the other at 2 | 6.90 (0.17) [6.90] | +1.55 (0.25), too far | 7.95 (0.03) [7.90] |
+|  | 14 of 20 | as above, and P6's lights at 1 and its elder at 2 | 6.97 (0.17) [6.80] | +1.62 (0.24), too far | 7.92 (0.04) [7.85] |
+|  | 15 of 20 | as above, and P1's lights at 1 | 7.05 (0.12) [7.10] | +1.70 (0.21), too far | 8.00 (0.00) [8.00] |
+|  | 20 of 20 | every light at level 1 | 7.25 (0.16) [7.20] | +1.90 (0.23), too far | 8.00 (0.00) [8.00] |
+|  | half and P3 (the end state) | as at half, and P3's four lights alone at 1 and 2 | 5.33 (0.25) [4.95] | -0.03 (0.29), back | 7.83 (0.06) [7.85] |
+|  | half and P4 | as at half, and P4's four lights alone at 1 and 2 | 5.25 (0.25) [5.75] | -0.10 (0.33), back | 7.85 (0.06) [7.70] |
+|  | half and the small mere | as at half, and both of the small mere's pair at 2 | 5.05 (0.28) [5.30] | -0.30 (0.33), back | 7.83 (0.06) [7.80] |
+|  | half and one light | as at half, and one of the small mere's pair at 2 | 4.78 (0.27) [5.05] | -0.57 (0.33), not back | 7.78 (0.08) [7.80] |
+|  | half and P6 | as at half, and P6's lights at 1 and its elder at 2 | 4.65 (0.26) [4.80] | -0.70 (0.33), two to three errors under | 7.70 (0.08) [7.85] |
+| The Ash Plains (Westlands 23) | none | nothing | 2.58 (0.30) [2.55] | -3.33 (0.42), fell | 6.22 (0.20) [6.05] |
+|  | 7 of 14 (half) | the central host's twelve orcs at level 2, from 3; the first of the two orcs that watch the north ford of the first river at 2 and the second at 3, both from 5; the six wraiths (ghosts) at 3, from 4; the west column's eight orcs stay at 2 | 5.22 (0.29) [5.30] | -0.68 (0.37), not back | 7.17 (0.17) [7.05] |
+|  | 8 of 14 (the end state) | as at half, and the second ford watch at 2 | 5.53 (0.28) [5.15] | -0.38 (0.34), not back | 7.17 (0.16) [7.05] |
+|  | 9 of 14 | as above, and the six wraiths at 2 | 6.88 (0.20) [6.90] | +0.97 (0.30), too far | 7.35 (0.10) [7.15] |
+|  | 10 of 14 | as above, and the west column at 1 | 7.08 (0.18) [7.05] | +1.18 (0.33), too far | 7.47 (0.15) [7.60] |
+|  | 11 of 14 | as above, and the central host at 1 | 7.40 (0.15) [7.35] | +1.50 (0.30), too far | 7.55 (0.13) [7.60] |
+|  | 14 of 14 | every group at level 1 | 7.03 (0.17) [7.15] | +1.12 (0.27), too far | 7.45 (0.11) [7.35] |
+| The Mountain of Fire (Westlands 24) | none | nothing | 2.73 (0.23) [2.95] | -2.10 (0.39), fell | 4.75 (0.24) [4.70] |
+|  | 14 of 27 (half) | the plain ranks' thirty orcs at levels 2 and 3, from 3 and 4; the six ghost outriders at 2 and 3, from 5 and 6; the four Undergate chamber guards (orcs) at 4, from 6; the two caldera ghosts at 4, from 8 | 4.12 (0.27) [3.75] | -0.70 (0.41), not back | 5.00 (0.22) [5.15] |
+|  | 27 of 27 | every group at level 1 | 5.53 (0.20) [5.45] | +0.70 (0.35), back | 5.28 (0.27) [5.05] |
+|  | ranks one level, outriders three (the end state) | the ranks and the outriders as at half; the chamber guards at 6 and the caldera ghosts at 8, as they were | 4.50 (0.24) [4.55] | -0.33 (0.37), back | 5.58 (0.23) [5.45] |
+|  | ranks one level, outriders two | the ranks at 2 and 3 and the outriders at 3 and 4; nothing else | 4.08 (0.23) [4.10] | -0.75 (0.36), two to three errors under | 5.75 (0.24) [5.60] |
+|  | outriders two levels | the outriders at 3 and 4; nothing else | 3.15 (0.23) [3.25] | -1.68 (0.38), fell | 4.92 (0.26) [4.85] |
+|  | outriders one level | the outriders at 4 and 5; nothing else | 2.90 (0.24) [3.05] | -1.93 (0.38), fell | 4.85 (0.24) [4.85] |
+| The Frozen Ford (Long Season 16) | none | nothing | 0.03 (0.03) [0.05] | -5.88 (0.24), fell | 5.70 (0.25) [5.45] |
+|  | 4 of 15 | the six bank wolves (orcs) at level 4, the four ice wraiths (ghosts) and the first pursuit's three ghosts at 5, all from 6 | 2.70 (0.47) [1.90] | -3.20 (0.53), fell | 7.80 (0.06) [7.75] |
+|  | 5 of 15 | as above, and the ice wraiths at 4 | 2.75 (0.47) [1.90] | -3.15 (0.53), fell | 7.80 (0.06) [7.75] |
+|  | 6 of 15 | as above, and the first pursuit at 4 | 3.23 (0.49) [2.35] | -2.67 (0.54), fell | 7.88 (0.05) [7.85] |
+|  | 7 of 15 (the end state) | as above, and the bank wolves at 3 | 4.90 (0.33) [5.05] | -1.00 (0.48), two to three errors under | 4.92 (0.34) [5.05] |
+|  | 8 of 15 (half) | as above, and the ice wraiths at 3 | 4.47 (0.35) [4.65] | -1.43 (0.47), fell | 4.17 (0.27) [4.20] |
+|  | 9 of 15 | as above, and the first pursuit at 3 | 4.45 (0.33) [4.70] | -1.45 (0.45), fell | 4.17 (0.24) [4.30] |
+|  | 10 of 15 | as above, and the bank wolves at 2 | 2.80 (0.33) [2.85] | -3.10 (0.47), fell | 2.75 (0.31) [3.10] |
+|  | 12 of 15 | as above, and the ice wraiths and the first pursuit at 2 | 3.50 (0.34) [3.55] | -2.40 (0.42), fell | 2.77 (0.29) [2.75] |
+|  | 15 of 15 | every group at level 1 | 2.62 (0.37) [3.20] | -3.27 (0.45), fell | 1.77 (0.28) [1.40] |
+
+Where each level ends, and why (survivors of eight with the setting on:
+before these fixes, after them on the level files before any easing, and
+after the easing, with the docs' twenty in brackets, then how far under
+the level before these fixes it reads and the error of that gap):
+
+- **The Last Ford (Westlands 3)**: the five first-beat Riders, ghosts that
+  come at tick 400, from level 4 to 1, the last of its three steps: 7.62
+  [7.70], 6.08 [6.20], 7.38 [7.40]; 0.25 under, error 0.19. No group that
+  fights before tick 600 is left to lower; ten orcs at levels 2 and 3 wake
+  at tick 800 and five ghosts at level 4 at tick 1200.
+- **The Hidden Refuge (Westlands 4)**: the six scouts, and the twelve dawn
+  orcs who come at tick 500, from level 2 to 1, both its steps: 7.67
+  [7.75], 7.03 [6.95], 7.58 [7.60]; 0.10 under, error 0.10, back.
+- **The Great River (Westlands 11)**: the two ghosts of isle B from level
+  5 to 4, two of its fifteen steps, eased on 2026-11-17 and unchanged
+  since: 5.35 [5.40], 3.50 [3.60], 5.28 [5.10]; 0.07 under, error 0.40,
+  back. It is the fewest steps that read back: at one step it read 4.53
+  [4.10], and at three it read back as well, 5.30 [5.10].
+- **The Dead Marshes (Westlands 19)**: half its twenty steps, and P3's
+  four lights one level more. P1's five lights go from levels 3 and 4 to 1
+  and 2, the great mere's five from 3 and 4 to 1 and its elder from 5 to
+  2, P3's four from 3 and 4 to 1 and 2, P4's four from 3 and 4 to 2 and 3,
+  the small mere's pair from 4 to 3, and P6's three from 3 and 4 to 1 and
+  2 with its elder from 5 to 3: 5.35 [5.15], 0.60 [0.55], 5.33 [4.95];
+  0.03 under, error 0.29, back. Half its steps read 4.78 [5.05], not back;
+  the next step lowers P3's and P4's lights together, one loop in the
+  builder, and read 6.33 [6.45], too far. Of the groups lowered alone from
+  half, P3 came nearest: P4 read 5.25 [5.75], the small mere's pair 5.05
+  [5.30], one of the pair 4.78 [5.05] and P6 4.65 [4.80].
+- **The Ash Plains (Westlands 23)**: one step past half: the central
+  host's twelve orcs from level 3 to 2, the two orcs that watch the first
+  river's north ford from 5 to 2, and the six wraiths from 4 to 3; the
+  west column's eight orcs stay at 2. 5.90 [5.95], 2.58 [2.55], 5.53
+  [5.15]; 0.38 under, error 0.34. The next step, the wraiths at 2, read
+  6.88 [6.90], too far.
+- **The Mountain of Fire (Westlands 24)**: the plain ranks' thirty orcs
+  from levels 3 and 4 to 2 and 3, and the six ghost outriders, who come at
+  tick 400, from 5 and 6 to 2 and 3; the four Undergate chamber guards
+  (orcs at level 6) and the two caldera ghosts (level 8) keep their
+  levels. 4.83 [4.75], 2.73 [2.95], 4.50 [4.55]; 0.33 under, error 0.37,
+  back by the rule. Half its steps, which lowered those six fighters as
+  well, read 4.12 [3.75]: lowering them changed the runs seed by seed (on
+  34 of the forty seeds) but moved the average by no more than its error
+  (0.38, error 0.42). With fewer steps on the ranks and the outriders it
+  read 4.08 [4.10] or less.
+- **The Frozen Ford (Long Season 16)**: seven of its fifteen steps, one
+  short of half: the six bank wolves from level 6 to 3, the four ice
+  wraiths from 6 to 4, and the first pursuit's three ghosts, who come at
+  tick 350, from 6 to 4. 5.90 [5.60], 0.03 [0.05], 4.90 [5.05]; 1.00
+  under, error 0.48, the nearest any step came: half its steps read 4.47
+  [4.65], one step past half 4.45 [4.70], and every other step measured
+  3.50 [3.55] or less.
+- **The Forest Road (Westlands 2)**, not eased: 8.00 [8.00], 6.97 [6.85],
+  6.97 [6.85]. With the four pursuit riders (ghosts) and pocket 2's three
+  wolves (orcs) at level 1, from 2, it read 7.05 [7.10], and the four
+  guard wolves of bend 3 and seg D at level 1 as well changed no seed:
+  with every group that fights before tick 600 at level 1 it does not come
+  back. Beyond tick 600 it keeps two riders at level 3, who ride out at
+  tick 900, and a wolf at level 2, who wakes at tick 2300. Its level file
+  is the one from before any easing.
+- **The White City (Westlands 16)**, not eased: 2.80 [2.65], 0.55 [0.70],
+  0.55 [0.70]. Half its steps read 0.85 [1.05], and every group at level 1
+  read 1.55 [1.45] (with the setting off 1.32 [1.20], where the level as
+  it was reads 3.10 [3.05]); its three tents at level 5 instead of 7, the
+  fighters as they were, read 0.60 [0.70]. Its level file is the one from
+  before any easing.
+
+The Last Ford, The Ash Plains and The Mountain of Fire end 0.25, 0.38 and
+0.33 under, with errors of 0.19, 0.34 and 0.37: gaps of about the same
+size, which the measure calls not back, not back and back only because The
+Mountain of Fire's gap is inside one error. The Frozen Ford ends 1.00
+under, error 0.48.
+
+**The levels not eased, and why.** Survivors of eight with the setting on,
+before these fixes and after them; their level files did not change, so
+they read the same after the easing.
+
+- Fell, but their fighters that fight before tick 600 are already at level
+  1, and the maintainer ruled that no fighter is taken away: Westlands 1,
+  7.95 to 7.15 (m -0.80, se 0.14), whose two ghosts at level 2 wake at
+  tick 600; The Long Season 4, 2.52 to 1.38 (-1.15, 0.33); Imaginations 3,
+  7.75 to 7.28 (-0.47, 0.14).
+- Fell by two to three errors, less than the measure can prove: Westlands
+  5, 5.85 to 4.95 (-0.90, 0.43); The Long Season 1, 7.95 to 7.75 (-0.20,
+  0.08); Imaginations 1, 6.53 to 5.97 (-0.55, 0.22).
+- Fell, and lowering every group that fights before tick 600 does not
+  bring them back: The Forest Road and The White City (above).
+- Fell, but not with the ATTACK order: none.
+- Under one survivor before these fixes, where the count cannot show a
+  fall or an easing; in brackets the crew's damage taken per battle,
+  before and after: Westlands 7, 0.15 to 0.15 (2,041 to 2,053); 10, 0.10
+  to 0.00 (2,236 to 2,218); 12, 0.00 to 0.00 (2,590 to 2,719); 13, 0.12 to
+  0.00 (2,437 to 2,344); 14, 0.20 to 0.12 (2,941 to 2,826); 22, 0.42 to
+  0.15 (2,848 to 3,029); The Long Season 17, 0.00 to 0.00 (3,128 to 3,021)
+  and 18, 0.05 to 0.12 (2,849 to 2,890); the Tower's floor 10, 0.70 to
+  0.75 (2,012 to 1,896), and floor 20, 0.00 to 0.00 (2,656 to 2,646).
+- All eight alive on every seed before these fixes: Westlands 26 and The
+  Long Season 19 still are, while the crew takes more damage (56 to 68 and
+  406 to 560); The Long Season 15 reads 7.92 after them (117 to 213); The
+  Forest Road fell (above).
+- The Tower: no floor fell against the game before these fixes (the table
+  above), so no Tower table changed.
+
+**With the setting off.** The easing is in the level files, and a level
+file serves both settings, so the classic setting plays the eased levels
+too, as the maintainer accepted
+([Rulings (2026-11-16)](#rulings-2026-11-16), entry 2). Before these fixes
+and after the easing, with the setting off: The Great River reads 4.72
+[4.60] and 5.75 [5.45] (m +1.02, se 0.37), The Dead Marshes 5.80 [5.95]
+and 7.83 [7.85] (+2.02, 0.15), The Ash Plains 6.22 [6.05] and 7.17 [7.05]
+(+0.95, 0.24) and The Mountain of Fire 4.75 [4.70] and 5.58 [5.45] (+0.82,
+0.34): easier, each by two errors or more. The Last Ford 7.40 [7.45] and
+7.47 [7.55] (+0.07, 0.06) and The Hidden Refuge 7.70 [7.60] and 7.67
+[7.75] (-0.03, 0.10) read as before within their error. The Forest Road
+and The White City, not eased, read 8.00 [8.00] and 3.10 [3.05], as after
+the fixes (8.00 [8.00] and 2.83 [2.90] before them).
+
+The Frozen Ford reads lower with the setting off after the easing, not
+easier: 5.70 [5.45] before these fixes and after them, 4.92 [5.05] after
+the easing (m -0.78, se 0.41). With one step fewer, the bank wolves still
+at level 4, it read 7.88 [7.85] with the setting off, and at half its
+steps 4.17 [4.20]: with the setting off its reading falls when the bank
+wolves go from 4 to 3. Why is not traced.
+
+Summed over the levels, per run of the campaign, at four points (before
+these fixes; after them, on the level files before any easing; at half the
+steps, 2026-11-17; after the easing): Westlands with the setting on
+104.10, 82.95, 94.80 and 96.03 (after the easing against before these
+fixes, m -8.07, se 1.23), with it off 106.28, 106.97, 109.30 and 111.85
+(+5.58, 0.52); The Long Season with the setting on 111.00, 104.28, 108.72
+and 109.15 (-1.85, 1.23), with it off 113.12, 113.20, 111.67 and 112.42
+(-0.70, 0.41). Imaginations and the Tower read after the easing what they
+read after the fixes (21.25 and 10.43 with the setting on, 21.95 and 11.62
+with it off).
+
+What the count of the first 600 ticks does not see on the eased levels.
+Fighters that arrive at tick 600 or later are outside the count and
+outside the steps: on The Last Ford ten orcs at levels 2 and 3 (tick 800),
+five ghosts at level 4 (1200), and big orcs and skeletons (1600); on The
+Hidden Refuge six ghosts at level 3 and ten skeletons (1000); on The Dead
+Marshes six ghosts at level 4 (800); on The Ash Plains six orcs at level 3
+(700); on The Frozen Ford the second pursuit's three ghosts at level 7
+(700) and four barbarians (1000). The Great River and The Mountain of Fire
+place none that late (their last arrivals, the risen ghosts and the
+outriders, come at ticks 500 and 400). And the steps lower placed fighters
+only, never what a generator spawns: bone piles, which spawn ghosts, stand
+on The Last Ford, The Hidden Refuge, The Great River, The Dead Marshes
+(four), The Ash Plains and The Mountain of Fire; tents, which spawn
+skeletons, on all of those but The Dead Marshes; The Mountain of Fire has
+a mage tower as well, and The Frozen Ford has no generator. The playtest
+sweeps below run to tick 6,000 and see those later fights.
 
 The three playtest sweeps (`scripts/westlands_playtest.sh` and its two
 siblings) drive the text client over every level of a campaign on seeds
@@ -3204,6 +3458,24 @@ Season cleared 27 of its 57 runs and 23 after, with 58 crew members alive
 and 43, and lost no hero (levels 1, 3, 10, 14, 15 and 19 read
 differently); Imaginations cleared 3 of its 9 runs before and after, with
 8 crew members alive and 9.
+
+After the easing, on the eased level files: Westlands cleared its foes on
+17 of its 75 runs, ended with 16 crew members alive and lost a protected
+hero on 28 runs (at half the steps: 17, 14 and 27). Against the game after
+the fixes four Westlands levels read differently, all of them eased: The
+Last Ford ends with 2 crew members alive over its three runs (none at the
+earlier points), The Hidden Refuge clears its foes on all three runs again
+(on two after the fixes), The Great River on two (on none after the fixes,
+on all three before them), and The Mountain of Fire loses the Bearer on
+two of its three runs, where it lost him on none before these fixes or
+after them and on one at half the steps. Why is not traced: the count of
+its first 600 ticks reads the level back, and the Bearer falls at ticks
+2,400 and 2,700. The Forest Road cleared its foes on all three runs before
+these fixes and on none since, and loses the Bearer on all three. The Long
+Season (23 of 57 runs cleared, 43 crew members alive, no hero lost) and
+Imaginations (3 of 9 cleared, 9 alive) read level for level as after the
+fixes. A sweep is three seeds per level: a record, not the measure a level
+is eased by, and no level was added to the easing because of it.
 
 The tower's snap-face (fix BE: a tower faces its foe at once) was measured
 alone, with the setting on, on the docs' twenty seeds: the kept turn's
@@ -3822,7 +4094,8 @@ The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
 BC; #538, #513, #447), and the flyer's own-floor foe (#512). Each entry
 below is what the maintainer said, or what was only told to him, and what
 the game or its tests do because of it. He answered the re-balance on
-2026-11-16 and how a level is eased on 2026-11-17.
+2026-11-16, how a level is eased on 2026-11-17, and how the easing ends
+and the arrow slit on 2026-11-18.
 
 1. **Sixteen setting-on rows were given a fact of their own rule again
    after the three fixes were ported: of the fifteen the ports left with
@@ -3920,8 +4193,35 @@ the game or its tests do because of it. He answered the re-balance on
    its numbers. A level that is not back after half its steps stops there
    and is brought to him. The other answers he was offered: where every
    group is already at level 1, up to two fighters fewer; or every step to
-   the end, however far. The easing stands at half its steps on the levels
-   that were not back by then, and he has been asked how to finish it.
+   the end, however far.
+   Eight levels were not back at half their steps, and on 2026-11-18 he
+   was shown how each would end: the nine levels by name with their
+   forty-seed averages before these fixes, after them and at the proposed
+   end, with the setting on, and what is done to each; that The Forest
+   Road (Westlands 2) and The White City (Westlands 16) stay clearly
+   harder, because no step brings them back (a step lowers only a group
+   that fights before tick 600) and no fighter is taken away; that The
+   Frozen Ford (Long Season 16) ends one survivor under, and The Last Ford
+   (Westlands 3) and The Ash Plains (Westlands 23) a quarter to a third of
+   a survivor under; and that most eased levels get easier with the
+   setting off (The Dead Marshes 5.80 [5.95] to 7.83 [7.85]). The other
+   answer named for the two harder levels was to take fighters away after
+   all. He asked what level the crew is (eight bots at the level the
+   campaign's curve gives a fresh team for that level), then answered, on
+   2026-11-18: "yeah, sure, the easing is okay". So the easing goes past
+   half where a further step brings a level back or nearer without going
+   too far (The Last Ford, The Hidden Refuge, The Dead Marshes, The Ash
+   Plains), stops one step short of half where that comes nearest (The
+   Frozen Ford), keeps The Mountain of Fire's two strongest groups at
+   their old levels, and is undone where no step brings the level back:
+   The Forest Road reads 8.00 [8.00] before these fixes and 6.97 [6.85]
+   after the easing, The White City 2.80 [2.65] and 0.55 [0.70]. Three
+   levels end a little under on purpose: The Last Ford 7.38 [7.40] against
+   7.62 [7.70] (0.25 under, error 0.19), The Ash Plains 5.53 [5.15]
+   against 5.90 [5.95] (0.38, 0.34) and The Frozen Ford 4.90 [5.05]
+   against 5.90 [5.60] (1.00, 0.48). Forty seeds, survivors of eight with
+   the setting on, the docs' twenty in brackets; every step and its
+   reading is under [Balance](#balance).
 4. **The shape of fix BC, and why the gentler shapes were not taken.** In
    its ATTACK order a melee-only bot that already faces its foe on its own
    floor swings when a foe's body stands on its weapon's pad, and
@@ -3975,24 +4275,28 @@ the game or its tests do because of it. He answered the re-balance on
    and 10); that floor, at least one crew member, stays per seed. Decided
    in this work under the test's own rule.
 6. **The questions, and the defaults built.**
-   - Arrow slits: asked 2026-11-17, still open; the default was built:
-     the line check takes a slit as open, and the shot itself takes the
-     slit's gamble. The other rule, a check that takes the gamble too,
-     makes golems and fire elementals shoot through slits less; both are
-     measured under [Balance](#balance).
-   - What a shooter may fire at: not yet asked; the default was built: a
-     line check passes on any body it meets, as before, an enemy door,
-     grown tree or shot in flight included. With the setting on, on
-     Gladiator and The Tryxian Chronicles (twenty seeds of each level),
-     98,695 of the 104,342 checks that passed although no fighter or tent
-     stood in the flight ended on an enemy door, 5,582 on an enemy shot in
-     flight and 40 on a grown tree; on The Tryxian Chronicles' first level
-     (six seeds of 2,400 ticks) 7,166 of 7,235 ended on a door, a third of
-     the soldiers' passed checks there (4,169 of 12,371) and nearly two
-     thirds of the thieves' (2,394 of 3,733). A door has 5,000 hit points,
-     so those shots are spent on it. The other rule, that only fighters
-     and tents count, would be new in both games and would be measured
-     before it shipped.
+   - Arrow slits: asked 2026-11-17 and answered 2026-11-18: "for the arrow
+     slit, i agree with you on (a)". (a) is the rule as built, so it
+     stands: the line check takes a slit as open, and the shot itself
+     takes the slit's gamble. The other rule, which he did not take, is a
+     check that takes the gamble too: on the 24 classic levels with slit
+     cells (twenty seeds each, the setting on) golems would start 255
+     shots where they start 373 and fire elementals 1,760 where they start
+     2,156, and the crews would keep 1,494 survivors of 3,840 against
+     1,467; both are measured under [Balance](#balance).
+   - What a shooter may fire at: asked 2026-11-18, still open; the default
+     was built: a line check passes on any body it meets, as before, an
+     enemy door, grown tree or shot in flight included. With the setting
+     on, on Gladiator and The Tryxian Chronicles (twenty seeds of each
+     level), 98,695 of the 104,342 checks that passed although no fighter
+     or tent stood in the flight ended on an enemy door, 5,582 on an enemy
+     shot in flight and 40 on a grown tree; on The Tryxian Chronicles'
+     first level (six seeds of 2,400 ticks) 7,166 of 7,235 ended on a
+     door, a third of the soldiers' passed checks there (4,169 of 12,371)
+     and nearly two thirds of the thieves' (2,394 of 3,733). A door has
+     5,000 hit points, so those shots are spent on it. The other rule,
+     that only fighters and tents count, would be new in both games and
+     would be measured before it shipped.
    - When a level counts as fallen or back: decided in this work, and told
      to the maintainer. The ruling's "twenty-seed average" is read as the
      average over forty seeds, the twenty these docs use and 101 to 120,
@@ -4054,6 +4358,10 @@ the game or its tests do because of it. He answered the re-balance on
      it).
    - #586: two pack scripts write out what flying is instead of asking
      `walker::flies` (they agree for every value the game writes).
+   - #587: with fix BC a melee-only bot behind an ally shoves it toward
+     the foe for as long as the foe stays in reach: two times in three the
+     ally loses its orders and is walked four steps at the foe (found by
+     reading, not counted).
 
 ## Out of scope
 
