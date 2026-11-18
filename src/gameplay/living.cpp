@@ -1103,10 +1103,12 @@ bool living::act_random()
 		else
 		{
 			// Nearest foe is blocked
-			// plumbing: statistics::turn_to_foe turns the stats' owner (their controller), so a
-			//   living whose stats have lost their owner, or name another, turns itself as the
-			//   classic statement did. The game keeps every live walker's stats owned by it;
-			//   statistics::do_command guards the same state.
+			// rule: A living whose stats name no owner, or another walker, turns itself here on
+			//   both settings, as the classic statement did: statistics::turn_to_foe turns the
+			//   stats' owner (their controller). The game keeps every live walker's stats owned
+			//   by it, but a snapshot resolves the owner by id, and statistics::do_command guards
+			//   only the half with no owner.
+			// tests: SemAi5.a_living_whose_stats_have_lost_their_owner_turns_the_classic_notch_on_both_settings
 			if (stats_->controller() == this)
 				stats_->turn_to_foe(facing(xdist,ydist));
 			else
