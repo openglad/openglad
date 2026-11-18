@@ -662,6 +662,12 @@ TEST_F(SemLineCheck, the_check_passes_exactly_where_the_shot_lands_with_the_sett
                         tx = kX + w + gap + d;
                         ty = kY + h + gap - d;
                     }
+                    ASSERT_GE(tx, 0) << "the staging: at gap " << gap << " px the soldier stands on the field";
+                    ASSERT_GE(ty, 0) << "the staging: at gap " << gap << " px the soldier stands on the field";
+                    ASSERT_LE(tx + 16, world().grid.w * GRID_SIZE)
+                        << "the staging: at gap " << gap << " px the soldier stands on the field";
+                    ASSERT_LE(ty + 16, world().grid.h * GRID_SIZE)
+                        << "the staging: at gap " << gap << " px the soldier stands on the field";
                     place(target, static_cast<short>(tx), static_cast<short>(ty), 16, 16);
                     target->stats()->set_hitpoints(400.0f);
                     shooter->stats()->set_magicpoints(500.0f);

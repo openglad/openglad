@@ -8,11 +8,12 @@
  * mixed fresh team (4 soldiers, elf, archer, cleric, barbarian) deployed
  * by westlands_fixture::mixed_crew_battle onto the level's start markers.
  *
- * Default mode (what CI runs): for every level the mounted builtin
- * campaign lists (list_levels_v(), read from the campaign, never typed),
- * the level loads and the stand-in eight deploy (one tick of
- * mixed_crew_battle answers alive >= 0), and the number of levels that do
- * is the number the campaign lists, which is not zero.
+ * Default mode (what CI runs): the campaign lists at least one level
+ * (list_levels_v(), read from the campaign, never typed); kClassicCrewLevel
+ * holds exactly one row for each listed level and none for another; and on
+ * every listed level each of the stand-in eight stands on one of the
+ * level's own start markers and all eight stand after one tick of
+ * mixed_crew_battle (alive == 8).
  *
  * Measure mode: CLASSIC_CALIBRATION_MEASURE=1 with OG_CALIBRATION_SEEDS
  * (westlands_sim_fixture.h, calibration_seeds()) plays each level for 600
@@ -182,20 +183,50 @@ protected:
             return;
         }
 
-        std::size_t deployed = 0;
+        // One row of kClassicCrewLevel for each level the campaign lists:
+        // every listed level has a row, every row of the campaign names a
+        // listed level, and the campaign has as many rows as levels (so no
+        // level has two). A level added to or taken from the campaign turns
+        // this red until the fit mode writes its row or it is deleted.
+        std::size_t rows = 0;
+        for (const ClassicCrewLevel& row : kClassicCrewLevel)
+        {
+            if (std::string_view(row.campaign) != campaign_id)
+                continue;
+            ++rows;
+            EXPECT_TRUE(std::find(levels.begin(), levels.end(), row.level_id) !=
+                        levels.end())
+                << "kClassicCrewLevel has a row for " << campaign_id << " scen"
+                << row.level_id << ", which the campaign does not list";
+        }
+        for (const int level_id : levels)
+            EXPECT_NE(0, fitted_crew_level(campaign_id, level_id))
+                << campaign_id << " scen" << level_id
+                << " has no row in kClassicCrewLevel: run the fit mode and "
+                   "add it";
+        EXPECT_EQ(levels.size(), rows)
+            << "kClassicCrewLevel holds one row for each level " << campaign_id
+            << " lists";
+
+        // Each level loads and the stand-in eight are deployed on it, each
+        // on one of the level's own start markers (every classic level has
+        // at least eight, so deploy_crew teleports nobody and draws nothing
+        // for it), and after the one tick played all eight stand: nothing
+        // on a classic level reaches a crew member on its first tick.
         for (const int level_id : levels)
         {
+            EXPECT_EQ(kCrewSize, crew_markers(level_id))
+                << campaign_id << " scen" << level_id
+                << " has fewer than eight start markers: part of the crew "
+                   "would be teleported";
             const CurveBattle r =
                 westlands_fixture::mixed_crew_battle(level_id, 1, 42u, 1);
-            EXPECT_GE(r.alive, 0)
+            EXPECT_EQ(kCrewSize, r.alive)
                 << campaign_id << " scen" << level_id
-                << " failed to load or to deploy the stand-in eight";
-            if (r.alive >= 0)
-                ++deployed;
+                << ": the level loads and the stand-in eight stand after its "
+                   "first tick (-1: it did not load, or the eight were not "
+                   "all made)";
         }
-        EXPECT_EQ(levels.size(), deployed)
-            << "every level " << campaign_id
-            << " lists must load and deploy the crew";
     }
 
 private:

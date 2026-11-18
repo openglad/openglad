@@ -2623,7 +2623,7 @@ bool statistics::keep_turn(short aim)
 	//   is turning to (enddir) and turns one notch; its next acts finish the turn.
 	// tests: SemAi5.a_tower_whose_shot_is_refused_faces_its_foe_at_once_with_its_heading
 	// tests: SemAi5.a_tower_turning_toward_its_near_foe_faces_it_at_once_with_the_setting_on
-	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
+	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on, SemAi5.a_walking_shooter_whose_shot_is_refused_keeps_its_turn_and_its_own_heading_with_the_setting_on
 	if (controller_->stationary())
 	{
 		short ux = 0, uy = 0;

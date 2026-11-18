@@ -318,9 +318,15 @@ protected:
     // the orc's path-check counter is kCounter.
     Scene orc_scene(short fixes, int start, short gap)
     {
+        return bot_scene(fixes, FAMILY_ORC, start, gap);
+    }
+
+    // orc_scene with a bot of `family` in the orc's place.
+    Scene bot_scene(short fixes, int family, int start, short gap)
+    {
         Scene sc;
         fresh_world(fixes);
-        sc.bot = living_at(FAMILY_ORC, 1, 320, 320);
+        sc.bot = living_at(family, 1, 320, 320);
         if (sc.bot == nullptr)
             return sc;
         const short sx = static_cast<short>(320 + sc.bot->sizex() + gap);
@@ -679,6 +685,192 @@ TEST_F(SemAi5, a_half_turn_takes_four_acts_and_then_the_search_runs)
         EXPECT_EQ(COMMAND_SEARCH, front_of(orc).type);
         EXPECT_EQ(199, front_of(orc).count) << "the first act that faces its enddir runs the SEARCH";
         EXPECT_EQ(kCounter - 1, orc->path_check_counter()) << "the SEARCH's chase ran";
+    }
+}
+
+// Gameplay Fixes BE (#513), living.cpp living::act_random through
+// statistics::keep_turn's walking arm, with a bot that shoots and walks; both
+// settings. A team-1 archer at (320,320) facing UP, holding its foe, a team-0
+// soldier 16 px off its right side, their boxes level (bot_scene); the aim is
+// RIGHT, two notches off. Asserted first, in twin worlds built the same way
+// (asking builds a test weapon): the archer shoots (it is not melee only) and
+// walks (its stepsize is above 0); its line check refuses it for the facing
+// alone (Facing: the reach, melee-only and magic gates come first, so the
+// soldier is inside the arrow's reach), by the rule that a shooter fires only
+// along the direction it already faces (walker::fire_check); and with the
+// setting on the same archer facing RIGHT is passed for every value of the
+// probe's waver, so that refusal ends by rule once the archer faces its foe.
+//  Act 1 (act_random, reached through act(): the two 1-in-5s, the 1-in-80,
+//    the probe's waver): a notch, UP to UP_RIGHT, its heading one stepsize
+//    along UP_RIGHT; SEARCH(200) queued; nothing fired, not moved. Setting
+//    on: enddir RIGHT (the turn is kept). Off: enddir UP.
+//  Act 2: the turn is the act: nothing drawn, the SEARCH not run (200,
+//    counter 50). On: curdir RIGHT, its foe's direction, and its heading
+//    (lastx, lasty) one of its own steps along RIGHT, (stepsize, 0), not the
+//    UP_RIGHT heading of act 1. Off: back to UP, heading (0, -stepsize).
+//  Act 3: it faces its enddir, so the SEARCH runs one round: the chase
+//    counts its path-check counter down (49, no re-plan) and, with no path,
+//    walks the right-hand way, which in open ground first asks whether a
+//    shot along the snapped delta lands (statistics::direct_walk). On: the
+//    archer faces its foe, so that line check passes, and the round wipes
+//    the SEARCH and queues ATTACK(30 + rng(25)); the act draws rng(300), the
+//    check's waver and rng(25). Off: it faces UP, the check refuses, and the
+//    SEARCH goes on (199).
+// The shot that follows, setting on (the soldier's armour staged at 0 so
+// that every strike shows): act 4 runs the ATTACK order's round, whose line
+// check passes; it puts a FIRE order in front and starts the shot, busy
+// charged the fire delay and the attack animation running. The arrow leaves
+// when the attack row ends, the row's length minus one acts later (counted
+// from the archer's own row); it heads RIGHT and, acting until it ends,
+// strikes the soldier, whatever its own waver. The archer never moves.
+// With the setting off the archer is turned back to UP on act 2, so no shot
+// along RIGHT follows from this turn.
+TEST_F(SemAi5, a_walking_shooter_whose_shot_is_refused_keeps_its_turn_and_its_own_heading_with_the_setting_on)
+{
+    constexpr short kGap = 16;
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(setting(fixes));
+        Scene twin = bot_scene(fixes, FAMILY_ARCHER, FACE_UP, kGap);
+        ASSERT_TRUE(twin.bot && twin.soldier);
+        ASSERT_EQ(0, twin.bot->stats()->query_bit_flags(BIT_NO_RANGED)) << "the staging: the archer shoots";
+        ASSERT_GT(twin.bot->stepsize(), 0.0f) << "the staging: the archer walks";
+        ASSERT_FALSE(twin.bot->stationary()) << "the staging: the archer walks";
+        ASSERT_TRUE(refusal(twin.bot, twin.dx, twin.dy) == walker::FireCheckDenial::Facing)
+            << "the staging: refused for the facing alone, the foe inside the arrow's reach";
+        if (fixes) {
+            Scene faced = bot_scene(fixes, FAMILY_ARCHER, FACE_RIGHT, kGap);
+            ASSERT_TRUE(faced.bot && faced.soldier);
+            const std::uint32_t bound = waver_bound_of(faced.bot);
+            ASSERT_GT(bound, 0u);
+            for (std::uint32_t v = 0; v < bound; ++v) {
+                faced = bot_scene(fixes, FAMILY_ARCHER, FACE_RIGHT, kGap);
+                ASSERT_TRUE(faced.bot && faced.soldier);
+                world().rng_.state_ = state_where({{bound, v}});
+                ASSERT_TRUE(refusal(faced.bot, faced.dx, faced.dy) == walker::FireCheckDenial::None)
+                    << "the staging: facing RIGHT the line check passes, the waver drawn " << v;
+            }
+        }
+
+        Scene sc = bot_scene(fixes, FAMILY_ARCHER, FACE_UP, kGap);
+        ASSERT_TRUE(sc.bot && sc.soldier);
+        walker* archer = sc.bot;
+        sc.soldier->stats()->set_armor(0.0f);
+        const float step = archer->stepsize();
+        ASSERT_EQ(FACE_RIGHT, archer->facing(sc.dx, sc.dy)) << "the staging: the aim is RIGHT";
+        ASSERT_EQ(FACE_UP, archer->curdir()) << "the staging: the archer faces UP, away from its foe";
+        ASSERT_EQ(FACE_UP, archer->enddir());
+        ASSERT_LT(std::abs(sc.dx), archer->lineofsight() * GRID_SIZE) << "the staging: the foe is in the sight box";
+        ASSERT_GT(archer->path_check_counter(), 3) << "the staging: no round of the chase re-plans";
+        ASSERT_TRUE(archer->stats()->commands.empty());
+        const int row_index = FACE_RIGHT + ANI_ATTACK * NUM_FACINGS;
+        ASSERT_LT(row_index, archer->ani_count) << "the staging: the archer has an attack row facing RIGHT";
+        const signed char* row = archer->ani[row_index];
+        ASSERT_NE(nullptr, row);
+        int row_len = 0;
+        while (row_len < 128 && row[row_len] != -1)
+            ++row_len;
+        ASSERT_GE(row_len, 2) << "the staging: the attack row has frames after its first";
+        const std::uint32_t waver = waver_bound_of(archer);
+        ASSERT_GT(waver, 0u);
+        const std::uint32_t s = into_act_random(waver);
+        world().rng_.state_ = s;
+        const float hp0 = sc.soldier->stats()->hitpoints();
+
+        (void)archer->act();
+
+        EXPECT_EQ(state_after(s, {5, 5, 80, waver}), world().rng_.state_) << "act 1: the two 1-in-5s, the 1-in-80, the waver";
+        EXPECT_EQ(FACE_UP_RIGHT, archer->curdir()) << "act 1: a notch toward the foe";
+        EXPECT_EQ(fixes ? FACE_RIGHT : FACE_UP, archer->enddir())
+            << (fixes ? "act 1: the foe's direction is kept as the facing it turns to" : "act 1: the classic turn leaves enddir as it was");
+        EXPECT_FLOAT_EQ(step, archer->lastx()) << "act 1: the heading follows the notch";
+        EXPECT_FLOAT_EQ(-step, archer->lasty()) << "act 1: the heading follows the notch";
+        EXPECT_EQ(COMMAND_SEARCH, front_of(archer).type) << "act 1: the SEARCH is queued";
+        EXPECT_EQ(200, front_of(archer).count);
+        EXPECT_FLOAT_EQ(0.0f, archer->busy()) << "act 1: nothing fired";
+        EXPECT_EQ(0, live_weapons()) << "act 1: nothing fired";
+        EXPECT_EQ(320, archer->xpos());
+        EXPECT_EQ(320, archer->ypos());
+
+        const std::uint32_t after1 = world().rng_.state_;
+        (void)archer->act();
+
+        if (fixes) {
+            EXPECT_EQ(FACE_RIGHT, archer->curdir()) << "act 2: the kept turn is finished";
+            EXPECT_EQ(FACE_RIGHT, archer->enddir());
+            EXPECT_FLOAT_EQ(step, archer->lastx()) << "act 2: its heading is one of its own steps along RIGHT";
+            EXPECT_FLOAT_EQ(0.0f, archer->lasty()) << "act 2: its heading is one of its own steps along RIGHT";
+        } else {
+            EXPECT_EQ(FACE_UP, archer->curdir()) << "act 2: turned back to the facing it had";
+            EXPECT_EQ(FACE_UP, archer->enddir());
+            EXPECT_FLOAT_EQ(0.0f, archer->lastx()) << "act 2: its heading follows it back";
+            EXPECT_FLOAT_EQ(-step, archer->lasty()) << "act 2: its heading follows it back";
+        }
+        EXPECT_EQ(after1, world().rng_.state_) << "act 2: the turn is the act; nothing is drawn";
+        EXPECT_EQ(COMMAND_SEARCH, front_of(archer).type);
+        EXPECT_EQ(200, front_of(archer).count) << "act 2: the SEARCH did not run";
+        EXPECT_EQ(kCounter, archer->path_check_counter()) << "act 2: no chase";
+
+        (void)archer->act();
+
+        EXPECT_EQ(kCounter - 1, archer->path_check_counter()) << "act 3: the SEARCH's chase ran, with no re-plan";
+        EXPECT_FLOAT_EQ(0.0f, archer->busy()) << "act 3: nothing fired";
+        EXPECT_EQ(0, live_weapons()) << "act 3: nothing fired";
+        if (!fixes) {
+            EXPECT_EQ(COMMAND_SEARCH, front_of(archer).type) << "act 3: facing UP, the shot does not land, the SEARCH goes on";
+            EXPECT_EQ(199, front_of(archer).count) << "act 3: the SEARCH ran one round";
+            continue;
+        }
+        og::sim::SimRandom duration(state_after(s, {5, 5, 80, waver, 300, waver}));
+        const int attack_rounds = 30 + static_cast<int>(duration.next(25));
+        EXPECT_EQ(state_after(s, {5, 5, 80, waver, 300, waver, 25}), world().rng_.state_)
+            << "act 3: the chase's 1-in-300, the line check's waver, rng(25)";
+        const Cmd f3 = front_of(archer);
+        EXPECT_EQ(1u, f3.size) << "act 3: the SEARCH was wiped";
+        EXPECT_EQ(COMMAND_ATTACK, f3.type) << "act 3: its shot lands, so the round queues an ATTACK";
+        EXPECT_EQ(attack_rounds - 1, f3.count)
+            << "act 3: 30 + rng(25) rounds, less the one the round spends of the order then in front";
+        EXPECT_EQ(FACE_RIGHT, archer->curdir());
+        EXPECT_EQ(320, archer->xpos()) << "act 3: the archer did not move";
+        EXPECT_EQ(320, archer->ypos());
+
+        const std::uint32_t after3 = world().rng_.state_;
+        (void)archer->act();
+
+        og::sim::SimRandom fire_draw(state_after(after3, {waver}));
+        const int fire_rounds = static_cast<int>(fire_draw.next(5));
+        EXPECT_EQ(state_after(after3, {waver, 5}), world().rng_.state_)
+            << "act 4: the ATTACK round's line check (its waver) and the FIRE order's rng(5)";
+        // The round puts FIRE(rng(5)) in front and spends one of its rounds;
+        // at 0 it is gone and the ATTACK is in front again, untouched.
+        const Cmd f4 = front_of(archer);
+        EXPECT_EQ(fire_rounds > 1 ? COMMAND_FIRE : COMMAND_ATTACK, f4.type)
+            << "act 4: the shot lands: FIRE(" << fire_rounds << ") in front, less the round spent";
+        EXPECT_EQ(fire_rounds > 1 ? fire_rounds - 1 : attack_rounds - 1, f4.count);
+        EXPECT_FLOAT_EQ(archer->fire_frequency(), archer->busy()) << "act 4: the shot started: busy is charged its fire delay";
+        EXPECT_EQ(ANI_ATTACK, archer->ani_type()) << "act 4: the attack animation runs";
+        EXPECT_EQ(0, live_weapons()) << "act 4: the arrow has not left yet";
+
+        walker* arrow = nullptr;
+        int acts_after_start = 0;
+        while (arrow == nullptr && acts_after_start < row_len + 2) {
+            (void)archer->act();
+            ++acts_after_start;
+            for (const auto& u : world().weaplist)
+                if (u && !u->dead() && u->owner() == archer)
+                    arrow = u.get();
+        }
+        ASSERT_NE(nullptr, arrow) << "the arrow leaves";
+        EXPECT_EQ(row_len - 1, acts_after_start) << "the arrow leaves when the attack row ends";
+        EXPECT_EQ(FACE_RIGHT, arrow->facing(static_cast<short>(arrow->lastx()), static_cast<short>(arrow->lasty())))
+            << "the arrow heads RIGHT, at the foe";
+        EXPECT_GT(arrow->lastx(), 0.0f) << "the arrow heads RIGHT, at the foe";
+        EXPECT_FLOAT_EQ(hp0, sc.soldier->stats()->hitpoints()) << "nothing struck before the arrow flies";
+        for (int a = 0; !arrow->dead() && a < 4 * arrow->lineofsight(); ++a)
+            arrow->act();
+        EXPECT_TRUE(arrow->dead()) << "the arrow ends inside its range";
+        EXPECT_LT(sc.soldier->stats()->hitpoints(), hp0) << "the arrow strikes the soldier";
+        EXPECT_EQ(320, archer->xpos()) << "the archer never moved";
+        EXPECT_EQ(320, archer->ypos());
     }
 }
 

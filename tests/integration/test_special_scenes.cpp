@@ -1209,6 +1209,13 @@ std::vector<Scene> scenes()
             {
                 run.marks["wail2.said"] = 1.0f;
                 const int w2 = cued(run, "wail2");
+                // The cue is marked on the first frame its condition holds,
+                // or on its deadline frame when it never did (cue()).
+                EXPECT_LT(w2, w1 + kSecondWailDeadline)
+                    << "the staging: the second pack walks in so that its nearest orc comes within "
+                    << kCueGap << " px of the ghost after the rest and before frame "
+                    << w1 + kSecondWailDeadline << ", the second wail's deadline, so the wail is "
+                    << "pressed by its condition";
                 printf("  ghost_wail: the second wail is pressed on frame %d, %s (the rest "
                        "is over on frame %d, the deadline is frame %d)\n",
                        w2, w2 < w1 + kSecondWailDeadline ? "by its condition" : "at its deadline",
