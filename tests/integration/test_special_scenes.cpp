@@ -2765,10 +2765,10 @@ std::vector<Scene> scenes()
             run.marks["el.hp"] = el->stats()->hitpoints();
             walker* friend_ = run.actor("hero1");
             ASSERT_NE(nullptr, friend_);
-            // An ally takes each nova blast at half (the blast's nova mark).
-            // He stands at the ring's edge, where only the nearest ring
-            // blasts still reach him, so he outlives the elemental (the
-            // level ends when the last hero falls).
+            // An ally takes each nova blast at half (setting on: Gameplay Fixes
+            // AZ's own-side rule; off: the blast's nova mark). At the ring's edge
+            // only the nearest ring blasts still reach him, so he outlives the
+            // elemental (the level ends when the last hero falls).
             friend_->setxy(static_cast<short>(el->xpos() - 128), el->ypos());
             friend_->set_act_type(ACT_GUARD);
             friend_->set_guard_hold_post(true);
@@ -2817,10 +2817,10 @@ std::vector<Scene> scenes()
                                  fx_explosion) >= 9;
              }},
             // An ally takes each nova blast at half: the soldier at the
-            // ring's edge (382 hp) loses 98, where a blast at full took 218,
-            // and lives. Between a fifth and two fifths of his health holds
-            // the half and refuses the full blast (218 is 57 %), at every
-            // frame of the drop.
+            // ring's edge (382 hp) loses about 100, where the same blasts at
+            // full take about 215, and lives. Between a fifth and two fifths
+            // of his health holds the half and refuses the full blast (about
+            // 56 % of his health), at every frame of the drop.
             {"the soldier 128 px off, at the ring's edge, takes the blast at "
              "half and lives",
              [](Run& run) {

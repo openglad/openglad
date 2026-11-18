@@ -771,7 +771,7 @@ short statistics::do_command()
 				// tests: GameplayFixesWalk.a_rush_into_a_foe_still_strikes_it
 				// tests: GameplayFixesWalk.a_wall_stopped_rush_strikes_no_stale_body
 				// tests: StatsCommands.stats_do_command_rush_with_the_setting_on_leaves_a_parked_collider_alone
-				// tests: parity:soldier_charge_ally_scen99, parity:soldier_charge_front_foe_scen99
+				// tests: parity:soldier_charge_ally_scen99, parity:soldier_charge_front_foe_scen99, parity:soldier_charge_ally_fixes_scen99
 				// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 				if (controller_->collide_ob() // We hit someone
 				        && (og::sim::session_gameplay_fixes() == 0
@@ -977,12 +977,12 @@ short statistics::do_command()
 						// Fixes BB, near_swing; off, that branch's init_fire() only turns the bot back). Wiring
 						// init_fire() here as well was tried in July 2026 and rejected then: it roughly doubles
 						// the melee swing rate over classic and swung campaign balance hard (Westlands L2's
-						// fight-through crew started losing members). For #447 a swing here at a body on the
-						// pad, else a step, was measured against the setting-on game before fix BB: blows per
-						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255. Gameplay Fixes BC
-						// (#447) does it behind the setting: a swing at a body on the pad, else a step
-						// (attack_face_or_fight, at the end of this file), and the levels whose crews fell were
-						// eased in their builders (docs/gameplay-fixes.md, Balance). Off, nothing changed.
+						// fight-through crew started losing members). For #447 a swing here at a body on the pad,
+						// else a step, was measured against the setting-on game before fix BB: blows per 100 ticks
+						// near a foe 0.97 to 2.06, Westlands survivors 322 to 255. Gameplay Fixes BC (#447) does it
+						// behind the setting: a swing at a body on the pad, else a step (attack_face_or_fight, at
+						// the end of this file), and the levels whose crews fell were eased in their builders where
+						// a group could be lowered (docs/gameplay-fixes.md, Balance). Off, nothing changed.
 						attack_face_or_fight(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
@@ -1652,8 +1652,8 @@ bool statistics::right_walk()
 // pixel (CHECK_STEP_SIZE) toward `side`, counted round from its facing: the
 // same box facing_step_delta names, and the same collide() rule the classic
 // probe met the body with (og::sim::step_meets). A melee-only bot has no aimed
-// shot (fire_check refuses it, the ATTACK arm only faces): its blows are the
-// bumps, its own step's and, with the setting on, this one at its own foe.
+// shot (fire_check refuses it): its blows are the bumps, its own step's and, with the
+// setting on, this one at its own foe, and its ATTACK order's swing at a body on its pad.
 // Measured 2026-11-01: the quiet probes alone took a third of the orc, ghost
 // and slime swings and a fifth of their damage, and left an orc stopped
 // exactly against a standing foe swinging never. Off, the probe alone.
@@ -2168,8 +2168,8 @@ static void facing_step_delta(char dir, short& xdelta, short& ydelta)
 {
 	// rule: Each of the 8 facings maps to its unit step (UP (0,-1), UR (1,-1), R (1,0), DR (1,1), D
 	//   (0,1), DL (-1,1), L (-1,0), UL (-1,-1)); an invalid facing maps to no step. Used by the
-	//   clinch breaker (above), path_probe's box (above) and right_walk_to_point
-	//   (below, 1587); same table as right_walk's inline switches (above, 1048).
+	//   clinch breaker and path_probe's box (above), right_walk_to_point, near_swing and
+	//   keep_turn (below); same table as right_walk's inline switches (above).
 	// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
 	// tests: SemAi4.an_invalid_facing_maps_to_no_step
 	switch (dir)

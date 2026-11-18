@@ -23,9 +23,9 @@
 // pooled floors in B at a quarter of it, or 1 where it was 2 to 5 casts, the
 // per-seed floors in A at a half to three quarters of the lowest seed; the
 // Gameplay Fixes batch moved the stream and left every floor where it was,
-// since a floor is never lowered to pass; the thinnest by margin today are
-// FAERIE HASTE SELF and TELEPORT MARKER, 6 casts against a floor of 1, and
-// ARCHMAGE HEARTBURST, 7 against a floor of 2):
+// since a floor is never lowered to pass; the thinnest by margin on 2026-11-18
+// are MAGE WARP SPACE, 2 casts against a floor of 1, GHOST WAIL, 4 against 1,
+// and ELEMENTAL IMMOLATE, 7 against 1):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
 //      casters, a crew member alive at the end; pooled over the six seeds:
 //      >= 180 casters with two or more specials (six times the per-seed 30
@@ -126,7 +126,7 @@
 //   SUMMON FAERIE 23, every capped refusal 0 and 5371 rolls held.
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
-//   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
+//   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Bots").
 //   Measured 2026-11-18 with fixes BC, BD and BE (the ATTACK order, the line
 //   check, the kept turn) and the flyer's own-floor foe (#512) in, per seed
 //   42 / 1337 / 2025 / 1 / 2 / 3 [pooled]: total casts 464 / 418 / 525 / 445

@@ -195,7 +195,7 @@ class walker : public og::sim::SimEntity
 		explicit walker(WeaponProfileProbeTag);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
-		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// Facing, and NoRanged with the foe inside the weapon's reach ("the foe is in reach
 		// but we are pointed the wrong way / can only hit by facing") —
 		// from every other denial, because the classic response to ANY
 		// denial (walk toward the foe, sliding perpendicular when blocked)
