@@ -474,18 +474,28 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             // tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
             // tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
+            // tests: SemLineCheck.an_own_team_door_is_flown_through
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
             // (a quiet probe never rolls: an enemy weapon in flight passes it)
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet ? !weapons_block : current_game->world->rng_.next(10) > 3))  // rule: Two hostile projectiles
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet ? !weapons_block : (!(w->family() == FAMILY_DOOR && current_game->world->is_line_check_probe(ob)) && current_game->world->rng_.next(10) > 3)))  // rule: Two hostile projectiles
                 //   meeting usually fly through each other: 6 in 10 times (rng.next(10) > 3) they
                 //   pass, 4 in 10 they collide; a quiet probe never rolls and always passes; asked
                 //   with weapons_block (a bot gate's strict pad, Gameplay Fixes AV) the quiet probe
                 //   takes the roll as lost and goes on to the box test, still drawing nothing.
+                //   Gameplay Fixes BF: the line check's test weapon (GameWorld::is_line_check_probe,
+                //   named only while a check flies with the setting on) is offered no roll at a live
+                //   enemy door and draws nothing for it: it goes on to the box test, so a door its
+                //   box meets stops it. A grown tree or a shot in flight still rolls for it, and the
+                //   shot itself still rolls at a door.
                 // tests: QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
                 // tests: SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine
                 // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+                // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+                // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
+                // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+                // tests: SemLineCheck.the_shot_itself_still_takes_the_clash_roll_at_a_door
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)  // rule: Projectiles never hit or pick

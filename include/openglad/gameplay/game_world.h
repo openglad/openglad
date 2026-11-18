@@ -627,10 +627,18 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
-    // While walker::line_check_flight flies its probe (Gameplay Fixes BD) this names that probe:
-    // query_grid_passable takes an arrow slit as open for it and draws nothing, as it does for a
-    // quiet question. Null at every other time; never saved, never sent.
+    // While walker::line_check_flight flies its test weapon (Gameplay Fixes BD) this names that
+    // weapon, and two answers differ for it: query_grid_passable takes an arrow slit as open and
+    // draws nothing, as it does for a quiet question (fix BD), and ob_pass_check meets a live
+    // enemy door without the clash roll, so the door stops it and nothing is drawn (fix BF). Null
+    // at every other time; never saved, never sent. The old game's field has the same name.
     const walker* slit_open_for = nullptr;
+    // Whether `w` is the test weapon line_check_flight is flying now (slit_open_for); false for
+    // null. The door rule of Gameplay Fixes BF asks this.
+    [[nodiscard]] bool is_line_check_probe(const walker* w) const
+    {
+        return w != nullptr && w == slit_open_for;
+    }
 
     // Game state flags written in-place by tick().
     short level_done = 0;

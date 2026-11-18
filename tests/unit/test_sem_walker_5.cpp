@@ -24,8 +24,10 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -364,6 +366,221 @@ protected:
         for (int a = 0; shot != nullptr && !shot->dead() && a < max_acts; ++a)
             shot->act();
         return shot == nullptr || shot->dead();
+    }
+
+    // ---- Gameplay Fixes BF: doors on the line ----
+
+    // The collision table's cell (obmap.cpp OBRES): a box of (sx, sy) at b is filed under
+    // the cells x / 32 to (x + sx) / 32 and y / 32 to (y + sy) / 32, and a weapon meeting an
+    // enemy weapon-order body draws its clash roll once for each such cell that holds it.
+    static constexpr int kObCell = 32;
+    static bool covers_cell(Box b, short sx, short sy, int c, int r)
+    {
+        return b.x / kObCell <= c && c <= (b.x + sx) / kObCell && b.y / kObCell <= r &&
+               r <= (b.y + sy) / kObCell;
+    }
+    // A box of (sx, sy) at b and `body`'s box share a collision cell.
+    static bool shares_a_cell(Box b, short sx, short sy, const walker* body)
+    {
+        for (int c = body->xpos() / kObCell; c <= (body->xpos() + body->sizex()) / kObCell; ++c)
+            for (int r = body->ypos() / kObCell; r <= (body->ypos() + body->sizey()) / kObCell; ++r)
+                if (covers_cell(b, sx, sy, c, r))
+                    return true;
+        return false;
+    }
+
+    // A door of `team` at (x, y), in the family's own box, sitting as a level's door sits.
+    walker* door_at(unsigned char team, short x, short y)
+    {
+        walker* d = world().add_ob(Order::Weapon, FAMILY_DOOR);
+        if (d == nullptr)
+            return nullptr;
+        d->set_team_num(team);
+        d->set_act_type(ACT_SIT);
+        return place(d, x, y, d->sizex(), d->sizey());
+    }
+
+    // Where a body of (bw, bh) stands across the flight of a shooter facing UP (the heading
+    // straight up, waver 0): its box lies in one collision cell, no box before the k-th
+    // flight box covers that cell (nor the pad's), and the k-th box meets the body (the
+    // body's bottom row on the box's bottom row). The first such k from `from` on; k is -1
+    // when there is none.
+    struct LineSpot
+    {
+        int k = -1;
+        short x = 0;
+        short y = 0;
+    };
+    static LineSpot up_line_spot(const ShotPlan& p, short bw, short bh, int from)
+    {
+        LineSpot s;
+        int x = -1;
+        for (int cx = p.pad_x - bw + 2; cx <= p.pad_x + p.sx - 2 && x < 0; ++cx)
+            if (cx / kObCell == (cx + bw) / kObCell &&
+                ::collide(static_cast<short>(cx), 0, bw, 4, p.pad_x, 0, p.sx, 4))
+                x = cx;
+        if (x < 0 || p.lx != 0.0f || p.ly >= 0.0f)
+            return s;
+        const std::vector<Box> boxes = flown_boxes(p);
+        for (int k = from; k < static_cast<int>(boxes.size()); ++k) {
+            const Box b = boxes[static_cast<std::size_t>(k)];
+            const int r = b.y / kObCell;
+            const int above = k == 0 ? p.pad_y / kObCell : boxes[static_cast<std::size_t>(k - 1)].y / kObCell;
+            const int y = b.y + p.sy - bh;
+            if (above > r && y >= 0 && y / kObCell == r && (y + bh) / kObCell == r) {
+                s.k = k;
+                s.x = static_cast<short>(x);
+                s.y = static_cast<short>(y);
+                return s;
+            }
+        }
+        return s;
+    }
+
+    // fire_check's classic loop (the setting off) on open grass with an enemy `door` in one
+    // collision cell and a living `body` (or none) on the line, the two in cells that no
+    // classic spot's box covers together: the waver is drawn; at each spot (the pad, then 1,
+    // 3, 6 ... steps out) a box that covers the door's cell draws one clash roll before its
+    // box test (obmap.cpp), and a lost roll (3 or less) stops the test weapon on the door
+    // when their boxes meet, or goes on when they do not; a box that meets the body stops it
+    // there; past the last spot the check refuses (RayMiss). What it answers, the body it
+    // stops on, and the stream after it.
+    struct ClassicRun
+    {
+        bool passes = false;
+        Denial why = Denial::RayMiss;
+        const walker* met = nullptr;
+        std::uint32_t after = 0;
+    };
+    static ClassicRun classic_run(const ShotPlan& p, std::uint32_t state, const walker* door, const walker* body)
+    {
+        ClassicRun out;
+        og::sim::SimRandom r(state);
+        (void)r.next(p.waver_bound);
+        const int dc = door->xpos() / kObCell;
+        const int dr = door->ypos() / kObCell;
+        for (const Box& b : classic_spots(p)) {
+            if (covers_cell(b, p.sx, p.sy, dc, dr) && r.next(10) <= 3 && box_meets(b, p.sx, p.sy, door)) {
+                out.passes = true;
+                out.why = Denial::None;
+                out.met = door;
+                break;
+            }
+            if (body != nullptr && box_meets(b, p.sx, p.sy, body)) {
+                out.passes = true;
+                out.why = Denial::None;
+                out.met = body;
+                break;
+            }
+        }
+        out.after = r.state_;
+        return out;
+    }
+
+    // Every dead weapon and every effect leaves the world (the test weapons earlier checks
+    // left); a live door, tree or shot stays.
+    void drop_dead_weapons()
+    {
+        std::vector<walker*> gone;
+        for (const auto& u : world().weaplist)
+            if (u && u->dead())
+                gone.push_back(u.get());
+        for (const auto& u : world().fxlist)
+            gone.push_back(u.get());
+        for (walker* w : gone)
+            world().remove_ob(w);
+    }
+
+    // The test weapon `shooter`'s last check left (dead, still listed), or null.
+    walker* last_probe(const walker* shooter)
+    {
+        walker* found = nullptr;
+        for (const auto& u : world().weaplist)
+            if (u && u->dead() && u->owner() == shooter)
+                found = u.get();
+        return found;
+    }
+
+    // The notifications posted so far.
+    std::size_t notifications()
+    {
+        std::size_t n = 0;
+        for (const auto& e : tw_->events.events())
+            if (e.kind == og::sim::EventKind::Notification)
+                ++n;
+        return n;
+    }
+
+    // The shooter of the door tests: a level-4 archer bot facing UP at (512, 2304) on a field
+    // 64 x 160 tiles, so that every classic spot stays on the map.
+    walker* up_archer(short fixes)
+    {
+        fresh_world(fixes, 64, 160);
+        walker* a = living_at(FAMILY_ARCHER, 0, 512, 2304);
+        if (a != nullptr)
+            face(a, FACE_UP);
+        return a;
+    }
+
+    // The door tests' line, for a shooter facing UP with plan p: a door of `door_team` across
+    // the flight at up_line_spot's first spot (in one collision cell, beyond the pad's cells,
+    // met by the first flight box over its cell), and, when body_family is not -1, a sitting
+    // 16 x 16 hostile of that family on the line beyond the door's cell: at the first height
+    // where a flight box and a classic spot's box meet it and no classic spot's box covers
+    // the door's cell and one of its cells. Each fact is asserted here; the caller asserts
+    // the reach.
+    void stage_door_line(walker* shooter, const ShotPlan& p, unsigned char door_team, int body_family,
+                         walker*& door, walker*& body)
+    {
+        door = door_at(door_team, 8, 8);
+        body = nullptr;
+        ASSERT_NE(nullptr, door);
+        ASSERT_EQ(Order::Weapon, door->query_order()) << "the staging: a door is a weapon-order body";
+        const LineSpot s = up_line_spot(p, door->sizex(), door->sizey(), 0);
+        ASSERT_GE(s.k, 0) << "the staging: a spot for the door on the flight";
+        place(door, s.x, s.y, door->sizex(), door->sizey());
+        const int dc = door->xpos() / kObCell;
+        const int dr = door->ypos() / kObCell;
+        ASSERT_EQ(dc, (door->xpos() + door->sizex()) / kObCell) << "the staging: the door is in one cell";
+        ASSERT_EQ(dr, (door->ypos() + door->sizey()) / kObCell) << "the staging: the door is in one cell";
+        ASSERT_FALSE(covers_cell(Box{p.pad_x, p.pad_y}, p.sx, p.sy, dc, dr)) << "the staging: beyond the pad's cells";
+        const std::vector<Box> boxes = flown_boxes(p);
+        for (int k = 0; k < s.k; ++k)
+            ASSERT_FALSE(covers_cell(boxes[static_cast<std::size_t>(k)], p.sx, p.sy, dc, dr))
+                << "the staging: no earlier flight box covers the door's cell (box " << k + 1 << ")";
+        ASSERT_TRUE(box_meets(boxes[static_cast<std::size_t>(s.k)], p.sx, p.sy, door))
+            << "the staging: the first flight box over the door's cell meets it";
+        if (body_family < 0)
+            return;
+        const std::vector<Box> spots = classic_spots(p);
+        const short bx = static_cast<short>(shooter->xpos() + (shooter->sizex() - 16) / 2);
+        const auto box_on = [&](Box b, int y) {
+            return ::collide(static_cast<short>(b.x), static_cast<short>(b.y), p.sx, p.sy, bx,
+                             static_cast<short>(y), 16, 16) != 0;
+        };
+        int by = -1;
+        for (int y = dr * kObCell - 16 - 1; y >= 0 && by < 0; --y) {
+            bool classic = false;
+            bool shared = false;
+            for (const Box& b : spots) {
+                classic = classic || box_on(b, y);
+                if (covers_cell(b, p.sx, p.sy, dc, dr))
+                    for (int c = bx / kObCell; c <= (bx + 16) / kObCell; ++c)
+                        for (int r = y / kObCell; r <= (y + 16) / kObCell; ++r)
+                            shared = shared || covers_cell(b, p.sx, p.sy, c, r);
+            }
+            bool flown = false;
+            for (const Box& b : boxes)
+                flown = flown || box_on(b, y);
+            if (classic && flown && !shared)
+                by = y;
+        }
+        ASSERT_GE(by, 0) << "the staging: a spot for the body beyond the door";
+        body = living_at(body_family, 1, bx, static_cast<short>(by), 16, 16);
+        ASSERT_NE(nullptr, body);
+        body->set_act_type(ACT_SIT);
+        body->stats()->set_armor(0.0f);
+        ASSERT_LT(body->ypos() + body->sizey(), door->ypos()) << "the staging: the body stands beyond the door";
     }
 };
 
@@ -1156,91 +1373,112 @@ TEST_F(SemLineCheck, the_check_draws_its_waver_and_nothing_else_in_open_ground)
 }
 
 // Gameplay Fixes BD, setting on, a deliberate rule: the check meets on its
-// line what the shot would meet, so an enemy weapon in flight on the line is
-// met as the shot would meet it. No living on the line;
-// one enemy arrow parked in a 32 px collision cell the flight crosses beyond
-// the pad, where the first flight box that covers the cell also meets it (its
-// place is computed from the arrow's step and asserted). A weapon meeting an
-// enemy weapon draws rng(10) for each covered cell holding it and is stopped
-// by it only on a roll of 3 or less (obmap.cpp). Stream pinned so that roll
-// is lost at the first box: the check passes ("we hit an enemy"), and the
-// stream after is the waver and that one roll. Pinned so every roll is won:
-// RayMiss, and the stream after is the waver and exactly one rng(10) per
-// flight box whose cells hold that arrow, a count the test derives. The foe
-// stands in reach, off the flight's line.
+// line what the shot would meet, so an enemy weapon-order body on the line, a
+// weapon in flight or a grown tree, is met as the shot would meet it; Gameplay
+// Fixes BF leaves both so (only a door is met without the roll). No living on
+// the line; one such body parked in a 32 px collision cell the flight crosses
+// beyond the pad, where the first flight box that covers the cell also meets
+// it: an enemy arrow in the line check's arrow box at that box's spot, or an
+// enemy grown tree (FAMILY_TREE, weapon order) in the family's own box with
+// its bottom row on that box's (each place computed from the arrow's step and
+// asserted). A weapon meeting an enemy weapon draws rng(10) for each covered
+// cell holding it and is stopped by it only on a roll of 3 or less
+// (obmap.cpp). Stream pinned so that roll is lost at the first box: the check
+// passes ("we hit an enemy") on that body, and the stream after is the waver
+// and that one roll. Pinned so every roll is won: RayMiss, and the stream
+// after is the waver and exactly one rng(10) per flight box whose cells hold
+// the body, a count the test derives. The foe stands in reach, off the
+// flight's line.
 TEST_F(SemLineCheck, an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on)
 {
     constexpr int kCell = 32;  // obmap.cpp OBRES: the collision table's cell
-    for (bool lost : {true, false}) {
-        SCOPED_TRACE(lost ? "the clash roll lost at the first box" : "every clash roll won");
-        fresh_world(1);
-        walker* archer = living_at(FAMILY_ARCHER, 0, 512, 640);
-        ASSERT_NE(nullptr, archer);
-        face(archer, FACE_UP);
-        const ShotPlan p = plan_of(archer, FACE_UP);
-        ASSERT_GT(p.los, 1);
-        const std::vector<Box> boxes = flown_boxes(p);
-        const auto rows = [&](int y) { return std::pair<int, int>{y / kCell, (y + p.sy) / kCell}; };
-        const auto cols = [&](int x) { return std::pair<int, int>{x / kCell, (x + p.sx) / kCell}; };
-        // The first flight box that enters a cell row no earlier box (nor the pad) covers, with
-        // room in that row for the parked arrow's box at the flight box's own spot.
-        int k = -1;
-        int seen_row = rows(p.pad_y).first;
-        for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
-            const int r = rows(boxes[static_cast<std::size_t>(i)].y).first;
-            if (r < seen_row && rows(boxes[static_cast<std::size_t>(i)].y).second == r) {
-                k = i;
-                break;
+    struct Parked
+    {
+        int family;
+        const char* name;
+    };
+    for (const Parked parked_as : {Parked{FAMILY_ARROW, "an enemy arrow"}, Parked{FAMILY_TREE, "an enemy grown tree"}}) {
+        for (bool lost : {true, false}) {
+            SCOPED_TRACE(std::string(parked_as.name) +
+                         (lost ? ", the clash roll lost at the first box" : ", every clash roll won"));
+            fresh_world(1);
+            walker* archer = living_at(FAMILY_ARCHER, 0, 512, 640);
+            ASSERT_NE(nullptr, archer);
+            face(archer, FACE_UP);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            const std::vector<Box> boxes = flown_boxes(p);
+            const auto rows = [&](int y) { return std::pair<int, int>{y / kCell, (y + p.sy) / kCell}; };
+            const auto cols = [&](int x) { return std::pair<int, int>{x / kCell, (x + p.sx) / kCell}; };
+            // The first flight box that enters a cell row no earlier box (nor the pad) covers, with
+            // room in that row for the parked body's box.
+            int k = -1;
+            int seen_row = rows(p.pad_y).first;
+            for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
+                const int r = rows(boxes[static_cast<std::size_t>(i)].y).first;
+                if (r < seen_row && rows(boxes[static_cast<std::size_t>(i)].y).second == r) {
+                    k = i;
+                    break;
+                }
+                seen_row = std::min(seen_row, r);
             }
-            seen_row = std::min(seen_row, r);
+            ASSERT_GE(k, 0) << "the staging: a flight box that enters a fresh cell row whole";
+            const Box at = boxes[static_cast<std::size_t>(k)];
+            walker* parked = world().add_ob(Order::Weapon, parked_as.family);
+            ASSERT_NE(nullptr, parked);
+            ASSERT_EQ(Order::Weapon, parked->query_order()) << "the staging: a weapon-order body";
+            parked->set_team_num(1);
+            parked->set_act_type(ACT_SIT);
+            const short bw = parked_as.family == FAMILY_ARROW ? p.sx : parked->sizex();
+            const short bh = parked_as.family == FAMILY_ARROW ? p.sy : parked->sizey();
+            ASSERT_GT(bw, 0) << "the staging: the family's own box";
+            ASSERT_GT(bh, 0);
+            place(parked, static_cast<short>(at.x), static_cast<short>(at.y + p.sy - bh), bw, bh);
+            ASSERT_EQ(parked->xpos() / kCell, (parked->xpos() + bw) / kCell) << "the staging: the parked body is in one cell";
+            ASSERT_EQ(parked->ypos() / kCell, (parked->ypos() + bh) / kCell);
+            const int cell_c = parked->xpos() / kCell;
+            const int cell_r = parked->ypos() / kCell;
+            ASSERT_EQ(rows(at.y).first, cell_r) << "the staging: in the row that flight box enters";
+            ASSERT_TRUE(box_meets(at, p.sx, p.sy, parked)) << "the staging: the first box over its cell meets it";
+            ASSERT_FALSE(rows(p.pad_y).first <= cell_r && cell_r <= rows(p.pad_y).second) << "the staging: beyond the pad's cells";
+            int covering = 0;
+            for (const Box& b : boxes)
+                if (cols(b.x).first <= cell_c && cell_c <= cols(b.x).second && rows(b.y).first <= cell_r &&
+                    cell_r <= rows(b.y).second)
+                    ++covering;
+            ASSERT_GE(covering, 1);
+            walker* foe = living_at(FAMILY_ORC, 1, static_cast<short>(512 + 60), 640, 16, 16);
+            ASSERT_NE(nullptr, foe);
+            foe->set_act_type(ACT_SIT);
+            archer->set_foe(foe);
+            ASSERT_LE(archer->distance_to_ob(foe), p.reach) << "the staging: inside the reach gate";
+            for (const Box& b : boxes)
+                ASSERT_FALSE(box_meets(b, p.sx, p.sy, foe)) << "the staging: the foe is off the line";
+            std::uint32_t s = 0;
+            if (lost)
+                s = state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
+            else
+                s = state_where_then(p.waver_bound, p.waver_zero, 10, covering, [](std::uint32_t r) { return r > 3; });
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            const bool passes = ask(archer, 0, -1, &why);  // the parked body stays live: compared before and after
+            og::sim::SimRandom expect(s);
+            (void)expect.next(p.waver_bound);
+            for (int i = 0; i < (lost ? 1 : covering); ++i)
+                (void)expect.next(10);
+            if (lost) {
+                EXPECT_TRUE(passes) << "the probe is stopped by " << parked_as.name << ": the shot would strike it";
+                EXPECT_EQ(Denial::None, why);
+                const walker* probe = last_probe(archer);
+                ASSERT_NE(nullptr, probe);
+                EXPECT_EQ(parked, probe->collide_ob()) << "stopped by the parked body";
+            } else {
+                EXPECT_FALSE(passes) << "every roll won: the probe flies on and finds nobody";
+                EXPECT_EQ(Denial::RayMiss, why);
+            }
+            EXPECT_EQ(expect.state_, world().rng_.state_)
+                << "the waver and " << (lost ? 1 : covering) << " clash roll(s), one per flight box over the cell";
         }
-        ASSERT_GE(k, 0) << "the staging: a flight box that enters a fresh cell row whole";
-        const Box at = boxes[static_cast<std::size_t>(k)];
-        walker* parked = world().add_ob(Order::Weapon, FAMILY_ARROW);
-        ASSERT_NE(nullptr, parked);
-        parked->set_team_num(1);
-        parked->set_act_type(ACT_SIT);
-        place(parked, static_cast<short>(at.x), static_cast<short>(at.y), p.sx, p.sy);
-        ASSERT_EQ(cols(at.x).first, cols(at.x).second) << "the staging: the parked arrow is in one cell";
-        ASSERT_EQ(rows(at.y).first, rows(at.y).second);
-        const int cell_c = cols(at.x).first;
-        const int cell_r = rows(at.y).first;
-        ASSERT_TRUE(box_meets(at, p.sx, p.sy, parked)) << "the staging: the first box over its cell meets it";
-        ASSERT_FALSE(rows(p.pad_y).first <= cell_r && cell_r <= rows(p.pad_y).second) << "the staging: beyond the pad's cells";
-        int covering = 0;
-        for (const Box& b : boxes)
-            if (cols(b.x).first <= cell_c && cell_c <= cols(b.x).second && rows(b.y).first <= cell_r &&
-                cell_r <= rows(b.y).second)
-                ++covering;
-        ASSERT_GE(covering, 1);
-        walker* foe = living_at(FAMILY_ORC, 1, static_cast<short>(512 + 60), 640, 16, 16);
-        ASSERT_NE(nullptr, foe);
-        foe->set_act_type(ACT_SIT);
-        archer->set_foe(foe);
-        ASSERT_LE(archer->distance_to_ob(foe), p.reach) << "the staging: inside the reach gate";
-        for (const Box& b : boxes)
-            ASSERT_FALSE(box_meets(b, p.sx, p.sy, foe)) << "the staging: the foe is off the line";
-        std::uint32_t s = 0;
-        if (lost)
-            s = state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
-        else
-            s = state_where_then(p.waver_bound, p.waver_zero, 10, covering, [](std::uint32_t r) { return r > 3; });
-        world().rng_.state_ = s;
-        Denial why = Denial::NoFoe;
-        const bool passes = ask(archer, 0, -1, &why);  // the parked arrow stays live: compared before and after
-        og::sim::SimRandom expect(s);
-        (void)expect.next(p.waver_bound);
-        for (int i = 0; i < (lost ? 1 : covering); ++i)
-            (void)expect.next(10);
-        if (lost) {
-            EXPECT_TRUE(passes) << "the probe is stopped by the enemy arrow: the shot would strike it";
-            EXPECT_EQ(Denial::None, why);
-        } else {
-            EXPECT_FALSE(passes) << "every roll won: the probe flies on and finds nobody";
-            EXPECT_EQ(Denial::RayMiss, why);
-        }
-        EXPECT_EQ(expect.state_, world().rng_.state_)
-            << "the waver and " << (lost ? 1 : covering) << " clash roll(s), one per flight box over the cell";
     }
 }
 
@@ -1554,4 +1792,512 @@ TEST_F(SemLineCheck, an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_g
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// A shooter does not fire at a door (walker_movement.cpp
+// walker::line_check_flight, obmap.cpp's weapon-against-weapon arm,
+// GameWorld::is_line_check_probe: Gameplay Fixes BF)
+// ---------------------------------------------------------------------------
+
+// Gameplay Fixes BF, the flight. An archer facing up on a field 160 tiles
+// tall; an enemy door across the line in one collision cell, the first flight
+// box over that cell meeting it, and a hostile soldier on the line beyond the
+// door, inside the reach gate, met by a flight box and by a classic spot's
+// box, in cells no classic spot's box shares with the door's (all computed
+// from the arrow's numbers and asserted: stage_door_line). Two streams: the
+// first clash roll lost, and every roll won. Setting on, both: the check is
+// refused, WallBlocked, its test weapon stopped by the door, and the stream
+// after is the waver alone (the door draws no roll); with the door gone the
+// check passes on the soldier, so the door is what refused it. Setting off,
+// both: the classic loop as computed from its spots (classic_run): it rolls
+// at the door's cell, passes on the door when that roll is lost and on the
+// soldier when it is won (the staging asserts both, so the classic check does
+// fire at the door here).
+TEST_F(SemLineCheck, a_door_on_the_shots_path_refuses_the_check_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool lost : {true, false}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (lost ? "the first clash roll lost" : "every clash roll won"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            walker* door = nullptr;
+            walker* soldier = nullptr;
+            ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, FAMILY_SOLDIER, door, soldier));
+            archer->set_foe(soldier);
+            ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+            const std::uint32_t s =
+                lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                     : state_where_then(p.waver_bound, p.waver_zero, 10, 8, [](std::uint32_t r) { return r > 3; });
+            const ClassicRun classic = classic_run(p, s, door, soldier);
+            ASSERT_EQ(lost ? static_cast<const walker*>(door) : static_cast<const walker*>(soldier), classic.met)
+                << "the staging: the classic loop stops on the door when its roll is lost, else on the soldier";
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            const bool passes = ask(archer, 0, -1, &why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            if (fixes) {
+                EXPECT_FALSE(passes) << "an enemy door on the shot's path refuses the check";
+                EXPECT_EQ(Denial::WallBlocked, why) << "the refusal a wall gives";
+                EXPECT_EQ(door, probe->collide_ob()) << "the test weapon was stopped by the door";
+                EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: no roll at the door";
+            } else {
+                EXPECT_EQ(classic.passes, passes);
+                EXPECT_EQ(classic.why, why);
+                EXPECT_EQ(classic.met, probe->collide_ob()) << (lost ? "the classic check fires at the door" : "it flies through and meets the soldier");
+                EXPECT_EQ(classic.after, world().rng_.state_) << "the waver and the classic loop's rolls at the door's cell";
+            }
+            EXPECT_EQ(0, door->dead()) << "the door is not opened";
+            // Control: the door gone, the same check passes on the soldier.
+            world().remove_ob(door);
+            drop_dead_weapons();
+            world().rng_.state_ = s;
+            why = Denial::NoFoe;
+            EXPECT_TRUE(ask(archer, 0, -1, &why)) << "control: with no door the check reaches the soldier";
+            EXPECT_EQ(Denial::None, why);
+            const walker* control = last_probe(archer);
+            ASSERT_NE(nullptr, control);
+            EXPECT_EQ(soldier, control->collide_ob());
+        }
+    }
+}
+
+// Gameplay Fixes BF, the pad. On a DIAGONAL pad, where the pad's question
+// decides alone (the geometry of the_pad_passes_on_a_body_and_refuses_on_a_wall_on_both_settings):
+// an archer facing up and right, an enemy door whose box meets the pad's box,
+// shares a collision cell with it and meets no flight box (asserted); the
+// archer's foe stands in reach off the line. Setting on, the first clash roll
+// lost and every roll won: refused, WallBlocked, the test weapon stopped by the
+// door, the stream after the waver alone. Setting off, the first roll lost: the
+// classic pad passes on the door as on any body, its one roll drawn.
+TEST_F(SemLineCheck, a_door_on_the_pad_refuses_the_check_with_the_setting_on)
+{
+    constexpr short kX = 320;
+    constexpr short kY = 329;
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool lost : {true, false}) {
+            if (!fixes && !lost)
+                continue;  // the classic loop's later spots are not this rule's
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (lost ? "the first clash roll lost" : "every clash roll won"));
+            fresh_world(fixes);
+            walker* archer = living_at(FAMILY_ARCHER, 0, kX, kY);
+            ASSERT_NE(nullptr, archer);
+            face(archer, FACE_UP_RIGHT);
+            const ShotPlan p = plan_of(archer, FACE_UP_RIGHT);
+            ASSERT_GT(p.los, 1);
+            const Box pad{p.pad_x, p.pad_y};
+            walker* door = door_at(1, static_cast<short>(pad.x + 3), static_cast<short>(pad.y + 3));
+            ASSERT_NE(nullptr, door);
+            ASSERT_TRUE(box_meets(pad, p.sx, p.sy, door)) << "the staging: the door is under the pad's box";
+            ASSERT_TRUE(shares_a_cell(pad, p.sx, p.sy, door)) << "the staging: in a cell the pad's box covers";
+            for (const Box& b : flown_boxes(p))
+                ASSERT_FALSE(box_meets(b, p.sx, p.sy, door)) << "the staging: and under no step's box";
+            ASSERT_FALSE(meets(archer, archer->xpos(), archer->ypos(), door)) << "the staging: clear of the archer";
+            walker* foe = living_at(FAMILY_SOLDIER, 1, static_cast<short>(kX + 40), static_cast<short>(kY + 40), 16, 16);
+            ASSERT_NE(nullptr, foe);
+            foe->set_act_type(ACT_SIT);
+            ASSERT_FALSE(box_meets(pad, p.sx, p.sy, foe)) << "the staging: the foe is off the pad";
+            for (const Box& b : flown_boxes(p))
+                ASSERT_FALSE(box_meets(b, p.sx, p.sy, foe)) << "the staging: the foe is off the flight's line";
+            archer->set_foe(foe);
+            ASSERT_LE(archer->distance_to_ob(foe), p.reach) << "the staging: inside the reach gate";
+            const std::uint32_t s =
+                lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                     : state_where_then(p.waver_bound, p.waver_zero, 10, 8, [](std::uint32_t r) { return r > 3; });
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            const bool passes = ask(archer, 1, -1, &why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            EXPECT_EQ(door, probe->collide_ob()) << "the test weapon was stopped by the door on the pad";
+            if (fixes) {
+                EXPECT_FALSE(passes) << "an enemy door on the pad refuses the check";
+                EXPECT_EQ(Denial::WallBlocked, why);
+                EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: no roll at the door";
+            } else {
+                EXPECT_TRUE(passes) << "the classic pad passes on the door, a body";
+                EXPECT_EQ(Denial::None, why);
+                EXPECT_EQ(state_after(s, {p.waver_bound, 10}), world().rng_.state_) << "the waver and the door's one roll";
+            }
+            EXPECT_EQ(0, door->dead());
+        }
+    }
+}
+
+// Gameplay Fixes BF: a door that is the shooter's own foe (a level script or a
+// mod can name one, set_foe) passes the check, as every foe does. (a) On the
+// flight, at the door spot of stage_door_line, nothing else on the line; (b)
+// on a diagonal pad, as in a_door_on_the_pad_refuses_the_check_with_the_setting_on.
+// The door is inside the reach gate. Setting on, the first clash roll lost and
+// every roll won: passes, the test weapon stopped by the door, the stream after
+// the waver alone. Setting off: (a) the classic loop as computed from its spots
+// (it passes on the door on a lost roll and runs out, RayMiss, when every roll
+// is won, both asserted on the computation); (b) the first roll lost: passes,
+// its one roll drawn.
+TEST_F(SemLineCheck, a_door_that_is_the_shooters_foe_passes_the_check)
+{
+    for (bool on_pad : {false, true}) {
+        for (short fixes : {short{0}, short{1}}) {
+            for (bool lost : {true, false}) {
+                if (on_pad && !fixes && !lost)
+                    continue;  // the classic loop's later spots are not this rule's
+                SCOPED_TRACE(std::string(on_pad ? "(b) on the pad, " : "(a) on the flight, ") +
+                             (fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                             (lost ? "the first clash roll lost" : "every clash roll won"));
+                walker* archer = nullptr;
+                walker* door = nullptr;
+                ShotPlan p;
+                short dx = 0;
+                short dy = -1;
+                if (on_pad) {
+                    fresh_world(fixes);
+                    archer = living_at(FAMILY_ARCHER, 0, 320, 329);
+                    ASSERT_NE(nullptr, archer);
+                    face(archer, FACE_UP_RIGHT);
+                    p = plan_of(archer, FACE_UP_RIGHT);
+                    door = door_at(1, static_cast<short>(p.pad_x + 3), static_cast<short>(p.pad_y + 3));
+                    ASSERT_NE(nullptr, door);
+                    ASSERT_TRUE(box_meets(Box{p.pad_x, p.pad_y}, p.sx, p.sy, door)) << "the staging: on the pad";
+                    for (const Box& b : flown_boxes(p))
+                        ASSERT_FALSE(box_meets(b, p.sx, p.sy, door)) << "the staging: and under no step's box";
+                    dx = 1;
+                } else {
+                    archer = up_archer(fixes);
+                    ASSERT_NE(nullptr, archer);
+                    p = plan_of(archer, FACE_UP);
+                    walker* none = nullptr;
+                    ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, -1, door, none));
+                }
+                ASSERT_GT(p.los, 1);
+                archer->set_foe(door);
+                ASSERT_EQ(door, archer->foe());
+                ASSERT_LE(archer->distance_to_ob(door), p.reach) << "the staging: inside the reach gate";
+                const std::uint32_t s =
+                    lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                         : state_where_then(p.waver_bound, p.waver_zero, 10, 8, [](std::uint32_t r) { return r > 3; });
+                ClassicRun classic;
+                if (!on_pad && !fixes) {
+                    classic = classic_run(p, s, door, nullptr);
+                    ASSERT_EQ(lost, classic.passes) << "the staging: the classic loop passes on a lost roll, else runs out";
+                }
+                world().rng_.state_ = s;
+                Denial why = Denial::NoFoe;
+                const bool passes = ask(archer, dx, dy, &why);
+                const walker* probe = last_probe(archer);
+                ASSERT_NE(nullptr, probe);
+                if (fixes) {
+                    EXPECT_TRUE(passes) << "a door that is the foe passes, as every foe does";
+                    EXPECT_EQ(Denial::None, why);
+                    EXPECT_EQ(door, probe->collide_ob()) << "the test weapon was stopped by the door";
+                    EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: no roll at the door";
+                } else if (on_pad) {
+                    EXPECT_TRUE(passes) << "the classic pad passes on the door";
+                    EXPECT_EQ(Denial::None, why);
+                    EXPECT_EQ(state_after(s, {p.waver_bound, 10}), world().rng_.state_) << "the waver and the door's one roll";
+                } else {
+                    EXPECT_EQ(classic.passes, passes);
+                    EXPECT_EQ(classic.why, why);
+                    EXPECT_EQ(classic.after, world().rng_.state_) << "the waver and the classic loop's rolls at the door's cell";
+                }
+            }
+        }
+    }
+}
+
+// Gameplay Fixes BF changes nothing for a door the shot never reaches. An
+// archer facing up on a field 160 tiles tall; a hostile soldier on the line at
+// the spot of up_line_spot (met by the first flight box over its cell, and by a
+// classic spot's box), and an enemy door beyond it in one collision cell that a
+// later flight box would meet, in a row no flight box and no classic spot
+// covers up to the first that meets the soldier (all asserted). Both settings,
+// the first clash roll lost and every roll won: the check passes on the
+// soldier (its test weapon stopped by the soldier) and the stream after is the
+// waver alone.
+TEST_F(SemLineCheck, a_door_behind_the_foe_changes_nothing)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool lost : {true, false}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (lost ? "the first clash roll lost" : "every clash roll won"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            const LineSpot at = up_line_spot(p, 16, 16, 0);
+            ASSERT_GE(at.k, 0) << "the staging: a spot for the soldier";
+            walker* soldier = living_at(FAMILY_SOLDIER, 1, at.x, at.y, 16, 16);
+            ASSERT_NE(nullptr, soldier);
+            soldier->set_act_type(ACT_SIT);
+            const std::vector<Box> boxes = flown_boxes(p);
+            const std::vector<Box> spots = classic_spots(p);
+            int first_flown = -1;
+            for (int k = 0; k < static_cast<int>(boxes.size()) && first_flown < 0; ++k)
+                if (box_meets(boxes[static_cast<std::size_t>(k)], p.sx, p.sy, soldier))
+                    first_flown = k;
+            int first_spot = -1;
+            for (int i = 0; i < static_cast<int>(spots.size()) && first_spot < 0; ++i)
+                if (box_meets(spots[static_cast<std::size_t>(i)], p.sx, p.sy, soldier))
+                    first_spot = i;
+            ASSERT_EQ(at.k, first_flown) << "the staging: the flight meets the soldier at its spot";
+            ASSERT_GE(first_spot, 0) << "the staging: a classic spot meets the soldier";
+            walker* door = door_at(1, 8, 8);
+            ASSERT_NE(nullptr, door);
+            // The door: the lowest single-cell place above the soldier's row, across the line.
+            const int row = soldier->ypos() / kObCell - 1;
+            const short door_y = static_cast<short>(row * kObCell + kObCell - 1 - door->sizey());
+            place(door, at.x, door_y, door->sizex(), door->sizey());
+            const int dc = door->xpos() / kObCell;
+            const int dr = door->ypos() / kObCell;
+            ASSERT_EQ(dc, (door->xpos() + door->sizex()) / kObCell) << "the staging: the door is in one cell";
+            ASSERT_EQ(dr, (door->ypos() + door->sizey()) / kObCell);
+            ASSERT_EQ(row, dr);
+            bool behind = false;
+            for (int k = first_flown + 1; k < static_cast<int>(boxes.size()); ++k)
+                behind = behind || box_meets(boxes[static_cast<std::size_t>(k)], p.sx, p.sy, door);
+            ASSERT_TRUE(behind) << "the staging: the door stands on the shot's path, behind the soldier";
+            for (int k = 0; k <= first_flown; ++k)
+                ASSERT_FALSE(covers_cell(boxes[static_cast<std::size_t>(k)], p.sx, p.sy, dc, dr))
+                    << "the staging: the flight meets the soldier before the door's cell";
+            for (int i = 0; i <= first_spot; ++i)
+                ASSERT_FALSE(covers_cell(spots[static_cast<std::size_t>(i)], p.sx, p.sy, dc, dr))
+                    << "the staging: so do the classic spots";
+            archer->set_foe(soldier);
+            ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+            const std::uint32_t s =
+                lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                     : state_where_then(p.waver_bound, p.waver_zero, 10, 8, [](std::uint32_t r) { return r > 3; });
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            EXPECT_TRUE(ask(archer, 0, -1, &why)) << "the check passes on the soldier";
+            EXPECT_EQ(Denial::None, why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            EXPECT_EQ(soldier, probe->collide_ob()) << "its test weapon was stopped by the soldier";
+            EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone";
+        }
+    }
+}
+
+// A door of the shooter's own side on the line is flown through, on both
+// settings: obmap.cpp lets a weapon pass its own side before any clash roll,
+// and Gameplay Fixes BF changes nothing there. An archer facing up, its own
+// team's door at the door spot of stage_door_line and a hostile soldier beyond
+// it, met by a flight box and by a classic spot's box (asserted there). The
+// first clash roll lost and every roll won: the check passes on the soldier
+// (its test weapon stopped by the soldier) and the stream after is the waver
+// alone.
+TEST_F(SemLineCheck, an_own_team_door_is_flown_through)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool lost : {true, false}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (lost ? "the first clash roll lost" : "every clash roll won"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            walker* door = nullptr;
+            walker* soldier = nullptr;
+            ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 0, FAMILY_SOLDIER, door, soldier));
+            ASSERT_EQ(archer->team_num(), door->team_num()) << "the staging: the archer's own side's door";
+            archer->set_foe(soldier);
+            ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+            const std::uint32_t s =
+                lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                     : state_where_then(p.waver_bound, p.waver_zero, 10, 8, [](std::uint32_t r) { return r > 3; });
+            world().rng_.state_ = s;
+            Denial why = Denial::NoFoe;
+            EXPECT_TRUE(ask(archer, 0, -1, &why)) << "the test weapon flies through its own side's door";
+            EXPECT_EQ(Denial::None, why);
+            const walker* probe = last_probe(archer);
+            ASSERT_NE(nullptr, probe);
+            EXPECT_EQ(soldier, probe->collide_ob()) << "and is stopped by the soldier";
+            EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: no roll at an own door";
+        }
+    }
+}
+
+// Gameplay Fixes BF changes the check and not the shot. An archer facing up
+// fires a real arrow (waver 0) at an enemy door on the line, at the door spot
+// of stage_door_line, nothing behind it; the arrow acts until it ends (as
+// weap::act does each tick). The arrow takes the clash roll at each step whose
+// box covers the door's cell (the count is derived from its boxes). On both
+// settings: the first roll lost, the arrow is stopped by the door and the door
+// loses hit points; every roll won, the arrow flies through it, ends beyond the
+// door, and the door's hit points are whole.
+TEST_F(SemLineCheck, the_shot_itself_still_takes_the_clash_roll_at_a_door)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        for (bool lost : {true, false}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (lost ? "the first clash roll lost" : "every clash roll won"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            walker* door = nullptr;
+            walker* none = nullptr;
+            ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, -1, door, none));
+            const int dc = door->xpos() / kObCell;
+            const int dr = door->ypos() / kObCell;
+            int covering = 0;
+            for (const Box& b : flown_boxes(p))
+                if (covers_cell(b, p.sx, p.sy, dc, dr))
+                    ++covering;
+            ASSERT_GE(covering, 1);
+            const float whole = door->stats()->hitpoints();
+            ASSERT_GT(whole, 0.0f) << "the staging: the door's hit points";
+            world().rng_.state_ =
+                lost ? state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; })
+                     : state_where_then(p.waver_bound, p.waver_zero, 10, covering, [](std::uint32_t r) { return r > 3; });
+            walker* shot = archer->fire();
+            ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
+            for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
+                shot->act();
+            ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
+            if (lost) {
+                EXPECT_LT(door->stats()->hitpoints(), whole) << "the lost roll: the door takes the arrow";
+                EXPECT_GT(shot->ypos(), door->ypos()) << "the arrow ended at the door";
+            } else {
+                EXPECT_FLOAT_EQ(whole, door->stats()->hitpoints()) << "every roll won: the arrow flies through the door";
+                EXPECT_LT(shot->ypos() + shot->sizey(), door->ypos()) << "and ends beyond it";
+            }
+            EXPECT_EQ(0, door->dead());
+        }
+    }
+}
+
+// Gameplay Fixes BF, through ticks. A hold-post archer guard (it asks a FIRE
+// order every act) facing up, an enemy door on the line at the door spot of
+// stage_door_line, and a sitting hostile orc beyond it inside the reach gate
+// (asserted there). The guard's check draws its waver every act, so the
+// staging asserts that, for every waver the draw can give, the flight's first
+// box over the door's cell meets the door and no earlier box meets the orc.
+// The world ticks 200 times; every live arrow the archer owns is counted once
+// by its entity id. Setting on: no shot is started, and the door's and the
+// orc's hit points are whole; after the ticks the archer holds the orc as its
+// foe, faces it, and its check is refused at the door (WallBlocked), so every
+// gate but the door's lets it shoot. Setting off: the classic check fires: at
+// least one shot is started and the door loses hit points (each shot meets the
+// door's clash roll and is stopped by it on four rolls in ten; over the shots
+// of 200 ticks the door is missed every time with odds under one in a
+// million).
+TEST_F(SemLineCheck, a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on)
+{
+    constexpr int kTicks = 200;
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* archer = up_archer(fixes);
+        ASSERT_NE(nullptr, archer);
+        const ShotPlan p = plan_of(archer, FACE_UP);
+        ASSERT_GT(p.los, 1);
+        walker* door = nullptr;
+        walker* orc = nullptr;
+        ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, FAMILY_ORC, door, orc));
+        ASSERT_LE(archer->distance_to_ob(orc), p.reach) << "the staging: inside the reach gate";
+        ASSERT_EQ(FACE_UP, archer->facing(static_cast<short>(orc->xpos() - archer->xpos()),
+                                          static_cast<short>(orc->ypos() - archer->ypos())))
+            << "the staging: the orc is straight up";
+        const int dc = door->xpos() / kObCell;
+        const int dr = door->ypos() / kObCell;
+        for (std::uint32_t d = 0; d < p.waver_bound; ++d) {
+            ShotPlan aim = p;
+            aim.lx = static_cast<float>(static_cast<std::int32_t>(d) - static_cast<std::int32_t>(p.waver_zero));
+            const std::vector<Box> boxes = flown_boxes(aim);
+            bool met = false;
+            for (const Box& b : boxes) {
+                ASSERT_FALSE(box_meets(b, aim.sx, aim.sy, orc)) << "the staging: waver " << aim.lx << ", the orc before the door";
+                if (covers_cell(b, aim.sx, aim.sy, dc, dr)) {
+                    met = box_meets(b, aim.sx, aim.sy, door);
+                    break;
+                }
+            }
+            ASSERT_TRUE(met) << "the staging: waver " << aim.lx << ", the first box over the door's cell meets it";
+        }
+        const float door_whole = door->stats()->hitpoints();
+        const float orc_whole = orc->stats()->hitpoints();
+        archer->set_act_type(ACT_GUARD);
+        archer->set_guard_hold_post(true);
+        ASSERT_TRUE(archer->guard_hold_post());
+        const std::uint32_t archer_id = archer->entity_id();
+        const std::uint32_t door_id = door->entity_id();
+        const std::uint32_t orc_id = orc->entity_id();
+        std::vector<std::uint32_t> shots;
+        for (int tick = 1; tick <= kTicks; ++tick) {
+            world().tick();
+            const walker* a = world().find_by_id(archer_id);
+            ASSERT_NE(nullptr, a) << "the archer stands, tick " << tick;
+            for (const auto& u : world().weaplist)
+                if (u && !u->dead() && u->owner() == a && u->family() == FAMILY_ARROW &&
+                    std::find(shots.begin(), shots.end(), u->entity_id()) == shots.end())
+                    shots.push_back(u->entity_id());
+        }
+        walker* const a = world().find_by_id(archer_id);
+        walker* const d = world().find_by_id(door_id);
+        walker* const o = world().find_by_id(orc_id);
+        ASSERT_NE(nullptr, a);
+        ASSERT_NE(nullptr, d) << "the door still stands";
+        if (fixes) {
+            EXPECT_EQ(0u, shots.size()) << "no shot is started at a foe behind a door";
+            EXPECT_FLOAT_EQ(door_whole, d->stats()->hitpoints()) << "the door's hit points are whole";
+            ASSERT_NE(nullptr, o);
+            EXPECT_FLOAT_EQ(orc_whole, o->stats()->hitpoints()) << "the orc's too";
+            EXPECT_EQ(o, a->foe()) << "the archer holds the orc as its foe";
+            EXPECT_EQ(FACE_UP, a->curdir()) << "and faces it";
+            drop_dead_weapons();
+            Denial why = Denial::NoFoe;
+            EXPECT_FALSE(ask(a, 0, static_cast<short>(o->ypos() - a->ypos()), &why));
+            EXPECT_EQ(Denial::WallBlocked, why) << "only the door refuses the shot";
+        } else {
+            EXPECT_GE(shots.size(), 1u) << "the classic check fires at the door";
+            EXPECT_LT(d->stats()->hitpoints(), door_whole) << "and the door loses hit points";
+        }
+    }
+}
+
+// Gameplay Fixes BF: the door arm of obmap.cpp now runs for the line check's
+// test weapon at every door it meets, and that weapon is nobody's seat and
+// holds no key. The shooter is a seat's archer (user 0), so its own step into a
+// locked door is told "Key N needed!"; the staging of
+// a_door_on_the_shots_path_refuses_the_check_with_the_setting_on, the setting
+// on. After the refused check (WallBlocked, the test weapon stopped by the
+// door): no notification was posted, the test weapon is no seat's and started
+// no notice cooldown, and the door is alive, shut and whole. Control: the
+// archer's own step onto the door posts one notice.
+TEST_F(SemLineCheck, a_refused_check_at_a_door_tells_no_one_a_key_is_needed)
+{
+    walker* archer = up_archer(1);
+    ASSERT_NE(nullptr, archer);
+    const ShotPlan p = plan_of(archer, FACE_UP);
+    ASSERT_GT(p.los, 1);
+    walker* door = nullptr;
+    walker* soldier = nullptr;
+    ASSERT_NO_FATAL_FAILURE(stage_door_line(archer, p, 1, FAMILY_SOLDIER, door, soldier));
+    archer->set_user(0);
+    archer->set_skip_exit(0);
+    archer->set_foe(soldier);
+    ASSERT_LE(archer->distance_to_ob(soldier), p.reach) << "the staging: inside the reach gate";
+    ASSERT_EQ(0u, archer->keys()) << "the staging: the archer holds no key";
+    const float whole = door->stats()->hitpoints();
+    ASSERT_EQ(0u, notifications()) << "the staging: nothing posted yet";
+    world().rng_.state_ = state_where({{p.waver_bound, p.waver_zero}});
+    Denial why = Denial::NoFoe;
+    EXPECT_FALSE(ask(archer, 0, -1, &why));
+    EXPECT_EQ(Denial::WallBlocked, why);
+    const walker* probe = last_probe(archer);
+    ASSERT_NE(nullptr, probe);
+    EXPECT_EQ(door, probe->collide_ob()) << "the door arm ran: the door stopped the test weapon";
+    EXPECT_EQ(0u, notifications()) << "no one is told a key is needed";
+    EXPECT_EQ(-1, static_cast<int>(probe->user())) << "the test weapon is no seat's";
+    EXPECT_EQ(0, probe->skip_exit()) << "and started no notice cooldown";
+    EXPECT_EQ(0, door->dead()) << "the door is not opened";
+    EXPECT_FLOAT_EQ(whole, door->stats()->hitpoints()) << "and is whole";
+    // Control: the seat's own step onto the locked door is told.
+    EXPECT_FALSE(world().query_passable(static_cast<float>(door->xpos()), static_cast<float>(door->ypos()), archer));
+    EXPECT_EQ(1u, notifications()) << "control: a seat bumping the locked door is told";
 }

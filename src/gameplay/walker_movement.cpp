@@ -763,10 +763,10 @@ walker::FlightStep walker::flight_step()
     return walked ? FlightStep::Flew : FlightStep::Stopped;
 }
 
-// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies (walker.h). The
-// classic loop places its test weapon 0, 1, 3, 6, 10 ... steps out, each spot cut to a whole
-// pixel, so it steps over a body the shot would strike and over a one-tile wall the shot would
-// stop on. Appended at the end so the parity pins above never shift.
+// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies (walker.h); the classic
+// loop's spots, 0, 1, 3, 6 ... steps out, step over bodies and one-tile walls. Gameplay Fixes BF:
+// an enemy door on the shot's path refuses the check, as a wall does, unless it is the shooter's
+// foe. The test weapon meets that door without the clash roll. Appended below the parity pins.
 std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_foe,
                                               FireCheckDenial* denial)
 {
@@ -779,6 +779,7 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     GameWorld& world = *current_game->world;
     // From the pad on the check takes an arrow slit as open and draws nothing for it: the shot
     // itself takes the slit's gamble (GameWorld::slit_open_for, read where the gamble is rolled).
+    // The same mark has ob_pass_check meet a live enemy door without the clash roll (fix BF).
     world.slit_open_for = weapon;
     const auto answer = [&](bool lands, FireCheckDenial why) {
         world.slit_open_for = nullptr;
@@ -794,23 +795,46 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
                          ignored_foe->xpos(), ignored_foe->ypos(), ignored_foe->sizex(),
                          ignored_foe->sizey());
     };
+    // Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which the door arm of
+    // ob_pass_check records) is a live enemy door that is not the shooter's own foe. A door of
+    // the shooter's side never stops it: ob_pass_check lets a weapon pass its own side.
+    const auto stopped_by_a_door = [&] {
+        const walker* met = weapon->collide_ob();
+        return met != nullptr && !met->dead() && met->query_order() == Order::Weapon &&
+               met->family() == FAMILY_DOOR && met != foe();
+    };
     // rule: Gameplay Fixes BD (#538): the pad first, as fire() asks it: terrain there refuses
-    //   (the shot would be wasted), a body or the mode ball there passes (the blow lands).
+    //   (the shot would be wasted), the mode ball there passes, and so does a live body that is
+    //   not a door (the blow lands; a door is Gameplay Fixes BF's, below).
     // tests: SemLineCheck.the_pad_passes_on_a_body_and_refuses_on_a_wall_on_both_settings
     // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+    // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
     if (!world.query_grid_passable(weapon->xpos(), weapon->ypos(), weapon))
         return answer(false, FireCheckDenial::WallBlocked);
-    if (on_the_ball() || !world.query_object_passable(weapon->xpos(), weapon->ypos(), weapon))
+    if (on_the_ball())
         return answer(true, FireCheckDenial::None);
+    weapon->set_collide_ob(nullptr);  // as fire_check did: the pad reads this question's answer
+    if (!world.query_object_passable(weapon->xpos(), weapon->ypos(), weapon))
+    {
+        // rule: Gameplay Fixes BF: a pad held by a live enemy door that is not the shooter's
+        //   foe refuses (WallBlocked: to a shot a shut door is a wall); a door that is the foe,
+        //   and every other body, passes.
+        // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
+        // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+        if (stopped_by_a_door())
+            return answer(false, FireCheckDenial::WallBlocked);
+        return answer(true, FireCheckDenial::None);
+    }
     // fire() gives a fresh shot a facing its first act only turns to, so the shot moves
     // lineofsight - 1 steps; the probe is pointed along its heading so walk() steps at once.
     weapon->set_curdir(static_cast<signed char>(weapon->facing(weapon->lastx(), weapon->lasty())));
     // rule: Gameplay Fixes BD (#538): then the steps a fresh shot moves, each the shot's own
-    //   (flight_step): a step that strikes a live body passes, a step stopped by terrain or the
-    //   map's edge refuses (WallBlocked), a taken step onto the mode ball passes, and when the
-    //   steps run out the check refuses (RayMiss). The bound is the steps a fresh shot moves, no
-    //   more and no fewer (the check's side: the_check_flies_as_far_as_a_fresh_shot...; the
-    //   shot's side, that it moves lineofsight - 1 steps: a_fresh_shot_moves_one_step_fewer...).
+    //   (flight_step): a step that strikes a live body that is not a door passes, a step stopped
+    //   by terrain or the map's edge refuses (WallBlocked), and so does a step struck by an enemy
+    //   door that is not the foe (Gameplay Fixes BF), a taken step onto the mode ball passes, and
+    //   when the steps run out the check refuses (RayMiss). The bound is the steps a fresh shot
+    //   moves, no more and no fewer (the check's side: the_check_flies_as_far_as_a_fresh_shot...;
+    //   the shot's side, that it moves lineofsight - 1 steps: a_fresh_shot_moves_one_step_fewer...).
     // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
     // tests: SemLineCheck.the_check_flies_as_far_as_a_fresh_shot_and_no_further_with_the_setting_on
     // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
@@ -818,21 +842,36 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
     // tests: SemLineCheck.the_check_draws_its_waver_and_nothing_else_in_open_ground
     // tests: SemLineCheck.a_fresh_shot_moves_one_step_fewer_than_its_line_of_sight
+    // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+    // tests: SemLineCheck.a_door_behind_the_foe_changes_nothing
     for (std::int32_t step = 1; step < weapon->lineofsight(); ++step)
     {
         weapon->set_collide_ob(nullptr);  // weap::act clears it before every act
         const FlightStep met = weapon->flight_step();
-        // rule: Gameplay Fixes BD (#538): a flight step that strikes a live body passes (the
-        //   shot lands, also on an enemy weapon in flight that won its clash roll against the
-        //   probe), a step stopped by terrain or the map's edge refuses (WallBlocked), and a taken
-        //   step onto the mode ball passes.
+        // rule: Gameplay Fixes BD (#538): a flight step that strikes a live body that is not a
+        //   door passes (the shot lands, also on an enemy weapon in flight or a grown tree that
+        //   won its clash roll against the probe), a step stopped by terrain or the map's edge
+        //   refuses (WallBlocked), and a taken step onto the mode ball passes.
         // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
         // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
         // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
         // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
         // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+        // tests: SemLineCheck.a_door_behind_the_foe_changes_nothing
+        // tests: SemLineCheck.an_own_team_door_is_flown_through
         if (met == FlightStep::Struck)
+        {
+            // rule: Gameplay Fixes BF: a step struck by a live enemy door that is not the
+            //   shooter's foe refuses (WallBlocked), as a step a wall stops does; a door that is
+            //   the foe passes, as every foe does.
+            // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+            // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+            // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on
+            // tests: SemLineCheck.a_refused_check_at_a_door_tells_no_one_a_key_is_needed
+            if (stopped_by_a_door())
+                return answer(false, FireCheckDenial::WallBlocked);
             return answer(true, FireCheckDenial::None);
+        }
         if (met == FlightStep::Stopped)
             return answer(false, FireCheckDenial::WallBlocked);
         if (on_the_ball())
