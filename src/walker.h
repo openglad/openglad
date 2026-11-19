@@ -158,6 +158,10 @@ class walker : public pixieN
 		// e205957c6): an enemy door that is not the foe refuses it
 		// (WallBlocked).
 		short line_check_flight(walker* weapon, FireCheckDenial* denial);
+		// A door: weapon order and the door's family (a golem's family number
+		// is a door's). Gameplay Fixes BF asks it (port of the current game's
+		// 3fe15190e). Defined after line_check_flight.
+		bool is_door();
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

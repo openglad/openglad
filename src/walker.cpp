@@ -2091,7 +2091,16 @@ short walker::attack(walker  *target)
 	//in the case of our weapon hit something
 	if (order != ORDER_LIVING && owner)
 	{
-		owner->foe = target;
+		// port of the current game's 3fe15190e and d8a7f6b32 (Gameplay Fixes
+		// BF): with the setting on a blow that lands on a door (anyone's shot,
+		// blast or spell) names no foe: a bot leaves a door alone, and a door
+		// that already is the owner's foe (a level script or a mod named it)
+		// stays its foe, as nothing names another. The door still takes the
+		// blow. A fighter, a tent, a grown tree and a golem are made the
+		// owner's foe as before; with the setting off whatever the blow lands
+		// on is (classic).
+		if (!myscreen->gameplay_fixes || !target->is_door())
+			owner->foe = target;
 		target->stats->hit_response(owner);
 		if (headguy->myguy)
 		{
@@ -5793,12 +5802,13 @@ short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
 	// Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which
 	// the door arm of ob_pass_check records) is a live enemy door that is not
 	// the shooter's own foe. A door of the shooter's side never stops it:
-	// ob_pass_check lets a weapon pass its own side. The order is asked as
-	// well as the family because a golem's family number is a door's.
+	// ob_pass_check lets a weapon pass its own side. A door is
+	// walker::is_door, which asks the order too, since a golem's family
+	// number is a door's.
 	const auto stopped_by_a_door = [&]() {
 		walker* met = weapon->collide_ob;
-		return met != NULL && !met->dead && met->query_order() == ORDER_WEAPON &&
-		       met->query_family() == FAMILY_DOOR && met != foe;
+		return met != NULL && !met->dead && met->is_door() &&
+		       met != foe;
 	};
 	if (!myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon))
 		why = FireCheckDenial::WallBlocked;
@@ -5832,10 +5842,10 @@ short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
 					// Gameplay Fixes BF: a step struck by a live enemy door
 					// that is not the shooter's foe refuses (WallBlocked), as
 					// a step a wall stops does; a door that is the foe passes,
-					// as every foe does (a shot that lands on a door makes the
-					// door its shooter's foe, walker::attack); a golem, whose
-					// family number is a door's, passes as every other body
-					// does.
+					// as every foe does (a level script or a mod can name one;
+					// with the setting on a blow that lands on a door names
+					// none, walker::attack); a golem, whose family number is a
+					// door's, passes as every other body does.
 					if (stopped_by_a_door())
 						why = FireCheckDenial::WallBlocked;
 					else
@@ -5858,4 +5868,15 @@ short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
 	if (denial)
 		*denial = why;
 	return lands;
+}
+
+// A door: a body of weapon order and the door's family. A golem's family
+// number is a door's (both are 18), so the order is asked as well. The three
+// rules of Gameplay Fixes BF ask it (port of the current game's 3fe15190e):
+// the line check (line_check_flight above), a bot's bump
+// (living::leaves_a_door_alone) and the blow that names a foe
+// (walker::attack).
+bool walker::is_door()
+{
+	return query_order() == ORDER_WEAPON && query_family() == FAMILY_DOOR;
 }

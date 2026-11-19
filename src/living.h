@@ -30,6 +30,10 @@ class living : public walker
 		short          act();
 		short          check_special(); // determine if we should do special ..
 		short          collide(walker  *ob);
+		// Gameplay Fixes BF (port of the current game's 3fe15190e): a bot
+		// leaves a door alone. collide() asks it before the swing its bump
+		// starts.
+		bool           leaves_a_door_alone(walker *body);
 		short          do_action(); // perform overriding action
 		walker*        do_summon(char whatfamily, unsigned short lifetime);
 		short          facing(short x, short y);
