@@ -25,7 +25,6 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
-#include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/key_mask.h>
@@ -2775,9 +2774,9 @@ TEST_F(SemBotDoor, a_bot_with_the_key_opens_the_door_it_walks_into)
 // off, the blow makes the door its foe (classic); setting on, it still holds
 // none. (b) Its foe is an orc that sits beyond the door: off, its foe is then
 // the door; on, still the orc. (c) The door already is its foe (a level script
-// or a mod named it, set_foe): on both settings it still is, and the blow
-// names it again, as a blow on any foe does (the archer's foe field is
-// written: its snapshot mark is set).
+// or a mod named it, set_foe): on both settings it still is. With the setting
+// off the blow names it again, as a blow on any foe does; with it on the blow
+// names no foe, and the door stays the foe because nothing names another.
 TEST_F(SemBotDoor, a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on)
 {
     enum class Held { Nobody, TheOrc, TheDoor };
@@ -2807,7 +2806,6 @@ TEST_F(SemBotDoor, a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_set
                 const float whole = door->stats()->hitpoints();
                 world().rng_.state_ =
                     state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
-                archer->clear_dirty();
                 walker* shot = archer->fire();
                 ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
                 for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
@@ -2816,8 +2814,6 @@ TEST_F(SemBotDoor, a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_set
                 EXPECT_LT(door->stats()->hitpoints(), whole) << "the arrow strikes the door: it takes the blow";
                 if (held == Held::TheDoor) {
                     EXPECT_EQ(door, archer->foe()) << "a door that is the foe stays the foe";
-                    EXPECT_TRUE(archer->is_dirty(og::dirty::BIT_FOE_ID))
-                        << "the blow names it again, as a blow on any foe does";
                 } else if (fixes) {
                     EXPECT_EQ(before, archer->foe()) << "a blow on a door names no foe: the foe is what it was";
                 } else {

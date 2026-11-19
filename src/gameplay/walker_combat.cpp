@@ -524,14 +524,14 @@ bool walker::attack(walker  *target)
     if (order() != Order::Living && owner())
     {
         // rule: Gameplay Fixes BF: with the setting on a blow that lands on a door (anyone's shot,
-        //   blast or spell) does not make the door its owner's foe, unless the door already is
-        //   that foe (a level script or a mod named it): a bot leaves a door alone. The door still
-        //   takes the blow. A fighter, a tent, a grown tree and a golem are made the owner's foe
-        //   as before; with the setting off whatever the blow lands on is (classic).
+        //   blast or spell) names no foe: a bot leaves a door alone, and a door that already is the
+        //   owner's foe (a level script or a mod named it) stays its foe, as nothing names another.
+        //   The door still takes the blow. A fighter, a tent, a grown tree and a golem are made the
+        //   owner's foe as before; with the setting off whatever the blow lands on is (classic).
         // tests: SemBotDoor.a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on
         // tests: SemBotDoor.a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe
         // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on
-        if (current_game->world->gameplay_fixes == 0 || !target->is_door() || owner()->foe() == target)
+        if (current_game->world->gameplay_fixes == 0 || !target->is_door())
             owner()->set_foe(target);
         target->stats()->hit_response(owner());
         // rule: The victim turns on whoever is behind the blow.
