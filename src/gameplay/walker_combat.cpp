@@ -528,7 +528,7 @@ bool walker::attack(walker  *target)
         //   owner's foe (a level script or a mod named it) stays its foe, as nothing names another.
         //   The door still takes the blow. A fighter, a tent, a grown tree and a golem are made the
         //   owner's foe as before; with the setting off whatever the blow lands on is (classic).
-        // tests: SemBotDoor.a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on
+        // tests: SemBotDoor.a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on, parity:tower_blow_names_door_scen99, parity:tower_blow_names_door_fixes_scen99
         // tests: SemBotDoor.a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe
         // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on
         if (current_game->world->gameplay_fixes == 0 || !target->is_door())

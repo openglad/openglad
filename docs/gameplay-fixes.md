@@ -788,7 +788,8 @@ Fixes X to BH, in play:
   stands is cut down by blows. The three guards ask one question,
   `guard_passes_by` in `packs/core/lib/gameplay_fixes.lua`. With the
   setting off the classic guard destroys both, so no setting-off golden
-  moves; it is not yet in the old game.
+  moves; the rows that show it with the setting off and on are listed
+  under [Parity](#parity).
 - **BH.** Five casts fire a weapon from the caster's pad, and their bot
   rules (fix AA) asked that pad the plain way: the druid's GROW TREE and
   SUMMON FAERIE, the barbarian's HURL BOULDER and EXPLODING BOULDER, the
@@ -1436,8 +1437,14 @@ The parity goldens are captures from the old game (branch
   `b4467150` (the rule's new arena, with the setting off and on; the
   setting-on twin of `soldier_bot_charge_door` in an arena and on a seed
   of its own, below; the words of two rows). Two new goldens and one
-  recaptured; no setting-off golden moved. `b4467150` is the commit the
-  goldens are captured from: 392 of 392 goldens `cmp` equal to a full
+  recaptured; no setting-off golden moved. Then the table mirror
+  `53976fa5` (the words of three pins of the pad rules, Gameplay Fixes BH;
+  nothing moved). Then the bump and the blow of the door rule (BF) and the
+  guard (BG): `d3755554` (BF) and `dff9b822` (BG), one per commit, neither
+  moving a recording, and the table mirror `8c0cdcd1` (their four new
+  arenas, each with the setting off and on, below; nothing else moved).
+  Eight new goldens; no setting-off golden moved. `8c0cdcd1` is the commit
+  the goldens are captured from: 400 of 400 goldens `cmp` equal to a full
   capture there, and every capture there `cmp`s equal to this game's run of
   the same row. `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
@@ -1480,7 +1487,8 @@ The rows with the setting on, by fix:
 | BC | `orc_attack_order_blows_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 | BD | `tower_foe_between_spots_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 | BE | `orc_refused_shot_turn_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
-| BF | `tower_foe_behind_door_fixes_scen99` (a new arena, with its setting-off twin), and the row below that it moves |
+| BF | `tower_foe_behind_door_fixes_scen99` (a new arena, with its setting-off twin), and the row below that it moves; for the bump and the blow, `orc_bot_bumps_door_fixes_scen99` and `tower_blow_names_door_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
+| BG | `cleric_shield_door_tree_fixes_scen99` and `soldier_boomerang_door_tree_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1862,6 +1870,25 @@ an arena and a seed of its own: the door 14 px lower, so that its top row still 
 0, the first from 0 on which the gate is asked with the door in the rush's path (17 of seeds 0 to 40 are). Its
 fact reads three sounds again (the tower's two shots and the soldier's knife) and four under its pin (the charge).
 The setting-off twin keeps its arena, its seed and its golden. No setting-off row moves.
+
+Fix BF's bump and blow and fix BG's guard have two arenas each, every one with its setting-off twin; neither port moved
+an existing row. `orc_bot_bumps_door`: an orc bot walks toward the idle player soldier, its foe far below, and a closed
+door of a third team stands right below the orc, so its walk meets the door at once. With the setting off the bump swings
+at the door and the blow lands on it and clangs (one sound by the end of the recording, tick 10); with the setting on the
+bot starts no swing and nothing sounds. `tower_blow_names_door`: the seat sits on a tower (team 255) and shoots one arrow
+into a closed door below it, then SWITCH hands the seat to another fighter and the tower is a bot. With the setting off
+the blow made the door the tower's foe, and the bot shoots at the door (two more shots by tick 24); with the setting on
+the blow named no foe, and the bot, which holds no foe its arrows reach and cannot walk, shoots nothing more.
+`cleric_shield_door_tree` and `soldier_boomerang_door_tree`: the arenas of `shield_projectile_absorb` and
+`boomerang_projectile_absorb` with an enemy door and an enemy grown tree where their hostile arrow stood, so the guard
+finds both in its ring on its first act. With the setting off the guard destroys both (neither is in the recording's
+last tick); with the setting on it passes both by. A door's and a tree's damage is 0, so the guard pays nothing on either
+setting, and the recording shows the rule only by the door and the tree standing or gone. Each row has a pin on its
+rule's own line: the classic rows' pins turn the rule on with the setting off (the bump's and the guard's) or keep the
+blow from naming a door with the setting off; the setting-on rows' pins drop the door term from the bump, let the blow
+name the door again, and drop the door (the shield's row) or the tree (the boomerang's row) from the guard's question.
+All eight rows are captured from the old game at `8c0cdcd1`, after the ports (`d3755554`, `dff9b822`), and each `cmp`s
+equal to this game's run.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`

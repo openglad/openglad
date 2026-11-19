@@ -1185,7 +1185,7 @@ bool living::leaves_a_door_alone(const walker* body) const
 	//   (a level script or a mod named it). A player's own fighter, a door that is the bot's foe,
 	//   a grown tree, a fighter and a golem (a door's family number, but a living) are swung at
 	//   as before; with the setting off every bump on a live enemy door swings (classic).
-	// tests: SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on
+	// tests: SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on, parity:orc_bot_bumps_door_scen99, parity:orc_bot_bumps_door_fixes_scen99
 	// tests: SemBotDoor.a_players_fighter_still_swings_at_a_door_it_walks_into
 	// tests: SemBotDoor.a_bot_swings_at_a_door_that_is_its_foe
 	// tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into

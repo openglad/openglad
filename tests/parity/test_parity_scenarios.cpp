@@ -643,6 +643,14 @@ OG_PARITY_TEST(orc_refused_shot_turn_scen99)
 OG_PARITY_TEST(orc_refused_shot_turn_fixes_scen99)
 OG_PARITY_TEST(tower_foe_behind_door_scen99)
 OG_PARITY_TEST(tower_foe_behind_door_fixes_scen99)
+OG_PARITY_TEST(orc_bot_bumps_door_scen99)
+OG_PARITY_TEST(orc_bot_bumps_door_fixes_scen99)
+OG_PARITY_TEST(tower_blow_names_door_scen99)
+OG_PARITY_TEST(tower_blow_names_door_fixes_scen99)
+OG_PARITY_TEST(cleric_shield_door_tree_scen99)
+OG_PARITY_TEST(cleric_shield_door_tree_fixes_scen99)
+OG_PARITY_TEST(soldier_boomerang_door_tree_scen99)
+OG_PARITY_TEST(soldier_boomerang_door_tree_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

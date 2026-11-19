@@ -243,7 +243,7 @@ function M.guard_passes_by(body)
   --   also a door or a grown tree (weapon order and that family; a living golem is not a door);
   --   it destroys every other body. Classic: a door and a grown tree are destroyed like shots.
   -- tests: GameplayFixesLua.gf_guard_passes_by_scenery_and_with_the_setting_on_a_door_or_a_grown_tree
-  -- tests: SemShield.a_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
+  -- tests: SemShield.a_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on, parity:cleric_shield_door_tree_scen99, parity:cleric_shield_door_tree_fixes_scen99, parity:soldier_boomerang_door_tree_scen99, parity:soldier_boomerang_door_tree_fixes_scen99
   -- tests: KitCaptain.hook_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
   -- tests: SemShield.a_guard_passes_a_foes_bone_wall_and_war_banner_by, KitCaptain.hook_guard_passes_scenery_by
   if body:blocks_placement() then
