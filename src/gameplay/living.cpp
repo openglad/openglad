@@ -863,7 +863,7 @@ bool living::collide(walker  *ob)
 	//return 1; // debug
 	// rule: A walker that bumps a live hostile (living, generator or auto-attackable weapon) swings
 	//   at it, but a bot leaves a door alone (Gameplay Fixes BF, below); an ally is only recorded.
-	// tests: LivingUnit.living_r11_collide_and_act_type_switches, SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on
+	// tests: LivingUnit.living_r11_collide_and_act_type_switches, SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on, SemBotDoor.a_bot_with_the_key_opens_the_door_it_walks_into
 	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
 	        && !ob->dead() && !dead() && !leaves_a_door_alone(ob))
 		init_fire();
@@ -1189,7 +1189,6 @@ bool living::leaves_a_door_alone(const walker* body) const
 	// tests: SemBotDoor.a_players_fighter_still_swings_at_a_door_it_walks_into
 	// tests: SemBotDoor.a_bot_swings_at_a_door_that_is_its_foe
 	// tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
-	// tests: SemBotDoor.a_bot_with_the_key_opens_the_door_it_walks_into
 	// tests: SemBotDoor.a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
 	return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&
 	       body != foe();
