@@ -773,7 +773,7 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     // rule: Gameplay Fixes BD (#538): classic (the setting off) nothing is asked here and
     //   fire_check's own loop tests 0, 1, 3, 6 ... steps out.
     // tests: SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
-    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on, parity:tower_foe_between_spots_scen99, parity:tower_foe_between_spots_fixes_scen99
+    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on, parity:tower_foe_between_spots_scen99, parity:tower_foe_between_spots_fixes_scen99, parity:tower_foe_behind_door_scen99
     if (og::sim::session_gameplay_fixes() == 0)
         return std::nullopt;
     GameWorld& world = *current_game->world;
@@ -870,7 +870,7 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
             //   family number is a door's, passes as every other body does.
             // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
             // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
-            // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on
+            // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
             // tests: SemLineCheck.a_refused_check_at_a_door_tells_no_one_a_key_is_needed
             // tests: SemLineCheck.a_shot_that_lands_on_a_door_makes_it_the_shooters_foe_and_the_check_then_passes
             // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors

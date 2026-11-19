@@ -641,6 +641,8 @@ OG_PARITY_TEST(orc_attack_order_blows_scen99)
 OG_PARITY_TEST(orc_attack_order_blows_fixes_scen99)
 OG_PARITY_TEST(orc_refused_shot_turn_scen99)
 OG_PARITY_TEST(orc_refused_shot_turn_fixes_scen99)
+OG_PARITY_TEST(tower_foe_behind_door_scen99)
+OG_PARITY_TEST(tower_foe_behind_door_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

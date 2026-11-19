@@ -1351,10 +1351,15 @@ The parity goldens are captures from the old game (branch
   counts the heal's notice; one recaptured, no setting-off golden moved),
   the table mirror `608060fd` (the texts of four moved rows after the
   second review; nothing moved) and the table mirror `447be5aa` (the words
-  of three rows; nothing moved). `447be5aa` is the commit the goldens are
-  captured from: 390 of 390 goldens `cmp` equal to a full capture there,
-  and every capture there `cmp`s equal to this game's run of the same row.
-  `tests/parity/golden/DRIFT_LEDGER.md` records each one.
+  of three rows; nothing moved). Then the door rule (BF): `2ed82025` (BF,
+  one row with the setting on moved, below) and the table mirror
+  `b4467150` (the rule's new arena, with the setting off and on; the
+  setting-on twin of `soldier_bot_charge_door` in an arena and on a seed
+  of its own, below; the words of two rows). Two new goldens and one
+  recaptured; no setting-off golden moved. `b4467150` is the commit the
+  goldens are captured from: 392 of 392 goldens `cmp` equal to a full
+  capture there, and every capture there `cmp`s equal to this game's run of
+  the same row. `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
 
@@ -1375,7 +1380,7 @@ The rows with the setting on, by fix:
 | R | `archmage_bot_struck_fixes_scen99` (its setting-off twin, `archmage_bot_struck_scen99`, came with fix AE: see below) |
 | T | `cleric_raise_blocked_corpse_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has a seed of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1) |
 | U | `soldier_charge_front_foe_fixes_scen99` (a new arena, with its setting-off twin) |
-| V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
+| V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin; the setting-on twin of `soldier_bot_charge_door` has spawns and a seed of its own since fix BF: see below) |
 | W | `soldier_bot_refused_roll_acts_fixes_scen99` (a new arena, with its setting-off twin) |
 | X | `orc_stale_shove_fixes_scen99` (a new arena, with its setting-off twin) |
 | Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below; the amendment (a melee-only bot bumps its own foe) recaptured `orc_right_walk_potion_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99` and `elemental_struck_short_pool_fixes_scen99` again; the setting-on twin of `orc_right_walk_potion` has a budget of its own: see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 1 |
@@ -1395,6 +1400,7 @@ The rows with the setting on, by fix:
 | BC | `orc_attack_order_blows_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 | BD | `tower_foe_between_spots_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 | BE | `orc_refused_shot_turn_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
+| BF | `tower_foe_behind_door_fixes_scen99` (a new arena, with its setting-off twin), and the row below that it moves |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1753,6 +1759,28 @@ last, at `46a09a28` ([Rulings (2026-11-16)](#rulings-2026-11-16), entry 1). Afte
 `mage_wave_edge_pad` reads the band of the wave's four strikes in place of one value, and `thief_charm_nearest`,
 whose own pin had changed only whether the thief lived, took an arena and a budget of its own and was captured
 again at `7c33f42b` (the same entry).
+
+Fix BF's arena, `tower_foe_behind_door_scen99` and `tower_foe_behind_door_fixes_scen99`: a hostile tower faces
+the idle player soldier straight below it, 71 px off, and a closed door of a third team stands between them, the
+soldier one pixel below the door. With the setting off the tower's line check passes at the door or at the soldier
+behind it, whatever it draws, and the tower shoots on tick 4: one shot by the end of the recording (tick 8). With
+the setting on the door refuses every check and the tower starts no shot; the soldier ends with all its hit points.
+The recording carries no door's hit points and no tower's magic, so the rows count the shots by the bow's sound.
+The classic row's pin turns the flown check on with the setting off (its tower then shoots nothing); the
+setting-on row's lets a check the door stopped pass again (its tower then shoots on tick 3). Both rows are captured
+from the old game at `b4467150`, after the port (`2ed82025`), and each `cmp`s equal to this game's run.
+
+Fix BF moved one existing row with the setting on, as the old game's capture after `2ed82025` shows:
+`soldier_bot_charge_door_fixes_scen99`. Its tower no longer shoots across the door, and its soldier bot, whose own
+foe stands behind the door too, is refused its knife's line check by the door, so it walks toward the tower until
+the door stops it (its bump then strikes the door or throws a knife into it, as on both settings), and in the
+recording's ten ticks it never rolls CHARGE with a heading and its front clear. Its pin then changed nothing, on
+every seed from 0 to 240. The
+setting-on twin took an arena and a seed of its own: the door 14 px lower, so that its top row still meets the
+soldier's bottom row (the rush's path) while the knife flies above it, the tower 8 px higher, its arrows above the
+door too, and seed 0, the first from 0 on which the gate is asked with the door in the rush's path (17 of seeds 0
+to 40 are). Its fact reads three sounds again (the tower's two shots and the soldier's knife) and four under its
+pin (the charge). The setting-off twin keeps its arena, its seed and its golden. No setting-off row moves.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`

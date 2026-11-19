@@ -492,7 +492,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 // tests: QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
                 // tests: SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine
                 // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
-                // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+                // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
                 // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
                 // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
                 // tests: SemLineCheck.the_shot_itself_still_takes_the_clash_roll_at_a_door
