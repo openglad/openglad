@@ -12653,6 +12653,242 @@ inline constexpr Mutation kMut_tower_foe_behind_door_fixes_scen99 = {
     "        if (met == FlightStep::Struck)"
 };
 
+// --- orc_bot_bumps_door (fix BF: a bot leaves a door alone, the bump) ---
+// A hostile level-1 orc bot (16x16, stepsize 3, melee only) at (120, 120),
+// facing DOWN (the spawn facing), a closed team-2 door (16x16) right below it
+// at (120, 136), and the idle player soldier, its foe, far below at
+// (120, 260); no key opens a team-2 door. The orc has 15 magic: each swing
+// costs 2 and HOWL 25, so it casts no special and its first act's point
+// leaves it 16. The bot that walks into the door is the orc; the soldier is
+// the seat and presses nothing. The orc's walk toward its foe meets the door
+// at once: its 3 px step down puts its box (y 123 to 138) on the door's top
+// row, and living::collide names the door its collision body. Classic, the
+// bump swings at every live hostile body a bump attacks, a door's family
+// among them: the orc's swing puts its rock on the pad, which holds the door;
+// the rock meets the door on its clash roll, and on this seed (0, the first
+// from 0 at which the classic row reaches its rule: the swing's blow lands
+// on the door on 19 of seeds 0 to 20, all but 3 and 12) the blow
+// lands on it and clangs on tick 2 (the hit mark at (124, 140)). The orc's
+// next acts take it round the door and on toward its foe, which it cannot
+// reach by tick 10: one clang in the budget, the only sound either row can
+// make (the soldier never acts, and a melee-only orc launches nothing).
+// With the setting on (Gameplay Fixes BF) the orc is a bot, user() -1, and
+// the door is not its foe: the bump records the door and starts no swing, so
+// no blow lands and nothing sounds by tick 10. The classic row's pin turns
+// the bump's rule on with the setting off (its orc then starts no swing);
+// the setting-on row's drops the door term from the bump (its orc then
+// swings and the blow clangs on tick 2). The budget B = 10.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_bumps_door_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 120, 120, 0, 0, 1, 15 },   // hostile level-1 melee bot, facing DOWN at spawn; 15 magic pays its swings and no special
+    { FAMILY_DOOR,    2, kOrderWeapon, 120, 136, 0, 0 },           // a closed door right below the orc, on its way to its foe; team 2, so no key opens it
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 260, 0, 0 },           // the idle player LAST, far below: the orc's foe
+};
+inline constexpr FactPredicate kFacts_orc_bot_bumps_door_scen99[] = {
+    pred::TickReached(10),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands between the orc and its foe"),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic bump swings at the door the orc walks into, and on this seed the swing's blow lands on it and clangs on tick 2; nothing else sounds by tick 10"),
+};
+inline constexpr Mutation kMut_orc_bot_bumps_door_scen99 = {
+    "src/gameplay/living.cpp", 1193,
+    "return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&",
+    "return og::sim::session_gameplay_fixes() == 0 && user() == -1 && body->is_door() &&",
+    "A bot leaves a door alone with the setting off too, as Gameplay Fixes BF has it with the setting on: the classic orc's bump starts no swing at the door and nothing clangs, so EventKindExactly(play_sound, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_orc_bot_bumps_door_fixes_scen99[] = {
+    pred::TickReached(10),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands between the orc and its foe"),
+    // negative_assertion: with the setting on the bot's bump at the door starts no swing, so no blow lands and nothing sounds by tick 10; the pin lets the bump swing at a door, and its blow clangs on tick 2.
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on a bot that walks into an enemy door starts no swing at it: no blow lands on the door and nothing clangs"),
+};
+inline constexpr Mutation kMut_orc_bot_bumps_door_fixes_scen99 = {
+    "src/gameplay/living.cpp", 868,
+    "&& !ob->dead() && !dead() && !leaves_a_door_alone(ob))",
+    "&& !ob->dead() && !dead())",
+    "The bump swings at a door again, as before Gameplay Fixes BF: the orc's swing at the door it walks into lands on tick 2 and clangs, so EventKindExactly(play_sound, 0) reads 1."
+};
+
+// --- tower_blow_names_door (fix BF: a bot leaves a door alone, the blow) ---
+// tower_foe_behind_door's tower and door, with the seat on the tower: a
+// TOWER1 (25x29, stepsize 0, fire delay 5) of team 255 at (173, 100), facing
+// DOWN, a closed team-2 door (16x16) at (178, 150) below it, a soldier of team
+// 255 far to the right at (400, 120) and a hostile TOWER1 far off at
+// (560, 440), beyond every arrow's reach of 154 px, which holds the level
+// open. The player team is 255, so SWITCH can hand the seat from one
+// team-255 walker to the other (a switch takes only a walker whose real team
+// is unset, as in soldier_charge_ally_fixes_scen99). The seat sits on the
+// tower first (the last team-255 spawn). A spawned walker faces DOWN but
+// heads UP, and a seat fires along its heading only when it faces it, so
+// DOWN on tick 0 turns the heading down (a tower's walk only turns it) and
+// FIRE on tick 1 shoots one arrow: the bow sounds on tick 1, the arrow stands
+// on the pad (182, 130) on tick 2 and at (184, 141) on tick 3, and its next
+// step meets the door on the clash roll; on this seed (0, the first from 0
+// at which the seat's arrow strikes the door) it strikes it (the hit mark at
+// (184, 149)). SWITCH on tick 6 hands the seat to the soldier, which presses
+// nothing; from then on the tower is a bot with the act type it was spawned
+// with, and a tower cannot walk, so it bumps nothing. Classic, the blow made
+// the door its owner's foe (walker::attack), so the bot fights its foe: it
+// shoots at the door whenever its check passes there, on this seed on ticks
+// 15 and 20 (the fire delay holds each next shot 5 ticks). With the setting
+// on (Gameplay Fixes BF) the blow on the door named no foe: the bot holds no
+// foe its arrows reach (no foe search picks a door, and the far tower is
+// beyond them) and shoots nothing more. The classic row's pin keeps the blow
+// from naming a door with the setting off too (its bot then shoots nothing
+// more); the setting-on row's lets the blow name the door again (its bot
+// then shoots at the door from tick 8: its check passes on its foe). The
+// budget B = 24. A launch is the only sound either row can make.
+inline constexpr InputEvent kInputs_tower_blow_names_door[] = {
+    { 0, 0, K_DOWN },     // the seat turns the tower's heading down
+    { 1, 0, K_FIRE },     // one arrow at the door
+    { 2, 0, K_NONE },
+    { 6, 0, K_SWITCH },   // the soldier takes the seat: from tick 6 the tower is a bot
+    { 7, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_tower_blow_names_door_scen99[] = {
+    { FAMILY_TOWER1,  1,   kOrderLiving, 560, 440, 0, 0 },   // hostile, far beyond every arrow's reach: holds the level open
+    { FAMILY_SOLDIER, 255, kOrderLiving, 400, 120, 0, 0 },   // takes the seat on tick 6 and presses nothing
+    { FAMILY_DOOR,    2,   kOrderWeapon, 178, 150, 0, 0 },   // a closed door below the tower; team 2, so no key opens it
+    { FAMILY_TOWER1,  255, kOrderLiving, 173, 100, 0, 0 },   // seated first (the last team-255 spawn): shoots the door, then is a bot
+};
+inline constexpr FactPredicate kFacts_tower_blow_names_door_scen99[] = {
+    pred::TickReached(24),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands below the seat's tower"),
+    pred::EventKindAtLeast(/*play_sound*/1, 2,
+        "consequence: the classic blow makes the door the tower's foe, so once a bot the tower shoots at the door: the seat's arrow on tick 1 and, on this seed, the bot's arrows on ticks 15 and 20"),
+};
+inline constexpr Mutation kMut_tower_blow_names_door_scen99 = {
+    "src/gameplay/walker_combat.cpp", 534,
+    "if (current_game->world->gameplay_fixes == 0 || !target->is_door())",
+    "if (current_game->world->gameplay_fixes != 0 || !target->is_door())",
+    "A blow on a door names no foe with the setting off too, as Gameplay Fixes BF has it with the setting on: the classic tower, a bot from tick 6, holds no foe its arrows reach and shoots nothing more, so EventKindAtLeast(play_sound, 2) reads 1."
+};
+inline constexpr FactPredicate kFacts_tower_blow_names_door_fixes_scen99[] = {
+    pred::TickReached(24),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands below the seat's tower"),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: with the setting on the blow that lands on the door names no foe, so once a bot the tower holds no foe its arrows reach and shoots nothing more: the seat's arrow is the one sound"),
+};
+inline constexpr Mutation kMut_tower_blow_names_door_fixes_scen99 = {
+    "src/gameplay/walker_combat.cpp", 534,
+    "if (current_game->world->gameplay_fixes == 0 || !target->is_door())",
+    "if (true)",
+    "A blow names whatever it lands on again, as before Gameplay Fixes BF: the seat's arrow makes the door the tower's foe, and the bot shoots at it on ticks 8, 13, 18 and 23, its check passing on its foe, so EventKindExactly(play_sound, 1) reads 5."
+};
+
+// --- cleric_shield_door_tree (fix BG: a guard passes a door or a grown tree by, the MAGIC SHIELD) ---
+// shield_projectile_absorb's arena with an enemy door and an enemy grown tree
+// where its hostile arrow stood: the player cleric casts MYSTIC MACE on tick 0
+// (Shift and SPECIAL), and the shield's guard, on its first orbit stop, finds
+// both inside its ring (og.find_foe_weapons_in_range: a live enemy body of
+// weapon order within the guard's size, 8 px, counted between top-left corners). The distant tower
+// holds the level open, so the dead are swept from the weapon list at the
+// next tick. Classic, the guard destroys every enemy weapon-order body in its
+// ring but the solid scenery a pack declares, and a door and a grown tree
+// declare none: both are destroyed and gone by tick 2 (a door's death leaves
+// its door-open body on the weapon list, of another family). A door's and a
+// tree's damage is 0, so the guard pays nothing for either on both settings.
+// With the setting on (Gameplay Fixes BG) the guard passes both by: both
+// stand at tick 2. The classic row's pin turns the rule on with the setting
+// off (both stand); the setting-on row's drops the door from it (the door is
+// destroyed again). The budget is shield_projectile_absorb's, 2.
+inline constexpr SpawnSpec kFamilySpawns_cleric_shield_door_tree_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 500, 500, 0, 0 },          // distant stationary foe: holds the level open
+    { FAMILY_DOOR,   1, kOrderWeapon, 115, 100, 0, 0 },          // an enemy door at the guard's first orbit stop
+    { FAMILY_TREE,   1, kOrderWeapon, 115, 100, 0, 0 },          // an enemy grown tree on the same spot
+    { FAMILY_CLERIC, 0, kOrderLiving, 120, 120, 0, 0, 1, 80 },   // the player caster LAST
+};
+inline constexpr FactPredicate kFacts_cleric_shield_door_tree_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1,
+        "structural: the cleric summons one guard through the normal alternate special"),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 0, 0,
+        "consequence: the classic guard destroys the enemy door at its orbit stop, as it destroys a shot"),
+    // negative_assertion: the classic guard destroys the enemy door in its ring; the pin turns the rule on with the setting off, and the door stands.
+    pred::WeaponFamilyCount(FAMILY_TREE, 0, 0,
+        "consequence: the classic guard destroys the enemy grown tree at its orbit stop, as it destroys a shot"),
+    // negative_assertion: the classic guard destroys the enemy grown tree in its ring; the pin turns the rule on with the setting off, and the tree stands.
+};
+inline constexpr Mutation kMut_guard_door_tree_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 252,
+    "  if not M.on() then",
+    "  if false then",
+    "The guard passes a door and a grown tree by with the setting off too, as Gameplay Fixes BG has it with the setting on: both stand at the last tick, so WeaponFamilyCount(FAMILY_DOOR, 0, 0) and WeaponFamilyCount(FAMILY_TREE, 0, 0) read 1.",
+    "function M.guard_passes_by(body)"
+};
+inline constexpr FactPredicate kFacts_cleric_shield_door_tree_fixes_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1,
+        "structural: the cleric summons one guard through the normal alternate special"),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "consequence: with the setting on the shield's guard passes the enemy door by"),
+    pred::WeaponFamilyCount(FAMILY_TREE, 1, 1,
+        "consequence: with the setting on the shield's guard passes the enemy grown tree by"),
+};
+inline constexpr Mutation kMut_cleric_shield_door_tree_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 259,
+    "  return family == WEAPON_DOOR or family == WEAPON_TREE",
+    "  return family == WEAPON_TREE",
+    "The guard no longer passes a door by: the shield destroys the enemy door again, so WeaponFamilyCount(FAMILY_DOOR, 1, 1) reads 0; the tree still stands."
+};
+
+// --- soldier_boomerang_door_tree (fix BG: a guard passes a door or a grown tree by, the BOOMERANG) ---
+// boomerang_projectile_absorb's arena with an enemy door and an enemy grown
+// tree where its hostile arrow stood, just outside the soldier's body: the
+// player soldier throws BOOMERANG on tick 0 (SPECIAL SWITCH and SPECIAL), and
+// the blade's guard, its weapon radius twice its size, finds both inside it.
+// The distant tower holds the level open. As in cleric_shield_door_tree:
+// classic, both are destroyed and gone by tick 2; with the setting on
+// (Gameplay Fixes BG) the guard passes both by and both stand; their damage is
+// 0, so the blade pays nothing on either setting. The classic row's pin turns
+// the rule on with the setting off (both stand); the setting-on row's drops
+// the grown tree from it (the tree is destroyed again). The budget is
+// boomerang_projectile_absorb's, 2.
+inline constexpr SpawnSpec kFamilySpawns_soldier_boomerang_door_tree_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 500, 500, 0, 0 },          // distant stationary foe: holds the level open
+    { FAMILY_DOOR,    1, kOrderWeapon, 140, 120, 0, 0 },          // an enemy door just outside the soldier's body, inside the blade's doubled radius
+    { FAMILY_TREE,    1, kOrderWeapon, 140, 120, 0, 0 },          // an enemy grown tree on the same spot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 4, 300 },  // the player caster LAST; level 4 opens slot 2 and 300 magic pays BOOMERANG's 100
+};
+inline constexpr FactPredicate kFacts_soldier_boomerang_door_tree_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "structural: the soldier summons one blade through special slot two"),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 0, 0,
+        "consequence: the classic blade destroys the enemy door inside its doubled weapon radius, as it destroys a shot"),
+    // negative_assertion: the classic guard destroys the enemy door in its ring; the pin turns the rule on with the setting off, and the door stands.
+    pred::WeaponFamilyCount(FAMILY_TREE, 0, 0,
+        "consequence: the classic blade destroys the enemy grown tree inside its doubled weapon radius, as it destroys a shot"),
+    // negative_assertion: the classic guard destroys the enemy grown tree in its ring; the pin turns the rule on with the setting off, and the tree stands.
+};
+inline constexpr FactPredicate kFacts_soldier_boomerang_door_tree_fixes_scen99[] = {
+    pred::TickReached(2),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "structural: the soldier summons one blade through special slot two"),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "consequence: with the setting on the blade's guard passes the enemy door by"),
+    pred::WeaponFamilyCount(FAMILY_TREE, 1, 1,
+        "consequence: with the setting on the blade's guard passes the enemy grown tree by"),
+};
+inline constexpr Mutation kMut_soldier_boomerang_door_tree_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 259,
+    "  return family == WEAPON_DOOR or family == WEAPON_TREE",
+    "  return family == WEAPON_DOOR",
+    "The guard no longer passes a grown tree by: the blade destroys the enemy tree again, so WeaponFamilyCount(FAMILY_TREE, 1, 1) reads 0; the door still stands."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -15842,6 +16078,62 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_tower_foe_behind_door_fixes_scen99, std::size(kFacts_tower_foe_behind_door_fixes_scen99),
       kMut_tower_foe_behind_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_bumps_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_bumps_door_scen99, std::size(kFamilySpawns_orc_bot_bumps_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_bumps_door_scen99, std::size(kFacts_orc_bot_bumps_door_scen99),
+      kMut_orc_bot_bumps_door_scen99 },
+    { "orc_bot_bumps_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_bumps_door_scen99, std::size(kFamilySpawns_orc_bot_bumps_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_bumps_door_fixes_scen99, std::size(kFacts_orc_bot_bumps_door_fixes_scen99),
+      kMut_orc_bot_bumps_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "tower_blow_names_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_tower_blow_names_door, std::size(kInputs_tower_blow_names_door), 24,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_blow_names_door_scen99, std::size(kFamilySpawns_tower_blow_names_door_scen99),
+      255, false, true, Exercises::None,
+      kFacts_tower_blow_names_door_scen99, std::size(kFacts_tower_blow_names_door_scen99),
+      kMut_tower_blow_names_door_scen99 },
+    { "tower_blow_names_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_tower_blow_names_door, std::size(kInputs_tower_blow_names_door), 24,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_tower_blow_names_door_scen99, std::size(kFamilySpawns_tower_blow_names_door_scen99),
+      255, false, true, Exercises::None,
+      kFacts_tower_blow_names_door_fixes_scen99, std::size(kFacts_tower_blow_names_door_fixes_scen99),
+      kMut_tower_blow_names_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "cleric_shield_door_tree_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsShieldProjectileAbsorb, std::size(kInputsShieldProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_shield_door_tree_scen99, std::size(kFamilySpawns_cleric_shield_door_tree_scen99),
+      0, false, true, Exercises::None,
+      kFacts_cleric_shield_door_tree_scen99, std::size(kFacts_cleric_shield_door_tree_scen99),
+      kMut_guard_door_tree_scen99 },
+    { "cleric_shield_door_tree_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsShieldProjectileAbsorb, std::size(kInputsShieldProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_shield_door_tree_scen99, std::size(kFamilySpawns_cleric_shield_door_tree_scen99),
+      0, false, true, Exercises::None,
+      kFacts_cleric_shield_door_tree_fixes_scen99, std::size(kFacts_cleric_shield_door_tree_fixes_scen99),
+      kMut_cleric_shield_door_tree_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "soldier_boomerang_door_tree_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsBoomerangProjectileAbsorb, std::size(kInputsBoomerangProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_boomerang_door_tree_scen99, std::size(kFamilySpawns_soldier_boomerang_door_tree_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_boomerang_door_tree_scen99, std::size(kFacts_soldier_boomerang_door_tree_scen99),
+      kMut_guard_door_tree_scen99 },
+    { "soldier_boomerang_door_tree_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsBoomerangProjectileAbsorb, std::size(kInputsBoomerangProjectileAbsorb), 2,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_boomerang_door_tree_scen99, std::size(kFamilySpawns_soldier_boomerang_door_tree_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_boomerang_door_tree_fixes_scen99, std::size(kFacts_soldier_boomerang_door_tree_fixes_scen99),
+      kMut_soldier_boomerang_door_tree_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
