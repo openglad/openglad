@@ -28,6 +28,26 @@
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
 
+// Gameplay Fixes BG (port of the current game's 66c5e145d, #588): what the
+// guard of a MAGIC SHIELD or a BOOMERANG passes by instead of destroying it
+// as a shot. With the setting on that is a door and a grown tree: a guard
+// destroys shots in flight, and a thing that stands is cut down by blows.
+// Classic, the guard erases a door of 5,000 hit points or a tree at once,
+// with no key and no blow, and pays their damage. A door or a tree is the
+// order and the family both, because a golem's family number is a door's.
+// Every other body the guard meets (a shot, a glow, a boulder, a blood
+// stain) is destroyed as before. Draws nothing. The current game's guard also
+// passes the solid scenery a pack declares (a bone wall, a war banner) on
+// both settings; this game has none.
+static bool guard_passes_by(walker *w)
+{
+	if (!myscreen->gameplay_fixes)
+		return false;
+	if (w->query_order() != ORDER_WEAPON)
+		return false;
+	return w->query_family() == FAMILY_DOOR || w->query_family() == FAMILY_TREE;
+}
+
 effect::effect(const PixieData& data)
     : walker(data)
 {
@@ -151,6 +171,10 @@ short effect::act()
 			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
 			    walker* w = *e;
+				// port of the current game's 66c5e145d: Gameplay Fixes BG, a guard
+				// passes a door or a grown tree by (guard_passes_by, above)
+				if (guard_passes_by(w))
+					continue;
 				stats->hitpoints -= w->damage;
 				w->dead = 1;
 				w->death();
@@ -266,6 +290,10 @@ short effect::act()
 			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
 			    walker* w = *e;
+				// port of the current game's 66c5e145d: Gameplay Fixes BG, a guard
+				// passes a door or a grown tree by (guard_passes_by, above)
+				if (guard_passes_by(w))
+					continue;
 				stats->hitpoints -= w->damage;
 				w->dead = 1;
 				w->death();
