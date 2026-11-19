@@ -4012,8 +4012,8 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family, bool weapo
 	//   eaten, opened, drawn or announced), first against terrain, then against bodies under the
 	//   weapon's own rules (own-team bodies pass; an enemy living or generator blocks; enemy doors,
 	//   trees and weapons in flight pass a weapon probe; an arrow slit passes at pad distance). A
-	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear, Gameplay
-	//   Fixes V etc.) refuse casts whose pad is blocked.
+	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear_of_weapons
+	//   and summon_pad_clear, Gameplay Fixes V, AV, BH) refuse casts whose pad is blocked.
 	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	// tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
 	// tests: QuietProbe.fire_pad_clear_leaves_the_world_alone

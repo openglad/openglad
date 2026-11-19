@@ -848,7 +848,7 @@ text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
 blocked by terrain costs nothing (AC); a body on the pad costs exactly the
 one swing (H, I; BARRAGE, AS). A door, a grown tree or an enemy weapon in
 flight on the pad is seen only by the strict pad question, which the bot
-rule of every cast the table refuses `COULD NOT FIRE` asks (the elf's
+rule of every cast the table lists under `COULD NOT FIRE` asks (the elf's
 volleys since fix AV, BARRAGE since fix AS, the others since fix BH);
 `fire()`'s own probe passes such a body only six times in ten, so a cast
 a player orders at one can still cost the swing.
@@ -1907,7 +1907,7 @@ name the door again, and drop the door (the shield's row) or the tree (the boome
 All eight rows are captured from the old game at `8c0cdcd1`, after the ports (`d3755554`, `dff9b822`), and each `cmp`s
 equal to this game's run.
 
-Fix BH has four arenas, one for each cast a recording can show, every one with its setting-off twin; its port moved no
+Fix BH has four arenas, one for each ported call a recording can tell apart (the barbarian's two throws share one call, shown by HURL BOULDER), every one with its setting-off twin; its port moved no
 existing row. Each stands a hostile bot caster on the lower ground of `elf_bot_rocks_tree_pad`, heading up, with an
 enemy body on the pad its cast fires from and a tower of the player's side past it, so that every other term of the
 cast's rule says yes: `druid_bot_grow_tree_tree_pad` (GROW TREE, an enemy grown tree on the bolt's pad),

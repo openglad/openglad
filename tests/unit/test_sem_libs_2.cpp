@@ -650,7 +650,7 @@ TEST(SemShield, classic_a_boomerang_dies_with_its_thrower)
 // damage). On the next act the knife is gone and the guard has paid its 5
 // (95 hp); the wall and the banner stand at full health.
 //
-// RED (the scenery test dropped, `if not weapon:blocks_placement() then` ->
+// RED (the scenery test dropped, `if not gf.guard_passes_by(weapon) then` ->
 // `if true then` in effect_shield.lua guard_tail): Expected equality of these
 // values: 95.0f Which is: 95 fx->stats()->hitpoints() Which is: 77 (5 + 9 +
 // 9 paid); Value of: piece->dead() Actual: true Expected: false "family 5,
