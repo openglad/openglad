@@ -1907,10 +1907,14 @@ name the door again, and drop the door (the shield's row) or the tree (the boome
 All eight rows are captured from the old game at `8c0cdcd1`, after the ports (`d3755554`, `dff9b822`), and each `cmp`s
 equal to this game's run.
 
-Fix BH has four arenas, one for each ported call a recording can tell apart (the barbarian's two throws share one call, shown by HURL BOULDER), every one with its setting-off twin; its port moved no
-existing row. Each stands a hostile bot caster on the lower ground of `elf_bot_rocks_tree_pad`, heading up, with an
-enemy body on the pad its cast fires from and a tower of the player's side past it, so that every other term of the
-cast's rule says yes: `druid_bot_grow_tree_tree_pad` (GROW TREE, an enemy grown tree on the bolt's pad),
+Fix BH has four arenas, one for each ported call a recording can tell
+apart (the barbarian's two throws share one call, shown by HURL BOULDER),
+every one with its setting-off twin; its port moved no existing row. Each
+stands a hostile bot caster on the lower ground of
+`elf_bot_rocks_tree_pad`, heading up, with an enemy body on the pad its
+cast fires from and a tower of the player's side past it, so that every
+other term of the cast's rule says yes: `druid_bot_grow_tree_tree_pad`
+(GROW TREE, an enemy grown tree on the bolt's pad),
 `barbarian_bot_boulder_tree_pad` (HURL BOULDER, an enemy grown tree on the hammer's pad), `mage_bot_wave_door_pad`
 (ENERGY WAVE, an enemy door on the fireball's pad, with the three more towers the classic gate wants) and
 `archer_bot_bolt_door_pad` (EXPLODING BOLT, an enemy door on the fire arrow's pad). With the setting off the classic bot
@@ -3912,6 +3916,17 @@ changed in the level:
 | Gladiator 41 | 2.25 | 1.25 | 1.90 | 2.10 | the line check's part alone, +0.85 (0.36) | back to before any door rule (-0.15, 0.54); none of its 300 doors goes at any point; a locked door refused a step of a bot on 3,573 bot-ticks against 1,309, the bot's foe beyond the door on 3,300 against 714, the crew's 2,212 and 710 of them |
 | Gladiator 44 | 4.05 | 4.05 | 4.05 | 5.00 | each of the three earlier points, +0.95 (0.46) | BH alone (the level has no door): an enemy shot in flight on the pad held 117 casts, the crew's barbarian's throw 103 times, the level's druids' GROW TREE 13 times and SUMMON FAERIE once, and 74 of its 700 hostiles are alive at the end against 129 |
 | Gladiator 45 | 5.75 | 6.15 | 5.60 | 5.85 | every rule but BH, +0.25 (0.12) | BH: an enemy shot in flight on the pad held the crew's barbarian's throw 14 times |
+
+Against the game before these fixes, with every rule and the setting on,
+Gladiator reads 116.65 survivors per run of the campaign against 127.40 (m
+-10.75, se 4.26) and The Tryxian Chronicles 38.65 against 44.45 (-5.80,
+1.38). On the twenty seeds these levels read two errors or more under:
+Gladiator 7 (3.85 to 2.05), 13 (3.80 to 2.15), 14 (4.45 to 2.95) and 18
+(6.25 to 4.00), Tryxian 105 (2.10 to 0.45) and 111 (3.95 to 0.15); Tryxian
+108 reads 0.05 against 0.45 (under one survivor before); Gladiator 8 (3.15
+to 4.30) and 40 (2.70 to 4.15) read two errors or more over. Gladiator 13
+and 14 are new in that list: before any door rule they read 2.65 and 3.05,
+under two errors. Nothing there is eased.
 
 What the rules do at doors was counted in the same measuring build, the
 setting on: on Gladiator and The Tryxian Chronicles (twenty seeds of each
