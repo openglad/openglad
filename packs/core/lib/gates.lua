@@ -689,9 +689,9 @@ end
 -- generator there (walker:fire_pad_clear, the same spot and weapon rules, asked
 -- quietly). A body of the caster's own team passes, as the weapon passes it; so does
 -- an enemy door, tree or weapon in flight, which the loud fire() meets on 4 rolls in
--- 10. Since Gameplay Fixes BH no rule of the core pack asks this: each cast's rule
--- asks pad_clear_of_weapons, which takes that roll as lost, so its yes is a cast that
--- leaves. `weapon`, optional: the weapon family the cast fires when it is not the
+-- 10. Since Gameplay Fixes BH no rule of the core pack asks this: every rule that asks
+-- a pad asks pad_clear_of_weapons, which takes that roll as lost, so its yes is a cast
+-- that leaves. `weapon`, optional: the weapon family the cast fires when it is not the
 -- current one (EXPLODING BOLT's core:fire_arrow); a gate never does the cast's swap.
 function M.pad_clear(self, weapon)
   return self:fire_pad_clear(weapon)

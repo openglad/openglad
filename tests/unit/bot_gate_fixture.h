@@ -174,7 +174,7 @@ protected:
     // enemy grown tree, an enemy arrow in flight) and a door of the caster's
     // own team are put on the pad of the weapon the cast fires (`weapon` its
     // family, -1 the caster's current one), one at a time, in their sprites'
-    // boxes (16, 12, 7 and 16 px a side). Each covers the pad and reaches away
+    // boxes (16, 12, 7 and 16 px a side). Each meets the pad and reaches away
     // from the caster, which faces one of the four axes, so it never meets
     // the caster's box; it is taken away (dead) before the next. The caller
     // stages a scene in which every other term of `slot`'s rule says yes.
@@ -232,7 +232,7 @@ protected:
             const short by = down ? py : up ? static_cast<short>(py + ph - s) : across_y;
             body(b, s, s)->setxy(bx, by);
             settle_body(b);
-            ASSERT_EQ(1, collide(bx, by, s, s, px, py, pw, ph)) << "the staging: the body covers the pad";
+            ASSERT_EQ(1, collide(bx, by, s, s, px, py, pw, ph)) << "the staging: the body meets the pad";
             ASSERT_EQ(0, collide(bx, by, s, s, caster->xpos(), caster->ypos(), caster->sizex(),
                                  caster->sizey()))
                 << "the staging: the body is clear of the caster";

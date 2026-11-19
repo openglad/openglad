@@ -963,7 +963,7 @@ TEST_F(GameplayFixesBots, druid_tree_wants_its_pad_clear_of_a_door_a_grown_tree_
 // strict half alone. The staging is druid_faerie_refuses_a_pad_on_a_foe's:
 // the level-4 druid faces RIGHT from (200, 200), its foe 100 px east, no
 // faerie of its own out.
-// RED (the rule broken: summon_pad_clear asking neither the pad nor the room,
+// RED (the rule broken: the rule asking the plain pad and no room,
 // living-13-druid.lua:305 `G.summon_pad_clear(...)` -> `G.pad_clear(self)`):
 // the three enemy arms read true with the setting on.
 TEST_F(GameplayFixesBots, druid_faerie_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot)
