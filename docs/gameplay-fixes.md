@@ -116,6 +116,7 @@ usual pause.
 | BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts spent turning back after a refused shot's turn 41,803 to 0; acts until a bot that did not face its foe faces it 2.80 to 1.12 for the melee-only bots, 2.68 to 1.13 for the levels' shooters and 2.51 to 1.12 for the crew. That mean counts only the bots that faced their foe within 12 acts of the turn: before, about one in eight had not (5,544 of 42,038), after about one in 170 (247 of 40,970). |
 | BF | A bot leaves a door alone | A door is a weapon-order body of 5,000 hit points that no foe search picks, and three rules written for an enemy thing reach it. A tower's or a shooting bot's line check passes on any body its test weapon meets, a door included: the test weapon meets an enemy door, as it meets every enemy weapon-order body, on the clash roll, and a door that stops it passes the check as a body does, so a bot whose foe stands behind a door shoots into the door and the shot is spent on it. A walker that walks into an enemy door swings at it, as at every body a bump attacks. And a blow makes whatever it lands on its owner's foe, a door included, after which the bot shoots at the door as at any foe until it takes another foe or the door falls. With the setting on before this fix, on Gladiator and The Tryxian Chronicles (twenty seeds of each level), 98,695 of the 104,342 checks that passed although no fighter or tent stood in the flight ended on an enemy door. | Nothing in play makes a bot attack a door. An enemy door on the shot's path refuses the line check, always, as a wall does: the test weapon meets the door without the clash roll and draws nothing for it, on the pad and on every step, and the check answers no. A bot (a walker no player drives) that walks into an enemy door starts no swing at it; the door stops its step as before. A blow that lands on a door, anyone's shot, blast or spell, does not make the door its owner's foe; the door still takes the blow. One exception, the same in all three places: a door that already is the bot's foe (a level script or a mod can name one) passes the check, is swung at when the bot walks into it, and is fought like any foe. A player's own fighter still swings at a door the player walks it into. A grown tree, an enemy shot in flight and every other body are as before: a tree and a shot pass the check on their clash roll, a bot that walks into a tree or a fighter swings at it, and a blow on either makes it the foe. The shot itself is unchanged: it still takes the clash roll at a door. What follows, and is left as it is: a bot that holds the door's key walks into the door and opens it, where it stood and shot at it before; a bot with no key whose foe stands behind the door walks toward its foe as at a wall's refusal and stays pressed against the door, as at a wall (#582), and does not look for another foe because of the door; and a door still loses hit points to a shot that strays into it, to a player's blows and to whoever fights a door that is its foe, and still dies at 0 and opens. With the setting off every walker's bump on an enemy door swings and every blow names its foe, as in the classic game. Measured with the line check's part alone (the bump's and the blow's parts came after it and are not measured yet), on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), the same game with that part off and on: checks that passed on an enemy door that was not the shooter's foe 50,009 to 0, while the door refused 30,080 checks; but a shot that landed on a door made the door its shooter's foe (9,238 times before that part, 5,107 after; anything else made a door a bot's foe 3 and 2 times), and checks that passed on a door that was the shooter's own foe went from 67,377 to 80,470. Counted as the question was put to the maintainer (checks that passed although no fighter or tent stood in the flight), the 98,695 that ended on an enemy door before that part were 38,867 on a door that was not the shooter's foe and 59,828 on one that already was; after it 76,688 of 82,451 such passes still ended on a door, every one a door that was the foe. So bots still wore doors down: shots that struck a door 20,020 to 14,508, blows struck at a door from beside it 18,902 to 17,140, the doors' hit points lost 1,801,741 to 1,405,275. And doors went as often as before, most of them not under blows: of the 6,680 that stood at the start (each level's doors counted once for each of its battles), 178 were gone at tick 600 before that part and 181 after; 26 and 14 were broken under blows, every one by the levels' own bots (the crew sharing the blows on one before that part); 8 and 6 were opened with a key; and 144 and 161 were erased by a guard: a soldier's BOOMERANG or a cleric's MAGIC SHIELD killed at once every enemy weapon-order body inside its ring except the solid scenery a pack declares, a bone wall or a war banner, which it passes by (#472); a door is not declared so and was killed whatever its hit points, with either setting. With the setting on a guard now passes a door and a grown tree by (Gameplay Fixes BG, not measured yet). The old game has neither wall nor banner, and its guard kills them all. On The Tryxian Chronicles' first level played to tick 2,400 (six seeds) bots wore doors down more, 117,396 to 124,911 hit points lost, and 38 and 51 of its 180 doors were gone at the end: 5 and 12 broken under blows, 33 and 39 erased by a boomerang's guard (see [Balance](#balance) and [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). |
 | BG | A guard passes a door or a grown tree by | The guard of a cleric's MAGIC SHIELD, a soldier's BOOMERANG and an orc captain's HOOK BLADE destroys every enemy weapon-order body inside its ring, each costing it that body's damage in hit points, and passes by only the solid scenery a pack declares, a bone wall or a war banner (#472). The rule is meant for shots in flight, but a door (5,000 hit points) and a grown tree are weapon-order bodies too, so a guard that passes an enemy door or tree erases it at once, with no key and no blow (#588). On Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on, with the line check's part of fix BF) 161 of the 181 doors that were gone at tick 600 went that way. | The guard passes an enemy door and an enemy grown tree by, as it passes a bone wall or a war banner by: neither is destroyed and the guard pays nothing for it. A door then needs its key or blows, and a tree has to be cut down. Every other body the guard meets is destroyed as before: a shot in flight, a cleric's glow, a boulder, a blood stain. A door or a tree is weapon order and that family, because a golem's family number is a door's. The three guards ask one question for it, so the hook blade passes them by too. The grown tree was added in this work, for the maintainer to overrule (the alternative: the door alone, as he asked). Not measured yet. |
+| BH | A bot's cast wants its pad clear of a door, a grown tree and a shot in flight | No rule (fix Q). With the setting on before this fix the rules of the druid's GROW TREE and SUMMON FAERIE, the barbarian's HURL BOULDER and EXPLODING BOULDER, the mage's ENERGY WAVE and the archer's EXPLODING BOLT (fix AA) asked their weapon's pad the plain way: a wall, the map's edge, a foe's body or a tent on it said no, but an enemy door, an enemy grown tree or an enemy shot in flight passed, because a quiet weapon probe passes every enemy weapon-order body; `fire()` meets such a body on 4 rolls in 10, so the cast was then refused `COULD NOT FIRE` and the bot had paid its swing for nothing (#590). With Gameplay Fixes BG more doors stand, and on The Tryxian Chronicles' first level (six seeds of 2,400 ticks) the druid's GROW TREE met that refusal 11 times. | The five rules ask the strict question of fix AV, as the elf's volleys and BARRAGE do: an enemy door, grown tree or shot in flight on the pad is a no, the clash roll taken as lost and nothing drawn; a body of the caster's own side still passes. SUMMON FAERIE already said no to such a body through the faerie's room (fix AR: its faerie stands on the bolt's spot in a box of the bolt's size), so for it the strict question changes no answer in stock play. The rule asks the pad, the first step of the flight, not the path: a cast from a few steps back at a foe behind a door or a wall is still made (#591). A player's cast is not asked about. Measured on the same level and seeds: those refusals 11 to 0; the campaigns are not measured yet. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -165,7 +166,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to BG, in play:
+Fixes X to BH, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -227,7 +228,8 @@ Fixes X to BG, in play:
   refused `COULD NOT FIRE`: on The Tryxian Chronicles' first level, with
   fixes T to W in, 16 times for the druid and 3 each for the barbarian,
   the mage and the archer. With the setting on each of these gates asks
-  `G.pad_clear` too. The archer asks it with the fire arrow (9x9) its
+  the pad too (`G.pad_clear`; since fix BH the strict
+  `G.pad_clear_of_weapons`). The archer asks it with the fire arrow (9x9) its
   EXPLODING BOLT fires, not the arrow (7x7) it holds: the pad question
   now takes the weapon family the cast will fire (#419). Issue #419's
   worry, that the soldier's, the cleric's and the archmage's weapon hooks
@@ -776,6 +778,27 @@ Fixes X to BG, in play:
   `guard_passes_by` in `packs/core/lib/gameplay_fixes.lua`. With the
   setting off the classic guard destroys both, so no setting-off golden
   moves; it is not yet in the old game.
+- **BH.** Five casts fire a weapon from the caster's pad, and their bot
+  rules (fix AA) asked that pad the plain way: the druid's GROW TREE and
+  SUMMON FAERIE, the barbarian's HURL BOULDER and EXPLODING BOULDER, the
+  mage's ENERGY WAVE and the archer's EXPLODING BOLT. The plain question
+  passes an enemy door, an enemy grown tree and an enemy shot in flight,
+  which `fire()` meets on 4 rolls in 10, so the cast was refused `COULD NOT
+  FIRE` after the rule's yes and the bot paid its swing for nothing (#590).
+  Once a guard passed doors by (fix BG) more doors stood, and the test
+  that plays The Tryxian Chronicles' first level counted 11 such refusals
+  of GROW TREE against its cap of 3. With the setting on the five rules
+  ask the strict question of fix AV (`G.pad_clear_of_weapons`), as the
+  elf's volleys and BARRAGE do: any such body on the pad is a no, the
+  clash roll taken as lost and nothing drawn, and a body of the caster's
+  own side still passes; the count reads 0 (the campaigns are not
+  measured yet). For SUMMON FAERIE the
+  faerie's room (fix AR) already said no to those bodies, so its answer
+  does not change in stock play. The rule asks the pad, not the path: a
+  cast from a few steps back at a foe behind a door or a wall is still
+  made (#591). With the setting off a bot has no such rule, so no
+  setting-off golden moves; it is in this branch only so far, not yet in
+  the old game.
 
 ## Refusals at a glance
 
@@ -1099,16 +1122,15 @@ counts are in their rows under [The fixes](#the-fixes).
 
 What the gates still do not see:
 
-- A door, a grown tree or an enemy weapon in flight on the pad, for the
-  druid's, barbarian's and mage's gates and the archer's EXPLODING BOLT.
-  Their pad question is asked with a weapon, and a weapon passes other
-  weapon-order bodies (doors and trees are weapon-order) when it is asked
-  quietly; `fire()` asks loudly and passes them six times in ten. A cast at
-  such a pad can still refuse `COULD NOT FIRE` and pay its swing. The elf's
-  volleys and BARRAGE ask the strict question and see them (AV, AS).
 - The soldier's empty hands. A soldier whose blades are all out has its
   throw vetoed by its own weapon hook, which the pad question cannot see.
   No soldier special fires a weapon, so no gate meets it today.
+
+The list had a first point, a door, a grown tree or an enemy weapon in
+flight on the pad of the druid's, barbarian's and mage's rules and the
+archer's EXPLODING BOLT, which a weapon asked quietly passes and `fire()`
+meets on 4 rolls in 10. Gameplay Fixes BH closes it: those rules ask the
+strict question the elf's volleys and BARRAGE ask (AV, AS).
 
 `tests/integration/test_level_play.cpp` (binary `og_test_level_play`) checks
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
@@ -1181,12 +1203,17 @@ reads 0 but one: the druid, barbarian, mage and archer bots' `COULD NOT
 FIRE` reads 1 (cap 3). It is a druid bot's GROW TREE on seed 2, tick 154,
 whose bolt's pad held an enemy knife in flight: the gate's quiet question
 passes a weapon in flight, and `fire()` met the knife and lost the weapon
-clash roll to it, the first shape under "What the gates still do not
-see" above. Measured again with fixes BC, BD and BE and the flyer's
+clash roll to it, the shape Gameplay Fixes BH later closed (once the
+first point under "What the gates still do not see" above). Measured
+again with fixes BC, BD and BE and the flyer's
 own-floor foe (#512) in: the bots cast 464, 418, 525, 445, 523 and 540
 times on seeds 42, 1337, 2025, 1, 2 and 3, BARRAGE 69, ROCKS 79 and
 SUMMON FAERIE 16, the rules hold 5516 rolls, and every capped count
-reads 0.
+reads 0. Measured again with Gameplay Fixes BF, BG and BH in (2026-11-19):
+the druid, barbarian, mage and archer bots' `COULD NOT FIRE` read 2 with
+BF (the mage's ENERGY WAVE) and 11 with BG (all the druid's GROW TREE, 3 with
+the Shift key up and 8 with it down; the door half of BG alone moves them),
+and 0 with BH; the rules hold 5763 rolls and the cap stays at 3.
 
 ## Charm and seats
 

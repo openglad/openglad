@@ -113,11 +113,11 @@ local function fixed_gate(self, foe_count)
     -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
     local faced = foe ~= nil and G.faces(self, foe)
     -- rule: Gameplay Fixes bot ENERGY WAVE wants its nearest living foe within 110 px faced along
-    --   the fire heading, and the fireball's pad clear (the wave rides a fired bolt).
-    -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110
-    -- tests: GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall
+    --   the fire heading, and the fireball's pad clear (the wave rides a fired bolt) by the strict question (fix BH: no enemy door, grown tree or shot in flight on it).
+    -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110, GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall
+    -- tests: GameplayFixesBots.mage_energy_wave_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot
     -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
-    return faced and G.pad_clear(self)
+    return faced and G.pad_clear_of_weapons(self)
   end
   -- HEARTBURST: slot 5 and every unmapped slot (the family's default cast)
   local t = og.tuning(self)

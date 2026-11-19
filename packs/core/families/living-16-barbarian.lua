@@ -158,12 +158,12 @@ local function check_special_ai(self)
     return true
   end
   -- Both throws refuse a busy barbarian (do_special's guard) and a blocked hammer pad.
-  -- rule: Gameplay Fixes: a busy barbarian, or one whose hammer pad is blocked (wall or body), does
-  --   not roll a throw.
+  -- rule: Gameplay Fixes: a busy barbarian, or one whose hammer pad is blocked (a wall or a body; by
+  --   the strict question of fix BH an enemy door, grown tree or shot in flight too), does not roll a throw.
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-  -- tests: GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall
+  -- tests: GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall, GameplayFixesBots.barbarian_throws_want_the_hammers_pad_clear_of_a_door_a_grown_tree_and_a_shot
   -- tests: parity:barbarian_bot_boulder_pad_body_fixes_scen99
-  if lc.is_busy(self) or not G.pad_clear(self) then
+  if lc.is_busy(self) or not G.pad_clear_of_weapons(self) then
     return false
   end
   local slot = self:current_special()

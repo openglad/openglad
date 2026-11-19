@@ -1124,6 +1124,18 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // in, AT included): the elf's COULD NOT FIRE 0, the druid's NO ROOM TO
     // SUMMON 0 and every other capped count 0, so each cap stays at 3 (the
     // rule's floor for a measured 0); the gates held 5371 rolls.
+    // Measured again 2026-11-19 with Gameplay Fixes BF, BG and BH (#590): the
+    // four families' COULD NOT FIRE read 2 with BF (the mage's ENERGY WAVE,
+    // seeds 2025 and 1, one each) and 11 with BG, once a guard passed doors
+    // and grown trees by: all eleven the druid's GROW TREE (0 1 0 1 0 1 by seed
+    // with the Shift key up, 2 4 0 1 1 0 with it down; the druid has no Shift
+    // arm), and the door half of BG alone moves them (9 with doors only, 2
+    // with trees only). The doors a guard used to erase stand, and the rule
+    // asked the plain pad question, which passes an enemy door, grown tree or
+    // shot in flight that fire() meets on 4 rolls in 10. With BH the druid's,
+    // barbarian's, mage's and archer's rules ask the strict question of fix AV
+    // and the count reads 0, so no refusal is left to trace and the cap stays
+    // at 3; the gates held 5763 rolls, and 232 casters cast two specials or more.
     EXPECT_LE(busy, 3)
         << "SPECIAL BUSY refusals (measured 0 pooled; 4 on the three seeds before the "
            "mage's flee teleport asked the busy guard, #408; 157 before fix W)";
@@ -1139,9 +1151,12 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
            "pooled with fix AR; 2 before it, an ally standing where the faerie appears)";
     EXPECT_LE(pad_could_not_fire, 3)
         << "druid, barbarian, mage or archer cast refused COULD NOT FIRE after its gate "
-           "said yes (measured 0 pooled, BARRAGE included since fix AS; 2 before fix Y's amendment, both the druid's "
-           "SUMMON FAERIE: a door, a grown tree or a weapon in flight on the pad, which a "
-           "weapon probe passes; 25 on the three seeds before fix AA)";
+           "said yes (measured 0 pooled with fix BH, every such rule asking the strict pad "
+           "question, BARRAGE included since fix AS; 11 before BH once a guard passed doors by, "
+           "all the druid's GROW TREE, moved by the doors a guard no longer erases; "
+           "2 before fix Y's amendment, both the druid's SUMMON FAERIE: a door, a grown tree "
+           "or a weapon in flight on the pad, which a weapon probe passes; 25 on the three "
+           "seeds before fix AA)";
     EXPECT_LE(nomp, 3)
         << "NOT ENOUGH MP refusals after the roll (measured 0 pooled: a struck bot holds a "
            "slot it cannot pay, fix AB; 19 on the three seeds before it, 61 before fix W)";

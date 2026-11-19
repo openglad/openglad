@@ -215,7 +215,7 @@ TEST_F(GameplayFixesBots, mage_energy_wave_wants_a_faced_foe_within_110)
 // ENERGY WAVE fires the fireball the wave rides on (living-03-mage.lua,
 // energy_wave): with a wall under the fireball's pad fire() makes nothing
 // and the cast refuses COULD NOT FIRE. With the setting on the gate asks
-// the pad (G.pad_clear) and says no. The mage faces RIGHT from (192, 192):
+// the pad (G.pad_clear_of_weapons since fix BH) and says no. The mage faces RIGHT from (192, 192):
 // the pad starts at x 209, inside grid cell (13, 12); the tower stands
 // 40 px east, past that cell, faced and within 110.
 //
@@ -238,6 +238,28 @@ TEST_F(GameplayFixesBots, mage_energy_wave_refuses_a_pad_on_a_wall)
     EXPECT_FALSE(gate(mage, 4, 1)) << "a wall under the pad: COULD NOT FIRE";
     tower->setxy(248, 300);  // the classic rule casts with nobody within 110
     EXPECT_TRUE(gate(mage, 4, 0)) << "the classic answer: nobody within 110, the wall ignored";
+}
+
+// Gameplay Fixes BH (#590): ENERGY WAVE's rule asks the fireball's pad with
+// the strict question (G.pad_clear_of_weapons). An enemy door, an enemy
+// grown tree or an enemy arrow in flight on the pad passes the plain
+// question, and fire() meets it on 4 rolls in 10: the cast then refused COULD
+// NOT FIRE after the rule's yes. With the setting on the rule says no to
+// each, a door of the mage's own team passes, the classic rule (here one foe
+// within 110 px: no) is unchanged, and nothing draws (expect_a_strict_pad).
+// The staging is mage_energy_wave_refuses_a_pad_on_a_wall's on open grass:
+// the level-10 mage faces RIGHT from (192, 192), the tower 40 px east, faced
+// and within 110.
+// RED (the rule broken: living-03-mage.lua:120 asking `G.pad_clear(self)`):
+// the three enemy arms read true with the setting on.
+TEST_F(GameplayFixesBots, mage_energy_wave_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot)
+{
+    living* mage = settle_body(body(add(FAMILY_MAGE, 1, 192, 192, 10, 600.0f), 16, 16));
+    living* tower = settle_body(body(add(FAMILY_TOWER1, 2, 248, 186, 1), 25, 29));  // a 40 px gap east
+    ASSERT_TRUE(mage && tower);
+    mage->set_lastx(1.0f);
+    mage->set_lasty(0.0f);
+    expect_a_strict_pad(mage, 4);
 }
 
 // FREEZE TIME: with the setting on it waits for the allies' fight: at least

@@ -191,11 +191,11 @@ local function fixed(self)
     return G.pad_clear_of_weapons(self)
   end
   -- rule: Gameplay Fixes bot EXPLODING BOLT also wants no archer (check_self) and no ally inside
-  --   the blast around its foe, and the FIRE ARROW's own launch pad clear.
-  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
-  -- tests: GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
+  --   the blast around its foe, and the FIRE ARROW's own launch pad clear by the strict question (fix BH: no enemy door, grown tree or shot in flight on it).
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it, GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot
   -- tests: parity:archer_bot_bolt_at_blows_fixes_scen99
-  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)
+  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear_of_weapons(self, WEAPON_FIRE_ARROW)
 end
 
 og.family("living", {

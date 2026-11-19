@@ -23,6 +23,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
@@ -32,6 +33,7 @@
 #include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/packs.h>
@@ -165,6 +167,88 @@ protected:
             w->setxy(x, y);
         }
         return w;
+    }
+
+    // Gameplay Fixes BH: a cast's rule asks its weapon's pad with the strict
+    // question. The bodies a quiet weapon probe passes (an enemy door, an
+    // enemy grown tree, an enemy arrow in flight) and a door of the caster's
+    // own team are put on the pad of the weapon the cast fires (`weapon` its
+    // family, -1 the caster's current one), one at a time, in their sprites'
+    // boxes (16, 12, 7 and 16 px a side). Each covers the pad and reaches away
+    // from the caster, which faces one of the four axes, so it never meets
+    // the caster's box; it is taken away (dead) before the next. The caller
+    // stages a scene in which every other term of `slot`'s rule says yes.
+    // With the setting on the rule says yes on the clear pad, no with each
+    // enemy body and yes with the own door; with it off it gives the classic
+    // answer whatever stands there. The stream is pinned to a state whose
+    // clash roll would lose, and no question moves it.
+    void expect_a_strict_pad(living* caster, int slot, int weapon = -1)
+    {
+        ASSERT_NE(nullptr, caster);
+        const int fired = weapon >= 0 ? weapon
+                                      : static_cast<int>(static_cast<std::uint8_t>(caster->current_weapon()));
+        walker probe(walker::WeaponProfileProbeTag{});
+        const PixieData* data = world().configure_existing_entity(probe, Order::Weapon, fired);
+        ASSERT_NE(nullptr, data) << "the staging: the loader makes the cast's weapon";
+        probe.set_data(*data);
+        short px = 0, py = 0;
+        caster->weapon_pad(probe, px, py);
+        const short pw = probe.sizex();
+        const short ph = probe.sizey();
+        const bool right = px >= caster->xpos() + caster->sizex();
+        const bool left = px + pw <= caster->xpos();
+        const bool down = py >= caster->ypos() + caster->sizey();
+        const bool up = py + ph <= caster->ypos();
+        ASSERT_EQ(1, int{right} + int{left} + int{down} + int{up})
+            << "the staging: the caster faces one of the four axes";
+
+        const std::uint32_t pinned = state_where_draws_are({10}, {0});
+        world().rng_.state_ = pinned;
+        const bool classic = gate(caster, slot, 0);
+        EXPECT_TRUE(gate(caster, slot, 1)) << "the control: the pad clear, every other term yes";
+
+        const unsigned char own = caster->team_num();
+        const auto enemy = static_cast<unsigned char>(own == 2 ? 3 : 2);
+        struct Arm
+        {
+            const char* what;
+            int family;
+            unsigned char team;
+            short side;
+            bool passes;
+        };
+        for (const Arm arm : {Arm{"an enemy door", FAMILY_DOOR, enemy, 16, false},
+                              Arm{"an enemy grown tree", FAMILY_TREE, enemy, 12, false},
+                              Arm{"an enemy arrow in flight", FAMILY_ARROW, enemy, 7, false},
+                              Arm{"a door of the caster's own team", FAMILY_DOOR, own, 16, true}}) {
+            SCOPED_TRACE(arm.what);
+            walker* b = world().add_weap_ob(Order::Weapon, arm.family);
+            ASSERT_NE(nullptr, b);
+            b->set_team_num(arm.team);
+            const short s = arm.side;
+            const short across_x = static_cast<short>(px + (pw - s) / 2);
+            const short across_y = static_cast<short>(py + (ph - s) / 2);
+            const short bx = right ? px : left ? static_cast<short>(px + pw - s) : across_x;
+            const short by = down ? py : up ? static_cast<short>(py + ph - s) : across_y;
+            body(b, s, s)->setxy(bx, by);
+            settle_body(b);
+            ASSERT_EQ(1, collide(bx, by, s, s, px, py, pw, ph)) << "the staging: the body covers the pad";
+            ASSERT_EQ(0, collide(bx, by, s, s, caster->xpos(), caster->ypos(), caster->sizex(),
+                                 caster->sizey()))
+                << "the staging: the body is clear of the caster";
+            ASSERT_EQ(walker::PadAnswer::Clear, caster->fire_pad_answer(weapon))
+                << "precondition: the quiet question passes it";
+            ASSERT_EQ(arm.passes ? walker::PadAnswer::Clear : walker::PadAnswer::Weapon,
+                      caster->fire_pad_answer(weapon, true))
+                << "precondition: the strict question";
+            EXPECT_EQ(classic, gate(caster, slot, 0)) << "the setting off: the classic answer";
+            EXPECT_EQ(arm.passes, gate(caster, slot, 1))
+                << (arm.passes ? "the setting on: the weapon passes its own side"
+                               : "the setting on: fire() meets it on 4 rolls in 10, so the rule says no");
+            b->set_dead(1);
+        }
+        EXPECT_TRUE(gate(caster, slot, 1)) << "the pad clear again";
+        EXPECT_EQ(pinned, world().rng_.state_) << "no question draws";
     }
 };
 
