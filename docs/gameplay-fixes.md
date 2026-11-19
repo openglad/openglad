@@ -1762,7 +1762,7 @@ again at `7c33f42b` (the same entry).
 
 Fix BF's arena, `tower_foe_behind_door_scen99` and `tower_foe_behind_door_fixes_scen99`: a hostile tower faces
 the idle player soldier straight below it, 71 px off, and a closed door of a third team stands between them, the
-soldier one pixel below the door. With the setting off the tower's line check passes at the door or at the soldier
+soldier right below the door. With the setting off the tower's line check passes at the door or at the soldier
 behind it, whatever it draws, and the tower shoots on tick 4: one shot by the end of the recording (tick 8). With
 the setting on the door refuses every check and the tower starts no shot; the soldier ends with all its hit points.
 The recording carries no door's hit points and no tower's magic, so the rows count the shots by the bow's sound.
