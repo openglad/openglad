@@ -11306,7 +11306,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_boulder_pad_body_fixes_scen9
 };
 inline constexpr Mutation kMut_barbarian_bot_boulder_pad_body_fixes_scen99 = {
     "packs/core/families/living-16-barbarian.lua", 166,
-    "if lc.is_busy(self) or not G.pad_clear(self) then",
+    "if lc.is_busy(self) or not G.pad_clear_of_weapons(self) then",
     "if lc.is_busy(self) then",
     "Drops the pad test, so the gate says yes to the touching tower and the throw's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 104 hp."
 };
@@ -11356,7 +11356,7 @@ inline constexpr FactPredicate kFacts_mage_bot_wave_pad_body_fixes_scen99[] = {
 };
 inline constexpr Mutation kMut_mage_bot_wave_pad_body_fixes_scen99 = {
     "packs/core/families/living-03-mage.lua", 120,
-    "return faced and G.pad_clear(self)",
+    "return faced and G.pad_clear_of_weapons(self)",
     "return faced",
     "Drops the pad test, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1."
 };
@@ -11407,7 +11407,7 @@ inline constexpr FactPredicate kFacts_druid_bot_tree_pad_body_fixes_scen99[] = {
 };
 inline constexpr Mutation kMut_druid_bot_tree_pad_body_fixes_scen99 = {
     "packs/core/families/living-13-druid.lua", 278,
-    "if f == nil or not G.pad_clear(self) then",
+    "if f == nil or not G.pad_clear_of_weapons(self) then",
     "if f == nil then",
     "Drops the pad test, so the gate says yes to the tower 6 px above and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
 };
