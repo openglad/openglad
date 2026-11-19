@@ -224,4 +224,39 @@ function M.rides(thing)
   return thing
 end
 
+-- Gameplay Fixes BG (#588): what the guard of a MAGIC SHIELD, a BOOMERANG
+-- or a hook blade passes by instead of destroying it as a shot. On both
+-- settings that is the solid scenery a pack declares (blocks_placement: a
+-- bone wall, a war banner, #472). With the setting on it is also a door and
+-- a grown tree: a guard destroys shots in flight, and a thing that stands
+-- is cut down by blows. Classic, the guard erases a door of 5,000 hit
+-- points or a tree at once, with no key and no blow, and pays their damage.
+-- A door or a tree is the order and the family both, because a golem's
+-- family number is a door's. Every other body the guard meets (a shot, a
+-- glow, a boulder, a blood stain) is destroyed as before. Draws nothing.
+local WEAPON_DOOR = assert(og.family_id("weapon", "core:door"))
+local WEAPON_TREE = assert(og.family_id("weapon", "core:tree"))
+
+function M.guard_passes_by(body)
+  -- rule: A guard (MAGIC SHIELD, BOOMERANG, hook blade) passes by the solid scenery a pack declares
+  --   (blocks_placement: a bone wall, a war banner) on both settings, and with Gameplay Fixes BG
+  --   also a door or a grown tree (weapon order and that family; a living golem is not a door);
+  --   it destroys every other body. Classic: a door and a grown tree are destroyed like shots.
+  -- tests: GameplayFixesLua.gf_guard_passes_by_scenery_and_with_the_setting_on_a_door_or_a_grown_tree
+  -- tests: SemShield.a_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
+  -- tests: KitCaptain.hook_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
+  -- tests: SemShield.a_guard_passes_a_foes_bone_wall_and_war_banner_by, KitCaptain.hook_guard_passes_scenery_by
+  if body:blocks_placement() then
+    return true
+  end
+  if not M.on() then
+    return false
+  end
+  if body:order() ~= C.ORDER_WEAPON then
+    return false
+  end
+  local family = body:family()
+  return family == WEAPON_DOOR or family == WEAPON_TREE
+end
+
 return M

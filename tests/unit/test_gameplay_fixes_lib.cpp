@@ -27,6 +27,8 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
+#include <openglad/gameplay/families/weapon_family_descriptor.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -35,6 +37,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -412,5 +415,90 @@ TEST_F(GameplayFixesLua, gf_pad_blocked_by_terrain_is_the_grid_half_only_with_th
         << "the fire arrow's pad, the setting on";
     EXPECT_EQ(30, fire_arrow_answer(0, "og.family_id('weapon', 'core:fire_arrow')"))
         << "the fire arrow's pad, the classic game";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// gf.guard_passes_by (Gameplay Fixes BG, #588): the bodies the guard of a
+// MAGIC SHIELD, a BOOMERANG or a hook blade passes by. On both settings the
+// solid scenery a pack declares (blocks_placement: a bone wall, a war
+// banner); with the setting on also a door and a grown tree, each asked as
+// weapon order and its family: a living golem, whose family number is a
+// door's, is not a door. An arrow, a glow and a boulder are never passed
+// by. Each body is on the foe's team and carries a level of its own, a
+// power of two, and the script adds up the levels of the bodies the
+// question passes by: 16 + 32 = 48 on the classic game, 48 + 4 + 8 = 60
+// with the setting on. It draws nothing either way.
+TEST_F(GameplayFixesLua, gf_guard_passes_by_scenery_and_with_the_setting_on_a_door_or_a_grown_tree)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    self->set_team_num(0);
+    self->setxy(100, 100);
+
+    struct Body {
+        const char* what;
+        Order order;
+        int family;
+        short level;
+    };
+    const std::array<Body, 8> bodies = {{
+        {"an arrow", Order::Weapon, FAMILY_ARROW, 1},
+        {"a glow", Order::Weapon, FAMILY_GLOW, 2},
+        {"a door", Order::Weapon, FAMILY_DOOR, 4},
+        {"a grown tree", Order::Weapon, FAMILY_TREE, 8},
+        {"a bone wall", Order::Weapon,
+         og::families::resolve_family_string_id(Order::Weapon, "core:bone_wall"), 16},
+        {"a war banner", Order::Weapon,
+         og::families::resolve_family_string_id(Order::Weapon, "core:war_banner"), 32},
+        {"a boulder", Order::Weapon, FAMILY_BOULDER, 64},
+        {"a golem", Order::Living, FAMILY_GOLEM, 128},
+    }};
+    for (const Body& b : bodies) {
+        walker* body = b.order == Order::Weapon ? w.add_weap_ob(b.order, b.family)
+                                                : w.add_ob(b.order, b.family);
+        ASSERT_NE(nullptr, body) << b.what;
+        body->set_team_num(1);
+        body->setxy(120, 100);
+        body->stats()->set_level(b.level);
+        if (b.level >= 16 && b.level <= 32) {
+            const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(b.family);
+            ASSERT_NE(nullptr, wfd) << b.what;
+            ASSERT_TRUE(wfd->blocks_placement) << b.what << " is solid scenery";
+        }
+    }
+    ASSERT_EQ(FAMILY_DOOR, FAMILY_GOLEM) << "a golem's family number is a door's";
+
+    const std::string prelude = "local gf = og.use('core:gameplay_fixes')\n";
+    const std::string body =
+        "    local n = 0\n"
+        "    local weapons = og.find_foe_weapons_in_range('weap', 400, self)\n"
+        "    for i = 1, #weapons do\n"
+        "      if gf.guard_passes_by(weapons[i]) then\n"
+        "        n = n + weapons[i].level\n"
+        "      end\n"
+        "    end\n"
+        "    local foes = og.find_foes_in_range('ob', 400, self)\n"
+        "    for i = 1, #foes do\n"
+        "      if gf.guard_passes_by(foes[i]) then\n"
+        "        n = n + foes[i].level\n"
+        "      end\n"
+        "    end\n"
+        "    self.level = n";
+    const auto passed = [&](short fixes) {
+        w.gameplay_fixes = fixes;
+        w.rng_.state_ = 4242u;
+        self->stats()->set_level(1000);
+        const auto handled = run(prelude, body, self);
+        EXPECT_TRUE(handled.has_value()) << last_error();
+        EXPECT_EQ(4242u, w.rng_.state_) << "the question draws nothing, setting " << fixes;
+        return static_cast<int>(self->stats()->level());
+    };
+    EXPECT_EQ(16 + 32, passed(0))
+        << "the classic game: the bone wall and the war banner only";
+    EXPECT_EQ(16 + 32 + 4 + 8, passed(1))
+        << "the setting on: the door and the grown tree too, never the golem";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

@@ -2,7 +2,7 @@
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- The ORBIT_X/ORBIT_Y tables are pure constants (R6-clean: no sim state).
 
-local C = og.C
+local C, gf = og.C, og.use("gameplay_fixes")
 
 -- Ported from the former effect.cpp orbit_offset(drawcycle, &xd, &yd); this is the only copy now.
 -- 16-step circle of integer offsets (all exactly representable in float).
@@ -20,19 +20,19 @@ end
 
 -- The shield and the boomerang share this tail: foe shots inside the guard
 -- radius are destroyed, each costing the guard its damage in hitpoints (solid
--- scenery, a bone wall or war banner, is passed by), foes inside the body radius
--- are attacked, and the guard expires on hitpoints or lifetime. One local helper:
+-- scenery, a bone wall or war banner, is passed by, and with Gameplay Fixes BG a door or a grown tree too: gf.guard_passes_by),
+-- foes inside the body radius are attacked, and the guard expires on hitpoints or lifetime. One local helper:
 -- the two C++ bodies were identical from here down but for the weapon-scan range.
 local function guard_tail(self, weapon_range)
   local weapons = og.find_foe_weapons_in_range("weap", weapon_range, self)
   -- plumbing: iterates foe weapons in range; rule below
   for i = 1, #weapons do
     local weapon = weapons[i]
-    -- rule: A guard destroys each foe shot in its radius (shield: its size, boomerang: twice) for its damage in hp; solid scenery is passed by.
+    -- rule: A guard destroys each foe shot in its radius (shield: its size, boomerang: twice) for its damage in hp; what gf.guard_passes_by answers is passed by and costs nothing: solid scenery, and with Gameplay Fixes BG a door or a grown tree.
     -- tests: EffectMorePaths.effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe, parity:shield_projectile_absorb_scen99
     -- tests: EffectMorePaths.effect_boomerang_orbit_absorbs_hostile_weapon_and_strikes_foe, EffectAct.magic_shield_orbit_step_and_ageing
-    -- tests: SemShield.a_guard_passes_a_foes_bone_wall_and_war_banner_by
-    if not weapon:blocks_placement() then
+    -- tests: SemShield.a_guard_passes_a_foes_bone_wall_and_war_banner_by, SemShield.a_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
+    if not gf.guard_passes_by(weapon) then
       self.hp = og.fsub(self.hp, weapon:damage())  -- hp is a C++ float: per-op rounding.
       weapon.dead = 1
       weapon:death()
