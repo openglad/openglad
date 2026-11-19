@@ -114,7 +114,7 @@ usual pause.
 | BC | A melee-only bot (orc, ghost, small slime) in its ATTACK order | Once its foe is inside its weapon's reach, which is tens of pixels and not only touching, the order only turns the bot to face it: for the order's 30 to 54 acts it takes no step and starts no swing. Its blows are its bumps, a step of its own into a body between orders, and with fix BB one swing on the tick it re-plans. | A bot that already faces its foe on its own floor fights. When a foe's body stands on its weapon's pad it swings, one blow per weapon pause while its magic lasts (9 acts for the orc and the ghost, 14 for the small slime: the rate a player gets by holding the key into a foe). An orc pays 2 magic a swing; an orc out of magic still swings every 9 acts but lands nothing until its magic returns, as a player's orc does (#574). Otherwise it takes a step toward the foe, sliding along a wall or shoving past an ally that is in the way (#587). A bot that still has to turn only turns on that act, and a foe on another floor is only faced, as before. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts in which such a bot's order only faced its foe, counted while it stood within 30 px of it, not busy, with no swing started for 60 ticks, 27,692 to 2,257 (what remains are bots that had to turn that round); ticks it stands within 30 px of its foe on its floor, not busy, with no blow landed for 60 ticks, 98,023 to 40,599 (that count skips a bot while it is busy, and these bots now start nearly twice as many swings, 1.69 to 3.11 per 100 ticks near a foe, so the two sides of that count are not like for like; of what remains, 1 tick is a bot whose magic is under its weapon's cost); its damage per 100 ticks near a foe 21.66 to 45.39, its blows 0.98 to 2.20. On The Long Season the same counts read 20,390 to 6,129 ticks and 39.12 to 79.56 damage. A bot whose foe is in reach behind a wall pushes against the wall for as long as the foe stays in reach, up to the whole order, where with the setting off it stands facing its foe (#582): a wall refuses 6% of the steps the fix takes on Westlands, 21% on The Long Season and 49% on Imaginations. The crews pay for it: the levels where they fell were eased in their builders where lowering a group of fighters brought them back or nearer; five levels that fell were not eased and stay harder, two because no step brought them back and three because their orcs, ghosts and small slimes that fight before tick 600 are already at level 1 (see [Balance](#balance)). |
 | BD | The line check a tower or shooting bot asks before it fires | The check moves its test weapon 0, 1, 3, 6, 10 ... steps out from the pad, each spot cut to a whole pixel, while the shot flies one step an act. A foe between two tested spots is stepped over: a tower's arrow misses about two in five of the distances inside its reach, a druid's lightning about half, a golem's boulder, a fire elemental's meteor and a faerie's sprinkle a fifth to a quarter. The tower stands silent; a bot that can walk walks closer instead of shooting. The same loop can step over a one-tile wall and pass a shot that then hits the wall. | The check flies its test weapon the way the shot flies: the pad, then the shot's own step once for each step a fresh shot moves. It passes when the pad or a step meets a body the shot would strike and refuses at a wall, at the map's edge or when the flight runs out. What it still does not share with the shot: it draws its own sideways waver, so far shots are judged as often right as shots land, not shot for shot; it takes an arrow slit as open and the shot itself takes the slit's gamble, so an arrow can still break on a slit wall; it does not count the range a shot loses over trees and shrub, nor a rock or knife that drops a floor over open air; and it does not ask a family's own veto (a soldier with no knife left). The range, the drop and the veto are #572. It still passes on an enemy tree or shot in its line on the same roll the real shot makes there; an enemy door refuses it (Gameplay Fixes BF). A tower that shoots more runs out of magic sooner and then waits for it. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: checks refused, at a wall or as a miss, although a quiet flight of the same weapon lands on the foe, 8,092 for the levels' shooters and 8,846 for the crew, to 0 and 0 (The Long Season 6,628 and 10,860 to 0 and 0); on the one level with arrow slits whose checks were counted before these fixes as well as after, The Tryxian Chronicles' first level (six seeds of 2,400 ticks), 1,422 and 209 to 0 and 0. A tower's shots per 100 ticks near a foe, on the Imaginations level whose two towers see a foe: with the setting on, 7.3 before these fixes and 8.8 after; the setting off reads 8.7 there; that level's towers' checks refused for want of magic go from 6 to 425 with the setting on (135 with it off). On Gladiator 8, 9, 10 and 12, whose towers see a foe (twenty seeds, after these fixes), the towers fire 7.63 shots per 100 ticks near a foe with the setting off and 10.52 with it on (before Gameplay Fixes BF; 10.21 with it). What a check meets when it passes although its flight meets no fighter or tent: on Gladiator and The Tryxian Chronicles, with the setting on and before Gameplay Fixes BF, 98,695 of 104,342 such passes ended on an enemy door (a door has 5,000 hit points, so the shot is spent on it) and 5,582 on an enemy shot in flight; on the four generated campaigns 2,726 of 2,731 on a shot in flight; Westlands, The Long Season and the Tower place no door, and Imaginations does, but no counted check met one (see [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). The classic check's false passes were of another kind: 22,431 of its 118,220 on the classic campaigns ended on a fighter the shot could not reach. |
 | BE | A bot whose shot is refused while it looks away from its foe | It turns a notch toward the foe and its next act turns it straight back, because the turn never records where it is going; the search it queued starts an act late. | The turn is kept: the bot's next acts finish it, one notch an act, and then its search runs. A tower, which has no walk to carry its aim, faces the foe at once; the same turn serves fix BB's near branch, so a tower within 100 px of a foe it does not face now faces it on that act too. Measured on the Westlands levels, twenty seeds, 600 ticks, before these fixes and after them: acts spent turning back after a refused shot's turn 41,803 to 0; acts until a bot that did not face its foe faces it 2.80 to 1.12 for the melee-only bots, 2.68 to 1.13 for the levels' shooters and 2.51 to 1.12 for the crew. That mean counts only the bots that faced their foe within 12 acts of the turn: before, about one in eight had not (5,544 of 42,038), after about one in 170 (247 of 40,970). |
-| BF | A bot leaves a door alone | A door is a weapon-order body of 5,000 hit points that no foe search picks, and three rules written for an enemy thing reach it. A tower's or a shooting bot's line check passes on any body its test weapon meets, a door included: the test weapon meets an enemy door, as it meets every enemy weapon-order body, on the clash roll, and a door that stops it passes the check as a body does, so a bot whose foe stands behind a door shoots into the door and the shot is spent on it. A walker that walks into an enemy door swings at it, as at every body a bump attacks. And a blow makes whatever it lands on its owner's foe, a door included, after which the bot shoots at the door as at any foe until it takes another foe or the door falls. With the setting on before this fix, on Gladiator and The Tryxian Chronicles (twenty seeds of each level), 98,695 of the 104,342 checks that passed although no fighter or tent stood in the flight ended on an enemy door. | Three rules no longer make a bot attack a door: its line check is refused at a door, it starts no swing at a door it walks into, and a blow on a door names no foe. An enemy door on the shot's path refuses the line check, always, as a wall does: the test weapon meets the door without the clash roll and draws nothing for it, on the pad and on every step, and the check answers no. A bot (a walker no player drives) that walks into an enemy door starts no swing at it; the door stops its step as before. A blow that lands on a door, anyone's shot, blast or spell, does not make the door its owner's foe; the door still takes the blow. One exception, in the line check and the bump: a door that already is the bot's foe (a level script or a mod can name one) passes the check and is swung at when the bot walks into it; a blow on it names no foe either, and it stays the foe because nothing names another, so it is fought like any foe. A player's own fighter still swings at a door the player walks it into. A bot is a walker that carries no seat number: a walker with one is a player's fighter to the rule, so the measuring crews of the tests, which seat their first four fighters while nobody drives them, still swing at a door with those four (#593). A grown tree, an enemy shot in flight and every other body are as before: a tree and a shot pass the check on their clash roll, a bot that walks into a tree or a fighter swings at it, and a blow on either makes it the foe. The shot itself is unchanged: it still takes the clash roll at a door. What still strikes a door for a bot, each counted below: a special cast from a distance at a foe behind the door (no special's rule asks the path to its foe, #591), a CHARGE whose last step meets a door, a shot or a swing started at a foe that meets a door on its way, a pad that holds both the foe and a door, and a tent whose spawn pad lies on another side's door. What follows, and is left as it is: a bot that holds the door's key walks into the door and opens it, where it stood and shot at it before; a bot with no key whose foe stands behind the door walks toward its foe as at a wall's refusal and stays pressed against the door, as at a wall (#582), and does not look for another foe because of the door; and a door still loses hit points to a shot that strays into it, to a player's blows and to whoever fights a door that is its foe, and still dies at 0 and opens. With the setting off every walker's bump on an enemy door swings and every blow names its foe, as in the classic game. Measured with the setting on, on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks), on one game with the door rules switched off and on, before any door rule, with the line check's part alone and with all three parts and Gameplay Fixes BG and BH: checks that passed on an enemy door 117,386, 80,470 (every one on a door that already was the shooter's foe) and 0; a door made a bot's foe by the bot's own shot 9,238, 5,107 and 0 times; bots' swings at a door they walked into 20,616, 22,585 and 0 (7,341 and 6,488 of them at a door that already was the bot's foe); blows that landed on a door 38,922, 31,648 and 1,204; the doors' hit points lost 1,801,741, 1,405,275 and 46,309; doors gone by tick 600 178, 181 and 2 of 6,680 (erased by a guard 144, 161 and 0, broken under blows 26, 14 and 0, opened with a key 8, 6 and 2). Of the 1,204 blows left, 553 are the measuring crews' seated fighters' (#593) and 651 the bots': the archer's FIRE ARROWS, whose eight fire arrows fly every way at once, 381; other specials 114, of them 101 cast from a distance at a foe; a shot or a swing started at a foe that met a door on its way 140; a pad that held both the foe and a door 16; a CHARGE and a tent's spawn none. On The Tryxian Chronicles' first level played to tick 2,400 (six seeds) the doors lost 117,396, 124,911 and 832 hit points, and 38, 51 and 0 of its 180 doors were gone at the end. A bot with no key now stands at a door more: the ticks in which a locked door refused a step of one of the levels' bots on the classic campaigns went 101,179, 109,216 and 233,215, and of them the ticks in which the bot's live foe, not a door, stood farther off than the door 35,520, 42,638 and 210,419 (at the first two points that count leaves out a bot whose foe was the door itself); with every rule they and the crew's make 10,422 stays, of which 9,237 ended within 60 ticks, 593 within 600, 547 lasted to tick 600 and in 45 the bot died, and the 840 stays longer than 60 ticks span 182,542 of the 264,369 ticks that all the stays span, 69 in 100 (see [Balance](#balance) and [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). |
+| BF | A bot leaves a door alone | A door is a weapon-order body of 5,000 hit points that no foe search picks, and three rules written for an enemy thing reach it. A tower's or a shooting bot's line check passes on any body its test weapon meets, a door included: the test weapon meets an enemy door, as it meets every enemy weapon-order body, on the clash roll, and a door that stops it passes the check as a body does, so a bot whose foe stands behind a door shoots into the door and the shot is spent on it. A walker that walks into an enemy door swings at it, as at every body a bump attacks. And a blow makes whatever it lands on its owner's foe, a door included, after which the bot shoots at the door as at any foe until it takes another foe or the door falls. With the setting on before this fix, on Gladiator and The Tryxian Chronicles (twenty seeds of each level), 98,695 of the 104,342 checks that passed although no fighter or tent stood in the flight ended on an enemy door. | Three rules no longer make a bot attack a door: its line check is refused at a door, it starts no swing at a door it walks into, and a blow on a door names no foe. An enemy door on the shot's path refuses the line check, always, as a wall does: the test weapon meets the door without the clash roll and draws nothing for it, on the pad and on every step, and the check answers no. A bot (a walker no player drives) that walks into an enemy door starts no swing at it; the door stops its step as before. A blow that lands on a door, anyone's shot, blast or spell, does not make the door its owner's foe; the door still takes the blow. One exception, in the line check and the bump: a door that already is the bot's foe (a level script or a mod can name one) passes the check and is swung at when the bot walks into it; a blow on it names no foe either, and it stays the foe because nothing names another, so it is fought like any foe. A player's own fighter still swings at a door the player walks it into. A bot is a walker that carries no seat number: a walker with one is a player's fighter to the rule, so the measuring crews of the tests, which seat their first four fighters while nobody drives them, still swing at a door with those four (#593). A grown tree, an enemy shot in flight and every other body are as before: a tree and a shot pass the check on their clash roll, a bot that walks into a tree or a fighter swings at it, and a blow on either makes it the foe. The shot itself is unchanged: it still takes the clash roll at a door. What still strikes a door for a bot, each counted below: a special cast from a distance at a foe behind the door (no special's rule asks the path to its foe, #591), a CHARGE whose last step meets a door, a shot or a swing started at a foe that meets a door on its way, a pad that holds both the foe and a door, and a tent whose spawn pad lies on another side's door. What follows, and is left as it is: a bot that holds the door's key walks into the door and opens it, where it stood and shot at it before; a bot with no key whose foe stands behind the door walks toward its foe as at a wall's refusal and stays pressed against the door, as at a wall (#582), and does not look for another foe because of the door; and a door still loses hit points to a shot that strays into it, to a player's blows and to whoever fights a door that is its foe, and still dies at 0 and opens. With the setting off every walker's bump on an enemy door swings and every blow names its foe, as in the classic game. Measured with the setting on, on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks), on one game with the door rules switched off and on, before any door rule, with the line check's part alone and with all three parts and Gameplay Fixes BG and BH: checks that passed on an enemy door 117,386, 80,470 (every one on a door that already was the shooter's foe) and 0; a door made a bot's foe by the bot's own shot 9,238, 5,107 and 0 times; bots' swings at a door they walked into 20,616, 22,585 and 0 (7,341 and 6,488 of them at a door that already was the bot's foe); blows that landed on a door 38,922, 31,648 and 1,204; the doors' hit points lost 1,801,741, 1,405,275 and 46,309; doors gone by tick 600 178, 181 and 2 of 6,680 (erased by a guard 144, 161 and 0, broken under blows 26, 14 and 0, opened with a key 8, 6 and 2). Of the 1,204 blows left, 553 are the measuring crews' seated fighters' (#593) and 651 the bots': the archer's FIRE ARROWS, whose eight fire arrows fly every way at once, 381; other specials 114, of them 101 cast from a distance at a foe; a shot or a swing started at a foe that met a door on its way 140; a pad that held both the foe and a door 16; a CHARGE and a tent's spawn none. On The Tryxian Chronicles' first level played to tick 2,400 (six seeds) the doors lost 117,396, 124,911 and 832 hit points, and 38, 51 and 0 of its 180 doors were gone at the end. A bot with no key now stands at a door more: the ticks in which a locked door refused a step of one of the levels' bots on the classic campaigns went 101,179, 109,216 and 233,215, and of them the ticks in which the bot's live foe, not a door, stood farther off than the door 35,520, 42,638 and 210,419 (at the first two points that count leaves out a bot whose foe was the door itself, and both leave out the acts a bot spent finishing a swing or a shot at the door, so both rise more than the time bots stand at doors); with every rule they and the crew's make 10,422 stays, of which 9,237 ended within 60 ticks, 593 within 600, 547 lasted to tick 600 and in 45 the bot died, and the 840 stays longer than 60 ticks span 182,542 of the 264,369 ticks that all the stays span, 69 in 100 (see [Balance](#balance) and [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). |
 | BG | A guard passes a door or a grown tree by | The guard of a cleric's MAGIC SHIELD, a soldier's BOOMERANG and an orc captain's HOOK BLADE destroys every enemy weapon-order body inside its ring, each costing it that body's damage in hit points, and passes by only the solid scenery a pack declares, a bone wall or a war banner (#472). The rule is meant for shots in flight, but a door (5,000 hit points) and a grown tree are weapon-order bodies too, so a guard that passes an enemy door or tree erases it at once, with no key and no blow (#588). On Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on, with the line check's part of Gameplay Fixes BF) 161 of the 181 doors that were gone at tick 600 went that way. | The guard passes an enemy door and an enemy grown tree by, as it passes a bone wall or a war banner by: neither is destroyed and the guard pays nothing for it. A door then needs its key or blows, and a tree has to be cut down. Every other body the guard meets is destroyed as before: a shot in flight, a cleric's glow, a boulder, a blood stain, an enemy's circle of protection (#592). A door or a tree is weapon order and that family, because a golem's family number is a door's. The three guards ask one question for it, so the hook blade passes them by too. The grown tree was added in this work, for the maintainer to overrule (the alternative: the door alone, as he asked). Measured with the setting on, on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks), on one game before any door rule, with the line check's part of Gameplay Fixes BF alone and with every door rule: doors a guard erased 144, 161 and 0, grown trees a guard erased 20, 15 and 0, and on The Tryxian Chronicles' first level played to tick 2,400 doors a guard erased 33, 39 and 0; a guard erased no circle of protection in any measured battle, where no bot cast one and the only circles were the 260 placed on Tryxian 107 (see [Balance](#balance)). |
 | BH | A bot's cast wants its pad clear of a door, a grown tree and a shot in flight | No rule (fix Q). With the setting on before this fix the rules of the druid's GROW TREE and SUMMON FAERIE, the barbarian's HURL BOULDER and EXPLODING BOULDER, the mage's ENERGY WAVE and the archer's EXPLODING BOLT (fix AA) asked their weapon's pad the plain way: a wall, the map's edge, a foe's body or a tent on it said no, but an enemy door, an enemy grown tree or an enemy shot in flight passed, because a quiet weapon probe passes every enemy weapon-order body; `fire()` meets such a body on 4 rolls in 10, so the cast was then refused `COULD NOT FIRE` and the bot had paid its swing for nothing (#590). With Gameplay Fixes BG more doors stand, and on The Tryxian Chronicles' first level (six seeds of 2,400 ticks) the druid's GROW TREE met that refusal 11 times. | The five rules ask the strict question of fix AV, as the elf's volleys and BARRAGE do: an enemy door, grown tree or shot in flight on the pad is a no, the clash roll taken as lost and nothing drawn; a body of the caster's own side still passes. SUMMON FAERIE already said no to such a body through the faerie's room (fix AR: its faerie stands on the bolt's spot in a box of the bolt's size), so for it the strict question changes no answer in stock play. The rule asks the pad, the first step of the flight, not the path: a cast from a few steps back at a foe behind a door or a wall is still made (#591). A player's cast is not asked about. Measured with the setting on, on one game with this rule switched off and on: on that level and those seeds the refusals read 0 before any door rule, 0 with the line check's part of Gameplay Fixes BF alone, 11 with every door rule but this one and 0 with it; on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks) the druid's, barbarian's, mage's and archer's casts refused `COULD NOT FIRE` after their rule's yes read 47 without it and 0 with it, and the rule said no on 1,312 pads the plain question passed: the barbarian's throws 1,115 (an enemy shot in flight on the pad 1,111 times, a door 4), GROW TREE 149 (a shot 130, a door 19), SUMMON FAERIE 47 (the faerie's room said no to each of them too), ENERGY WAVE 1 and EXPLODING BOLT none. Westlands, The Long Season and the Tower place no door, no grown tree and no druid, but the rule holds a barbarian's throw while an enemy shot in flight is on its pad (on the forty seeds 1,451 times on Westlands, 1,123 on The Long Season and 86 on the Tower), so their runs change: none of their levels fell by the measure's three errors and none rose by two, and The Long Season 4 reads two errors under, 1.38 to 1.20; on Imaginations, which places doors, it alone moved the survivors: level 3 rose by two errors, 7.28 to 7.45 (see [Balance](#balance)). |
 
@@ -768,10 +768,9 @@ Fixes X to BH, in play:
   swing started at a foe 140, a pad that held both the foe and a door 16,
   a CHARGE and a tent none; the measuring crews' seated fighters landed
   553 more. The doors' hit points lost went 1,801,741, 1,405,275 and
-  46,309 (see
-  [Balance](#balance)). With the setting off the classic statements run in
-  the classic order, so no setting-off golden moves; the rows it moves
-  with the setting on are listed under [Parity](#parity).
+  46,309 (see [Balance](#balance)). With the setting off the classic
+  statements run in the classic order, so no setting-off golden moves; the
+  rows it moves with the setting on are listed under [Parity](#parity).
 - **BG.** The guard of a cleric's MAGIC SHIELD, a soldier's BOOMERANG and
   an orc captain's HOOK BLADE destroys every enemy weapon-order body
   inside its ring, each costing it that body's damage in hit points, and
@@ -793,11 +792,10 @@ Fixes X to BH, in play:
   Measured with the setting on, on Gladiator and The Tryxian Chronicles,
   doors a guard erased went 161 to 0 and grown trees 15 to 0 (144 and 20
   before any door rule); a guard still destroys an enemy's circle of
-  protection (#592), and erased none in the measured battles, where no
-  bot cast one. With the
-  setting off the classic guard destroys both, so no setting-off golden
-  moves; the rows that show it with the setting off and on are listed
-  under [Parity](#parity).
+  protection (#592), and erased none in the measured battles, where no bot
+  cast one. With the setting off the classic guard destroys both, so no
+  setting-off golden moves; the rows that show it with the setting off and
+  on are listed under [Parity](#parity).
 - **BH.** Six casts fire a weapon from the caster's pad, and their five
   bot rules (fix AA; the barbarian's two throws share one) asked that pad
   the plain way: the druid's GROW TREE and SUMMON FAERIE, the barbarian's
@@ -3685,12 +3683,11 @@ is eased by, and no level was added to the easing because of it.
 **The eased and kept levels on the finished game (2026-11-19).** The
 easing above stands on the numbers read after it, which are the ones the
 maintainer approved. The door rules came after it (Gameplay Fixes BF, a
-bot leaves a door alone; BG, a guard passes a door or a grown tree by;
-and BH, a bot's cast wants its pad clear of a door, a grown tree and a
-shot in flight; see "The door rules" below): BF and BG reach no level of
-Westlands or The Long Season, which place no door, no grown tree and no
-druid, but BH does, with the setting on, through the barbarians' throws.
-On the
+bot leaves a door alone; BG, a guard passes a door or a grown tree by; and
+BH, a bot's cast wants its pad clear of a door, a grown tree and a shot in
+flight; see "The door rules" below): BF and BG reach no level of Westlands
+or The Long Season, which place no door, no grown tree and no druid, but
+BH does, with the setting on, through the barbarians' throws. On the
 finished game the twelve levels that met the easing's three conditions
 read, with the setting on, on the forty seeds (the docs' twenty in
 brackets): Westlands 1 7.15 [7.20], The Forest Road 6.97 [6.85], The Last
@@ -3838,11 +3835,11 @@ switch each rule off. With every rule switched off it plays seed for seed
 as the game before any door rule (Gladiator and The Tryxian Chronicles
 read as after fixes BC, BD and BE, the "after" column of the table above;
 Imaginations as after the easing; level play's six lines as they read
-then); with the line check's part of BF alone, as
-the game first measured on 2026-11-19; and with every rule but BH, as the
-game read with BF and BG before BH was added (level play's 11 refusals,
-below). The numbers come in threes, in this order: before any door rule,
-with the line check's part alone, and with every rule.
+then); with the line check's part of BF alone, as the game first measured
+on 2026-11-19; and with every rule but BH, as the game read with BF and BG
+before BH was added (level play's 11 refusals, below). The numbers come in
+threes, in this order: before any door rule, with the line check's part
+alone, and with every rule.
 
 With the calibration suites. With the setting off every row of every suite
 reads as before, seed for seed, survivors and damage taken: Westlands, The
@@ -3863,17 +3860,16 @@ and none rose by two errors. Per run of the campaign Westlands reads 95.90
 survivors against 96.03 after the easing (m -0.12, se 0.41), The Long
 Season 108.55 against 109.15 (-0.60, 0.35) and the Tower 10.38 against
 10.43 (-0.05, 0.08); The Long Season 4 reads 1.20 against 1.38 (-0.17,
-0.09), two errors under, less than the measure can prove, and the
-largest fall there, The Long Season 5, reads 5.72 against 6.15 (-0.42,
-0.22), under two errors. The twelve
-levels the easing judged are given above as they read on the finished
-game; nothing is eased again. Imaginations places doors, but in its
-counted ticks no check met one, no blow landed on one and no door went, at
-any of the three points, so BH alone moves its survivors (an enemy shot in
-flight on the pad held a barbarian's throw 84 times on the twenty counted
-seeds, 74 of them the crew's barbarian's): level 3 reads 7.45 against 7.28
-(+0.17, 0.09), two errors above, and levels 1 and 2 read 6.00 and 8.00
-against 5.97 and 8.00.
+0.09), two errors under, less than the measure can prove, and the largest
+fall there, The Long Season 5, reads 5.72 against 6.15 (-0.42, 0.22),
+under two errors. The twelve levels the easing judged are given above as
+they read on the finished game; nothing is eased again. Imaginations
+places doors, but in its counted ticks no check met one, no blow landed on
+one and no door went, at any of the three points, so BH alone moves its
+survivors (an enemy shot in flight on the pad held a barbarian's throw 84
+times on the twenty counted seeds, 74 of them the crew's barbarian's):
+level 3 reads 7.45 against 7.28 (+0.17, 0.09), two errors above, and
+levels 1 and 2 read 6.00 and 8.00 against 5.97 and 8.00.
 
 Level play (The Tryxian Chronicles' first level, six seeds of 2,400
 ticks): casters with two or more specials 211, 222 and 232 pooled (the
@@ -3899,26 +3895,31 @@ seeds, per run of the campaign: Gladiator reads 117.50, 116.40 and 116.65
 survivors (with every rule against before any door rule m -0.85, se 2.12),
 The Tryxian Chronicles 38.90, 39.20 and 38.65 (-0.25, 0.66). On twenty
 seeds two errors is the most the measure can say: no level fell at two
-errors against any point, and five rose by two errors against one of them;
-nothing there is eased. The largest fall is Gladiator 36's, 3.55 to 2.00
-against both earlier points (m -1.55, se 0.83), under two errors. In the
-table the crew's survivors per battle at four points, and what changed in
-the level (a bot-tick is one tick of one bot):
+errors against any point, and five rose by two errors against at least one
+of them; nothing there is eased. The largest fall is Gladiator 36's, 3.55
+to 2.00 against both earlier points (m -1.55, se 0.83), under two errors.
+None of its 60 doors goes at any point; with every rule its bots no longer
+wear them down (3,517 hit points lost at each earlier point, none now),
+and a locked door refused a step of one of its bots on 10,675 bot-ticks (a
+bot-tick is one tick of one bot) against 3,584, none of them the crew's.
+In the table the crew's survivors per battle at four points, and what
+changed in the level:
 
 | level | before any door rule | the line check's part alone | every rule but BH | every rule | rose by two errors against | what changed |
 |---|---|---|---|---|---|---|
 | Gladiator 10 | 6.20 | 6.65 | 6.65 | 6.70 | before any door rule, +0.50 (0.24) | with the line check's part already; none of its 140 doors goes, and they lose 1,260, 456 and 82 hit points |
 | Gladiator 37 | 4.40 | 3.85 | 5.65 | 5.60 | the line check's part alone, +1.75 (0.66) | its 180 doors all stand at tick 600, where a guard erased 82 and 94 of them; a locked door refused a step of a bot, the crew's included, on 72,047 bot-ticks against 22,393, the bot's foe beyond the door on 71,965 against 8,276; and 297 of its 500 hostiles are alive at the end against 149 |
 | Gladiator 41 | 2.25 | 1.25 | 1.90 | 2.10 | the line check's part alone, +0.85 (0.36) | back to before any door rule (-0.15, 0.54); none of its 300 doors goes at any point; a locked door refused a step of a bot on 3,573 bot-ticks against 1,309, the bot's foe beyond the door on 3,300 against 714, the crew's 2,212 and 710 of them |
-| Gladiator 44 | 4.05 | 4.05 | 4.05 | 5.00 | every rule but BH, +0.95 (0.46) | BH alone (the level has no door): an enemy shot in flight on the pad held 117 casts, the crew's barbarian's throw 103 times, the level's druids' GROW TREE 13 times and SUMMON FAERIE once, and 74 of its 700 hostiles are alive at the end against 129 |
+| Gladiator 44 | 4.05 | 4.05 | 4.05 | 5.00 | each of the three earlier points, +0.95 (0.46) | BH alone (the level has no door): an enemy shot in flight on the pad held 117 casts, the crew's barbarian's throw 103 times, the level's druids' GROW TREE 13 times and SUMMON FAERIE once, and 74 of its 700 hostiles are alive at the end against 129 |
 | Gladiator 45 | 5.75 | 6.15 | 5.60 | 5.85 | every rule but BH, +0.25 (0.12) | BH: an enemy shot in flight on the pad held the crew's barbarian's throw 14 times |
 
 What the rules do at doors was counted in the same measuring build, the
 setting on: on Gladiator and The Tryxian Chronicles (twenty seeds of each
 level, 600 ticks; the numbers below are theirs unless said), on level
 play, and on the four shipped Onslaught courts, each played once from one
-seed by the mode's own bots for up to 3,600 ticks (the Onslaught bot game
-of the tests plays a court with no door).
+seed by the mode's own bots for up to 3,600 ticks (the four ran 9,647,
+9,330 and 10,558 ticks in all; the Onslaught bot game of the tests plays a
+court with no door).
 
 - Checks that passed on an enemy door: 117,386, 80,470 and 0 (on a door
   that was not the shooter's foe 50,009, 0 and 0); level play 7,981,
@@ -3932,33 +3933,34 @@ of the tests plays a court with no door).
   the bot's foe 492,467, 464,159 and 0, so the exception for a door that
   is the foe is no longer reached in stock play. Swings and shots started
   with a door as the bot's foe: 36,240, 28,809 and 0.
-- A bot's swing at a door it walked into: 20,616, 22,585 and 0, of them
-  at a door that already was its foe 7,341, 6,488 and 0 (level play 667,
-  700 and 0; the Onslaught courts 1,136, 911 and 0). The measuring crews
-  seat their first four fighters while nobody drives them, and a walker
-  with a seat number is a player's fighter to the rule (#593): those four
-  swung at a door they walked into 149, 311 and 580 times, the door their
-  foe or not.
+- A bot's swing at a door it walked into: 20,616, 22,585 and 0, of them at
+  a door that already was its foe 7,341, 6,488 and 0 (level play 667, 700
+  and 0; the Onslaught courts 1,136, 911 and 0). The measuring crews seat
+  their first four fighters while nobody drives them, and a walker with a
+  seat number is a player's fighter to the rule (#593): those four swung
+  at a door they walked into 149, 311 and 580 times, the door their foe or
+  not.
 - Blows that landed on a door: the bots' from beside it 18,610, 16,834 and
   152, and from a distance 19,754, 14,302 and 499; the seated fighters'
   558, 512 and 553. The doors' hit points lost: 1,801,741, 1,405,275 and
   46,309, of them the seated fighters' 12,223, 12,991 and 14,848 (level
   play 117,396, 124,911 and 832; the Onslaught courts 13,234, 10,187 and
-  163).
+  163); the blows of shots whose thrower had died, 8, 2 and 2, with 353,
+  120 and 65 hit points, are in neither count.
 - What still strikes a door for a bot with every rule, by cause (651
   blows): the archer's FIRE ARROWS, a special whose eight fire arrows fly
   every way at once, 381; other specials 114, of them 101 cast from a
   distance at a foe (the archers' BARRAGE 82 and the elves' rocks 19; no
-  special's rule asks the path to its foe, #591), 12 that fly every way
-  at once (the fire elementals' STARBURST 11 and a faerie's GLIMMER 1) and
-  1 a fire elemental's own pad; a shot or a swing
-  started at a foe that met a door on its way 140, a soldier's knife
-  coming back to him among them; a pad that held both the foe and a door
-  16; a CHARGE whose last step met a door none (2 before any door rule); a
-  tent's spawn none at any point; and 2 more came from a knife and a rock
-  whose thrower had died. Blows on a door that was the bot's foe: 18,204,
-  17,186 and 0. Level play: 16 blows (a special 3, strays 13); the
-  Onslaught courts 10 (a shared pad 3, strays 7).
+  special's rule asks the path to its foe, #591), 12 that fly every way at
+  once (the fire elementals' STARBURST 11 and a faerie's GLIMMER 1) and 1
+  a fire elemental's own pad; a shot or a swing started at a foe that met
+  a door on its way 140, a soldier's knife coming back to him among them;
+  a pad that held both the foe and a door 16; a CHARGE whose last step met
+  a door none (2 before any door rule); a tent's spawn none at any point;
+  and 2 more came from a knife and a rock whose thrower had died. Blows on
+  a door that was the bot's foe: 18,204, 17,186 and 0. Level play: 16
+  blows (a special 3, strays 13); the Onslaught courts 10 (a shared pad 3,
+  strays 7).
 - Every door that went, with its cause: of the 6,680 that stood at the
   start of the classic battles (each level's doors counted once for each
   of its battles), 178, 181 and 2 were gone at tick 600: erased by a guard
@@ -3969,9 +3971,9 @@ of the tests plays a court with no door).
   them went, erased by a guard 20, 15 and 0 and cut down 22, 19 and 25.
   Circles of protection: 260 stood at the start (Tryxian 107's thirteen in
   each of its twenty battles), no bot cast one in any measured battle, 13
-  went at every point, each with its hit
-  points spent, and an enemy guard erased none at any point (#592: a guard
-  still erases one; nothing is built for it).
+  went at every point, each with its hit points spent, and an enemy guard
+  erased none at any point (#592: a guard still erases one; nothing is
+  built for it).
 - A bot with no key at a door it cannot open (#582): the ticks in which a
   locked door refused a step of a bot, whatever its foe, went 101,179,
   109,216 and 233,215 for the levels' bots and 800, 1,633 and 3,632 for
@@ -3982,27 +3984,33 @@ of the tests plays a court with no door).
   levels' bots and 477, 939 and 3,344 for the crew (level play 1,129,
   1,468 and 23,961; the Onslaught courts 780, 785 and 6,832). At the first
   two points this second count leaves out a bot whose foe was the door
-  itself, and a door
-  was then a bot's foe on 492,467 and 464,159 bot-ticks (above), so only
-  the first count reads the same way at every point: with every rule it
-  reads 2.3 times what it read before any door rule, the second 5.9
-  times. With every rule, the crew's included, the archers have 85,330 of
-  the second count, the soldiers 40,295, the elves 24,834, the druids
-  24,127, the skeletons 16,895 and the small slimes 11,486, most on
+  itself, and a door was then a bot's foe on 492,467 and 464,159 bot-ticks
+  (above). The first count reads low at those points too: a bot that swung
+  at the door it walked into (20,616 and 22,585 swings, above), or that
+  stood beside a door that was its foe and swung or shot at it, spent the
+  acts that finish each swing beside the door and tried no step in them,
+  because a walker finishes its swing before it does anything else; with
+  every rule no bot starts a swing or a shot at a door. So the first
+  count's rise, 2.3 times what it read before any door rule, and the
+  second's, 5.9 times, are both more than the rise in the time bots stand
+  at doors, which was not measured; the stays below are made of the second
+  count's ticks. With every rule, the crew's included, the archers have
+  85,330 of the second count, the soldiers 40,295, the elves 24,834, the
+  druids 24,127, the skeletons 16,895 and the small slimes 11,486, most on
   Gladiator 37 (71,965), 22 (33,661) and 11 (20,766) and Tryxian 109
-  (18,597). Counted as stays (from a bot's
-  first such tick to its last, with no gap of more than 20 ticks), the
-  crew's included: 5,000, 5,590 and 10,422; with every rule 9,237 of them
-  ended within 60 ticks, 593 within 600, 547 lasted to tick 600 and in 45
-  the bot died there. By count most stays are short, by time they are
-  not: the 840 stays longer than 60 ticks, 8 in 100, span 182,542 of the
-  264,369 ticks that all the stays span, 69 in 100 (before any door rule
-  172 of 5,000 stays and 19,086 of 56,816 ticks, 34 in 100). Of the 547
-  still there at tick 600, 303 had lasted 60 ticks or less and 244 longer,
-  385 ticks on average (before any door rule 9 of 137 had lasted longer).
-  On level play 2,843 stays: 2,756 ended within 60 ticks, 61 within 600,
-  15 lasted to tick 2,400 and in 11 the bot died; the 62 longer than 60
-  ticks span 7,876 of the 33,907 ticks the stays span.
+  (18,597). Counted as stays (from a bot's first such tick to its last,
+  with no gap of more than 20 ticks), the crew's included: 5,000, 5,590
+  and 10,422; with every rule 9,237 of them ended within 60 ticks, 593
+  within 600, 547 lasted to tick 600 and in 45 the bot died there. By
+  count most stays are short, by time they are not: the 840 stays longer
+  than 60 ticks, 8 in 100, span 182,542 of the 264,369 ticks that all the
+  stays span, 69 in 100 (before any door rule 172 of 5,000 stays and
+  19,086 of 56,816 ticks, 34 in 100). Of the 547 still there at tick 600,
+  303 had lasted 60 ticks or less and 244 longer, 385 ticks on average
+  (before any door rule 9 of 137 had lasted longer). On level play 2,843
+  stays: 2,756 ended within 60 ticks, 61 within 600, 15 lasted to tick
+  2,400 and in 11 the bot died; the 62 longer than 60 ticks span 7,876 of
+  the 33,907 ticks the stays span.
 - The casts: the druid's, barbarian's, mage's and archer's casts refused
   `COULD NOT FIRE` after their rule's yes 44, 41 and 0, and 47 with every
   rule but BH. With every rule BH said no on a pad the plain question
@@ -4023,18 +4031,17 @@ bot's check the bot moved on 15,331, turned on 861 and stood on 13,652;
 blows on fighters per 100 ticks near a foe hardly moved for those shooters
 (the archers 3.10 to 3.09, the elves 4.96 to 5.00, the skeletons 5.17 to
 5.15, the soldiers 4.42 to 4.46; with every rule they read 3.21, 5.45,
-5.31 and 4.61, but at the first two points a door could be a bot's foe,
-so their ticks near a foe hold ticks near a door); and Imaginations'
+5.31 and 4.61, but at the first two points a door could be a bot's foe, so
+their ticks near a foe hold ticks near a door); and Imaginations'
 survivors read the same on every seed, the crew's damage taken on The
-Castle of Gold moving on two of the forty seeds, 11 and 106: on the
-twenty counted seeds, seed 11 among them, no check met a door, so what
-moved them is the clash roll the rule no longer draws for a test weapon
-near a door (that roll is drawn for every enemy weapon-order body in the
-32-pixel map cells the test weapon's box covers, before their boxes are
-compared), which moves the random stream; and on twenty seeds 19 classic
-levels changed, Gladiator 41 falling at two errors (2.25 to 1.25) and
-Gladiator 10 (6.20 to 6.65) and Tryxian 103 (7.05 to 7.45) rising by two
-errors.
+Castle of Gold moving on two of the forty seeds, 11 and 106: on the twenty
+counted seeds, seed 11 among them, no check met a door, so what moved them
+is the clash roll the rule no longer draws for a test weapon near a door
+(that roll is drawn for every enemy weapon-order body in the 32-pixel map
+cells the test weapon's box covers, before their boxes are compared),
+which moves the random stream; and on twenty seeds 19 classic levels
+changed, Gladiator 41 falling at two errors (2.25 to 1.25) and Gladiator
+10 (6.20 to 6.65) and Tryxian 103 (7.05 to 7.45) rising by two errors.
 
 What the three rules do not do, with their numbers: a bot whose foe is
 behind a door it cannot open walks into the door and is stopped there, as
@@ -4819,9 +4826,9 @@ and guards erase them on 2026-11-19.
      wall (#582; the alternative, a rule that sends it elsewhere, is not
      built). Found while building, and what was done, each with its
      alternative: once a guard passed doors by, the level-play test went
-     red, because the doors that now stood met five casts' plain pad
+     red, because the doors that now stood met five rules' plain pad
      question (11 refusals of GROW TREE against its cap of 3), and the
-     five casts were given the strict pad question, Gameplay Fixes BH
+     five rules were given the strict pad question, Gameplay Fixes BH
      (#590; the alternatives: the door half of BG dropped, against his
      words, or the cap raised, against the test's own rule); the exception
      for a door that already is the foe was dropped from the blow's part
@@ -4840,18 +4847,20 @@ and guards erase them on 2026-11-19.
      31,648 and 1,204, of the last 553 by the seated fighters and of the
      bots' 651 the archer's FIRE ARROWS 381, other specials 114 (101 of
      them cast from a distance at a foe), shots and swings started at a
-     foe that met a door 140
-     and a pad holding the foe and a door 16 (a CHARGE and a tent none);
-     the doors' hit points lost 1,801,741, 1,405,275 and 46,309; and doors
-     gone by tick 600 178, 181 and 2 of 6,680, the last two opened with a
-     key and none erased by a guard (144 and 161 before). A bot with no
-     key now stands pressed at a door more: a locked door refused a step
-     of one of the levels' bots on 233,215 bot-ticks (one tick of one bot)
-     against 101,179 before any door rule, and with the bot's foe beyond
-     the door on 210,419 against 35,520, a count that before the rules
-     left out a bot whose foe was the door; nearly nine stays in ten end
-     within 60 ticks, but the stays longer than that span 69 ticks in 100
-     of the time bots stay there (34 before any door rule).
+     foe that met a door 140 and a pad holding the foe and a door 16 (a
+     CHARGE and a tent none); the doors' hit points lost 1,801,741,
+     1,405,275 and 46,309; and doors gone by tick 600 178, 181 and 2 of
+     6,680, the last two opened with a key and none erased by a guard (144
+     and 161 before). A bot with no key now stands pressed at a door more:
+     a locked door refused a step of one of the levels' bots on 233,215
+     bot-ticks (one tick of one bot) against 101,179 before any door rule,
+     and with the bot's foe beyond the door on 210,419 against 35,520, a
+     count that before the rules left out a bot whose foe was the door;
+     before the rules both counts also left out the acts a bot spent
+     finishing a swing or a shot at the door, so both rise more than the
+     time bots stand at doors; nearly nine stays in ten end within 60
+     ticks, but the stays longer than that span 69 ticks in 100 of the
+     time bots stay there (34 before any door rule).
    - When a level counts as fallen or back: decided in this work, and told
      to the maintainer. The ruling's "twenty-seed average" is read as the
      average over forty seeds, the twenty these docs use and 101 to 120,

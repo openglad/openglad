@@ -209,7 +209,8 @@ enemy shot in flight is on its pad. The stand-in crew of eight at crew
 level 1, survivors at tick 600 on forty seeds with the setting on:
 levels 1, 2 and 3 read 6.00, 8.00 and 7.45, against 5.97, 8.00 and 7.28
 after the ATTACK order; level 3 rose by two errors, and nothing is
-eased. The other two door rules (Gameplay Fixes BF and BG) move no
+eased. The other two door rules (Gameplay Fixes BF, a bot leaves a door
+alone, and BG, a guard passes a door or a grown tree by) move no
 survivor here: in the counted ticks no check meets a door and no door
 goes. See `docs/gameplay-fixes.md`, Balance.)
 
