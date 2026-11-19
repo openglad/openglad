@@ -423,11 +423,12 @@ TEST_F(GameplayFixesLua, gf_pad_blocked_by_terrain_is_the_grid_half_only_with_th
 // solid scenery a pack declares (blocks_placement: a bone wall, a war
 // banner); with the setting on also a door and a grown tree, each asked as
 // weapon order and its family: a living golem, whose family number is a
-// door's, is not a door. An arrow, a glow and a boulder are never passed
-// by. Each body is on the foe's team and carries a level of its own, a
-// power of two, and the script adds up the levels of the bodies the
-// question passes by: 16 + 32 = 48 on the classic game, 48 + 4 + 8 = 60
-// with the setting on. It draws nothing either way.
+// door's, is not a door. An arrow, a glow, a boulder, a druid's circle of
+// protection (#592) and a blood stain are never passed by: the rule is the
+// door's and the tree's alone. Each body is on the foe's team and carries
+// a level of its own, a power of two, and the script adds up the levels of
+// the bodies the question passes by: 16 + 32 = 48 on the classic game,
+// 48 + 4 + 8 = 60 with the setting on. It draws nothing either way.
 TEST_F(GameplayFixesLua, gf_guard_passes_by_scenery_and_with_the_setting_on_a_door_or_a_grown_tree)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -444,7 +445,7 @@ TEST_F(GameplayFixesLua, gf_guard_passes_by_scenery_and_with_the_setting_on_a_do
         int family;
         short level;
     };
-    const std::array<Body, 8> bodies = {{
+    const std::array<Body, 10> bodies = {{
         {"an arrow", Order::Weapon, FAMILY_ARROW, 1},
         {"a glow", Order::Weapon, FAMILY_GLOW, 2},
         {"a door", Order::Weapon, FAMILY_DOOR, 4},
@@ -455,6 +456,8 @@ TEST_F(GameplayFixesLua, gf_guard_passes_by_scenery_and_with_the_setting_on_a_do
          og::families::resolve_family_string_id(Order::Weapon, "core:war_banner"), 32},
         {"a boulder", Order::Weapon, FAMILY_BOULDER, 64},
         {"a golem", Order::Living, FAMILY_GOLEM, 128},
+        {"a circle of protection", Order::Weapon, FAMILY_CIRCLE_PROTECTION, 256},
+        {"a blood stain", Order::Weapon, FAMILY_BLOOD, 512},
     }};
     for (const Body& b : bodies) {
         walker* body = b.order == Order::Weapon ? w.add_weap_ob(b.order, b.family)
