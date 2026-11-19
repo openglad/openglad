@@ -835,9 +835,11 @@ usual busy.
 text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
 blocked by terrain costs nothing (AC); a body on the pad costs exactly the
 one swing (H, I; BARRAGE, AS). A door, a grown tree or an enemy weapon in
-flight on the pad is seen only by the strict pad question, which the elf's
-volleys and BARRAGE ask (AV); `fire()`'s own probe passes such a body only
-six times in ten, so another cast at one can still cost the swing.
+flight on the pad is seen only by the strict pad question, which the bot
+rule of every cast the table refuses `COULD NOT FIRE` asks (the elf's
+volleys since fix AV, BARRAGE since fix AS, the others since fix BH);
+`fire()`'s own probe passes such a body only six times in ten, so a cast
+a player orders at one can still cost the swing.
 
 ## Bots
 
@@ -924,7 +926,8 @@ because the spin strikes it and the yell stuns it (fix K).
   wants that foe faced and inside the flight, with no ally of the archer,
   and not the archer, inside the blast around it, and the fire arrow's pad
   clear (fix AA: the bolt is a fire arrow, 9x9, so the pad is asked for it
-  and not for the 7x7 arrow the archer holds).
+  and not for the 7x7 arrow the archer holds; since fix BH an enemy door,
+  grown tree or shot in flight on it is in the way too, as for the elf).
 - **Mage.** Slot 1 keeps the classic rule: TELEPORT when no foe or more
   than three foes are within 110 px. The TELEPORT MARKER is no longer a
   coin: with nobody within 110 px the mage marks where it stands when no
@@ -942,8 +945,9 @@ because the spin strikes it and the yell stuns it (fix K).
   team takes the same cue for its own freeze. ENERGY WAVE wants the mage's
   nearest living foe within 110 px to be one it faces (the wave runs about
   that far along the heading, through walls) and the pad it leaves from
-  clear (fix AA). HEARTBURST wants a foe inside its own reach, 80 px plus 2
-  per level. A struck mage bot below its flee threshold teleports without
+  clear (fix AA; since fix BH an enemy door, grown tree or shot in flight
+  on it is in the way too, as for the elf). HEARTBURST wants a foe inside
+  its own reach, 80 px plus 2 per level. A struck mage bot below its flee threshold teleports without
   asking a gate, as the classic one does; struck again while that teleport
   plays, it casts nothing (#408: the hit response asks `mid_teleport`
   first, as the TELEPORT gate does).
@@ -1007,9 +1011,11 @@ because the spin strikes it and the yell stuns it (fix K).
   reaches only from level 8), and SCARE not resting.
 - **Druid.** GROW TREE wants the druid's nearest living foe within 60 px
   faced and not yet within a blow (a foe touching the druid blocks the
-  bolt), and the bolt's pad clear (fix AA). SUMMON FAERIE wants a living
-  foe within 130 px, no faerie of the druid's alive, the pad clear and
-  room for the faerie where the bolt stands (fix AR: an ally on the spot
+  bolt), and the bolt's pad clear (fix AA; since fix BH an enemy door,
+  grown tree or shot in flight on it is in the way too, as for the elf).
+  SUMMON FAERIE wants a living foe within 130 px, no faerie of the druid's
+  alive, the pad clear the same strict way (fix BH) and room for the
+  faerie where the bolt stands (fix AR: an ally on the spot
   passes the bolt, not the faerie; the question is asked with a faerie of
   the druid's, never the druid's own body).
   REVEAL is never cast by a bot: it changes a radar only a player sees.
@@ -1025,7 +1031,9 @@ because the spin strikes it and the yell stuns it (fix K).
   a hero's steps come from its strength), so a 16 px gap at level 1 and
   120 px from level 8. EXPLODING BOULDER wants that foe to have a second
   living foe inside the blast around it, with no ally and not the
-  barbarian inside it. Both want the boulder's pad clear (fix AA).
+  barbarian inside it. Both want the boulder's pad clear (fix AA; since
+  fix BH an enemy door, grown tree or shot in flight on it is in the way
+  too, as for the elf).
 - **Fire elemental.** STARBURST, the ring of meteors, wants at least two
   living foes inside the ring's flight, or one the elemental does not
   face.
