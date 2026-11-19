@@ -422,6 +422,8 @@ static inline walker *bg_rush_strikes(walker *self, int steps)
 // passes, as the weapon passes it; a door, a grown tree or a weapon in
 // flight on the pad is passed by the weapon probe too. weapon -1 probes the
 // current weapon; a cast that fires another one passes its family.
+// Since the port of the current game's 025dc1bc (Gameplay Fixes BH, #590) no
+// gate asks this: every gate that asks a pad asks bg_pad_clear_of_weapons.
 static inline bool bg_pad_clear(walker *self, short weapon = -1)
 {
 	return self->fire_pad_clear(weapon);
@@ -429,17 +431,22 @@ static inline bool bg_pad_clear(walker *self, short weapon = -1)
 
 // port of the current game's b5e29f3c (Gameplay Fixes AV, #451): the pad is clear and no enemy
 // weapon-order body (a weapon in flight, a door, a grown tree) stands on it: fire() meets one
-// on 4 rolls in 10, a roll a gate may not draw
+// on 4 rolls in 10, a roll a gate may not draw. The elf's volleys and BARRAGE (Gameplay Fixes
+// AS) ask it; since the port of the current game's 025dc1bc (Gameplay Fixes BH, #590) so do
+// EXPLODING BOLT, ENERGY WAVE, GROW TREE and the barbarian's throws, and bg_summon_pad_clear
+// asks the same strict probe
 static inline bool bg_pad_clear_of_weapons(walker *self, short weapon = -1)
 {
 	return self->fire_pad_clear(weapon, true);
 }
 
 // port of the current game's bf79ee0f (Gameplay Fixes AR, #435): the weapon's pad is clear and
-// the summoned body has room where the weapon stands
+// the summoned body has room where the weapon stands; SUMMON FAERIE asks it. Since the port of
+// the current game's 025dc1bc (Gameplay Fixes BH, #590) the pad is asked the strict way (no
+// enemy door, grown tree or weapon in flight on it), as bg_pad_clear_of_weapons asks it
 static inline bool bg_summon_pad_clear(walker *self, char order, char family, short weapon = -1)
 {
-	return self->fire_pad_clear(weapon) && self->pad_room(order, family, weapon);
+	return self->fire_pad_clear(weapon, true) && self->pad_room(order, family, weapon);
 }
 
 // The old game has no priced alternates: a Shift costs the slot's price.

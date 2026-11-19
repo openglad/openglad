@@ -692,8 +692,10 @@ short living::check_special()
 					return bg_pad_clear_of_weapons(this);
 				// port of the current game's 34417c86 (Gameplay Fixes AA): and the
 				// fire arrow's own pad is clear, or the cast refuses COULD NOT FIRE
+				// (port of the current game's 025dc1bc, Gameplay Fixes BH, #590: an
+				// enemy door, grown tree or weapon in flight on it is in the way too)
 				return bg_blast_clear(this, foe, bg_blast_reach(stats->level), true)
-				       && bg_pad_clear(this, FAMILY_FIRE_ARROW);
+				       && bg_pad_clear_of_weapons(this, FAMILY_FIRE_ARROW);
 			}
 			// fall through: with the setting off the archer shares the classic gate
 		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
@@ -902,8 +904,10 @@ short living::check_special()
 				{
 					walker *target = bg_nearest_living_foe(this, 110);
 					// port of the current game's 34417c86 (Gameplay Fixes AA): and
-					// the fireball's pad is clear
-					return (target && bg_faces(this, target) && bg_pad_clear(this));
+					// the fireball's pad is clear (port of the current game's
+					// 025dc1bc, Gameplay Fixes BH, #590: an enemy door, grown tree or
+					// weapon in flight on it is in the way too)
+					return (target && bg_faces(this, target) && bg_pad_clear_of_weapons(this));
 				}
 				// HEARTBURST: slot 5 and every other slot
 				short in_reach = 0;
@@ -1153,8 +1157,11 @@ short living::check_special()
 				{
 					walker *f = bg_nearest_living_foe(this, 60);
 					// port of the current game's 34417c86 (Gameplay Fixes AA): and
-					// the bolt's pad is clear (both casts grow from a fired bolt)
-					return (f && bg_faces(this, f) && !bg_at_blows(this, f) && bg_pad_clear(this));
+					// the bolt's pad is clear (both casts grow from a fired bolt;
+					// port of the current game's 025dc1bc, Gameplay Fixes BH, #590:
+					// an enemy door, grown tree or weapon in flight on it is in the
+					// way too, and SUMMON FAERIE's bg_summon_pad_clear asks the same)
+					return (f && bg_faces(this, f) && !bg_at_blows(this, f) && bg_pad_clear_of_weapons(this));
 				}
 				if (current_special == 2)
 					return (bg_owned(this, ORDER_LIVING, FAMILY_FAERIE, NULL) == 0
@@ -1186,8 +1193,10 @@ short living::check_special()
 				// Both throws refuse a busy barbarian (the cast's guard)
 				// (port of the current game's 44a685f0, Gameplay Fixes W) and a
 				// blocked hammer pad (port of the current game's 34417c86,
-				// Gameplay Fixes AA)
-				if (busy > 0 || !bg_pad_clear(this))
+				// Gameplay Fixes AA; port of the current game's 025dc1bc,
+				// Gameplay Fixes BH, #590: an enemy door, grown tree or weapon in
+				// flight on it is in the way too)
+				if (busy > 0 || !bg_pad_clear_of_weapons(this))
 					return 0;
 				int step;
 				if (myguy)
