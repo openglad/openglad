@@ -1904,7 +1904,8 @@ cast's rule says yes: `druid_bot_grow_tree_tree_pad` (GROW TREE, an enemy grown 
 `barbarian_bot_boulder_tree_pad` (HURL BOULDER, an enemy grown tree on the hammer's pad), `mage_bot_wave_door_pad`
 (ENERGY WAVE, an enemy door on the fireball's pad, with the three more towers the classic gate wants) and
 `archer_bot_bolt_door_pad` (EXPLODING BOLT, an enemy door on the fire arrow's pad). With the setting off the classic bot
-casts on tick 0, on the first seed from 0 on which it casts inside the recording's three ticks: the druid's bolt, the
+casts on tick 0, on the first seed from 0 on which it rolls that cast inside the recording's three ticks (2 for the
+druid, the barbarian and the mage; 5 for the archer, whose tick-0 cast on seed 2 is BARRAGE): the druid's bolt, the
 barbarian's hammer and the mage's fireball pass the body on their clash rolls, so a second tree grows, a boulder rolls
 and a wave rides; the archer's fire arrow loses a clash roll, so its blow lands on the door and clangs. With the setting
 on each rule asks the pad the strict way and holds the cast, and nothing sounds. The classic rows' pins turn the
