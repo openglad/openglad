@@ -512,9 +512,10 @@ bool walker::attack(walker  *target)
     // Set our target to fighting our owner
     //in the case of our weapon hit something
     // rule: The victim turns on whoever is behind the blow: a weapon's or effect's owner is made to
-    //   target the victim and the victim retaliates against the owner (the chain head's hero gets
-    //   the attack XP); in melee the victim retaliates against the striker, and a striking hero
-    //   gets attack XP and, if the blow scores, team score += damage + victim level.
+    //   target the victim (with Gameplay Fixes BF not a door, below) and the victim retaliates
+    //   against the owner (the chain head's hero gets the attack XP); in melee the victim
+    //   retaliates against the striker, and a striking hero gets attack XP and, if the blow
+    //   scores, team score += damage + victim level.
     // tests: StatsUnit.hit_response_guard_shields_non_living_targets
     // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
@@ -522,7 +523,16 @@ bool walker::attack(walker  *target)
     // tests: SemWalker3.the_victim_turns_on_whoever_is_behind_the_blow
     if (order() != Order::Living && owner())
     {
-        owner()->set_foe(target);
+        // rule: Gameplay Fixes BF: with the setting on a blow that lands on a door (anyone's shot,
+        //   blast or spell) does not make the door its owner's foe, unless the door already is
+        //   that foe (a level script or a mod named it): a bot leaves a door alone. The door still
+        //   takes the blow. A fighter, a tent, a grown tree and a golem are made the owner's foe
+        //   as before; with the setting off whatever the blow lands on is (classic).
+        // tests: SemBotDoor.a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on
+        // tests: SemBotDoor.a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe
+        // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on
+        if (current_game->world->gameplay_fixes == 0 || !target->is_door() || owner()->foe() == target)
+            owner()->set_foe(target);
         target->stats()->hit_response(owner());
         // rule: The victim turns on whoever is behind the blow.
         // tests: StatsUnit.hit_response_guard_shields_non_living_targets

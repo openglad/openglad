@@ -862,10 +862,10 @@ bool living::collide(walker  *ob)
 	set_collide_ob(ob);
 	//return 1; // debug
 	// rule: A walker that bumps a live hostile (living, generator or auto-attackable weapon) swings
-	//   at it; bumping an ally only records it as the collision body.
-	// tests: LivingUnit.living_r11_collide_and_act_type_switches
+	//   at it, but a bot leaves a door alone (Gameplay Fixes BF, below); an ally is only recorded.
+	// tests: LivingUnit.living_r11_collide_and_act_type_switches, SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on
 	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
-	        && !ob->dead() && !dead())
+	        && !ob->dead() && !dead() && !leaves_a_door_alone(ob))
 		init_fire();
 	return 1;
 }
@@ -1174,4 +1174,23 @@ bool living::do_action()
 		default:
 			return 0;
 	}
+}
+
+// Gameplay Fixes BF: a bot leaves a door alone. collide() asks it before the swing its bump
+// starts. Appended at the end of the file so the parity pins above stay on their lines.
+bool living::leaves_a_door_alone(const walker* body) const
+{
+	// rule: Gameplay Fixes BF: with the setting on a bot (a walker no player drives, user() -1)
+	//   that walks into an enemy door starts no swing at it, unless the door already is its foe
+	//   (a level script or a mod named it). A player's own fighter, a door that is the bot's foe,
+	//   a grown tree, a fighter and a golem (a door's family number, but a living) are swung at
+	//   as before; with the setting off every bump on a live enemy door swings (classic).
+	// tests: SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on
+	// tests: SemBotDoor.a_players_fighter_still_swings_at_a_door_it_walks_into
+	// tests: SemBotDoor.a_bot_swings_at_a_door_that_is_its_foe
+	// tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
+	// tests: SemBotDoor.a_bot_with_the_key_opens_the_door_it_walks_into
+	// tests: SemBotDoor.a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
+	return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&
+	       body != foe();
 }

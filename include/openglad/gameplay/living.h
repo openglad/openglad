@@ -34,6 +34,9 @@ class living : public walker
 		// determine if we should do special ..
 		bool           check_special() override;
 		bool           collide(walker  *ob) override;
+		// Gameplay Fixes BF: a bot that walks into `body`, an enemy door that is not its foe,
+		// starts no swing at it with the setting on. Defined at the end of living.cpp.
+		[[nodiscard]] bool leaves_a_door_alone(const walker* body) const;
 		bool           do_action(); // perform overriding action
 		walker* do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime) override;
 		void           set_difficulty(std::uint32_t whatlevel) override;

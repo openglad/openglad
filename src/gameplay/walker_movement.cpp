@@ -797,12 +797,12 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     };
     // Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which the door arm of
     // ob_pass_check records) is a live enemy door that is not the shooter's own foe. A door of
-    // the shooter's side never stops it: ob_pass_check lets a weapon pass its own side. The
-    // order is asked as well as the family because a golem's family number is a door's.
+    // the shooter's side never stops it: ob_pass_check lets a weapon pass its own side. A door
+    // is walker::is_door, which asks the order too, since a golem's family number is a door's.
     const auto stopped_by_a_door = [&] {
         const walker* met = weapon->collide_ob();
-        return met != nullptr && !met->dead() && met->query_order() == Order::Weapon &&
-               met->family() == FAMILY_DOOR && met != foe();
+        return met != nullptr && !met->dead() && met->is_door() &&
+               met != foe();
     };
     // rule: Gameplay Fixes BD (#538): the pad first, as fire() asks it: terrain there refuses
     //   (the shot would be wasted), the mode ball there passes, and so does a live body that is
@@ -865,14 +865,14 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
         {
             // rule: Gameplay Fixes BF: a step struck by a live enemy door that is not the
             //   shooter's foe refuses (WallBlocked), as a step a wall stops does; a door that is
-            //   the foe passes, as every foe does (a script can name one, and a shot that lands
-            //   on a door makes the door its shooter's foe, walker::attack); a golem, whose
+            //   the foe passes, as every foe does (a level script or a mod can name one; with the
+            //   setting on a blow that lands on a door names none, walker::attack); a golem, whose
             //   family number is a door's, passes as every other body does.
             // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
             // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
             // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
             // tests: SemLineCheck.a_refused_check_at_a_door_tells_no_one_a_key_is_needed
-            // tests: SemLineCheck.a_shot_that_lands_on_a_door_makes_it_the_shooters_foe_and_the_check_then_passes
+            // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on
             // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
             if (stopped_by_a_door())
                 return answer(false, FireCheckDenial::WallBlocked);
@@ -884,4 +884,18 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
             return answer(true, FireCheckDenial::None);
     }
     return answer(false, FireCheckDenial::RayMiss);
+}
+
+// A door: a body of weapon order and the door's family. A golem's family number is a door's
+// (both are 18), so the order is asked as well. The three rules of Gameplay Fixes BF ask it:
+// the line check (line_check_flight above), a bot's bump (living::leaves_a_door_alone) and the
+// blow that names a foe (walker::attack). Appended below the parity pins.
+bool walker::is_door() const
+{
+    // rule: A door is a body of weapon order and the door's family; a golem, whose family
+    //   number is a door's, is a living and no door.
+    // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
+    // tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
+    // tests: SemBotDoor.a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe
+    return query_order() == Order::Weapon && family() == FAMILY_DOOR;
 }

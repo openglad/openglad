@@ -8,8 +8,9 @@
 
 // Semantic tests, batch walker-5: the line check a shooter asks before it
 // fires (walker::fire_check), and the one step of a flying weapon it shares
-// with the shot (walker::flight_step). Each test is named after the rule it
-// asserts.
+// with the shot (walker::flight_step); and, in SemBotDoor at the end, the
+// rest of Gameplay Fixes BF, a bot leaves a door alone (the bump and the blow
+// that names a foe). Each test is named after the rule it asserts.
 //
 // Every scene is headless: an open field of grass 1024 px a side (GRID_SIZE
 // 16), bodies placed in pixels, the sim stream (GameWorld::rng_) pinned to a
@@ -24,8 +25,10 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -2301,18 +2304,17 @@ TEST_F(SemLineCheck, a_refused_check_at_a_door_tells_no_one_a_key_is_needed)
     EXPECT_EQ(1u, notifications()) << "control: a seat bumping the locked door is told";
 }
 
-// Gameplay Fixes BF: the foe exception is reached in play, not only through a
-// level script. walker::attack makes whatever a weapon strikes its owner's foe,
-// a door included, on both settings. The staging of
-// the_shot_itself_still_takes_the_clash_roll_at_a_door with a hostile soldier
-// beyond the door (stage_door_line), the soldier the archer's foe. Setting on:
-// the check is refused at the door (WallBlocked). Both settings: one real
-// arrow, on the stream whose first clash roll at the door is lost, strikes the
-// door, and the archer's foe is then the door. Setting on: the check then
-// passes on the door (None, its test weapon stopped by the door, the waver
-// alone), so the archer shoots at the door until it takes another foe or the
-// door falls.
-TEST_F(SemLineCheck, a_shot_that_lands_on_a_door_makes_it_the_shooters_foe_and_the_check_then_passes)
+// Gameplay Fixes BF: a shot that strays into a door does not open the foe
+// exception. The staging of the_shot_itself_still_takes_the_clash_roll_at_a_door
+// with a hostile soldier beyond the door (stage_door_line), the soldier the
+// archer's foe. Setting on: the check is refused at the door (WallBlocked).
+// Both settings: one real arrow, on the stream whose first clash roll at the
+// door is lost, strikes the door. Setting off: walker::attack makes the door
+// the archer's foe (classic), so the archer then shoots at the door. Setting
+// on: a blow on a door names no foe, so the archer still holds the soldier,
+// and the same check is refused at the door again (WallBlocked, its test
+// weapon stopped by the door, the waver alone).
+TEST_F(SemLineCheck, a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on)
 {
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
@@ -2343,13 +2345,15 @@ TEST_F(SemLineCheck, a_shot_that_lands_on_a_door_makes_it_the_shooters_foe_and_t
             shot->act();
         ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
         ASSERT_LT(door->stats()->hitpoints(), whole) << "the staging: the lost roll, the arrow strikes the door";
-        EXPECT_EQ(door, archer->foe()) << "the blow makes the door the archer's foe";
-        if (fixes) {
+        if (!fixes) {
+            EXPECT_EQ(door, archer->foe()) << "classic: the blow makes the door the archer's foe";
+        } else {
+            EXPECT_EQ(soldier, archer->foe()) << "a blow on a door names no foe: the archer still holds the soldier";
             drop_dead_weapons();
             world().rng_.state_ = lost;
             Denial why = Denial::NoFoe;
-            EXPECT_TRUE(ask(archer, 0, -1, &why)) << "the check then passes on the door, its foe";
-            EXPECT_EQ(Denial::None, why);
+            EXPECT_FALSE(ask(archer, 0, -1, &why)) << "the check is still refused at the door";
+            EXPECT_EQ(Denial::WallBlocked, why);
             const walker* probe = last_probe(archer);
             ASSERT_NE(nullptr, probe);
             EXPECT_EQ(door, probe->collide_ob()) << "its test weapon was stopped by the door";
@@ -2460,6 +2464,496 @@ TEST_F(SemLineCheck, a_golem_on_the_line_still_passes_the_check_though_its_famil
             ASSERT_NE(nullptr, probe);
             EXPECT_EQ(golem, probe->collide_ob()) << "its test weapon was stopped by the golem";
             EXPECT_EQ(state_after(s, {p.waver_bound}), world().rng_.state_) << "the waver alone: a living takes no clash roll";
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gameplay Fixes BF, a bot leaves a door alone: the bump (living::collide asks
+// living::leaves_a_door_alone) and the blow that names a foe (walker::attack)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class SemBotDoor : public SemLineCheck {
+protected:
+    static constexpr short kX = 320;
+    static constexpr short kY = 320;
+    static constexpr int kPushTicks = 200;
+
+    // A level-4 orc bot (ACT_RANDOM, no seat) at (kX, kY) facing up, on open grass.
+    walker* orc_bot(short fixes)
+    {
+        fresh_world(fixes);
+        walker* w = living_at(FAMILY_ORC, 0, kX, kY);
+        if (w != nullptr)
+            face(w, FACE_UP);
+        return w;
+    }
+
+    // A weapon-order body of `family` and `team` in the family's own box, sitting as a level's
+    // scenery sits (a door, a grown tree), placed by the caller.
+    walker* scenery(int family, unsigned char team)
+    {
+        walker* b = world().add_ob(Order::Weapon, family);
+        if (b == nullptr)
+            return nullptr;
+        b->set_team_num(team);
+        b->set_act_type(ACT_SIT);
+        return b;
+    }
+
+    // `body` straight above `w`, its bottom row on w's top row: w's box where it stands does
+    // not meet it, and w's box one step up does (the obmap's test).
+    void put_above(walker* w, walker* body)
+    {
+        place(body, static_cast<short>(w->xpos() + (w->sizex() - body->sizex()) / 2),
+              static_cast<short>(w->ypos() - body->sizey()), body->sizex(), body->sizey());
+        ASSERT_FALSE(meets(w, w->xpos(), w->ypos(), body)) << "the staging: the body is clear of the walker";
+        ASSERT_TRUE(meets(w, w->xpos(), static_cast<float>(w->ypos()) - w->stepsize(), body))
+            << "the staging: one step up meets the body";
+    }
+
+    // One step of `w` (its firing delay 0, walking, facing up) up into the body above it, as
+    // living::walk takes it, and what the bump started.
+    struct Bump
+    {
+        float busy = 0.0f;
+        int ani = ANI_WALK;
+        const walker* met = nullptr;
+        bool moved = false;
+    };
+    static Bump step_up(walker* w)
+    {
+        w->set_busy(0.0f);
+        w->set_ani_type(ANI_WALK);
+        w->set_collide_ob(nullptr);
+        face(w, FACE_UP);
+        const short y = w->ypos();
+        (void)w->walk(0.0f, -w->stepsize());
+        Bump b;
+        b.busy = w->busy();
+        b.ani = w->ani_type();
+        b.met = w->collide_ob();
+        b.moved = w->ypos() != y;
+        return b;
+    }
+
+    // `w` pushes up into the body above it for `ticks` world ticks: a WALK order up, longer than
+    // the run, and a wall on its left, the side a bot's refused step up tries next
+    // (walker::walkstep), so it stays at the body. Counted: the swings it starts (the ticks its
+    // firing delay rose: every swing or shot it starts charges it, walker::init_fire) and the
+    // ticks it ends with the body as its collision body (its step met the body).
+    struct Push
+    {
+        int swings = 0;
+        int met = 0;
+    };
+    Push push_up(walker* w, const walker* body, int ticks)
+    {
+        Push p;
+        const int col = (w->xpos() - 1) / GRID_SIZE;
+        for (int r = body->ypos() / GRID_SIZE; r <= (w->ypos() + w->sizey()) / GRID_SIZE; ++r)
+            tile(col, r, PIX_H_WALL1);
+        w->stats()->set_command(COMMAND_WALK, 4 * ticks, 0, -1);
+        const std::uint32_t id = w->entity_id();
+        float busy = w->busy();
+        for (int t = 1; t <= ticks; ++t) {
+            world().tick();
+            const walker* a = world().find_by_id(id);
+            if (a == nullptr)
+                break;
+            if (a->busy() > busy)
+                ++p.swings;
+            busy = a->busy();
+            if (a->collide_ob() == body)
+                ++p.met;
+        }
+        return p;
+    }
+
+    // The walker of the bump tests at an enemy door of team 1 (the family's own box) straight
+    // above it, both asserted.
+    void orc_at_door(short fixes, walker*& orc, walker*& door)
+    {
+        orc = orc_bot(fixes);
+        ASSERT_NE(nullptr, orc);
+        door = scenery(FAMILY_DOOR, 1);
+        ASSERT_NE(nullptr, door);
+        ASSERT_EQ(Order::Weapon, door->query_order()) << "the staging: a door is a weapon-order body";
+        ASSERT_NO_FATAL_FAILURE(put_above(orc, door));
+        ASSERT_EQ(0u, orc->keys()) << "the staging: the orc holds no key";
+        ASSERT_GT(orc->fire_frequency(), 0.0f) << "the staging: a swing charges a firing delay";
+    }
+};
+
+}  // namespace
+
+// Gameplay Fixes BF, the bump. An orc bot (no player drives it) facing up, an
+// enemy door straight above it, its bottom row on the orc's top row (one step
+// up meets it, asserted). (a) One step up, as living::walk takes it: on both
+// settings the door stops the step and is the orc's collision body (the bump
+// still records it). Setting on: no swing is started (its firing delay stays
+// 0, it stays in its walk animation). Setting off: the bump swings
+// (the delay charged with the orc's fire frequency, the attack animation
+// started). (b) A fresh orc pushes up into the door for kPushTicks ticks
+// (push_up; its step meets the door on some tick, asserted). Setting on: it
+// starts no swing in all that time, and the door's hit points are whole.
+// Setting off: its first act swings, and the door loses hit points (each
+// swing's blow meets the door's clash roll on its pad and strikes it on four
+// rolls in ten: this half holds by the draws, the setting-on half by the rule).
+TEST_F(SemBotDoor, a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* orc = nullptr;
+        walker* door = nullptr;
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        ASSERT_EQ(-1, static_cast<int>(orc->user())) << "the staging: no player drives the orc";
+        const Bump b = step_up(orc);
+        EXPECT_EQ(door, b.met) << "the door stops the step and is the orc's collision body";
+        EXPECT_FALSE(b.moved) << "the door still stops the step";
+        if (fixes) {
+            EXPECT_FLOAT_EQ(0.0f, b.busy) << "no swing is started: no firing delay";
+            EXPECT_EQ(ANI_WALK, b.ani) << "and no attack animation";
+        } else {
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), b.busy) << "classic: the bump swings and charges the firing delay";
+            EXPECT_EQ(ANI_ATTACK, b.ani) << "and starts the attack animation";
+        }
+
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        const std::uint32_t door_id = door->entity_id();
+        const float pushed_whole = door->stats()->hitpoints();
+        const Push p = push_up(orc, door, kPushTicks);
+        const walker* d = world().find_by_id(door_id);
+        ASSERT_NE(nullptr, d) << "the staging: the door still stands";
+        ASSERT_GE(p.met, 1) << "the staging: the orc's step meets the door";
+        if (fixes) {
+            EXPECT_EQ(0, p.swings) << "no swing in " << kPushTicks << " ticks of pushing";
+            EXPECT_FLOAT_EQ(pushed_whole, d->stats()->hitpoints()) << "the door's hit points are whole";
+        } else {
+            EXPECT_GE(p.swings, 1) << "classic: the bumps swing";
+            EXPECT_LT(d->stats()->hitpoints(), pushed_whole) << "and the door loses hit points";
+        }
+    }
+}
+
+// Gameplay Fixes BF is a bot's rule: a player's own fighter still swings at a
+// door the player walks it into. The staging of
+// a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on with
+// the orc on a seat (user 0, ACT_CONTROL). (a) On both settings the step's bump
+// swings: the delay charged with the orc's fire frequency, the attack animation
+// started. (b) Pushing for kPushTicks ticks, on both settings it swings and the
+// door loses hit points (by the draws, as that test's classic half).
+TEST_F(SemBotDoor, a_players_fighter_still_swings_at_a_door_it_walks_into)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* orc = nullptr;
+        walker* door = nullptr;
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        orc->set_user(0);
+        orc->set_act_type(ACT_CONTROL);
+        const Bump b = step_up(orc);
+        ASSERT_EQ(door, b.met) << "the staging: the door stops the step";
+        EXPECT_FLOAT_EQ(orc->fire_frequency(), b.busy) << "the player's fighter swings at the door";
+        EXPECT_EQ(ANI_ATTACK, b.ani);
+
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        orc->set_user(0);
+        orc->set_act_type(ACT_CONTROL);
+        const std::uint32_t door_id = door->entity_id();
+        const float whole = door->stats()->hitpoints();
+        const Push p = push_up(orc, door, kPushTicks);
+        const walker* d = world().find_by_id(door_id);
+        ASSERT_NE(nullptr, d) << "the staging: the door still stands";
+        ASSERT_GE(p.met, 1) << "the staging: the fighter's step meets the door";
+        EXPECT_GE(p.swings, 1) << "it swings at the door it is walked into";
+        EXPECT_LT(d->stats()->hitpoints(), whole) << "and the door loses hit points";
+    }
+}
+
+// The bump's foe exception: a door that already is the bot's foe (a level
+// script or a mod named it, set_foe) is swung at on both settings. The staging
+// of a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on,
+// (a), the door the orc's foe: the step's bump swings (the delay charged, the
+// attack animation started).
+TEST_F(SemBotDoor, a_bot_swings_at_a_door_that_is_its_foe)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* orc = nullptr;
+        walker* door = nullptr;
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        orc->set_foe(door);
+        const Bump b = step_up(orc);
+        ASSERT_EQ(door, b.met) << "the staging: the door stops the step";
+        EXPECT_FLOAT_EQ(orc->fire_frequency(), b.busy) << "the bot swings at the door that is its foe";
+        EXPECT_EQ(ANI_ATTACK, b.ani);
+    }
+}
+
+// The bump's rule is the door's alone. The staging of
+// a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on, (a),
+// with in the door's place (i) an enemy grown tree (weapon order, FAMILY_TREE,
+// its own box), (ii) an enemy orc and (iii) an enemy golem (a living whose
+// family number is a door's), the two livings sitting in 16 x 16 boxes: on both
+// settings the step's bump swings at each (the delay charged, the attack
+// animation started).
+TEST_F(SemBotDoor, a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into)
+{
+    ASSERT_EQ(FAMILY_DOOR, FAMILY_GOLEM) << "the staging: a golem's family number is a door's";
+    struct Body
+    {
+        int family;
+        Order order;
+        const char* name;
+    };
+    for (const Body body_as : {Body{FAMILY_TREE, Order::Weapon, "an enemy grown tree"},
+                               Body{FAMILY_ORC, Order::Living, "an enemy orc"},
+                               Body{FAMILY_GOLEM, Order::Living, "an enemy golem"}}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(body_as.name) + (fixes ? ", Gameplay Fixes on" : ", Gameplay Fixes off"));
+            walker* orc = orc_bot(fixes);
+            ASSERT_NE(nullptr, orc);
+            walker* body = nullptr;
+            if (body_as.order == Order::Weapon) {
+                body = scenery(body_as.family, 1);
+            } else {
+                body = living_at(body_as.family, 1, 8, 8, 16, 16);
+                if (body != nullptr)
+                    body->set_act_type(ACT_SIT);
+            }
+            ASSERT_NE(nullptr, body);
+            ASSERT_EQ(body_as.order, body->query_order()) << "the staging: the body's order";
+            ASSERT_EQ(body_as.family, body->family()) << "the staging: the body's family";
+            ASSERT_NO_FATAL_FAILURE(put_above(orc, body));
+            const Bump b = step_up(orc);
+            ASSERT_EQ(body, b.met) << "the staging: the body stops the step";
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), b.busy) << "the bump swings at " << body_as.name;
+            EXPECT_EQ(ANI_ATTACK, b.ani);
+        }
+    }
+}
+
+// A bot that holds the door's key opens it by walking into it, on both
+// settings, and starts no swing: the door arm of ob_pass_check opens the door
+// (it dies) before the walker is handed the collision, and a dead body is
+// never swung at. The staging of
+// a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on, (a),
+// with a level-2 door and the orc holding key 2: the door is dead (opened), it
+// is the orc's collision body, the orc is stopped for that step, and no swing
+// is started (no firing delay, the walk animation).
+TEST_F(SemBotDoor, a_bot_with_the_key_opens_the_door_it_walks_into)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* orc = nullptr;
+        walker* door = nullptr;
+        ASSERT_NO_FATAL_FAILURE(orc_at_door(fixes, orc, door));
+        door->stats()->set_level(2);
+        orc->set_keys(static_cast<std::uint32_t>(key_level_mask(2)));
+        const Bump b = step_up(orc);
+        EXPECT_EQ(1, door->dead()) << "the key opens the door";
+        ASSERT_EQ(door, b.met) << "the staging: the opened door is the orc's collision body";
+        ASSERT_FALSE(b.moved) << "the staging: the orc is stopped for that step, as the door arm stops it";
+        EXPECT_FLOAT_EQ(0.0f, b.busy) << "no swing is needed: no firing delay";
+        EXPECT_EQ(ANI_WALK, b.ani) << "and no attack animation";
+    }
+}
+
+// Gameplay Fixes BF, the foe. An archer facing up fires a real arrow (waver 0)
+// at an enemy door on the line (the door spot of stage_door_line), on the
+// stream whose first clash roll at the door is lost, so the arrow strikes the
+// door: on both settings the door loses hit points (the blow itself is
+// unchanged). (a) The archer holds no foe: setting off, the blow makes the door
+// its foe (classic); setting on, it still holds none. (b) Its foe is an orc
+// that sits beyond the door: off, its foe is then the door; on, still the orc.
+// (c) The door already is its foe (a level script or a mod named it, set_foe):
+// on both settings it still is, and the blow names it again, as a blow on any
+// foe does (the archer's foe field is written: its snapshot mark is set).
+TEST_F(SemBotDoor, a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on)
+{
+    enum class Held { Nobody, TheOrc, TheDoor };
+    for (const Held held : {Held::Nobody, Held::TheOrc, Held::TheDoor}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(held == Held::Nobody   ? "(a) no foe, "
+                                     : held == Held::TheOrc ? "(b) the orc its foe, "
+                                                            : "(c) the door its foe, ") +
+                         (fixes ? "Gameplay Fixes on" : "Gameplay Fixes off"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            walker* door = nullptr;
+            walker* orc = nullptr;
+            ASSERT_NO_FATAL_FAILURE(
+                stage_door_line(archer, p, 1, held == Held::TheOrc ? FAMILY_ORC : -1, door, orc));
+            walker* const before = held == Held::Nobody ? nullptr : held == Held::TheOrc ? orc : door;
+            archer->set_foe(before);
+            const float whole = door->stats()->hitpoints();
+            world().rng_.state_ =
+                state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
+            archer->clear_dirty();
+            walker* shot = archer->fire();
+            ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
+            for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
+                shot->act();
+            ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
+            EXPECT_LT(door->stats()->hitpoints(), whole) << "the arrow strikes the door: it takes the blow";
+            if (held == Held::TheDoor) {
+                EXPECT_EQ(door, archer->foe()) << "a door that is the foe stays the foe";
+                EXPECT_TRUE(archer->is_dirty(og::dirty::BIT_FOE_ID))
+                    << "the blow names it again, as a blow on any foe does";
+            } else if (fixes) {
+                EXPECT_EQ(before, archer->foe()) << "a blow on a door names no foe: the foe is what it was";
+            } else {
+                EXPECT_EQ(door, archer->foe()) << "classic: the blow makes the door the archer's foe";
+            }
+        }
+    }
+}
+
+// Gameplay Fixes BF names no door, and nothing else changes: a blow on (i) an
+// enemy orc, (ii) an enemy grown tree and (iii) an enemy golem (a living whose
+// family number is a door's) still makes it its owner's foe, on both settings.
+// An archer facing up that holds no foe fires a real arrow (waver 0) at the
+// body, placed on the flight at up_line_spot's place (16 x 16 for the two
+// livings, the tree in its own box), on the stream whose first clash roll is
+// lost (only the tree draws one), so the arrow strikes it (asserted: the body
+// loses hit points). The two livings are seats' walkers (ACT_CONTROL) with no
+// armor: a seat's walker answers a blow with nothing
+// (statistics::hit_response), so the archer's foe can come only from the blow.
+TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
+{
+    struct Body
+    {
+        int family;
+        Order order;
+        const char* name;
+    };
+    for (const Body body_as : {Body{FAMILY_ORC, Order::Living, "an enemy orc"},
+                               Body{FAMILY_TREE, Order::Weapon, "an enemy grown tree"},
+                               Body{FAMILY_GOLEM, Order::Living, "an enemy golem"}}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(body_as.name) + (fixes ? ", Gameplay Fixes on" : ", Gameplay Fixes off"));
+            walker* archer = up_archer(fixes);
+            ASSERT_NE(nullptr, archer);
+            const ShotPlan p = plan_of(archer, FACE_UP);
+            ASSERT_GT(p.los, 1);
+            walker* body = nullptr;
+            if (body_as.order == Order::Weapon) {
+                body = scenery(body_as.family, 1);
+            } else {
+                body = living_at(body_as.family, 1, 8, 8, 16, 16);
+                if (body != nullptr) {
+                    body->set_act_type(ACT_CONTROL);
+                    body->stats()->set_armor(0.0f);
+                }
+            }
+            ASSERT_NE(nullptr, body);
+            ASSERT_EQ(body_as.order, body->query_order()) << "the staging: the body's order";
+            ASSERT_EQ(body_as.family, body->family()) << "the staging: the body's family";
+            const LineSpot s = up_line_spot(p, body->sizex(), body->sizey(), 0);
+            ASSERT_GE(s.k, 0) << "the staging: a spot for the body on the flight";
+            place(body, s.x, s.y, body->sizex(), body->sizey());
+            ASSERT_EQ(nullptr, archer->foe()) << "the staging: the archer holds no foe";
+            const float whole = body->stats()->hitpoints();
+            world().rng_.state_ =
+                state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
+            walker* shot = archer->fire();
+            ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
+            for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
+                shot->act();
+            ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
+            ASSERT_LT(body->stats()->hitpoints(), whole) << "the staging: the arrow strikes " << body_as.name;
+            EXPECT_EQ(body, archer->foe()) << "the blow makes " << body_as.name << " the archer's foe";
+        }
+    }
+}
+
+// Gameplay Fixes BF, through ticks: a bot whose foe stands behind a door it
+// cannot open never attacks the door. A WALKING archer bot (ACT_RANDOM: not a
+// tower, not held on a post; its specials off, as a level can place it, so that
+// only its bow and its bumps can strike) on the field of up_archer, facing up;
+// a wall across the whole field three tiles above it but for one tile straight
+// above it, which an enemy door of team 1 fills (one tile, asserted); a hostile
+// orc sitting two tiles above the door, straight up and inside the reach gate,
+// the archer's foe. Nothing but the door stands between them, and there is no
+// way round. The world ticks kTicks times. Setting on: the archer walks into
+// the door (it is its collision body on some tick, asserted), starts no swing
+// and no shot in all that time (its firing delay never rose, no arrow of its
+// own flew), the door's hit points are whole, and the door is its foe on no
+// tick.
+// Setting off: the door loses hit points (to its shots and its bumps' blows,
+// each meeting the door's clash roll: this half holds by the draws, the
+// setting-on half by the rules).
+TEST_F(SemBotDoor, a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on)
+{
+    constexpr int kTicks = 600;
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        walker* archer = up_archer(fixes);
+        ASSERT_NE(nullptr, archer);
+        archer->set_specials_disabled(true);
+        const ShotPlan p = plan_of(archer, FACE_UP);
+        ASSERT_GT(p.los, 1);
+        const int col = (archer->xpos() + archer->sizex() / 2) / GRID_SIZE;
+        const int row = archer->ypos() / GRID_SIZE - 3;
+        walker* door = door_at(1, static_cast<short>(col * GRID_SIZE), static_cast<short>(row * GRID_SIZE));
+        ASSERT_NE(nullptr, door);
+        ASSERT_EQ(GRID_SIZE, door->sizex()) << "the staging: the door fills its tile";
+        ASSERT_EQ(GRID_SIZE, door->sizey()) << "the staging: the door fills its tile";
+        for (int c = 0; c < world().grid.w; ++c)
+            if (c != col)
+                tile(c, row, PIX_H_WALL1);
+        ASSERT_TRUE(meets(archer, archer->xpos(), door->ypos(), door)) << "the staging: the door is straight above the archer";
+        walker* orc = living_at(FAMILY_ORC, 1, static_cast<short>(col * GRID_SIZE),
+                                static_cast<short>((row - 2) * GRID_SIZE), 16, 16);
+        ASSERT_NE(nullptr, orc);
+        orc->set_act_type(ACT_SIT);
+        ASSERT_LE(archer->distance_to_ob(orc), p.reach) << "the staging: inside the reach gate";
+        ASSERT_EQ(FACE_UP, archer->facing(static_cast<short>(orc->xpos() - archer->xpos()),
+                                          static_cast<short>(orc->ypos() - archer->ypos())))
+            << "the staging: the orc is straight up";
+        archer->set_foe(orc);
+        const float door_whole = door->stats()->hitpoints();
+        const std::uint32_t archer_id = archer->entity_id();
+        const std::uint32_t door_id = door->entity_id();
+        std::vector<std::uint32_t> shots;
+        int swings = 0;
+        int met = 0;
+        int door_foe = 0;
+        float busy = archer->busy();
+        for (int tick = 1; tick <= kTicks; ++tick) {
+            world().tick();
+            const walker* a = world().find_by_id(archer_id);
+            ASSERT_NE(nullptr, a) << "the archer stands, tick " << tick;
+            if (a->busy() > busy)
+                ++swings;
+            busy = a->busy();
+            if (a->collide_ob() != nullptr && a->collide_ob()->entity_id() == door_id)
+                ++met;
+            if (a->foe() != nullptr && a->foe()->entity_id() == door_id)
+                ++door_foe;
+            for (const auto& u : world().weaplist)
+                if (u && !u->dead() && u->owner() == a && u->family() == FAMILY_ARROW &&
+                    std::find(shots.begin(), shots.end(), u->entity_id()) == shots.end())
+                    shots.push_back(u->entity_id());
+        }
+        const walker* const a = world().find_by_id(archer_id);
+        const walker* const d = world().find_by_id(door_id);
+        ASSERT_NE(nullptr, a);
+        if (fixes) {
+            ASSERT_NE(nullptr, d) << "the staging: the door still stands";
+            ASSERT_GE(met, 1) << "the staging: the archer walks into the door";
+            EXPECT_EQ(0, swings) << "no swing and no shot is started";
+            EXPECT_EQ(0u, shots.size()) << "no arrow of its own flies";
+            EXPECT_FLOAT_EQ(door_whole, d->stats()->hitpoints()) << "the door's hit points are whole";
+            EXPECT_EQ(0, door_foe) << "and the door is never its foe";
+        } else {
+            EXPECT_TRUE(d == nullptr || d->dead() != 0 || d->stats()->hitpoints() < door_whole)
+                << "classic: the archer wears the door down";
         }
     }
 }

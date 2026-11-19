@@ -240,6 +240,9 @@ class walker : public og::sim::SimEntity
 		// one tick a walker stuck in a wall is given): the simulation's one test (the drawing code
 		// and two pack scripts still write their own, #586). Defined at the end of walker.cpp.
 		[[nodiscard]] bool flies() const;
+		// A door: weapon order and the door's family (a golem's family number is a door's).
+		// Gameplay Fixes BF asks it. Defined at the end of walker_movement.cpp.
+		[[nodiscard]] bool is_door() const;
 		bool query_next_to();
 		// Why a special() attempt produced nothing. Only the player-input
 		// path asks: a silent no-op there reads as a broken key, while the
