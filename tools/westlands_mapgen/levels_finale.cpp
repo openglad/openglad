@@ -202,10 +202,17 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // (F4 batch 2: plain ranks 3-5 -> 3/4 and the big-orc wings flat 5 —
     // the horde must be a battle the WHOLE war host wins, not a wedge
     // execution before the relief hour.)
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-8 company's forty-seed average here fell from 4.83 to
+    // 2.73 survivors. The plain ranks below shed one level (3/4 -> 2/3)
+    // and the ghost outriders three (5/6 -> 2/3), which brings it back to
+    // 4.50; the Undergate chamber guards and the two caldera ghosts keep
+    // their levels. With the setting off it reads 5.58, from 4.75.)
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 6; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 26 + col * 3, 14 + row * 5,
-                         3 + ((row + col) % 2));
+                         2 + ((row + col) % 2));
     static constexpr int wings[8][2] = {{22, 15}, {22, 33}, {26, 13}, {26, 35},
                                         {34, 13}, {34, 35}, {38, 15}, {38, 33}};
     for (int i = 0; i < 8; ++i)
@@ -225,7 +232,7 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
         // before any relief existed).
         const int delay = 400;
         place_living(w, FAMILY_GHOST, 2, 0, outriders[i][0], outriders[i][1],
-                     5 + (i % 2), false, false, delay);
+                     2 + (i % 2), false, false, delay);
     }
     // The cone guards hold their posts (ACT_GUARD) so the climb stays fresh
     // for the endgame. The golem wards bar the cleft — a golem stands three

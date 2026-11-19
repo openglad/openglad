@@ -42,8 +42,12 @@
 
 #include "test_game_world_fixture.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -782,6 +786,84 @@ inline const LevelDataHooks& modes_test_level_hooks()
     return hooks;
 }
 
+// The measuring switch of the mode bot games: with OG_MODES_GAMEPLAY_FIXES
+// set to 0 or 1 the world it is handed plays that value of the Gameplay
+// Fixes setting; unset (or empty) nothing changes, so CI, which never sets
+// it, plays what every test chose. Anything else fails the test. Called
+// where a mode game's world is built: ModesCtfWorld below, and the shipped
+// basketball courts' LoadedRealCourt (test_modes_basketball.cpp), which
+// load a real level instead. A test that sets the setting itself after
+// that still wins. The variable is meant for the mode bot games run by
+// name: over a whole test binary, 1 also reaches the tests that state a
+// setting-off rule without setting the setting, and those turn red (on
+// 2026-11-16, five in the five mode binaries og_unit_modes, og_unit_ffa,
+// og_unit_basketball, og_unit_soccer and og_unit_onslaught:
+// ModesBasketball.block_window_by_height, three soccer tests and one
+// Onslaught test; og_unit_stage also builds this world and was not run that
+// way). That is no fault of the game: each states the setting-off half of
+// Gameplay Fixes AZ (a hit plays for the colour its weapon wears), whose
+// setting-on half has tests of its own.
+inline void apply_modes_gameplay_fixes_override(GameWorld& world)
+{
+    const char* value = std::getenv("OG_MODES_GAMEPLAY_FIXES");
+    if (value == nullptr || value[0] == '\0')
+        return;
+    const std::string text(value);
+    if (text == "0" || text == "1")
+        world.gameplay_fixes = static_cast<short>(text == "1" ? 1 : 0);
+    else
+        ADD_FAILURE() << "OG_MODES_GAMEPLAY_FIXES must be 0 or 1, not \""
+                      << text << "\"";
+}
+
+// One line per mode bot game for the balance record, printed whether or
+// not the switch above is set: the running test's name, the setting the
+// world really played (read from the world), the ticks it played, the four
+// team scores of GameWorld::m_score, and `counts`, the mode's own tallies
+// (captures, frags, crowns, baskets, goals...). It asserts nothing. A test
+// whose world ends inside a helper keeps the line and prints it itself.
+inline std::string modegame_line(const GameWorld& world,
+                                 const std::string& counts)
+{
+    const ::testing::TestInfo* info =
+        ::testing::UnitTest::GetInstance()->current_test_info();
+    const std::string name =
+        info == nullptr ? std::string("?")
+                        : std::string(info->test_suite_name()) + "." +
+                              info->name();
+    return std::format("MODEGAME {} gameplay_fixes={} ticks={} score={},{},{},{} {}",
+                       name, static_cast<int>(world.gameplay_fixes),
+                       world.tick_count_, world.m_score[0], world.m_score[1],
+                       world.m_score[2], world.m_score[3], counts);
+}
+
+inline void print_modegame_line(const std::string& line)
+{
+    std::printf("%s\n", line.c_str());
+    std::fflush(stdout);
+}
+
+inline void print_modegame_line(const GameWorld& world,
+                                const std::string& counts)
+{
+    print_modegame_line(modegame_line(world, counts));
+}
+
+// "name=a,b,c" for a run of mode-var slots (per team or per band).
+inline std::string modegame_slots(const GameWorld& world, const char* name,
+                                  int base, int count)
+{
+    std::string out = std::string(name) + "=";
+    for (int i = 0; i < count; ++i)
+    {
+        if (i > 0)
+            out += ",";
+        out += std::to_string(
+            world.mode.vars[static_cast<std::size_t>(base + i)]);
+    }
+    return out;
+}
+
 // Scripted-mode world over the mounted rules pack: TYPE_SCRIPTED plus the
 // spawn helpers the C++ CTF tests used, retargeted at the pack families.
 struct ModesCtfWorld : TestGameWorld
@@ -807,6 +889,7 @@ struct ModesCtfWorld : TestGameWorld
                     game_loader->set_derived_stats(entity, order, family);
             };
         world().type = GameWorld::TYPE_SCRIPTED;
+        apply_modes_gameplay_fixes_override(world());
     }
 
     walker* spawn_flag(int family, int team, int x, int y, int flag_level = 0)

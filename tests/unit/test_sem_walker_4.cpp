@@ -661,7 +661,8 @@ TEST_F(SemWalker4, a_wall_slide_moves_one_pixel_per_started_unit_of_stepsize)
     }
 }
 
-// walker_movement.cpp:326. A stationary living's walk only turns it.
+// walker_movement.cpp walker::walk. A stationary living's walk only turns it,
+// also along the facing it already has, where another walker steps.
 TEST_F(SemWalker4, a_stationary_living_walk_only_sets_its_facing)
 {
     walker* t = world().add_ob(Order::Living, FAMILY_TOWER1);
@@ -683,6 +684,22 @@ TEST_F(SemWalker4, a_stationary_living_walk_only_sets_its_facing)
     EXPECT_EQ(FACE_DOWN_RIGHT, static_cast<int>(t->curdir()));
     EXPECT_EQ(64, t->xpos());
     EXPECT_EQ(64, t->ypos());
+
+    // Along the facing it already has: there a walker that is not stationary
+    // steps (the control, a soldier on the same open grass), so only the
+    // stationary arm keeps the tower where it stands. (A walk in a new
+    // direction only turns any walker, so the cases above cannot tell.)
+    walker* s = living_at(FAMILY_SOLDIER, 0, 200, 200);
+    ASSERT_NE(nullptr, s);
+    ASSERT_FALSE(s->stationary()) << "the staging: the control is not stationary";
+    s->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    EXPECT_TRUE(s->walker::walk(1.0f, 0.0f));
+    EXPECT_EQ(201, s->xpos()) << "the control steps along its facing";
+    t->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    EXPECT_TRUE(t->walker::walk(1.0f, 0.0f)) << "stationary, along its facing: true";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(t->curdir()));
+    EXPECT_EQ(64, t->xpos()) << "stationary, along its facing: no move";
+    EXPECT_EQ(64, t->ypos()) << "stationary, along its facing: no move";
 }
 
 // walker_movement.cpp:436. After a turn a mobile walker heads one stepsize

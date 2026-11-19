@@ -754,7 +754,7 @@
 ---@field find_foes_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_foes_in_range(list_sel, range, self) → array, count
 ---@field find_friends_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer # og.find_friends_in_range(list, range, self) returns other live friendly Living actors in range, excluding self.
 ---@field find_in_range fun(list: og.ListSelector, range: integer, entity: og.Walker): og.Walker[], integer
----@field find_near_foe fun(entity: og.Walker): og.Walker? # og.find_near_foe(self) returns the first foe met by the searcher's floor-specific obmap spiral, or the nearest foe if the spiral finds none or leaves the map.
+---@field find_near_foe fun(entity: og.Walker): og.Walker? # og.find_near_foe(self) returns the first foe its floor's spiral meets, else the nearest foe (a flyer on a level with floors: the nearest on its floor if any).
 ---@field find_nearest_blood fun(entity: og.Walker): og.Walker?
 ---@field fmul fun(a: number, b: number): number
 ---@field foes_in_range fun(entity: og.Walker, range: integer): og.Walker[] # og.foes_in_range(self, range) → array (for_each_foe_in_range order)

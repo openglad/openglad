@@ -5010,6 +5010,9 @@ struct LoadedRealCourt
         gc.rng = &rng;
         push_test_context(&gc);
         loaded = level.load();
+        // A loaded court is not a ModesCtfWorld: the measuring switch
+        // is applied here too, to the world the load left.
+        apply_modes_gameplay_fixes_override(level.world());
     }
 
     ~LoadedRealCourt() { pop_test_context(); }
@@ -5115,6 +5118,12 @@ static void play_shipped_court(const int id)
         int first_score_tick = 0;
         int first_scorer = -1;
         int first_value = 0;
+        // Baskets for the balance record only: every change of a
+        // team's points is one basket.
+        int baskets = 0;
+        int last_points[4] = {};
+        for (int team = 0; team < 4; ++team)
+            last_points[team] = points_of(world, team);
         // The bound is exact on purpose: the rules let a game run past the
         // buzzer only while the last shot is in the air, at most
         // kShotFlightMax ticks. One tick more means the end rule changed.
@@ -5122,6 +5131,12 @@ static void play_shipped_court(const int id)
         {
             world.tick();
             ticks++;
+            for (int team = 0; team < 4; ++team)
+            {
+                if (points_of(world, team) != last_points[team])
+                    ++baskets;
+                last_points[team] = points_of(world, team);
+            }
             if (first_score_tick != 0)
                 continue;
             for (int team = 0; team < 4 && first_scorer < 0; ++team)
@@ -5136,6 +5151,12 @@ static void play_shipped_court(const int id)
             for (int team = 0; team < 4; ++team)
                 before[team] = points_of(world, team);
         }
+        print_modegame_line(
+            world, std::format("baskets={} {} winner={} first_score_tick={}",
+                               baskets,
+                               modegame_slots(world, "points", kBbPoints, 4),
+                               static_cast<int>(world.mode.winner_team),
+                               first_score_tick));
 
         EXPECT_GT(first_score_tick, 0) << "the bots score";
         EXPECT_LT(first_score_tick, time_limit) << "before the buzzer";

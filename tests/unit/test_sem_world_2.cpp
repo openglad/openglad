@@ -812,6 +812,102 @@ TEST(SemWorld, a_walker_without_foe_or_leader_is_handed_the_nearest_foe)
     }
 }
 
+namespace {
+
+// #512's stage for a world tick: two floors of grass 64 tiles (1024 px) a
+// side, floor 1 a second field so nobody standing on it falls.
+void two_floor_field(TestGameWorld& tw, short fixes)
+{
+    GameWorld& world = tw.world();
+    world.resize_grid(64, 64);
+    std::fill_n(world.grid.data.get(),
+                static_cast<std::size_t>(world.grid.w) * world.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    world.my_team = 0;
+    world.gameplay_fixes = fixes;
+    world.set_floor_count(2);
+    const int gw = world.grid.w;
+    const int gh = world.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
+              static_cast<unsigned char>(PIX_GRASS1));
+    world.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw), static_cast<unsigned char>(gh), buf);
+    world.smoother_for_floor(1).set_target(world.grid_for_floor(1));
+}
+
+// A seat with nobody at it (ACT_CONTROL: no act of its own) on `floor`, sized
+// 16x16, the floor set before the body is placed (the obmap files a walker
+// under its floor when it is placed).
+walker* seat_on(TestGameWorld& tw, int family, unsigned char team, short x,
+                short y, short floor)
+{
+    walker* w = tw.world().add_ob(Order::Living, family);
+    if (w == nullptr)
+        return nullptr;
+    w->set_team_num(team);
+    w->set_act_type(ACT_CONTROL);
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->stats()->set_max_hitpoints(40.0f);
+    w->stats()->set_hitpoints(40.0f);
+    w->set_floor(floor);
+    w->setxy(x, y);
+    return w;
+}
+
+}  // namespace
+
+// #512 (this game only, both settings), the hand-out above through
+// GameWorld::NearestFoePick. Two floors; a team-1 ghost (it flies) with no
+// foe and no leader at (320,320) on floor 0; `above`, a team-0 soldier at
+// (320,340) on floor 1, 20 px off; `distant`, one at (320,620) on floor 0, 300 px
+// off. After one tick the ghost holds `distant`, the nearest foe on its own
+// floor; an orc in its place holds `above`, the nearest on any floor; and
+// with `distant` on floor 1 too, nobody on its floor, the ghost holds `above`.
+// Each walker is read after the tick by its entity id.
+TEST(SemWorld, the_world_hands_a_flyer_with_no_foe_one_on_its_own_floor)
+{
+    enum class Scene { Ghost, Orc, NobodyOnItsFloor };
+    for (short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        for (Scene sc : {Scene::Ghost, Scene::Orc, Scene::NobodyOnItsFloor})
+        {
+            SCOPED_TRACE(sc == Scene::Ghost ? "a ghost"
+                         : sc == Scene::Orc ? "an orc in the ghost's place"
+                                            : "a ghost with nobody on its floor");
+            TestGameWorld tw;
+            two_floor_field(tw, fixes);
+            GameWorld& world = tw.world();
+            walker* bot = seat_on(tw, sc == Scene::Orc ? FAMILY_ORC : FAMILY_GHOST, 1, 320, 320, 0);
+            walker* above = seat_on(tw, FAMILY_SOLDIER, 0, 320, 340, 1);
+            walker* distant = seat_on(tw, FAMILY_SOLDIER, 0, 320, 620, sc == Scene::NobodyOnItsFloor ? 1 : 0);
+            ASSERT_TRUE(bot && above && distant);
+            ASSERT_EQ(2, world.floor_count()) << "the staging: a level with two floors";
+            ASSERT_EQ(sc != Scene::Orc, bot->flies()) << "the staging: the ghost flies, the orc does not";
+            ASSERT_EQ(nullptr, bot->foe()) << "the staging: no foe";
+            ASSERT_EQ(nullptr, bot->leader()) << "the staging: no leader";
+            ASSERT_EQ(20, bot->distance_to_ob(above)) << "the staging";
+            ASSERT_EQ(300, bot->distance_to_ob(distant)) << "the staging";
+            const std::uint32_t bot_id = bot->entity_id();
+            const std::uint32_t above_id = above->entity_id();
+            const std::uint32_t distant_id = distant->entity_id();
+            ASSERT_NE(0u, bot_id);
+
+            world.tick();
+
+            const walker* b = world.find_by_id(bot_id);
+            ASSERT_NE(nullptr, b) << "the bot is still in the world";
+            ASSERT_NE(nullptr, b->foe()) << "the tick handed it a foe";
+            const std::uint32_t want = sc == Scene::Ghost ? distant_id : above_id;
+            EXPECT_EQ(want, b->foe()->entity_id())
+                << (sc == Scene::Ghost ? "a flyer is handed the nearest foe on its own floor, however far"
+                    : sc == Scene::Orc ? "a ground walker is handed the nearest foe on any floor"
+                                       : "nobody on its floor: the nearest foe on any floor");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // game_world.cpp:1858 tick (weapon phase)
 // ---------------------------------------------------------------------------

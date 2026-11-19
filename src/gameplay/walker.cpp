@@ -1914,7 +1914,7 @@ bool water_blocks_mover(const walker& mover)
 	// tests: SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
-	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
+	if (mover.flies())
 		return false;
 	return !stats->query_bit_flags(BIT_SWIMMING);
 }
@@ -2226,7 +2226,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// The reach gate runs before the NO_RANGED / magic gates so that a
 	// NoRanged or NoMagic denial always means "the foe IS within this
 	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
-	// face a bump-range foe instead of sliding around it (guard-standoff
+	// face a foe inside its reach instead of sliding around it (guard-standoff
 	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
 	// gate consumes RNG, so all other callers see identical behavior.
 	distance = distance_to_ob(foe());
@@ -2234,7 +2234,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   finalized reach = the weapon's step x line of sight after the shooter's profile). The reach
 	//   gate runs BEFORE the NO_RANGED and mana gates, so a NoRanged or NoMagic denial always means
 	//   'the foe IS in reach' (COMMAND_ATTACK's guard-standoff fix keys off this to face a
-	//   bump-range foe instead of sliding).
+	//   foe inside its reach instead of sliding).
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: WalkerCombat.walker_fire_check_all_dirs
 	// tests: SemWalker2.a_foe_beyond_reach_is_out_of_range_before_any_other_denial
@@ -2246,7 +2246,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	}
 
 	// rule: A NO_RANGED family (ghost, slimes, ...) never takes a ranged shot even at a foe in
-	//   reach; the NoRanged denial tells COMMAND_ATTACK to face/bump instead.
+	//   reach; the NoRanged denial tells COMMAND_ATTACK to face it, or with Gameplay Fixes BC to fight.
 	// tests: WalkerMore.walker_init_fire_and_fire_check_gate_branches
 	// tests: WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches
 	// tests: SemWalker2.a_no_ranged_shooter_is_denied_no_ranged_with_its_foe_in_reach
@@ -2291,15 +2291,15 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   extra target; see the ray's hit test below.
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray
-	walker* const ignored_foe =
-		foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
-		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
-			? foe()
-			: nullptr;
+	walker* const ignored_foe = foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
+		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe()) ? foe() : nullptr;
 
 	// Run weapon through where it would go if all went well ..
-	// plumbing: fire_check's ray walk over the weapon's lineofsight steps (cumulative i*lastx,
-	//   classic triangular stepping); rules below.
+	// rule: Gameplay Fixes BD (#538): with the setting on the ray is the shot's own flight (line_check_flight); off, the classic loop below.
+	// tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on, SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
+	if (const std::optional<bool> flown = line_check_flight(weapon, ignored_foe, denial))
+		return *flown;
+	// plumbing: the classic ray walk (cumulative i*lastx, triangular stepping: 0, 1, 3, 6 ... steps out); rules below.
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
 		weapon->setxy(weapon->xpos() + static_cast<float>(i) * weapon->lastx(),
@@ -2511,33 +2511,33 @@ walker::act_fire()
 		set_dead(1);
 		death();
 	}
-	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))  // rule: A projectile that cannot take
-		//   its step (it met a body or a wall), or a NO_COLLIDE projectile on every tick, strikes
-		//   the live body its step met (attack: damage, score, effects); a wall or an already-dead
-		//   body takes no hit. Cross-reference below: every stock NO_COLLIDE weapon
-		//   family (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
-		//   holds for stock content only because 1654 keeps them alive after the hit.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
+	else  // rule: A projectile takes one step a tick (flight_step): a step it could not take (it
+		//   met a body or a wall), or any step of a NO_COLLIDE projectile, strikes the live body the
+		//   step met (attack: damage, score, effects); a wall or an already-dead body takes no hit.
+		//   Cross-reference below: every stock NO_COLLIDE weapon family
+		//   (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
+		//   holds for stock content only because the IMMORTAL test below keeps them alive after the hit.
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
 	{
+		const FlightStep step = flight_step();
 		// Hit the collide_ob;
 		// rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
-		//   projectile on every tick, strikes the live body its step met (attack.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
-		if (collide_ob() && !collide_ob()->dead())
+		//   projectile on every tick, strikes the live body its step met (flight_step's Struck).
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
+		if (step == FlightStep::Struck)
 		{
 			attack(collide_ob());
 		}
-		// rule: An ordinary projectile is spent by its hit (dies); an IMMORTAL one (WAVE family,
-		//   circles of protection) survives the hit and keeps flying until its range runs out. See
-		//   above: the stock NO_COLLIDE weapons are all IMMORTAL, which is what lets them
-		//   hit every tick.
+		// rule: An ordinary projectile is spent by a step it could not take or that struck, and a
+		//   NO_COLLIDE one by every step (dies); an IMMORTAL one (WAVE family, circles of protection)
+		//   survives the hit and keeps flying until its range runs out. See above: the stock
+		//   NO_COLLIDE weapons are all IMMORTAL, which is what lets them hit every tick.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		if (!stats_->query_bit_flags(BIT_IMMORTAL))
+		// tests: WalkerCombat.walker_act_with_commands, SemLineCheck.a_no_collide_shot_that_is_not_immortal_is_spent_by_its_first_act
+		if ((step != FlightStep::Flew || stats_->query_bit_flags(BIT_NO_COLLIDE)) &&
+		    !stats_->query_bit_flags(BIT_IMMORTAL))
 		{
 			set_dead(1);
 			death();
@@ -3418,8 +3418,8 @@ void walker::apply_z_motion()
 		return;
 	}
 
-	const bool flying = (stats_ != nullptr) &&
-		(stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+	const bool flying =
+		flies();
 
 	smoother& sm = w->smoother_for_floor(floor());
 	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
@@ -4012,8 +4012,8 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family, bool weapo
 	//   eaten, opened, drawn or announced), first against terrain, then against bodies under the
 	//   weapon's own rules (own-team bodies pass; an enemy living or generator blocks; enemy doors,
 	//   trees and weapons in flight pass a weapon probe; an arrow slit passes at pad distance). A
-	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear, Gameplay
-	//   Fixes V etc.) refuse casts whose pad is blocked.
+	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear_of_weapons
+	//   and summon_pad_clear, Gameplay Fixes V, AV, BH) refuse casts whose pad is blocked.
 	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	// tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
 	// tests: QuietProbe.fire_pad_clear_leaves_the_world_alone
@@ -4107,4 +4107,33 @@ bool walker::pad_room(Order body_order, std::int32_t body_family, std::int32_t w
 	if (!pad_probe(probe, weapon_family, px, py))
 		return false;
 	return og::sim::summon_room_at(*current_game->world, *this, body_order, body_family, px, py);
+}
+
+// A living of a family that never moves (a tower): its family descriptor says
+// is_stationary. Only a living is asked, since the descriptor is looked up by
+// family number alone and a weapon can share a living's number (the bone wall
+// shares the tower's). Appended at EOF so the parity canary pins above never
+// shift.
+bool walker::stationary() const
+{
+	// plumbing: only a living has a family that can be stationary
+	if (order() != Order::Living)
+		return false;
+	const auto* fd = get_family_descriptor(family());
+	return fd != nullptr && fd->is_stationary;
+}
+
+// A walker flies while it has the FLYING flag or flight ticks left (a flight
+// potion; the one tick a walker stuck in a wall is given). The simulation's
+// one test: the terrain questions, the stairs, the pathing graph, the chase
+// and the foe search ask it (the drawing code and two pack scripts still
+// write their own, #586). Appended at EOF so the parity canary pins above never shift.
+bool walker::flies() const
+{
+	// rule: A walker flies while it has the FLYING flag or flight ticks left: it takes no stair,
+	//   falls through no air tile, crosses water, tree crowns and low obstacles, and the chase and
+	//   the foe search treat it as a walker that never leaves its floor.
+	// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
+	// tests: SemWorld.a_walker_flies_with_the_flag_or_with_flight_ticks_left
+	return stats_ != nullptr && (stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
 }

@@ -123,18 +123,22 @@ std::vector<ListedScene>& gameplay_fixes_listed()
 
 namespace new_specials_scenes {
 
-// An integer tuning value of a living family as its pack declares it (0
-// when the key is not there), so a scene's tell follows the shipped number.
-int living_tuning(int family, const char* key)
+// An integer tuning value of a family as its pack declares it (0 when the
+// key is not there), so a scene's tell follows the shipped number.
+int family_tuning_value(Order order, int family, const char* key)
 {
-    const og::script::TuningMap* map =
-        og::script::family_tuning(Order::Living, family);
+    const og::script::TuningMap* map = og::script::family_tuning(order, family);
     if (map == nullptr)
         return 0;
     for (const og::script::TuningPair& pair : *map)
         if (pair.key == key)
             return static_cast<int>(pair.value.integer);
     return 0;
+}
+
+int living_tuning(int family, const char* key)
+{
+    return family_tuning_value(Order::Living, family, key);
 }
 
 // The three random streams, pinned per scene the way the cleric clinic test pins
@@ -864,6 +868,100 @@ Keys stand_and_swing(Keys k, const walker* me)
     return k;
 }
 
+// The props of a scene: a fighter that is only part of the staging is taken
+// out of the bots' hands, so the scene shows its special and nothing else.
+// Both halves of the scenes use these.
+
+// hold_fire: walker::init_fire refuses while busy > 0, before it even starts
+// the attack animation, and living::act only counts busy down by one a tick.
+inline constexpr float kHeldBusy = 1000.0f;
+// blunt: a blow of 6 lands about 5 HP against any armour (a 1 would land 0:
+// base 0.5 minus the armour expectation rounds down).
+inline constexpr float kBluntDamage = 6.0f;
+
+// A guard that stays on its mark until the scene releases it.
+void hold_post(walker* a)
+{
+    a->set_act_type(ACT_GUARD);
+    a->set_guard_hold_post(true);
+}
+
+// Held from throwing: a posted guard still acquires a foe and queues
+// COMMAND_FIRE every tick (walker::act_guard), and since 2026-08-11 it fires
+// in every direction. Call on EVERY held frame in before_tick (busy counts
+// down by one a tick); towers are held for the whole scene.
+void hold_fire(walker* a)
+{
+    if (a != nullptr)
+        a->set_busy(kHeldBusy);
+}
+
+// A foe that fights a seat hero for more than a few seconds is blunted so
+// the run never loses its last team-0 body. After set_level.
+void blunt(walker* a)
+{
+    a->set_damage(kBluntDamage);
+}
+
+// Walked by the staging instead of let go: a plain WALK order of `steps`
+// steps along x (`dir` -1 west, 1 east), the walker first turned along it
+// (face_delta: no step, no draw; a walk off its facing spends its first step
+// turning). A posted walker still runs a queued order (living::act returns
+// before the act-type switch while one runs), so it walks, then stands on
+// its post, still held.
+void order_walk(walker* a, int dir, int steps)
+{
+    if (a == nullptr || a->dead())
+        return;
+    a->face_delta(static_cast<short>(dir), 0);
+    a->stats()->clear_command();
+    a->stats()->add_command(COMMAND_WALK, steps, dir, 0);
+}
+
+// A foe walked in along x toward `toward` until it stands `to` px off him,
+// corner to corner: as many whole steps as fit in the gap it stands at now.
+void walk_in(walker* a, const walker* toward, int to)
+{
+    if (a == nullptr || a->dead() || toward == nullptr)
+        return;
+    const int from = std::abs(a->xpos() - toward->xpos());
+    order_walk(a, a->xpos() > toward->xpos() ? -1 : 1,
+               static_cast<int>(static_cast<float>(from - to) / a->stepsize()));
+}
+
+float centre_x(const walker* a)
+{
+    return static_cast<float>(a->xpos()) + static_cast<float>(a->sizex()) / 2.0f;
+}
+
+float centre_y(const walker* a)
+{
+    return static_cast<float>(a->ypos()) + static_cast<float>(a->sizey()) / 2.0f;
+}
+
+// The whole steps `a` walks along x (`dir` -1 west, 1 east) before its
+// centre is within `within` px of the point (x, y), centre to centre; 0 when
+// it already is. Only for a walker whose vertical gap to the point is under
+// `within` (the staging asserts that first).
+int steps_to_within(const walker* a, int dir, float x, float y, float within)
+{
+    const float ahead = (x - centre_x(a)) * static_cast<float>(dir);
+    const float dy = y - centre_y(a);
+    const float along = std::sqrt(within * within - dy * dy);
+    return std::max(0, static_cast<int>(std::ceil((ahead - along) / a->stepsize())));
+}
+
+// The walker's front command is a forced walk (a whirlwind's shove, a
+// scare's flee: statistics::force_command).
+bool forced_walk(const walker* w)
+{
+    if (w == nullptr || w->dead() || w->stats() == nullptr ||
+        w->stats()->commands.empty())
+        return false;
+    const command& front = w->stats()->commands.front();
+    return front.forced && front.commandtype == COMMAND_WALK;
+}
+
 // ---- the scenes -----------------------------------------------------------
 
 // The 22 scenes, built at call time (family_of needs the packs loaded), in
@@ -939,30 +1037,190 @@ std::vector<Scene> scenes()
     // open grass. SCARE and WAIL rest 8 seconds between casts, so when the
     // second pack reaches the ghost its first press only says "WAIL IN 3S"
     // or so; once the rest is over the second wail scatters that pack too.
-    // The packs start further apart than a wail hops (120 px), so each wail
-    // takes only the pack in front of the ghost.
+    // Both packs are props of the scene: posted and held from fighting for
+    // the whole of it, and walked by the staging. The first walks in from
+    // the first frame and the second sets off during the rest. The first
+    // wail's fright carries the first pack off east, more than a hop (the
+    // wail's wail_fork_px) from where the second pack stops. So the second
+    // wail goes for an orc of the second pack (a wail homes on the nearest
+    // foe) and hops only through that pack (a hop reaches a foe within
+    // wail_fork_px of the one struck): each wail takes only the pack in
+    // front of the ghost, which the scene asserts on the frames the second
+    // wail may be pressed.
     {
+        // After the first wail the ghost walks left on frames wail 1 + 10 to
+        // wail 1 + 21, and the second pack sets off on wail 1 + 20. The
+        // second wail is pressed once the rest is over (wail 1 + 97) with
+        // the second pack within kCueGap, or at wail 1 + 110 whatever.
+        static constexpr int kGhostWalkFrom = 10;
+        static constexpr int kGhostWalkTo = 22;
+        static constexpr int kPackGo = 20;
+        static constexpr int kRestOver = 97;
+        static constexpr int kSecondWailDeadline = 110;
+        // Each wail is pressed once the nearest orc of its pack is this near
+        // the ghost, centre to centre.
+        static constexpr float kCueGap = 40.0f;
+        static constexpr int kFrames = 134;
+        // A wail's hop: a struck foe hands it on to a foe within this many
+        // px of it (lib/effect_wail.lua, is_fork_target).
+        const int fork_px = family_tuning_value(Order::FX, fx_wail, "wail_fork_px");
+        const auto pack_wailed = [](int pack) {
+            return [pack](Run& run) {
+                int n = 0;
+                for (int i = 3 * pack; i < 3 * pack + 3; ++i)
+                    n += run.marks.count("wailed.orc" + std::to_string(i + 1)) != 0;
+                return n >= 2;
+            };
+        };
         Scene sc;
         sc.name = "ghost_wail";
         sc.family = FAMILY_GHOST;
         sc.slot = 1;
-        sc.frames = 134; // the second wail lands by frame ~113; GIF <= 12.5 s
-        sc.stage = [](Run& run) {
+        sc.frames = kFrames; // the second wail lands by frame ~110; GIF <= 12.5 s
+        sc.stage = [fork_px](Run& run) {
+            ASSERT_GT(fork_px, 0) << "the staging: the wail's hop is read from its pack";
             fill_mana(run.hero(), 320.0f);
+            // The second pack's three rows of 16 px do not overlap (orc5
+            // stood at y + 10, 2 px into orc4's box), so the pack's walk
+            // east meets nobody.
             const int at[6][2] = {{64, -6},    {80, 8},     {84, -22},
-                                  {-110, -4},  {-124, 10},  {-128, -20}};
+                                  {-110, -4},  {-124, 12},  {-128, -20}};
             for (int i = 0; i < 6; ++i)
+                hold_post(add_actor(run, "orc" + std::to_string(i + 1), FAMILY_ORC, 1,
+                                    at[i][0], at[i][1]));
+            // The first pack walks in west from the first frame, the three
+            // together, keeping their places in the pack, for as many steps
+            // as bring the nearest of them within kCueGap of the ghost (what
+            // the first wail's cue asks).
+            const walker* const ghost = run.hero();
+            ASSERT_NE(nullptr, ghost);
+            int steps = 1 << 20;
+            float back_edge = 1.0e9f;   // the pack's leftmost edge
+            for (int i = 0; i < 3; ++i)
             {
-                walker* o = add_actor(run, "orc" + std::to_string(i + 1),
-                                      FAMILY_ORC, 1, at[i][0], at[i][1]);
-                o->set_act_type(ACT_GUARD);
-                o->set_guard_hold_post(i >= 3); // the second pack waits
+                const walker* const o = run.actor("orc" + std::to_string(i + 1));
+                ASSERT_NE(nullptr, o);
+                ASSERT_LT(std::fabs(centre_y(ghost) - centre_y(o)), kCueGap)
+                    << "the staging: a walk west can bring orc" << i + 1
+                    << " within " << kCueGap << " px of the ghost";
+                steps = std::min(steps, steps_to_within(o, -1, centre_x(ghost),
+                                                        centre_y(ghost), kCueGap));
+                back_edge = std::min(back_edge, static_cast<float>(o->xpos()));
             }
+            const walker* const orc1 = run.actor("orc1");   // all three step alike
+            ASSERT_GT(back_edge - static_cast<float>(steps) * orc1->stepsize(),
+                      static_cast<float>(ghost->xpos() + ghost->sizex()))
+                << "the staging: the first pack stops short of the ghost";
+            printf("  ghost_wail: the first pack walks %d steps west\n", steps);
+            for (int i = 0; i < 3; ++i)
+                order_walk(run.actor("orc" + std::to_string(i + 1)), -1, steps);
         };
         // The second pack sets off while the wail rests, early enough that
-        // the refusal has left the screen before the second wail; every orc
-        // a wail strikes is remembered.
-        sc.before_tick = [](Run& run, int f) {
+        // the refusal has left the screen before the second wail: each of
+        // its orcs is given a WALK order east, toward the spot the ghost
+        // holds once its own walk left is over (the frames of that walk
+        // still to come are a step each). The three walk together, keeping
+        // their places in the pack, for as many steps as bring the last of
+        // them within kCueGap of that spot, centre to centre (what the
+        // second wail's cue asks of the nearest). Every orc a wail strikes
+        // is remembered.
+        sc.before_tick = [fork_px, pack_wailed](Run& run, int f) {
+            const int w1 = cued(run, "wail1");
+            for (int i = 0; i < 6; ++i)
+                hold_fire(run.actor("orc" + std::to_string(i + 1)));
+            if (f == w1 + kPackGo)
+            {
+                const walker* const ghost = run.hero();
+                ASSERT_NE(nullptr, ghost);
+                const float spot_x = centre_x(ghost) -
+                                     static_cast<float>(kGhostWalkTo - kPackGo) *
+                                         ghost->stepsize();
+                const float spot_y = centre_y(ghost);
+                int steps = 0;
+                float front_edge = -1.0e9f;   // the pack's rightmost edge
+                for (int i = 3; i < 6; ++i)
+                {
+                    const walker* const o = run.actor("orc" + std::to_string(i + 1));
+                    ASSERT_NE(nullptr, o);
+                    ASSERT_LT(std::fabs(spot_y - centre_y(o)), kCueGap)
+                        << "the staging: a walk east can bring orc" << i + 1
+                        << " within " << kCueGap << " px of the ghost's spot";
+                    steps = std::max(steps, steps_to_within(o, 1, spot_x, spot_y, kCueGap));
+                    front_edge = std::max(front_edge,
+                                          static_cast<float>(o->xpos() + o->sizex()));
+                }
+                const walker* const orc4 = run.actor("orc4");   // all three step alike
+                const float walked = static_cast<float>(steps) * orc4->stepsize();
+                ASSERT_LT(front_edge + walked,
+                          spot_x - static_cast<float>(ghost->sizex()) / 2.0f)
+                    << "the staging: the pack stops short of the ghost";
+                printf("  ghost_wail: the second pack walks %d steps east, toward (%.1f, %.1f)\n",
+                       steps, spot_x, spot_y);
+                for (int i = 3; i < 6; ++i)
+                    order_walk(run.actor("orc" + std::to_string(i + 1)), 1, steps);
+            }
+            // On each frame the second wail may be pressed: it homes on an
+            // orc of the second pack (a wail goes for the nearest foe by
+            // walker::distance_to_ob, a tie to the one first in the list:
+            // lib/gates.lua, nearest_living_foe), and no orc of the first
+            // pack is within a hop of the second.
+            if (f >= w1 + kRestOver && run.marks.count("wail2") == 0)
+            {
+                const walker* const ghost = run.hero();
+                ASSERT_NE(nullptr, ghost);
+                int nearest = -1;
+                std::int32_t nearest_d = 0;
+                std::int32_t closest_hop = 1 << 20;   // first pack to second, the nearest pair
+                for (int i = 0; i < 6; ++i)
+                {
+                    const walker* const o = run.actor("orc" + std::to_string(i + 1));
+                    if (o == nullptr || o->dead())
+                        continue;
+                    if (nearest < 0 || ghost->distance_to_ob(o) < nearest_d)
+                    {
+                        nearest = i;
+                        nearest_d = ghost->distance_to_ob(o);
+                    }
+                    if (i >= 3)
+                        continue;
+                    for (int j = 3; j < 6; ++j)
+                    {
+                        const walker* const p = run.actor("orc" + std::to_string(j + 1));
+                        if (p == nullptr || p->dead())
+                            continue;
+                        ASSERT_GT(o->distance_to_ob(p), fork_px)
+                            << "on frame " << f << " orc" << i + 1
+                            << " of the first pack, which the first wail must have driven"
+                            << " off, stands more than a hop from orc" << j + 1
+                            << " of the second";
+                        closest_hop = std::min(closest_hop, o->distance_to_ob(p));
+                    }
+                }
+                ASSERT_GE(nearest, 3)
+                    << "the staging: on frame " << f
+                    << " the ghost's nearest foe is an orc of the second pack";
+                if (f == w1 + kRestOver)
+                    printf("  ghost_wail: frame %d, the ghost's nearest foe is orc%d, %d px off; "
+                           "the first pack stands %d px from the second at the nearest (a hop "
+                           "is %d)\n",
+                           f, nearest + 1, nearest_d, closest_hop, fork_px);
+            }
+            if (run.marks.count("wail2") != 0 && run.marks.count("wail2.said") == 0)
+            {
+                run.marks["wail2.said"] = 1.0f;
+                const int w2 = cued(run, "wail2");
+                // The cue is marked on the first frame its condition holds,
+                // or on its deadline frame when it never did (cue()).
+                EXPECT_LT(w2, w1 + kSecondWailDeadline)
+                    << "the staging: the second pack walks in so that its nearest orc comes within "
+                    << kCueGap << " px of the ghost after the rest and before frame "
+                    << w1 + kSecondWailDeadline << ", the second wail's deadline, so the wail is "
+                    << "pressed by its condition";
+                printf("  ghost_wail: the second wail is pressed on frame %d, %s (the rest "
+                       "is over on frame %d, the deadline is frame %d)\n",
+                       w2, w2 < w1 + kSecondWailDeadline ? "by its condition" : "at its deadline",
+                       w1 + kRestOver, w1 + kSecondWailDeadline);
+            }
             for (int i = 0; i < 6; ++i)
             {
                 const std::string n = "orc" + std::to_string(i + 1);
@@ -974,15 +1232,23 @@ std::vector<Scene> scenes()
                 if (o->skip_exit() > 0 &&
                     f >= cued(run, "wail" + std::to_string(pack_of + 1)))
                     run.marks["wailed." + n] = 1.0f;
-                if (pack_of == 1 && f >= cued(run, "wail1") + 20)
-                    o->set_guard_hold_post(false);
+            }
+            // The frame the last tell latches (it reads the marks just set),
+            // beside the latest frame check() allows: a tell must show for
+            // 20 frames.
+            if (run.marks.count("wail2.latched") == 0 && pack_wailed(1)(run))
+            {
+                run.marks["wail2.latched"] = static_cast<float>(f);
+                printf("  ghost_wail: the second wail's tell latches on frame %d, its limit is "
+                       "frame %d\n",
+                       f, kFrames - 20);
             }
         };
         sc.keys = [](Run& run, int f) {
             walker* const me = run.hero_seen();
             Keys k;
             k.special = cue(run, "wail1", f,
-                            f >= 8 && gap(me, nearest_seen(run, me, {"orc1", "orc2", "orc3"})) <= 40.0f,
+                            f >= 8 && gap(me, nearest_seen(run, me, {"orc1", "orc2", "orc3"})) <= kCueGap,
                             24);
             const int w1 = cued(run, "wail1");
             const float second_pack =
@@ -990,24 +1256,17 @@ std::vector<Scene> scenes()
             // The second pack is close and the rest still runs: one tap,
             // refused, and the refusal says how long is left.
             const bool early = cue(run, "early", f,
-                                   f >= w1 + 20 && second_pack <= 48.0f, w1 + 50);
+                                   f >= w1 + kPackGo && second_pack <= 48.0f, w1 + 50);
             k.special = k.special || (early && f == cued(run, "early"));
             // The 96-tick rest is over: the second wail.
             k.special = k.special ||
                         cue(run, "wail2", f,
-                            f >= w1 + 97 && second_pack <= 40.0f, w1 + 110);
+                            f >= w1 + kRestOver && second_pack <= kCueGap,
+                            w1 + kSecondWailDeadline);
             k.shift = k.special;
             // After the first wail the ghost goes to meet the next pack.
-            k.left = during(f, w1 + 10, w1 + 22);
+            k.left = during(f, w1 + kGhostWalkFrom, w1 + kGhostWalkTo);
             return k;
-        };
-        const auto pack_wailed = [](int pack) {
-            return [pack](Run& run) {
-                int n = 0;
-                for (int i = 3 * pack; i < 3 * pack + 3; ++i)
-                    n += run.marks.count("wailed.orc" + std::to_string(i + 1)) != 0;
-                return n >= 2;
-            };
         };
         sc.tells = {
             {"the wail leaves the ghost",
@@ -1267,15 +1526,37 @@ std::vector<Scene> scenes()
         sc.family = FAMILY_FAERIE;
         sc.slot = 1;
         sc.stage = [](Run& run) {
-            add_actor(run, "orc", FAMILY_ORC, 1, 60, 10)->set_act_type(ACT_GUARD);
+            // The orc is SWAP's partner, not a fighter: posted on a held post
+            // (a melee-only guard on a held post never strikes, and it draws
+            // the same each tick wherever it stands). Her two hops take her
+            // to (-30, +14), 74 px from this post by the game's measure,
+            // inside SWAP's reach (swap_range, 80); from the old spot at
+            // (60, 10), where the orc came at her by itself, they leave her
+            // 94 px off and SWAP finds nobody.
+            hold_post(add_actor(run, "orc", FAMILY_ORC, 1, 40, 10));
             // A level-10 faerie hops 24 + 2 x 10 = 44 px.
             run.marks["hop"] = static_cast<float>(
                 living_tuning(FAMILY_FAERIE, "blink_base") +
                 living_tuning(FAMILY_FAERIE, "blink_per_level") * 10);
             ASSERT_EQ(44.0f, run.mark("hop"));
         };
-        // Every move of the faerie on the mirror, counted.
-        sc.before_tick = [](Run& run, int) {
+        // Every move of the faerie on the mirror, counted. On the frame
+        // SWAP is pressed her hops must have left her within its reach of
+        // the posted orc, by the measure SWAP's partner search uses
+        // (walker::distance_to_ob against swap_range, lib/kit_faerie.lua).
+        sc.before_tick = [](Run& run, int f) {
+            if (f == 60)
+            {
+                const walker* const faerie = run.hero();
+                const walker* const orc = run.actor("orc");
+                ASSERT_NE(nullptr, faerie);
+                ASSERT_NE(nullptr, orc);
+                const int reach = living_tuning(FAMILY_FAERIE, "swap_range");
+                ASSERT_GT(reach, 0) << "the staging: SWAP's reach is read from its pack";
+                ASSERT_LE(faerie->distance_to_ob(orc), reach)
+                    << "the staging: after her two hops the orc on its post is inside "
+                       "SWAP's reach";
+            }
             walker* h = run.hero_seen();
             if (h == nullptr)
                 return;
@@ -1359,8 +1640,11 @@ std::vector<Scene> scenes()
             for (int i = 0; i < 4; ++i)
             {
                 const std::string n = "orc" + std::to_string(i + 1);
-                add_actor(run, n, FAMILY_ORC, 1, at[i][0], at[i][1])
-                    ->set_act_type(ACT_GUARD);
+                walker* const orc = add_actor(run, n, FAMILY_ORC, 1, at[i][0], at[i][1]);
+                orc->set_act_type(ACT_GUARD);
+                // The orcs walk in and fight on, blunted: four of them must
+                // not take the seat's faerie before the scene ends.
+                blunt(orc);
             }
         };
         // Per orc: was it frozen, and has it thawed and walked since.
@@ -2072,20 +2356,28 @@ std::vector<Scene> scenes()
     }
 
     // SKELETON: BONE WALL across the foes' path, then Shift: BONE STORM.
-    // The wall goes up on frame 10 and the storm on frame 40. The soldiers
-    // hold their posts beyond the wall, where the skeleton is out of their
-    // knives' reach, until frame 30 and then come on at it, so the storm
-    // meets them as they come up to the wall. A bone starts on its
-    // segment's centre and its first step takes it 1 px past the wall's
-    // face; a level-1 soldier steps at most 4 px a tick, so in the eleven
-    // ticks from frame 30 to the storm the nearer one, 55 px from the face,
-    // comes no nearer than 11 px, and on the storm's frame no bone has met
-    // a body. (A soldier left to walk in from the start reaches the wall
-    // and stands against two segments, and their bones that strike him on
-    // that first step are gone from the storm's frame.) The ground under
-    // the lowest segment is terrain a bone cannot cross, so that segment's
-    // three downward bones end on their first step: the storm's frame
-    // shows 3 x 8 - 3 = 21 bones, inside the tell's allowance.
+    // The wall goes up on frame 10 and the storm on frame 40. The skeleton
+    // starts on the level's first team marker, (384, 928), and the wall's
+    // three 16 px segments stand at x 403, y 910, 926 and 942, so its face
+    // is at x 419. A bone starts on its segment's centre and steps 6 px, its
+    // first step taking it 1 px past the face. The two soldiers are props:
+    // they hold their posts 20 px past the face (x 439, y 916 and 940),
+    // held from throwing, until the storm's frame has been counted. There
+    // they stand inside the flight of the storm's bones (a bone's fifth step
+    // reaches x 439), and the skeleton is 67 px off by the game's measure
+    // (walker::distance_to_ob), beyond a level-1 soldier's knife. So on the
+    // storm's frame nothing has moved, no knife flies and no bone has met a
+    // body; then they are let go, and the storm meets them as they come on.
+    // (A soldier left to walk in reaches the wall and stands against two
+    // segments, and their bones that strike him on that first step are gone
+    // from the storm's frame.)
+    // The lowest segment's three downward bones start at y 947 and step to
+    // y 953, where their 7 px box reaches y 960, the map's bottom edge:
+    // GameWorld::query_grid_passable refuses a box whose far edge reaches
+    // the map's last pixel row, and a projectile that cannot take its step
+    // is spent. So the storm's frame shows exactly 3 x 8 - 3 = 21 bones
+    // (#542). The lower soldier's box stays above that edge, where a walker
+    // would lose a point an act.
     {
         Scene sc;
         sc.name = "skeleton_wall_storm";
@@ -2096,23 +2388,47 @@ std::vector<Scene> scenes()
             walker* skel = run.hero();
             skel->set_ani_type(ANI_WALK);
             skel->set_cycle(0);
-            walker* const foe1 = add_actor(run, "foe1", FAMILY_SOLDIER, 1, 90, -12);
-            walker* const foe2 = add_actor(run, "foe2", FAMILY_SOLDIER, 1, 96, 16);
+            // A level-1 soldier's knife thrown straight flies 8 steps of 7 px:
+            // the knife's step 5 and line of sight 7 (src/resources/gloader.cpp)
+            // times 362/256 and 309/256 for a straight throw, whole pixels and
+            // whole steps (walker::configure_weapon_profile_base), and the
+            // reach gate compares the corners' distance with step x line of
+            // sight (walker::fire_check).
+            const int knife_reach = 7 * 8;
+            walker* const foe1 = add_actor(run, "foe1", FAMILY_SOLDIER, 1, 55, -12);
+            walker* const foe2 = add_actor(run, "foe2", FAMILY_SOLDIER, 1, 55, 12);
             for (walker* const soldier : {foe1, foe2})
             {
-                soldier->set_act_type(ACT_GUARD);
-                soldier->set_guard_hold_post(true);
+                ASSERT_NE(nullptr, soldier);
+                ASSERT_EQ(1, soldier->stats()->level())
+                    << "the staging: the knife's reach is a level-1 soldier's";
+                EXPECT_GT(skel->distance_to_ob(soldier), knife_reach)
+                    << "the staging: the post is beyond the soldier's knife";
+                hold_post(soldier);
+                hold_fire(soldier);
             }
         };
-        sc.before_tick = [](Run& run, int f) {
-            if (f != 30)
-                return;
+        // Held until the tell below has counted the storm's frame, then let
+        // go: they come on at the skeleton through the storm.
+        sc.before_tick = [](Run& run, int) {
+            const bool counted = run.marks.count("storm.bones") != 0;
             for (const char* n : {"foe1", "foe2"})
-                if (walker* const soldier = run.actor(n))
+            {
+                walker* const soldier = run.actor(n);
+                if (soldier == nullptr || soldier->dead())
+                    continue;
+                if (!counted)
+                    hold_fire(soldier);
+                else if (soldier->guard_hold_post())
+                {
                     soldier->set_guard_hold_post(false);
+                    soldier->set_busy(0.0f);
+                }
+            }
         };
-        // The soldiers walk at the wall; the storm meets them there, and the
-        // skeleton fights on with thrown bones.
+        // The soldiers hold their posts until the storm is counted; its
+        // bones meet them as they come on, and the skeleton fights on with
+        // thrown bones.
         sc.keys = [](Run& run, int f) {
             Keys k;
             k.right = during(f, 4, 6);
@@ -2142,8 +2458,9 @@ std::vector<Scene> scenes()
                                  weap_bone) >= 12;
              }},
             // The bursts are the walls' own: on the storm's frame there are
-            // eight bones for every wall that stood, and none more (a burst
-            // from the skeleton would add eight).
+            // eight bones for every wall that stood, less the three the map's
+            // bottom edge spends at once, and none more (a burst from the
+            // skeleton too would show 29, seven bones a segment 18 or 19).
             {"eight bones a wall and none from the skeleton",
              [weap_bone_wall, weap_bone](Run& run) {
                  GameWorld& w = run.display->world();
@@ -2160,9 +2477,7 @@ std::vector<Scene> scenes()
                  run.marks["storm.bones"] = static_cast<float>(bones);
                  printf("  skeleton_wall_storm frame %d: %d walls stood, %d bones\n",
                         run.frame, static_cast<int>(run.mark("walls")), bones);
-                 return bones > 0 &&
-                        bones <= 8 * static_cast<int>(run.mark("walls")) &&
-                        bones >= 8 * static_cast<int>(run.mark("walls")) - 6;
+                 return bones == 8 * static_cast<int>(run.mark("walls")) - 3;
              }},
         };
         sc.still_tell = 1;
@@ -2457,10 +2772,10 @@ std::vector<Scene> scenes()
             run.marks["el.hp"] = el->stats()->hitpoints();
             walker* friend_ = run.actor("hero1");
             ASSERT_NE(nullptr, friend_);
-            // An ally takes each nova blast at half (the blast's nova mark).
-            // He stands at the ring's edge, where only the nearest ring
-            // blasts still reach him, so he outlives the elemental (the
-            // level ends when the last hero falls).
+            // An ally takes each nova blast at half (setting on: Gameplay Fixes
+            // AZ's own-side rule; off: the blast's nova mark). At the ring's edge
+            // only the nearest ring blasts still reach him, so he outlives the
+            // elemental (the level ends when the last hero falls).
             friend_->setxy(static_cast<short>(el->xpos() - 128), el->ypos());
             friend_->set_act_type(ACT_GUARD);
             friend_->set_guard_hold_post(true);
@@ -2468,10 +2783,13 @@ std::vector<Scene> scenes()
             run.marks["friend.hp"] = hp_of(friend_);
             printf("  supernova: elemental hp %.1f of %.1f, soldier hp %.1f\n",
                    hp_of(el), el->stats()->max_hitpoints(), hp_of(friend_));
+            // The orcs are posted where they stand, inside the nova (a
+            // melee-only guard on a held post never strikes), so nothing
+            // but the nova's blasts reaches the soldier.
             for (int i = 0; i < 3; ++i)
             {
                 const std::string n = "orc" + std::to_string(i + 1);
-                add_actor(run, n, FAMILY_ORC, 1, 40 + 6 * i, -28 + 18 * i); // on grass
+                hold_post(add_actor(run, n, FAMILY_ORC, 1, 40 + 6 * i, -28 + 18 * i)); // on grass
                 mark_hp(run, n);
             }
         };
@@ -2506,10 +2824,10 @@ std::vector<Scene> scenes()
                                  fx_explosion) >= 9;
              }},
             // An ally takes each nova blast at half: the soldier at the
-            // ring's edge (382 hp) loses 98, where a blast at full took 218,
-            // and lives. Between a fifth and two fifths of his health holds
-            // the half and refuses the full blast (218 is 57 %), at every
-            // frame of the drop.
+            // ring's edge (382 hp) loses about 100, where the same blasts at
+            // full take about 215, and lives. Between a fifth and two fifths
+            // of his health holds the half and refuses the full blast (about
+            // 56 % of his health), at every frame of the drop.
             {"the soldier 128 px off, at the ring's edge, takes the blast at "
              "half and lives",
              [](Run& run) {
@@ -2729,6 +3047,9 @@ std::vector<Scene> scenes()
             ally->stats()->set_hitpoints(0.25f * ally->stats()->max_hitpoints());
             live_game::stop_hp_regen(ally);
             walker* orc = add_actor(run, "orc", FAMILY_ORC, 1, 14, -30);
+            // Blunted: the orc keeps hitting, and the soldier at a quarter
+            // of his health lives through the lead-in.
+            blunt(orc);
             ally->set_foe(orc);
             orc->set_foe(ally);
             mark_hp(run, "orc");
@@ -2960,18 +3281,13 @@ inline constexpr int kCue = 24;
 // and a message all paint on the cast's own frame through the shadow).
 inline constexpr int kGrace = 2;
 inline constexpr std::uint32_t kNeverDraws = 1u << 20;
-// hold_fire: walker::init_fire refuses while busy > 0, before it even starts
-// the attack animation, and living::act only counts busy down by one a tick.
-inline constexpr float kHeldBusy = 1000.0f;
-// blunt: a blow of 6 lands about 5 HP against any armour (a 1 would land 0:
-// base 0.5 minus the armour expectation rounds down).
-inline constexpr float kBluntDamage = 6.0f;
 // h2 and i: the tower a blocked throw swings at must outlast the scene (one
 // classic swing a press takes 8 to 12 from it).
 inline constexpr float kBlockerHp = 500.0f;
 // k1 to k4: a soldier foe throws its knives from about 45 px and never
 // closes to melee, so "arrived" is that distance (centre to centre), inside
-// every one of the four specials' reach.
+// every one of the four specials' reach. (k1 and k3 walk their foe in by an
+// order, to 32 px.)
 inline constexpr float kInReach = 50.0f;
 
 // The off side must latch tell `tell` at least `by` frames before the on
@@ -3026,23 +3342,6 @@ bool has_mark(const Run& run, const std::string& name)
     return run.marks.count(name) != 0;
 }
 
-// A guard that stays on its mark until the scene releases it.
-void hold_post(walker* a)
-{
-    a->set_act_type(ACT_GUARD);
-    a->set_guard_hold_post(true);
-}
-
-// Held from throwing: a posted guard still acquires a foe and queues
-// COMMAND_FIRE every tick (walker::act_guard), and since 2026-08-11 it fires
-// in every direction. Call on EVERY held frame in before_tick (busy counts
-// down by one a tick); towers are held for the whole scene.
-void hold_fire(walker* a)
-{
-    if (a != nullptr)
-        a->set_busy(kHeldBusy);
-}
-
 // Off its post and walking: a posted guard never converts by itself unless
 // it sights its foe within lineofsight*16 px (soldier: 112), so the walk-in
 // is ordered here. No foe is set: act_random re-acquires the nearest foe when
@@ -3057,19 +3356,15 @@ void release(walker* a)
     a->set_busy(0.0f);
 }
 
-// A foe that fights a seat hero for more than a few seconds is blunted so
-// the run never loses its last team-0 body. After set_level.
-void blunt(walker* a)
-{
-    a->set_damage(kBluntDamage);
-}
-
-// A pinned ACT_RANDOM bot is mid-turn on about a third of its ticks, and
-// living::act returns before the act-type switch while curdir != enddir or
-// a command runs: on the cue frame the bot is made ready to decide, after
-// its position pin.
+// On the cue frame, after its position pin, the steered bot is set loose: a
+// free bot (ACT_RANDOM, off its post) ready to decide. living::act returns
+// before the act-type switch while curdir != enddir or a command runs, so it
+// is also left facing where it faces, in its walk frame, with no firing
+// pause and no order.
 void ready_bot(walker* a)
 {
+    a->set_act_type(ACT_RANDOM);
+    a->set_guard_hold_post(false);
     a->set_enddir(static_cast<char>(a->curdir()));
     a->set_ani_type(ANI_WALK);
     a->set_busy(0.0f);
@@ -3095,17 +3390,6 @@ void pin_draws(Run& run, const std::vector<std::uint32_t>& bounds,
 {
     run.server->world().rng_.state_ =
         live_game::state_where_draws_are(bounds, want);
-}
-
-// The walker's front command is a forced walk (a whirlwind's shove, a
-// scare's flee: statistics::force_command).
-bool forced_walk(const walker* w)
-{
-    if (w == nullptr || w->dead() || w->stats() == nullptr ||
-        w->stats()->commands.empty())
-        return false;
-    const command& front = w->stats()->commands.front();
-    return front.forced && front.commandtype == COMMAND_WALK;
 }
 
 // ONE-frame presses, the only way a Special key goes down in these scenes: a
@@ -3176,8 +3460,11 @@ Tell arrived_by(int reach, int by)
             }};
 }
 
-// A bot kept on its mark, foe-less and with nothing queued, so every tick is
-// one where it weighs its special; its mana is zero except on the cue frame.
+// A bot kept on its mark, foe-less and with nothing queued. It is a free bot
+// on the cue frame only (ready_bot sets it loose there, after this pin):
+// on every other frame it is posted and held from firing, so nothing it does
+// before the cue or after it hangs on how a free bot turns, steps or shoots.
+// Its mana is zero except on the cue frame.
 walker* steer_bot(Run& run, const std::string& name)
 {
     walker* const bot = run.actor(name);
@@ -3187,6 +3474,8 @@ walker* steer_bot(Run& run, const std::string& name)
                static_cast<short>(run.mark(name + ".y")));
     bot->stats()->clear_command();
     bot->set_foe(nullptr);
+    hold_post(bot);
+    hold_fire(bot);
     return bot;
 }
 
@@ -3197,7 +3486,8 @@ walker* add_bot(Run& run, const std::string& name, int family,
     if (bot == nullptr)
         return nullptr;
     set_level(bot, level);
-    bot->set_act_type(ACT_RANDOM);
+    hold_post(bot);
+    hold_fire(bot);
     bot->stats()->set_magicpoints(0.0f);
     run.marks[name + ".x"] = bot->xpos();
     run.marks[name + ".y"] = bot->ypos();
@@ -4152,8 +4442,15 @@ std::vector<Pair> pairs()
     }
 
     // K1 to K4: the four specials that classic players could cast at nobody.
-    // A foe posted far off is let go early and walks up to the hero; the
-    // hero casts once at nobody and once when the foe is beside him.
+    // A foe posted far off comes up to the hero; the hero casts once at
+    // nobody and once when the foe is beside him. Let go, the soldier walks
+    // in and stops where it throws, a spot inside its knife's reach (a
+    // level-1 soldier's knife thrown straight flies 8 steps of 7 px, 56 px;
+    // see the skeleton scene), which with the soldier's own 16 px box is
+    // 72 px. Where the special's reach is at least 72, any spot the soldier
+    // throws from is in reach and the foe is let go to walk in (k2, k4);
+    // where it is less, the foe stays posted and held for the whole scene
+    // and the staging walks it in to 32 px (k1, k3).
     const auto walk_in_stage = [](int dx) {
         return [dx](Run& run) {
             walker* foe = add_posted(run, "foe", FAMILY_SOLDIER, 1, dx, 0, 1);
@@ -4161,7 +4458,11 @@ std::vector<Pair> pairs()
         };
     };
 
-    // K1. WHIRLWIND at nobody.
+    // K1. WHIRLWIND at nobody. Its ring at the hero's level 7 is 32 + 2 x 7 =
+    // 46 px (living-00-soldier.lua, whirlwind_range_base and _per_level),
+    // under 72: on frame 24, where it used to be let go, the foe is walked
+    // in west (140 - 32) / its step = 27 steps of 4 px and stands 32 px from
+    // the hero, inside the ring.
     {
         Pair c;
         c.name = "k1_whirlwind_nobody";
@@ -4175,10 +4476,9 @@ std::vector<Pair> pairs()
             foe_stage(run);
         };
         c.scene.before_tick = [](Run& run, int f) {
-            if (f < 24)
-                hold_fire(run.actor("foe"));
+            hold_fire(run.actor("foe"));
             if (f == 24)
-                release(run.actor("foe"));
+                walk_in(run.actor("foe"), run.hero(), 32);
         };
         c.scene.keys = [](Run&, int f) { return f == 104 ? press_at(f, 104) : press_at(f, 20); };
         c.off_shows = {
@@ -4206,7 +4506,9 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
-    // K2. TAUNT at nobody.
+    // K2. TAUNT at nobody. Its reach at the hero's level 7 is 80 + 4 x 7 =
+    // 108 px (living-11-thief.lua, taunt_range_base and _per_level), at
+    // least 72: the foe is let go and walks in by itself.
     {
         Pair c;
         c.name = "k2_taunt_nobody";
@@ -4251,7 +4553,10 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
-    // K3. SCARE at nobody: the classic scare starts its 8-second rest.
+    // K3. SCARE at nobody: the classic scare starts its 8-second rest. Its
+    // radius at the hero's level 1 is 50 + 10 x 1 = 60 px (the cast asks
+    // og.scare_radius, og::combat::scare_radius), under 72: on frame 16,
+    // where it used to be let go, the foe is walked in as in k1.
     {
         Pair c;
         c.name = "k3_scare_nobody";
@@ -4266,10 +4571,9 @@ std::vector<Pair> pairs()
             foe_stage(run);
         };
         c.scene.before_tick = [fx_scare](Run& run, int f) {
-            if (f < 16)
-                hold_fire(run.actor("foe"));
+            hold_fire(run.actor("foe"));
             if (f == 16)
-                release(run.actor("foe"));
+                walk_in(run.actor("foe"), run.hero(), 32);
             // The carrier's life, printed once per side.
             const int n = count_of(run.server->world(), Order::FX, fx_scare);
             if (n > 0 && !has_mark(run, "scare.born"))
@@ -4295,19 +4599,18 @@ std::vector<Pair> pairs()
             says("NO FOE IN RANGE"),
             {"a second scare", [carrier](Run& f) { return f.frame > 94 && carrier(f); }},
         };
-        // The foe's walk differs with the setting on: the soldier bot's
-        // refused special rolls now take its ordinary act (fix W, #371), so
-        // its pauses on the way in fall on other ticks and from frame 81 it
-        // stands 54 px from the ghost centre to centre (52 by the game's
-        // measure), never as close as the 50 px arrived() asks for (with
-        // only that fix undone it reaches 50 on frame 79). What the scene
-        // claims is that the second scare goes off with the foe in its
-        // reach, so this side asks exactly that, at the measured closest
-        // approach: within 52 px by the game's measure, inside the scare's
-        // radius (og::combat::scare_radius, 60 px at level 1, the radius the
-        // cast's own no-foe refusal reads), by the press on frame 94. The
-        // number is its own claim: the cast's refusal two tells below reads
-        // the radius, and this one would red first at 51.
+        // What the scene claims is that the second scare goes off with the
+        // foe in its reach, so this side asks exactly that: within 52 px by
+        // the game's measure, inside the scare's radius
+        // (og::combat::scare_radius, 60 px at level 1, the radius the cast's
+        // own no-foe refusal reads), by the press on frame 94. The number is
+        // its own claim: the cast's refusal two tells below reads the radius.
+        // (It was the closest approach of the foe when it walked in by
+        // itself: with the setting on, the soldier bot's refused special
+        // rolls take its ordinary act (fix W, #371), and from frame 81 it
+        // stood 54 px from the ghost centre to centre, 52 by the game's
+        // measure. Walked in by the staging it stands 32 px off on both
+        // sides.)
         c.on_shows = {
             arrived_by(52, 94),
             says("NO FOE IN RANGE"),
@@ -4321,7 +4624,10 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
-    // K4. HOWL at nobody: the classic howl starts its 10-second rest.
+    // K4. HOWL at nobody: the classic howl starts its 10-second rest. Its
+    // radius at the hero's level 1 is 160 + 20 x 1 = 180 px (the cast in
+    // lib/orc_specials.lua asks og.combat.yell_radius), at least 72: the foe
+    // is let go and walks in by itself.
     {
         Pair c;
         c.name = "k4_howl_nobody";

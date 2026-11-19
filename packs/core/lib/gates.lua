@@ -684,15 +684,15 @@ function M.rush_strikes(self, steps)
   return nil
 end
 
--- The pad fire() would place the caster's weapon on is clear: the weapon
--- would fly instead of meeting a wall, the map edge, a tree it cannot cross,
--- a foe's body or a generator there (walker:fire_pad_clear, the same spot and the
--- same weapon rules, asked quietly). A body of the caster's own team passes,
--- as the weapon passes it; so does an enemy door, tree or weapon in flight
--- (the weapon-vs-weapon arm: the loud fire() blocks on those 4 times in 10).
--- `weapon`, optional: the weapon family the cast fires when it is not the
--- current one (the archer's EXPLODING BOLT swaps in core:fire_arrow); a gate
--- may not do the cast's swap itself (nothing here writes a walker field).
+-- The pad fire() would place the caster's weapon on is clear: the weapon would fly
+-- instead of meeting a wall, the map edge, a tree it cannot cross, a foe's body or a
+-- generator there (walker:fire_pad_clear, the same spot and weapon rules, asked
+-- quietly). A body of the caster's own team passes, as the weapon passes it; so does
+-- an enemy door, tree or weapon in flight, which the loud fire() meets on 4 rolls in
+-- 10. Since Gameplay Fixes BH every rule of the core pack that asks a pad asks it the
+-- strict way (pad_clear_of_weapons, summon_pad_clear), which takes that roll as lost, so
+-- its yes is a cast that leaves. `weapon`, optional: the weapon family the cast fires when
+-- it is not the current one (EXPLODING BOLT's core:fire_arrow); a gate never does the swap.
 function M.pad_clear(self, weapon)
   return self:fire_pad_clear(weapon)
 end
@@ -712,18 +712,18 @@ function M.pad_clear_of_weapons(self, weapon)
 end
 
 -- A cast that fires its weapon and stands a summon where the weapon stands
--- (the druid's SUMMON FAERIE puts the faerie on the bolt's spot): the
--- weapon's pad is clear, and the summoned body, the caster's own, has room
--- there (walker:pad_room: the cast's own passability question, asked
--- quietly with a detached body of that family, never with the caster,
--- #423). `order` is an order word ("living"). Draws nothing.
+-- (the druid's SUMMON FAERIE puts the faerie on the bolt's spot): the weapon's
+-- pad is clear by the strict question (Gameplay Fixes BH), and the summoned
+-- body, the caster's own, has room there (walker:pad_room: the cast's own
+-- passability question, asked quietly with a detached body of that family,
+-- never with the caster, #423). `order` is an order word ("living"). Draws nothing.
 function M.summon_pad_clear(self, order, family, weapon)
   -- rule: A summon that stands where the caster's weapon stands pays only when the weapon's pad is
-  --   clear and the summoned body has room on it: an ally there passes the weapon but blocks the
-  --   body; asked with the body, never with the caster. Draws nothing.
-  -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
-  -- tests: GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
-  if not self:fire_pad_clear(weapon) then
+  --   clear by the strict question (fix BH: no enemy door, grown tree or shot in flight on it) and the
+  --   summoned body has room on it (an ally passes the weapon but blocks the body); asked with the body, never with the caster. Draws nothing.
+  -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe, GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
+  -- tests: GameplayFixesBots.druid_faerie_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot, BotGatesLib.summon_pad_clear_asks_the_weapons_pad_the_strict_way
+  if not self:fire_pad_clear(weapon, true) then
     return false
   end
   return self:pad_room(order, family, weapon)

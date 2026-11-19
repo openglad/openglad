@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -194,7 +195,7 @@ class walker : public og::sim::SimEntity
 		explicit walker(WeaponProfileProbeTag);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
-		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// Facing, and NoRanged with the foe inside the weapon's reach ("the foe is in reach
 		// but we are pointed the wrong way / can only hit by facing") —
 		// from every other denial, because the classic response to ANY
 		// denial (walk toward the foe, sliding perpendicular when blocked)
@@ -210,15 +211,38 @@ class walker : public og::sim::SimEntity
 			NoMagic,     // weapon costs more magic than we have
 			OutOfRange,  // foe beyond weapon stepsize*lineofsight
 			Facing,      // in reach, but curdir is not toward the foe
-			WallBlocked, // the shot ray hits terrain first
+			WallBlocked, // the shot ray hits terrain first, or with Gameplay Fixes on
+			             // an enemy door that is not the foe (fix BF)
 			RayMiss,     // the shot ray ran full range without a hit
 		};
 		bool fire_check(short xdelta, short ydelta,
 		                FireCheckDenial* denial = nullptr);
+		// What one step of a flying weapon met (flight_step).
+		enum class FlightStep : std::uint8_t { Flew, Struck, Stopped };
+		// One step of a weapon in flight: walk() along its heading, and what that met.
+		// act_fire takes it every act; with Gameplay Fixes on, fire_check's probe takes
+		// the same step (fix BD). Defined at the end of walker_movement.cpp.
+		[[nodiscard]] FlightStep flight_step();
+		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies. No
+		// answer with the setting off (the classic loop asks). When it answers it sets
+		// the probe dead and writes *denial. Gameplay Fixes BF: an enemy door that is not
+		// the foe refuses it (WallBlocked). Defined at the end of walker_movement.cpp.
+		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, walker* ignored_foe,
+		                                                    FireCheckDenial* denial);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).
 		void face_delta(short xdelta, short ydelta);
+		// A living of a family that never moves (a tower). Defined at the end
+		// of walker.cpp.
+		[[nodiscard]] bool stationary() const;
+		// A walker flies while it has the FLYING flag or flight ticks left (a flight potion; the
+		// one tick a walker stuck in a wall is given): the simulation's one test (the drawing code
+		// and two pack scripts still write their own, #586). Defined at the end of walker.cpp.
+		[[nodiscard]] bool flies() const;
+		// A door: weapon order and the door's family (a golem's family number is a door's).
+		// Gameplay Fixes BF asks it. Defined at the end of walker_movement.cpp.
+		[[nodiscard]] bool is_door() const;
 		bool query_next_to();
 		// Why a special() attempt produced nothing. Only the player-input
 		// path asks: a silent no-op there reads as a broken key, while the

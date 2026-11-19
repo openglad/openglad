@@ -509,10 +509,27 @@ public:
     bool clear_sight_line(const walker* from, const walker* to);
 
     // Search the obmap spiral for the first foe met; fall back to the
-    // floor-blind nearest-foe scan when it finds none or leaves the map.
+    // nearest-foe scan when it finds none or leaves the map. That scan is
+    // floor-blind except for a flyer on a level with floors, who is answered
+    // the nearest foe on its own floor when there is one (#512).
     walker* find_near_foe(walker* ob);
-    // Scan all live, non-dormant foes and return the nearest by 2D distance.
+    // Scan all live, non-dormant foes and return the nearest by 2D distance;
+    // floor-blind except for a flyer on a level with floors (#512).
     walker* find_nearest_foe(walker* ob);
+    // The full foe scan's answer, kept in its one pass: the nearest foe on any
+    // floor and, for a living that flies on a level with more than one floor,
+    // the nearest on its own floor (#512).
+    struct NearestFoePick
+    {
+        walker* any = nullptr;
+        std::int32_t any_distance = 10000;
+        walker* own = nullptr;
+        std::int32_t own_distance = 10000;
+        int own_floor = -1;  // -1: the searcher does not fly, or the level has one floor
+        void set_searcher(const walker& ob, int floors);
+        void offer(walker* foe, std::int32_t distance);
+        [[nodiscard]] walker* answer() const;
+    };
     // The nearest live stain on who's floor (squared centre distance under
     // 800), or nullptr; a stain on another floor is never answered (#456).
     walker* find_nearest_blood(walker* who);
@@ -610,6 +627,18 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+    // While walker::line_check_flight flies its test weapon (Gameplay Fixes BD) this names that
+    // weapon, and two answers differ for it: query_grid_passable takes an arrow slit as open and
+    // draws nothing, as it does for a quiet question (fix BD), and ob_pass_check meets a live
+    // enemy door without the clash roll, so the door stops it and nothing is drawn (fix BF). Null
+    // at every other time; never saved, never sent. The old game's field has the same name.
+    const walker* slit_open_for = nullptr;
+    // Whether `w` is the test weapon line_check_flight is flying now (slit_open_for); false for
+    // null. The door rule of Gameplay Fixes BF asks this.
+    [[nodiscard]] bool is_line_check_probe(const walker* w) const
+    {
+        return w != nullptr && w == slit_open_for;
+    }
 
     // Game state flags written in-place by tick().
     short level_done = 0;

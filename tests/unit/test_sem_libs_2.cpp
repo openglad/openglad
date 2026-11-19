@@ -650,7 +650,7 @@ TEST(SemShield, classic_a_boomerang_dies_with_its_thrower)
 // damage). On the next act the knife is gone and the guard has paid its 5
 // (95 hp); the wall and the banner stand at full health.
 //
-// RED (the scenery test dropped, `if not weapon:blocks_placement() then` ->
+// RED (the scenery test dropped, `if not gf.guard_passes_by(weapon) then` ->
 // `if true then` in effect_shield.lua guard_tail): Expected equality of these
 // values: 95.0f Which is: 95 fx->stats()->hitpoints() Which is: 77 (5 + 9 +
 // 9 paid); Value of: piece->dead() Actual: true Expected: false "family 5,
@@ -708,6 +708,100 @@ TEST(SemShield, a_guard_passes_a_foes_bone_wall_and_war_banner_by)
                                         << int(piece->family()) << ": passed by";
             EXPECT_FLOAT_EQ(120.0f, piece->stats()->hitpoints())
                 << "family " << family << ", weapon " << int(piece->family());
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Gameplay Fixes BG (#588). A guard destroys shots in flight; with the
+// setting on it passes an enemy door and an enemy grown tree by, as it
+// passes a bone wall or a war banner by: neither is destroyed and the guard
+// pays nothing for it. With the setting off the classic guard destroys both
+// at once, whatever their hit points, and pays their damage, as the old
+// game's guard does. For the magic shield and the boomerang, on both
+// settings: an owner soldier (team 0), its guard (100 hp) on its orbit spot
+// after one act, then on that spot six weapon-order bodies of team 1: an
+// arrow, a glow, a door (5,000 hp), a grown tree (50 hp), a bone wall and a
+// war banner, of damage 1, 2, 4, 8, 9 and 9. On the next act the arrow and
+// the glow are destroyed and the bone wall and the war banner stand, on
+// both settings; with the setting on the door and the tree stand with their
+// hit points whole and the guard has paid 1 + 2 (97 hp); with it off both
+// are destroyed and the guard has paid 1 + 2 + 4 + 8 (85 hp). The bone wall
+// and the war banner make this the setting-on half of
+// a_guard_passes_a_foes_bone_wall_and_war_banner_by, which runs with the
+// setting off.
+TEST(SemShield, a_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    og::test::mount_core_pack();
+    struct Body {
+        const char* what;
+        int family;
+        float damage;
+        float hp;
+        bool passed_off;  // passed by with the setting off
+        bool passed_on;   // passed by with the setting on
+    };
+    const std::array<Body, 6> bodies = {{
+        {"an arrow", FAMILY_ARROW, 1.0f, 10.0f, false, false},
+        {"a glow", FAMILY_GLOW, 2.0f, 10.0f, false, false},
+        {"a door", FAMILY_DOOR, 4.0f, 5000.0f, false, true},
+        {"a grown tree", FAMILY_TREE, 8.0f, 50.0f, false, true},
+        {"a bone wall", weapon_family("core:bone_wall"), 9.0f, 120.0f, true, true},
+        {"a war banner", weapon_family("core:war_banner"), 9.0f, 120.0f, true, true},
+    }};
+    for (const int family : {int{FAMILY_MAGIC_SHIELD}, int{FAMILY_BOOMERANG}}) {
+        for (const short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(testing::Message() << "guard family " << family << ", setting " << fixes);
+            TestGameWorld tw;
+            open_field(tw);
+            tw.world().gameplay_fixes = fixes;
+            walker* owner = add_living(tw, FAMILY_SOLDIER, 0, 300, 300);
+            ASSERT_NE(nullptr, owner);
+            walker* fx = add_guard_fx(tw, family, owner, 100);
+            ASSERT_NE(nullptr, fx);
+            // As in the bone wall's test: the guard is set back to the same
+            // drawcycle before the act that meets the bodies, so it lands
+            // where its first act put it.
+            fx->set_drawcycle(10);
+            ASSERT_TRUE(fx->act()) << "the staging: the orbit spot";
+            ASSERT_EQ(0, fx->dead());
+            ASSERT_FLOAT_EQ(100.0f, fx->stats()->hitpoints());
+            const short spot_x = fx->xpos();
+            const short spot_y = fx->ypos();
+            fx->set_drawcycle(10);
+            std::vector<walker*> placed;
+            for (const Body& b : bodies) {
+                walker* piece = tw.world().add_weap_ob(Order::Weapon, b.family);
+                ASSERT_NE(nullptr, piece) << b.what;
+                ASSERT_EQ(Order::Weapon, piece->query_order()) << b.what;
+                piece->set_team_num(1);
+                piece->setxy(spot_x, spot_y);
+                piece->set_damage(b.damage);
+                piece->stats()->set_max_hitpoints(b.hp);
+                piece->stats()->set_hitpoints(b.hp);
+                piece->set_act_type(ACT_SIT);
+                placed.push_back(piece);
+            }
+
+            ASSERT_TRUE(fx->act());
+            ASSERT_EQ(spot_x, fx->xpos()) << "the staging: the same orbit spot";
+            ASSERT_EQ(spot_y, fx->ypos());
+            ASSERT_EQ(0, fx->dead()) << "the staging: the guard survives its act";
+            const bool on = fixes != 0;
+            for (std::size_t i = 0; i < bodies.size(); ++i) {
+                const Body& b = bodies[i];
+                const bool passed = on ? b.passed_on : b.passed_off;
+                EXPECT_EQ(passed, placed[i]->dead() == 0)
+                    << b.what << (passed ? ": passed by" : ": destroyed");
+                if (passed) {
+                    EXPECT_FLOAT_EQ(b.hp, placed[i]->stats()->hitpoints())
+                        << b.what << ": its hit points whole";
+                }
+            }
+            EXPECT_FLOAT_EQ(on ? 97.0f : 85.0f, fx->stats()->hitpoints())
+                << (on ? "the guard paid the arrow's 1 and the glow's 2 only"
+                       : "classic: the guard paid the door's 4 and the tree's 8 too");
         }
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();

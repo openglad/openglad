@@ -305,6 +305,9 @@ byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
   `find_far_foe`.
   **Update (2026-09-26, PR #315):** The native fallback is now named
   `find_nearest_foe`; its floor-blind nearest-distance behavior is unchanged.
+  **Update (2026-11-17, #512):** `find_nearest_foe` is floor-blind but for a
+  flyer on a level with floors, which it answers the nearest foe on its own
+  floor when there is one.
 
 ## Projectiles
 

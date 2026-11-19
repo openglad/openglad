@@ -359,7 +359,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   where the captain stood when they were called, then follow him.
 - The hook blade, the cleric's magic shield and the soldier's boomerang
   cut down any enemy missile that comes close, but pass an enemy war
-  banner or bone wall by: those have to be chopped down.
+  banner or bone wall by: those have to be chopped down. With the
+  Gameplay Fixes setting on they pass an enemy door and an enemy grown
+  tree by too (Gameplay Fixes BG); with it off they destroy both, as the
+  classic game does.
 - A bot captain howls when a living foe or a generator is inside the yell
   (160 pixels plus 20 per level, at most 420). EAT CORPSE has its own bot
   gate: it eats only below 60 percent of its health (at exactly 60 percent

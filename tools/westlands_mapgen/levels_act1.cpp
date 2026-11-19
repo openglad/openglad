@@ -208,6 +208,15 @@ void build_forest_road(const LevelDataHooks& hooks)
     // (2/2/3) and their scare special is SHEATHED (a frozen or fleeing
     // company mid-melee is a death sentence): an entry-power company must
     // survive being CAUGHT once and still run on.
+    // (Not eased, 2026-11-18: with Gameplay Fixes on, a melee-only bot
+    // that faces its foe swings or steps in its ATTACK order (fix BC,
+    // #447). The curve-2 company's forty-seed average here fell from 8.00
+    // to 6.97 survivors. With these four pursuit riders and pocket 2's
+    // three wolves at level 1 it reads 7.05, and the four guard wolves of
+    // bend 3 and seg D at level 1 as well change no seed: no group that
+    // fights before tick 600 brings it back, so the levels were left as
+    // they were. With the setting off it reads 8.00, as before these
+    // fixes.)
     place_living(w, FAMILY_GHOST, 2, 0, 3, 18, 2, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 3, 22, 2, false, true, 250);
     place_living(w, FAMILY_GHOST, 2, 0, 2, 20, 2, false, true, 550);
@@ -411,10 +420,18 @@ void build_last_ford(const LevelDataHooks& hooks)
         place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2);
     // Beats land every ~400 ticks, not every 300: defense here is
     // attrition, and the line needs a recovery window between waves.
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-2 company's forty-seed average here fell from 7.62 to
+    // 6.08 survivors. These five Riders shed three levels (4 -> 1); it
+    // reads 7.38, still 0.25 under the 7.62 it read before these fixes
+    // (the measure's error there is 0.19), and no group that fights
+    // before tick 600 is left to lower. With the setting off it reads
+    // 7.47, from 7.40.)
     static constexpr int wave1[5][2] = {{10, 18}, {10, 26}, {10, 22},
                                         {12, 16}, {12, 28}};
     for (const auto& c : wave1) // Riders fly: they cross anywhere
-        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 4, false, false, 400);
+        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 1, false, false, 400);
     static constexpr int wave2[10][2] = {{4, 21}, {4, 23}, {6, 20}, {6, 24},
                                          {8, 22}, {2, 19}, {4, 18}, {4, 26},
                                          {6, 18}, {6, 26}};
@@ -627,10 +644,17 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     // door-wards) made the designed 23 a mop-up. The F4 lesson holds: the
     // per-walker LEVELS stay exactly at the F4 floor — the cascade wiped
     // crews when the waves got HOTTER, not when they got wider.)
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-3 company's forty-seed average here fell from 7.67 to
+    // 7.03 survivors. These six scouts and the twelve dawn orcs below
+    // shed one level each (2 -> 1), all that its groups fighting before
+    // tick 600 can shed, which brings it back to 7.58. With the setting
+    // off it reads 7.67, from 7.70.)
     static constexpr int scouts[6][2] = {{10, 23}, {10, 26}, {14, 22},
                                          {14, 27}, {12, 20}, {12, 29}};
     for (const auto& c : scouts)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 1);
     // (F4 fresh-team calibration: the whole assault dropped one level —
     // dawn orcs 3->2, dawn bigs 4->3, north ghosts 5->4, north skels 3->2.
     // The obmap context-before-load fix made harness collision production-
@@ -641,7 +665,7 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
                                              {5, 24}, {1, 23}, {1, 25},
                                              {3, 23}, {3, 25}, {5, 22}};
     for (const auto& c : dawn_orcs)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2, false, false, 500);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 1, false, false, 500);
     static constexpr int dawn_bigs[4][2] = {{2, 23}, {2, 25}, {5, 23},
                                             {5, 25}};
     for (const auto& c : dawn_bigs)

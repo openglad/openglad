@@ -1035,7 +1035,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                     // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                     // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                    if (ob->flies())
                         break;
                     return false;
                 // rule: A tree trunk blocks ground walkers but lets weapons fly through, as well as
@@ -1062,7 +1062,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                     // tests: SemWorld.a_tree_trunk_passes_weapons_forestwalkers_and_flyers
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                    if (ob->flies())
                         break;
                     return false;
 
@@ -1189,7 +1189,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     //   temporary) cross it, and a swimming family can wade through it.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                    if (ob->flies())
                         break;
                     // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
                     //   temporary) cross it, and a swimming family can wade through it.
@@ -1277,22 +1277,22 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     if (ob->owner() == nullptr)
                         return false;
 
-                    // A quiet probe never rolls the gamble and treats the slit
-                    // as passable. That is the loud answer where a quiet weapon
-                    // probe is made today (walker::fire_pad_clear: the pad one
-                    // pixel outside a shooter up to 38 px a side gives dist /
-                    // GRID_SIZE 0 or 1 below, and rng_.next(0) and rng_.next(1)
-                    // both answer 0). A golem (48x36) or giant skeleton (64x64)
-                    // pad can reach a bound of 2, where the loud roll blocks half.
-                    // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
-                    //   living outright, flyers included.
+                    // A quiet probe never rolls the gamble and treats the slit as passable: the
+                    // loud answer at walker::fire_pad_clear's pad, one pixel outside a shooter up
+                    // to 38 px a side (dist / GRID_SIZE 0 or 1 below; rng_.next(0) and rng_.next(1)
+                    // both answer 0). A golem (48x36) or giant skeleton (64x64) pad can reach a
+                    // bound of 2, where the loud roll blocks half. With Gameplay Fixes on the line
+                    // check's probe (slit_open_for, fix BD) is answered the same way: the check
+                    // takes the slit as open and the shot takes the gamble.
+                    // rule: A loud weapon takes the arrow slit's gamble; a quiet question, and with Gameplay Fixes
+                    //   BD the line check's probe (slit_open_for), takes the slit as open and draws nothing.
                     // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                     // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round8_query_grid_treeb1_and_arrow_slit_variants
                     // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
-                    // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
-                    if (!quiet)
+                    // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing, SemLineCheck.an_arrow_slit_is_open_to_the_check_and_the_shot_takes_its_gamble
+                    if (!quiet && ob != slit_open_for)
                     {
                         // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block
                         //   every living outright, flyers included.
@@ -1475,7 +1475,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                     // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                     // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                    if (ob->flies())
                         break;
                     return false;
                 // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
@@ -1566,7 +1566,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     //   over it and flyers cross it.
                     // tests: NewTiles.lava_is_solid_to_ground_but_flyer_and_weapon_pass
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                    if (ob->flies())
                         break;
                     return false;
                 // rule: Any tile byte the game does not know is solid to everyone (fail closed).
@@ -1628,13 +1628,13 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                             if (ob->query_order() == Order::Weapon)
                                 break;
                             // rule: Decor on a cell can only restrict passage, never grant it: a
-                            //   flyer (permanent or temporary flight) crosses BlocksGround decor.
+                            //   flyer (permanent or temporary flight: walker::flies) crosses
+                            //   BlocksGround decor.
                             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                             // tests: Decor.decor_never_grants_passage
                             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                             // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
-                            if (ob->stats()->query_bit_flags(BIT_FLYING) ||
-                                ob->flight_left())
+                            if (ob->flies())
                                 break;
                             return false;
                     }
@@ -1869,10 +1869,10 @@ walker* GameWorld::find_near_foe(walker* ob)
     }
 
     // rule: The quick foe search walks an outward square spiral of obmap cells (one obmap
-    //   resolution per step, legs growing 1,1,2,2,... up to MAX_SPREAD 10) starting at the
-    //   searcher's own position, on the searcher's own floor. If the spiral touches the map edge,
-    //   is exhausted, or the world has no obmap, it falls back to the full floor-blind nearest-foe
-    //   scan (below). So the answer is the first foe in spiral order, not necessarily the nearest.
+    //   resolution per step, legs growing 1,1,2,2,... up to MAX_SPREAD 10) from the searcher's own
+    //   position, on its own floor. If the spiral touches the map edge, is exhausted, or the world
+    //   has no obmap, it falls back to the full nearest-foe scan (below; floor-blind but for a
+    //   flyer, #512). So the answer is the first foe in spiral order, not necessarily the nearest.
     // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
     // tests: ZAxis.find_near_foe_probes_the_searchers_floor
     // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -1932,9 +1932,9 @@ walker* GameWorld::find_near_foe(walker* ob)
             // piles no matter where `ob` stood: upper-floor walkers were
             // blind to foes standing beside them and latched whatever was on
             // the ground floor beneath their 2D position instead. Cross-floor
-            // acquisition stays available via find_nearest_foe (the floor-blind
-            // full-list scan). ob->floor()==0 on single-floor levels, so
-            // legacy behavior is byte-identical.
+            // acquisition stays available via find_nearest_foe (the full-list
+            // scan, floor-blind but for a flyer: #512). ob->floor()==0 on
+            // single-floor levels, so legacy behavior is byte-identical.
             // #427: the pile first forgets every walker the world no longer
             //   holds (out of every pile and walker_to_pos, a stale pointer
             //   never read), then the search reads it with find_list, which
@@ -2012,8 +2012,8 @@ walker* GameWorld::find_nearest_foe(walker* ob)
     }
 
     // Set our 'default' foe to NULL
-    walker* endfoe = nullptr;
-    std::int32_t distance = 10000;
+    NearestFoePick pick;
+    pick.set_searcher(*ob, floor_count());
     ob->stats()->set_last_distance(10000);
     sanitize_owner_chain_link(*this, ob);
 
@@ -2022,11 +2022,11 @@ walker* GameWorld::find_nearest_foe(walker* ob)
     {
         walker* foe = uptr.get();
         // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe force
-        //   below) returns the nearest-by-distance walker in the object list that is alive,
-        //   awake (not dormant), visible (not hidden), not friendly to the searcher, a Living or
-        //   Generator, and wins its cloak roll; it is floor-blind and returns nothing when no foe
-        //   qualifies. Ties keep the earlier walker in list order (strict <). It also resets the
-        //   searcher's last_distance to 10000.
+        //   below) returns the nearest-by-distance walker in the object list that is alive, awake
+        //   (not dormant), visible (not hidden), not friendly to the searcher, a Living or Generator,
+        //   and wins its cloak roll; it is floor-blind except for a flyer on a level with floors
+        //   (#512: NearestFoePick) and returns nothing when no foe qualifies. Ties keep the earlier
+        //   walker in list order (strict <). It also resets the searcher's last_distance to 10000.
         // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
         // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
         // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -2060,7 +2060,10 @@ walker* GameWorld::find_nearest_foe(walker* ob)
             // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe
             //   force below) returns the nearest-by-distance walker in the object list that is
             //   alive, awake (not dormant), visible (not hidden), not friendly to the searcher, a
-            //   Living or Generator, and wins its cloak roll. Here: `tempdistance < distance`.
+            //   Living or Generator, and wins its cloak roll. Here: the strictly nearer is kept
+            //   (NearestFoePick::offer). #512 (this game only, both settings): on a level with more
+            //   than one floor a living that flies is answered the nearest foe on its own floor
+            //   when the pass met one, however far, else the nearest on any floor.
             // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
             // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
             // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -2068,15 +2071,12 @@ walker* GameWorld::find_nearest_foe(walker* ob)
             // tests: SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
             // tests: SemWorld.the_full_foe_scan_breaks_a_tie_by_list_order
             // tests: SemWorld.the_full_foe_scan_finds_a_foe_on_another_floor
-            if (tempdistance < distance)
-            {
-                distance = tempdistance;
-                endfoe = foe;
-            }
+            // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor, SemWorld.the_own_floor_preference_is_for_a_living_that_flies_on_a_level_with_floors, SemWorld.the_own_floor_preference_draws_what_the_scan_always_drew, SemWorld.the_world_hands_a_flyer_with_no_foe_one_on_its_own_floor
+            pick.offer(foe, tempdistance);
         }
     }
 
-    return endfoe;
+    return pick.answer();
 }
 
 // This can be slow, so don't call it much
@@ -3827,4 +3827,53 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
     for (const auto& entry : found)
         stains.push_back(entry.second);
     return stains;
+}
+
+// The full foe scan's pick (find_nearest_foe, game_world.h). The scan offers
+// every foe that passed its filters and its cloak roll, in list order; the
+// pick only compares distances and floors, so it draws nothing. Appended at
+// EOF so the parity canary pins above never shift.
+void GameWorld::NearestFoePick::set_searcher(const walker& ob, int floors)
+{
+    // rule: #447, #512 (this game only, both settings): on a level with more than one floor a
+    //   living that flies (walker::flies) never leaves its floor and prefers a foe on it. On a
+    //   level with one floor, and for every other searcher, the scan stays floor-blind.
+    // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
+    // tests: SemWorld.the_own_floor_preference_is_for_a_living_that_flies_on_a_level_with_floors
+    own_floor = (floors > 1 && ob.query_order() == Order::Living && ob.flies()) ? ob.floor() : -1;
+}
+
+void GameWorld::NearestFoePick::offer(walker* foe, std::int32_t distance)
+{
+    // rule: The full foe search keeps the strictly nearest qualifying walker; ties keep the earlier
+    //   one in list order.
+    // tests: SemWorld.the_full_foe_scan_breaks_a_tie_by_list_order
+    // tests: SemWorld.the_full_foe_scan_finds_a_foe_on_another_floor
+    if (distance < any_distance)
+    {
+        any_distance = distance;
+        any = foe;
+    }
+    // rule: #447, #512: in the same pass, with the same filters and cloak rolls, it keeps the
+    //   strictly nearest on the searcher's own floor (ties to list order). It does so only when
+    //   the searcher has a floor of its own (own_floor 0 or more): -1 says the rule is not for
+    //   this searcher, and a walker a script set on floor -1 (set_floor does not clamp) is not
+    //   on that searcher's floor.
+    // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
+    // tests: SemWorld.a_foe_on_floor_minus_one_is_not_on_the_floor_of_a_searcher_the_rule_is_not_for
+    if (own_floor >= 0 && foe->floor() == own_floor && distance < own_distance)
+    {
+        own_distance = distance;
+        own = foe;
+    }
+}
+
+walker* GameWorld::NearestFoePick::answer() const
+{
+    // rule: #447, #512: a flyer on a level with floors is answered the nearest foe on its own
+    //   floor when there is one; with none, and for every other searcher, the nearest on any
+    //   floor, as before.
+    // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
+    // tests: SemWorld.the_own_floor_preference_draws_what_the_scan_always_drew
+    return own != nullptr ? own : any;
 }

@@ -126,19 +126,32 @@ class statistics
 		// along its heading). Everything else the probe met stays untouched.
 		// Off, the probe alone. See right_walk.
 		bool path_probe(Side side, bool quiet);
-		// Gameplay Fixes BB (#497): the turn and the swing of walk_to_foe's
-		// near branch (a foe within 100 px on a tick the bot re-plans).
-		// Both are defined at the end of stats.cpp.
-		// near_turn: one notch toward `aim`; answers whether the bot already
-		// faced it. With the setting on a bot that did not keeps `aim` as the
-		// facing it is turning to (enddir), so its next acts finish the turn.
-		bool near_turn(short aim);
+		// Gameplay Fixes BB (#497) and BE (#513): the turn toward a foe, and the
+		// swing of walk_to_foe's near branch (a foe within 100 px on a tick the
+		// bot re-plans). Both are defined at the end of stats.cpp.
+		// turn_to_foe: one notch toward `aim`; answers whether the bot already
+		// faced it. It serves the near branch and living::act_random's refused
+		// shot (a foe anywhere in the sight box). With the setting on a bot that
+		// did not face `aim` keeps it as the facing it is turning to (enddir),
+		// so its next acts finish the turn, and a tower (a stationary living) is
+		// snap-faced at once, its heading included.
+		bool turn_to_foe(short aim);
 		// near_swing: classic, init_fire() along the heading, unasked. With
 		// the setting on only a bot that already faced its foe swings or
 		// shoots, along that facing, and only when the blow can land: a
 		// shooter asks fire_check, a melee-only bot (which fire_check always
 		// refuses) asks whether a foe's body stands on its weapon's pad.
 		void near_swing(bool faced, short xdelta, short ydelta);
+		// A foe's body stands on this bot's weapon pad: the one place a melee-only bot's swing
+		// can land (walker::fire_pad_answer: quiet, no draw, nothing built). walk_to_foe's near
+		// branch (fix BB) and the ATTACK order (fix BC) ask it. Defined at the end of stats.cpp.
+		[[nodiscard]] bool foe_on_pad() const;
+		// The ATTACK order's round when the shot is refused for the bot's facing, or because the
+		// bot is melee-only with its foe inside its weapon's reach. Classic: it faces the foe (the
+		// guard-standoff fix). With Gameplay Fixes on a bot that already faced its foe on its own
+		// floor fights (fix BC); in this arm only a melee-only bot can already face its foe.
+		// Defined at the end of stats.cpp.
+		void attack_face_or_fight(short deltax, short deltay);
 		// walk_to_foe's near branch: does the chaser take the foe find_near_foe
 		// answered in place of the one it holds? A strictly nearer one (#320);
 		// and, for a flyer whose held foe is on another floor, one on its own
@@ -252,6 +265,8 @@ class statistics
 
 	private:
         void mark_dirty(std::uint8_t bit_index);
+        // Gameplay Fixes BE: turn_to_foe's kept turn (setting on, foe not faced); end of stats.cpp.
+        bool keep_turn(short aim);
 
         Order old_order_ = Order::Living;
         std::uint8_t old_family_ = FAMILY_SOLDIER;

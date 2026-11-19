@@ -404,15 +404,24 @@ void build_frozen_ford(const LevelDataHooks& hooks)
     // Team 2 (team 0 places nothing — a run level stays light). Bank wolves
     // toll the lane mouths at the lane EDGES: each 4-wide lane keeps 2
     // clear tiles for a sprinting runner.
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-7 company's forty-seed average here fell from 5.90 to
+    // 0.03 survivors. The bank wolves below shed three levels (6 -> 3),
+    // the ice wraiths two (6 -> 4) and the river dead of the first
+    // pursuit two (6 -> 4). It reads 4.90, still 1.00 under the 5.90 it
+    // read before these fixes (the measure's error there is 0.48); no
+    // other step of the easing measured comes nearer. With the setting
+    // off it reads 4.92, from 5.70.)
     static constexpr int wolves[6][2] = {{30, 8},  {30, 11}, {30, 19},
                                          {30, 22}, {30, 30}, {30, 33}};
     for (const auto& p : wolves)
-        place_living(w, FAMILY_ORC, 2, 0, p[0], p[1], 6, true);
+        place_living(w, FAMILY_ORC, 2, 0, p[0], p[1], 3, true);
     // Ice wraiths ON the lanes (guard; specials sheathed — see above).
     static constexpr int wraiths[4][2] = {
         {40, 9}, {38, 20}, {56, 21}, {44, 31}};
     for (const auto& p : wraiths)
-        place_living(w, FAMILY_GHOST, 2, 0, p[0], p[1], 6, true, true);
+        place_living(w, FAMILY_GHOST, 2, 0, p[0], p[1], 4, true, true);
     place_living(w, FAMILY_BARBARIAN, 2, 0, 47, 15, 6, true); // islet wards
     place_living(w, FAMILY_BARBARIAN, 2, 0, 48, 16, 6, true);
     // The far shore's toll: the one fight a runner cannot fully skip — four
@@ -425,7 +434,7 @@ void build_frozen_ford(const LevelDataHooks& hooks)
     // the river dead at 350 and 700, the creditors' men at 1000.
     static constexpr int pursuit1[3][2] = {{2, 18}, {2, 21}, {3, 20}};
     for (const auto& p : pursuit1)
-        place_living(w, FAMILY_GHOST, 2, 0, p[0], p[1], 6, false, true, 350);
+        place_living(w, FAMILY_GHOST, 2, 0, p[0], p[1], 4, false, true, 350);
     static constexpr int pursuit2[3][2] = {{1, 19}, {3, 17}, {3, 22}};
     for (const auto& p : pursuit2)
         place_living(w, FAMILY_GHOST, 2, 0, p[0], p[1], 7, false, true, 700);

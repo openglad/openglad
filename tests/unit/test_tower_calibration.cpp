@@ -22,8 +22,13 @@
  * is WP-7's bracket sweeps' business.
  *
  * Measurement mode: set TOWER_CALIBRATION_MEASURE=1 to print per-seed
- * survivor counts instead of asserting. It is a measuring tool for balance
- * work: it asserts nothing and runs only when asked.
+ * survivor counts instead of asserting. With OG_CALIBRATION_SEEDS also set
+ * (westlands_sim_fixture.h, calibration_seeds()) it generates each floor
+ * from every listed layout seed instead and prints two lines per floor,
+ * TOWER CALIBN (survivors per seed) and TOWER CALIBN-TAKEN (the crew's
+ * damage taken per seed); scripts/calibration/seed_table.py runs it and
+ * compares two runs. It is a measuring tool for balance work: it asserts
+ * nothing and runs only when asked.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -39,9 +44,12 @@
 #include "westlands_sim_fixture.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <format>
 #include <iterator>
 #include <cstdlib>
+#include <vector>
 
 namespace {
 
@@ -150,12 +158,34 @@ namespace {
 void check_curve_partition(std::size_t partition)
 {
     const bool measure = std::getenv("TOWER_CALIBRATION_MEASURE") != nullptr;
+    const std::vector<std::uint32_t> seeds =
+        measure ? westlands_fixture::calibration_seeds()
+                : std::vector<std::uint32_t>{};
+    if (measure && ::testing::Test::HasFailure())
+        return; // calibration_seeds() named what is wrong with the list
 
     for (std::size_t index = partition; index < std::size(kFloors); index += 4)
     {
         const CurveFloor& fl = kFloors[index];
         SCOPED_TRACE("floor " + std::to_string(fl.floor_number) +
                      " at crew level " + std::to_string(fl.crew_level));
+        if (measure && !seeds.empty())
+        {
+            std::vector<int> alive;
+            std::vector<float> taken;
+            for (const std::uint32_t seed : seeds)
+            {
+                const FloorBattle b =
+                    battle_at_600(seed, fl.floor_number, fl.crew_level);
+                alive.push_back(b.alive);
+                taken.push_back(b.crew_taken);
+            }
+            westlands_fixture::print_calibn_lines(
+                "TOWER ",
+                std::format("floor={} cl={}", fl.floor_number, fl.crew_level),
+                alive, taken);
+            continue;
+        }
         if (measure)
         {
             std::printf("TOWER CALIB floor=%d cl=%d survivors@600:",

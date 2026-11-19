@@ -329,6 +329,27 @@ whole crew, fields an army, and that the crew takes and deals damage.
 counts. The floors in the tables above and below are the measurements of
 their day; the win/hold gates live in `scripts/longseason_playtest.sh`.
 
+### Update (2026-11-18, the ATTACK order)
+
+With the Gameplay Fixes setting on (the shipped default), a melee-only
+bot (an orc, a ghost, a small slime) that faces its foe in its ATTACK
+order swings when a foe's body stands on its weapon's pad and otherwise
+steps toward the foe (Gameplay Fixes BC, #447). Levels whose crews
+fell under it were eased in their builders, one group of orcs, ghosts or
+small slimes one level at a time, and no fighter was taken away; the
+method, every step measured and the levels that fell and were not eased
+are in `docs/gameplay-fixes.md`, Balance. One level of this campaign was
+eased:
+
+- The Frozen Ford (16), eased 2026-11-18: the six bank wolves from level
+  6 to 3, the four ice wraiths from 6 to 4 and the three ghosts of the
+  first pursuit from 6 to 4. The stand-in crew of eight at crew level 7,
+  survivors at tick 600 on forty seeds with the setting on (the docs'
+  first twenty seeds in brackets): 5.90 [5.60] before these fixes, 0.03
+  [0.05] after them, 4.90 [5.05] after the easing, still 1.00 under (the
+  measure's error 0.48), the nearest any step of the easing came. With
+  the setting off it reads 4.92 [5.05], from 5.70 [5.45].
+
 ### F4 CALIBRATION TABLE (measured 2026-07-09 — the contract as shipped)
 
 Method: scripts/longseason_playtest.sh (openglad_text --protocol; since
@@ -3387,13 +3408,17 @@ the paint rects above.
 
 | # | team | family | count | level | guard | placement (floor 0) | spawn_delay | spec.dis |
 |---|------|--------|-------|-------|-------|---------------------|-------------|----------|
-| 1 | 2 | ORC (bank wolves, lane-mouth tolls) | 6 | 6 | YES | N mouth (30,8),(30,11); M mouth (30,19),(30,22); S mouth (30,30),(30,33) — 2x2 bodies at lane EDGES, each 4-wide lane keeps 2 clear tiles for a sprinting 2x2 runner | 0 | no |
-| 2 | 2 | GHOST (ice wraiths) | 4 | 6 | YES | ON the lanes: (40,9) north, (38,20) mid-west, (56,21) mid-east, (44,31) south | 0 | YES |
+| 1 | 2 | ORC (bank wolves, lane-mouth tolls) | 6 | 3 | YES | N mouth (30,8),(30,11); M mouth (30,19),(30,22); S mouth (30,30),(30,33) — 2x2 bodies at lane EDGES, each 4-wide lane keeps 2 clear tiles for a sprinting 2x2 runner | 0 | no |
+| 2 | 2 | GHOST (ice wraiths) | 4 | 4 | YES | ON the lanes: (40,9) north, (38,20) mid-west, (56,21) mid-east, (44,31) south | 0 | YES |
 | 3 | 2 | BARBARIAN (islet wards) | 2 | 6 | YES | islet (47,15),(48,16) | 0 | no |
 | 4 | 2 | BARBARIAN (the far shore's toll) | 4 | 7 | YES | east climb-out: (66,9),(66,30),(67,18),(67,21) | 0 | no |
-| 5 | 2 | GHOST (the river dead, pursuit 1) | 3 | 6 | no | west edge: (2,18),(2,21),(3,20) | 350 | YES |
+| 5 | 2 | GHOST (the river dead, pursuit 1) | 3 | 4 | no | west edge: (2,18),(2,21),(3,20) | 350 | YES |
 | 6 | 2 | GHOST (pursuit 2) | 3 | 7 | no | (1,19),(3,17),(3,22) | 700 | YES |
 | 7 | 2 | BARBARIAN (creditors' men, pursuit 3) | 4 | 6 | no | (2,16),(2,23),(4,18),(4,21) | 1000 | no |
+
+(Eased 2026-11-18: rows 1, 2 and 5 were placed at level 6 until the
+easing after Gameplay Fixes BC; see "Update (2026-11-18, the ATTACK
+order)" in the calibration record above.)
 
 NO GENERATORS (bounded pursuit; an endless den behind a run level just
 farms attrition — the Westlands level-2 lesson applies even without

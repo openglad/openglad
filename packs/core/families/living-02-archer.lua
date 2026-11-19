@@ -191,11 +191,11 @@ local function fixed(self)
     return G.pad_clear_of_weapons(self)
   end
   -- rule: Gameplay Fixes bot EXPLODING BOLT also wants no archer (check_self) and no ally inside
-  --   the blast around its foe, and the FIRE ARROW's own launch pad clear.
-  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
-  -- tests: GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
-  -- tests: parity:archer_bot_bolt_at_blows_fixes_scen99
-  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)
+  --   the blast around its foe, and the FIRE ARROW's own launch pad clear by the strict question (fix BH: no enemy door, grown tree or shot in flight on it).
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it, GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot
+  -- tests: parity:archer_bot_bolt_at_blows_fixes_scen99, parity:archer_bot_bolt_door_pad_fixes_scen99
+  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear_of_weapons(self, WEAPON_FIRE_ARROW)
 end
 
 og.family("living", {
@@ -258,7 +258,7 @@ og.family("living", {
   --   fixed() decides and ignores its answer.
   -- tests: GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind
   -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
-  -- tests: parity:archer_bot_ring_one_foe_scen99, parity:archer_bot_bolt_at_blows_scen99
+  -- tests: parity:archer_bot_ring_one_foe_scen99, parity:archer_bot_bolt_at_blows_scen99, parity:archer_bot_bolt_door_pad_scen99
   check_special_ai = G.with_classic(ai.foe_within(130), fixed),  -- fixed per-tick AI gate
   hit_response = hit_response,
   set_difficulty = set_difficulty,

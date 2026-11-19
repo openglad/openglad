@@ -255,25 +255,25 @@ bool walker::walkstep(float x, float y)
     set_lastx(x * stepsize());
     set_lasty(y * stepsize());
 
+    // A stationary living is walker::stationary(), the one test that walk() and turn() below
+    // and the kept turn of Gameplay Fixes BE also ask. The old game wrote it here as "order
+    // LIVING and family TOWER1"; the family's descriptor (is_stationary) says it now, and only a
+    // living is asked because a weapon can carry a living's family number (the bone wall has the
+    // tower's). A tower's stepsize is 0, so the heading just written is 0,0, which faces UP: the
+    // arm below writes the unscaled step instead, the heading that the tower's line check and
+    // shot are aimed along (set_weapon_heading).
     // rule: A stationary living (tower) never moves: a step only turns it to face the step
     //   direction (curdir and enddir), records the unscaled step as its heading, and reports
     //   success.
     // tests: WalkerMovement.stationary_family_walk_and_turn_branches
     // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
-    if (order() == Order::Living)
+    if (stationary())
     {
-        const auto* fd = get_family_descriptor(family());
-        // rule: A stationary living (tower) never moves.
-        // tests: WalkerMovement.stationary_family_walk_and_turn_branches
-        // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
-        if (fd && fd->is_stationary)
-        {
-            set_curdir(static_cast<signed char>(facing(x, y)));
-            set_enddir(static_cast<char>(curdir()));
-            set_lastx(x);
-            set_lasty(y);
-            return 1;
-        }
+        set_curdir(static_cast<signed char>(facing(x, y)));
+        set_enddir(static_cast<char>(curdir()));
+        set_lastx(x);
+        set_lasty(y);
+        return 1;
     }
     returnvalue = walk(x * stepsize(), y * stepsize());
     halfstep = 1;
@@ -496,20 +496,20 @@ bool walker::walk(float x, float y)
 
     dir = facing(x, y);
 
+    // living::walk overrides this walk, so a living reaches it only through walk() above, which
+    // names this one (the repeat of its last step: a seated hero's bonus rounds), and walkstep()
+    // answers a tower before it would call either. The old game wrote this test as "order
+    // LIVING and family TOWER1" too; walker::stationary() asks the family's descriptor, and only
+    // for a living. A tower's heading is the unscaled step that its last walkstep() or snap-face
+    // wrote (its stepsize is 0), so the repeated step turns it to face where it aims and moves
+    // nothing, as the old game's tower did.
     // rule: A stationary living's walk only sets its facing (same rule as above)
     //   and succeeds.
     // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
-    if (order() == Order::Living)
+    if (stationary())
     {
-        const auto* fd = get_family_descriptor(family());
-        // rule: A stationary living's walk only sets its facing (same rule as
-        //   above) and succeeds.
-        // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
-        if (fd && fd->is_stationary)
-        {
-            set_curdir(static_cast<signed char>(dir));
-            return 1;
-        }
+        set_curdir(static_cast<signed char>(dir));
+        return 1;
     }
 
     // rule: A zero step succeeds without moving or turning.
@@ -651,10 +651,10 @@ bool walker::turn(short targetdir)
     set_curdir(static_cast<signed char>(currentdir));
 
     // Now set our lastx and lasty (facing) variables correctly
-    const bool stationary = (order() == Order::Living) && [&]{
-        const auto* fd = get_family_descriptor(family());
-        return fd && fd->is_stationary;
-    }();
+    // A stationary living (walker::stationary(): a tower) keeps the heading its last step or
+    // snap-face gave it: its stepsize is 0, so the arms below would write 0,0, which faces UP,
+    // and its line check and its shot are aimed along that heading. With Gameplay Fixes BE the
+    // kept turn snap-faces a tower (face_delta) instead of turning it here.
     // rule: After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim
     //   weapons) is one stepsize along the new facing; a stationary living keeps its old heading;
     //   an invalid facing heads up.
@@ -663,7 +663,7 @@ bool walker::turn(short targetdir)
     // tests: WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths
     // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
     // tests: SemWalker4.a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing
-    if (!stationary)
+    if (!stationary())
     {
         // rule: After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim
         //   weapons) is one stepsize along the new facing.
@@ -744,4 +744,158 @@ void walker::face_delta(short xdelta, short ydelta)
     const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();
     set_lastx(static_cast<float>(xdelta) * scale);
     set_lasty(static_cast<float>(ydelta) * scale);
+}
+
+// One step of a weapon in flight (walker.h): what stops it and what it strikes
+// are written here once. Appended at the end so the parity pins above never shift.
+walker::FlightStep walker::flight_step()
+{
+    const bool walked = walk();
+    // rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
+    //   projectile on every step, has struck the live body that step met; a wall, the map's edge
+    //   or a corpse is no strike. A step that was taken and struck nothing flew.
+    // tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
+    // tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
+    // tests: SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
+    if ((!walked || stats_->query_bit_flags(BIT_NO_COLLIDE)) && collide_ob() != nullptr &&
+        !collide_ob()->dead())
+        return FlightStep::Struck;
+    return walked ? FlightStep::Flew : FlightStep::Stopped;
+}
+
+// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies (walker.h); the classic
+// loop's spots, 0, 1, 3, 6 ... steps out, step over bodies and one-tile walls. Gameplay Fixes BF:
+// an enemy door on the shot's path refuses the check, as a wall does, unless it is the shooter's
+// foe. The test weapon meets that door without the clash roll. Appended below the parity pins.
+std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_foe,
+                                              FireCheckDenial* denial)
+{
+    // rule: Gameplay Fixes BD (#538): classic (the setting off) nothing is asked here and
+    //   fire_check's own loop tests 0, 1, 3, 6 ... steps out.
+    // tests: SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
+    // tests: SemLineCheck.a_tower_shoots_a_still_foe_between_two_classic_spots_only_with_the_setting_on, parity:tower_foe_between_spots_scen99, parity:tower_foe_between_spots_fixes_scen99, parity:tower_foe_behind_door_scen99
+    if (og::sim::session_gameplay_fixes() == 0)
+        return std::nullopt;
+    GameWorld& world = *current_game->world;
+    // From the pad on the check takes an arrow slit as open and draws nothing for it: the shot
+    // itself takes the slit's gamble (GameWorld::slit_open_for, read where the gamble is rolled).
+    // The same mark has ob_pass_check meet a live enemy door without the clash roll (fix BF).
+    world.slit_open_for = weapon;
+    const auto answer = [&](bool lands, FireCheckDenial why) {
+        world.slit_open_for = nullptr;
+        weapon->set_dead(1);
+        // plumbing: the denial is written only for a caller that asked for it
+        if (denial != nullptr)
+            *denial = why;
+        return std::optional<bool>(lands);
+    };
+    const auto on_the_ball = [&] {
+        return ignored_foe != nullptr &&
+               ::collide(weapon->xpos(), weapon->ypos(), weapon->sizex(), weapon->sizey(),
+                         ignored_foe->xpos(), ignored_foe->ypos(), ignored_foe->sizex(),
+                         ignored_foe->sizey());
+    };
+    // Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which the door arm of
+    // ob_pass_check records) is a live enemy door that is not the shooter's own foe. A door of
+    // the shooter's side never stops it: ob_pass_check lets a weapon pass its own side. A door
+    // is walker::is_door, which asks the order too, since a golem's family number is a door's.
+    const auto stopped_by_a_door = [&] {
+        const walker* met = weapon->collide_ob();
+        return met != nullptr && !met->dead() && met->is_door() &&
+               met != foe();
+    };
+    // rule: Gameplay Fixes BD (#538): the pad first, as fire() asks it: terrain there refuses
+    //   (the shot would be wasted), the mode ball there passes, and so does a live body that is
+    //   not a door (the blow lands; a door is Gameplay Fixes BF's, below).
+    // tests: SemLineCheck.the_pad_passes_on_a_body_and_refuses_on_a_wall_on_both_settings
+    // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+    // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
+    if (!world.query_grid_passable(weapon->xpos(), weapon->ypos(), weapon))
+        return answer(false, FireCheckDenial::WallBlocked);
+    if (on_the_ball())
+        return answer(true, FireCheckDenial::None);
+    weapon->set_collide_ob(nullptr);  // as fire_check did: the pad reads this question's answer
+    if (!world.query_object_passable(weapon->xpos(), weapon->ypos(), weapon))
+    {
+        // rule: Gameplay Fixes BF: a pad held by a live enemy door that is not the shooter's
+        //   foe refuses (WallBlocked: to a shot a shut door is a wall); a door that is the foe,
+        //   and every other body, passes, a golem too though its family number is a door's.
+        // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
+        // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+        // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
+        if (stopped_by_a_door())
+            return answer(false, FireCheckDenial::WallBlocked);
+        return answer(true, FireCheckDenial::None);
+    }
+    // fire() gives a fresh shot a facing its first act only turns to, so the shot moves
+    // lineofsight - 1 steps; the probe is pointed along its heading so walk() steps at once.
+    weapon->set_curdir(static_cast<signed char>(weapon->facing(weapon->lastx(), weapon->lasty())));
+    // rule: Gameplay Fixes BD (#538): then the steps a fresh shot moves, each the shot's own
+    //   (flight_step): a step that strikes a live body that is not a door passes, a step stopped
+    //   by terrain or the map's edge refuses (WallBlocked), and so does a step struck by an enemy
+    //   door that is not the foe (Gameplay Fixes BF), a taken step onto the mode ball passes, and
+    //   when the steps run out the check refuses (RayMiss). The bound is the steps a fresh shot
+    //   moves, no more and no fewer (the check's side: the_check_flies_as_far_as_a_fresh_shot...;
+    //   the shot's side, that it moves lineofsight - 1 steps: a_fresh_shot_moves_one_step_fewer...).
+    // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
+    // tests: SemLineCheck.the_check_flies_as_far_as_a_fresh_shot_and_no_further_with_the_setting_on
+    // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
+    // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
+    // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+    // tests: SemLineCheck.the_check_draws_its_waver_and_nothing_else_in_open_ground
+    // tests: SemLineCheck.a_fresh_shot_moves_one_step_fewer_than_its_line_of_sight
+    // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+    // tests: SemLineCheck.a_door_behind_the_foe_changes_nothing
+    for (std::int32_t step = 1; step < weapon->lineofsight(); ++step)
+    {
+        weapon->set_collide_ob(nullptr);  // weap::act clears it before every act
+        const FlightStep met = weapon->flight_step();
+        // rule: Gameplay Fixes BD (#538): a flight step that strikes a live body that is not a
+        //   door passes (the shot lands, also on an enemy weapon in flight or a grown tree that
+        //   won its clash roll against the probe), a step stopped by terrain or the map's edge
+        //   refuses (WallBlocked), and a taken step onto the mode ball passes.
+        // tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on
+        // tests: SemLineCheck.a_wall_the_shot_stops_on_refuses_with_the_setting_on
+        // tests: SemLineCheck.the_map_edge_refuses_only_when_the_shot_would_leave_the_map
+        // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+        // tests: SemLineCheck.a_mode_ball_on_the_line_passes_the_flown_check
+        // tests: SemLineCheck.a_door_behind_the_foe_changes_nothing
+        // tests: SemLineCheck.an_own_team_door_is_flown_through
+        if (met == FlightStep::Struck)
+        {
+            // rule: Gameplay Fixes BF: a step struck by a live enemy door that is not the
+            //   shooter's foe refuses (WallBlocked), as a step a wall stops does; a door that is
+            //   the foe passes, as every foe does (a level script or a mod can name one; with the
+            //   setting on a blow that lands on a door names none, walker::attack); a golem, whose
+            //   family number is a door's, passes as every other body does.
+            // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
+            // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+            // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
+            // tests: SemLineCheck.a_refused_check_at_a_door_tells_no_one_a_key_is_needed
+            // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on
+            // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
+            if (stopped_by_a_door())
+                return answer(false, FireCheckDenial::WallBlocked);
+            return answer(true, FireCheckDenial::None);
+        }
+        if (met == FlightStep::Stopped)
+            return answer(false, FireCheckDenial::WallBlocked);
+        if (on_the_ball())
+            return answer(true, FireCheckDenial::None);
+    }
+    return answer(false, FireCheckDenial::RayMiss);
+}
+
+// A door: a body of weapon order and the door's family. A golem's family number is a door's
+// (both are 18), so the order is asked as well. The three rules of Gameplay Fixes BF ask it:
+// the line check (line_check_flight above), a bot's bump (living::leaves_a_door_alone) and the
+// blow that names a foe (walker::attack). Appended below the parity pins.
+bool walker::is_door() const
+{
+    // rule: A door is a body of weapon order and the door's family; a golem, whose family
+    //   number is a door's, is a living and no door.
+    // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
+    // tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
+    // tests: SemBotDoor.a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe
+    return query_order() == Order::Weapon && family() == FAMILY_DOOR;
 }

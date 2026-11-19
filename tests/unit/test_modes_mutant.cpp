@@ -1644,7 +1644,8 @@ TEST_F(ModesMutant, hud_carries_leader_and_runnerup_and_stars_the_mutant)
 
 namespace {
 
-std::string run_mutant_bot_match(int ticks, bool* crowned)
+std::string run_mutant_bot_match(int ticks, bool* crowned,
+                                 std::string* modegame = nullptr)
 {
     ModesCtfWorld fx(kMutantLevelA);
     fx.spawn_anchor(0, 300, 300);
@@ -1653,13 +1654,25 @@ std::string run_mutant_bot_match(int ticks, bool* crowned)
     fx.spawn_anchor(3, 400, 400);
     fx.world().ctf_requested_fill[0] = og::sim::kFillFair;  // E5: bot band
     fx.world().ctf_requested_respawn_ticks = 30;
+    int crownings = 0;
     for (int i = 0; i < ticks; ++i)
     {
+        const bool was_mutant =
+            fx.world().mode.vars[kMutSlotPhase] == kPhaseMutant;
         fx.tick(1);
         if (fx.world().mode.vars[kMutSlotPhase] == kPhaseMutant)
             *crowned = true;
+        if (!was_mutant &&
+            fx.world().mode.vars[kMutSlotPhase] == kPhaseMutant)
+            ++crownings;
     }
     EXPECT_EQ(kModeIdMutant, fx.var(kMutSlotModeId));
+    if (modegame != nullptr)
+        *modegame = modegame_line(
+            fx.world(),
+            std::format("crownings={} ", crownings) +
+                modegame_slots(fx.world(), "scores", kMutSlotScore,
+                               kBandCount));
     return digest_world(fx.world());
 }
 
@@ -1669,8 +1682,11 @@ TEST_F(ModesMutant, mutant_bot_match_is_deterministic_across_runs)
 {
     bool crowned_first = false;
     bool crowned_second = false;
-    const std::string first = run_mutant_bot_match(600, &crowned_first);
+    std::string modegame;
+    const std::string first =
+        run_mutant_bot_match(600, &crowned_first, &modegame);
     const std::string second = run_mutant_bot_match(600, &crowned_second);
+    print_modegame_line(modegame);
     ASSERT_TRUE(crowned_first)
         << "the close-quarters bot brawl must produce a crown (the run "
            "exercises the phase machine, not an idle map)";

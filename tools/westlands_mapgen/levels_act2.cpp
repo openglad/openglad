@@ -1084,8 +1084,14 @@ void build_great_river(const LevelDataHooks& hooks)
     static constexpr int isle_b_rovers[3][2] = {{28, 37}, {26, 34}, {30, 35}};
     for (const auto& p : isle_b_rovers)
         place_living(w, FAMILY_SKELETON, 2, 0, p[0], p[1], 3);
-    place_living(w, FAMILY_GHOST, 2, 0, 23, 35, 5);
-    place_living(w, FAMILY_GHOST, 2, 0, 31, 32, 5);
+    // (Eased 2026-11-17: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-6 company's forty-seed average here fell from 5.35 to
+    // 3.50 survivors; these two isle-B ghosts shed one level each
+    // (5 -> 4), which brings it back to 5.28. With the setting off the
+    // level now reads 5.75, from 4.72.)
+    place_living(w, FAMILY_GHOST, 2, 0, 23, 35, 4);
+    place_living(w, FAMILY_GHOST, 2, 0, 31, 32, 4);
     static constexpr int harassers[6][2] = {{43, 28}, {45, 31}, {43, 34},
                                             {45, 37}, {43, 40}, {46, 42}};
     for (const auto& p : harassers)
