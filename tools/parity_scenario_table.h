@@ -12889,6 +12889,268 @@ inline constexpr Mutation kMut_soldier_boomerang_door_tree_fixes_scen99 = {
     "The guard no longer passes a grown tree by: the blade destroys the enemy tree again, so WeaponFamilyCount(FAMILY_TREE, 1, 1) reads 0; the door still stands."
 };
 
+// --- druid_bot_grow_tree_tree_pad (fix BH, #590: GROW TREE wants its bolt's pad clear of an enemy grown tree) ---
+// druid_bot_tree_pad_body's caster on elf_bot_rocks_tree_pad's lower ground
+// (above (120, 120) is the lake): a hostile level-1 druid bot at (120, 160),
+// heading UP at spawn, so the lightning bolt GROW TREE fires is placed on the
+// 8x8 pad (124, 151). An enemy grown tree (team 2, never 0: a team-0 prop can
+// take the player seat) stands on the pad at (122, 146): a still weapon-order
+// body, which the plain pad question passes and fire() meets on its clash
+// rolls. The 12x12 tree meets the pad after collide()'s 1 px shrink and
+// touches neither the druid nor the tower. The TOWER1 of the player's team at
+// (115, 110) is past it: the nearest living foe, within 60 px (5 + 50 between
+// the top-left corners), faced and not at blows (a 21 px gap), so every other
+// term of the rule says yes. The seed (2, the first from 0 at which the
+// classic row reaches the cast in the budget: on seeds 0 and 1 nothing
+// sounds by tick 3) makes the druid roll GROW TREE on tick 0. The classic
+// druid has no gate: on this seed the bolt's clash rolls against the tree go
+// its way, so it leaves (SOUND_BOLT) and the cast grows a second tree where
+// the bolt stood. With the setting on (Gameplay Fixes BH) the rule asks the
+// pad the strict way, takes the clash roll as lost, says no and holds; the
+// roll takes the bot's ordinary act (fix W), which sounds nothing in the
+// budget. The budget is druid_bot_tree_pad_body's, 3. The classic row's pin
+// turns the druid's fixed rule on with the setting off (its druid then holds
+// the cast); the setting-on row's asks the plain pad question again (its
+// druid then casts as the classic one does).
+inline constexpr SpawnSpec kFamilySpawns_druid_bot_grow_tree_tree_pad_scen99[] = {
+    { FAMILY_TREE,    2, kOrderWeapon, 122, 146, 0, 0 },           // an enemy grown tree on the bolt's pad
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 110, 0, 0 },           // the faced foe past the tree: 55 px corner to corner, a 21 px gap, on dry ground
+    { FAMILY_DRUID,   1, kOrderLiving, 120, 160, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_druid_bot_grow_tree_tree_pad_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic druid casts GROW TREE at the enemy tree on its pad: on this seed the bolt's clash rolls go its way and it sounds as it leaves, once"),
+    pred::WeaponFamilyCount(FAMILY_TREE, 2, 2,
+        "consequence: the cast grows a second tree where its bolt stood, beside the enemy tree"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no bolt is left on either value: the classic cast kills its bolt when the tree grows, and with the setting on none is fired.
+};
+inline constexpr Mutation kMut_druid_bot_grow_tree_tree_pad_scen99 = {
+    "packs/core/families/living-13-druid.lua", 254,
+    "if not gf.on() then",
+    "if false then",
+    "The druid's fixed rule answers with the setting off too, as Gameplay Fixes BH has it with the setting on: its strict pad question finds the enemy tree and holds GROW TREE, so EventKindExactly(play_sound, 1) reads 0 and WeaponFamilyCount(FAMILY_TREE, 2, 2) reads 1."
+};
+inline constexpr FactPredicate kFacts_druid_bot_grow_tree_tree_pad_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    // negative_assertion: nothing sounds with the setting on; the pin asks the plain pad question again and the bolt's sound returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule asks the bolt's pad the strict way, finds the enemy tree, takes the clash roll as lost and holds GROW TREE; the bot's ordinary act sounds nothing in the budget"),
+    pred::WeaponFamilyCount(FAMILY_TREE, 1, 1,
+        "consequence: no second tree grows: the enemy tree on the pad is the only one"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no bolt on either value.
+};
+inline constexpr Mutation kMut_druid_bot_grow_tree_tree_pad_fixes_scen99 = {
+    "packs/core/families/living-13-druid.lua", 278,
+    "G.pad_clear_of_weapons(self)",
+    "G.pad_clear(self)",
+    "The rule asks the plain pad question again, as before Gameplay Fixes BH, and it passes the enemy tree: the rule says yes and the druid casts as the classic one does, its bolt sounding as it leaves and a second tree growing, so EventKindExactly(play_sound, 0) reads 1 and WeaponFamilyCount(FAMILY_TREE, 1, 1) reads 2."
+};
+
+// --- barbarian_bot_boulder_tree_pad (fix BH, #590: HURL BOULDER wants the hammer's pad clear of an enemy grown tree) ---
+// barbarian_bot_boulder_pad_body's caster on the same lower ground as
+// druid_bot_grow_tree_tree_pad: a hostile level-1 barbarian bot at (120, 160),
+// heading UP at spawn, so the hammer HURL BOULDER fires is placed on the 6x6
+// pad (125, 153). An enemy grown tree (team 2) stands on the pad at
+// (122, 146), meeting it after collide()'s 1 px shrink and touching neither
+// body. A level-1 bot's boulder rolls 8 steps of 2 px, so the rule wants its
+// foe's larger edge gap within 16 px: the TOWER1 of the player's team at
+// (115, 115) is the nearest living foe, faced, its bottom row 143 a 16 px gap
+// above the barbarian, so every other term of the rule says yes. The seed (2,
+// the first from 0 at which the classic row reaches the cast in the budget:
+// on seeds 0 and 1 nothing sounds by tick 3) makes the barbarian roll HURL
+// BOULDER on tick 0. The classic barbarian has no gate: on this seed the
+// hammer's clash rolls against the tree go its way, so it leaves (FWIP), the
+// throw makes its boulder on it and kills the hammer, and the boulder rolls.
+// With the setting on (Gameplay Fixes BH) the rule asks the pad the strict
+// way, takes the clash roll as lost, says no and holds; the roll takes the
+// bot's ordinary act (fix W), which sounds nothing in the budget. The budget
+// is barbarian_bot_boulder_pad_body's, 3. The classic row's pin turns the
+// barbarian's fixed rule on with the setting off (its barbarian then holds the
+// throw); the setting-on row's asks the plain pad question again (its
+// barbarian then throws as the classic one does).
+inline constexpr SpawnSpec kFamilySpawns_barbarian_bot_boulder_tree_pad_scen99[] = {
+    { FAMILY_TREE,      2, kOrderWeapon, 122, 146, 0, 0 },           // an enemy grown tree on the hammer's pad
+    { FAMILY_TOWER1,    0, kOrderLiving, 115, 115, 0, 0 },           // the faced foe past the tree: a 16 px gap, the edge of a level-1 boulder's flight
+    { FAMILY_BARBARIAN, 1, kOrderLiving, 120, 160, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER,   0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_barbarian_bot_boulder_tree_pad_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic barbarian throws HURL BOULDER at the enemy tree on its pad: on this seed the hammer's clash rolls go its way and it leaves, once"),
+    pred::WeaponFamilyCount(FAMILY_BOULDER, 1, 1,
+        "consequence: the throw makes its boulder on the hammer, and the boulder rolls"),
+    pred::WeaponFamilyCount(FAMILY_HAMMER, 0, 0),
+    // negative_assertion: no hammer is left on either value: the classic throw kills its hammer once the boulder is made, and with the setting on none is fired.
+};
+inline constexpr Mutation kMut_barbarian_bot_boulder_tree_pad_scen99 = {
+    "packs/core/families/living-16-barbarian.lua", 157,
+    "if not gf.on() then",
+    "if false then",
+    "The barbarian's fixed rule answers with the setting off too, as Gameplay Fixes BH has it with the setting on: its strict pad question finds the enemy tree and holds the throw, so EventKindExactly(play_sound, 1) reads 0 and WeaponFamilyCount(FAMILY_BOULDER, 1, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_barbarian_bot_boulder_tree_pad_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
+    // negative_assertion: nothing sounds with the setting on; the pin asks the plain pad question again and the hammer's sound returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule asks the hammer's pad the strict way, finds the enemy tree, takes the clash roll as lost and holds the throw; the bot's ordinary act sounds nothing in the budget"),
+    pred::WeaponFamilyCount(FAMILY_BOULDER, 0, 0),
+    // negative_assertion: no boulder rolls with the setting on; the pin lets the throw make one (0 -> 1).
+    pred::WeaponFamilyCount(FAMILY_HAMMER, 0, 0),
+    // negative_assertion: no hammer on either value.
+};
+inline constexpr Mutation kMut_barbarian_bot_boulder_tree_pad_fixes_scen99 = {
+    "packs/core/families/living-16-barbarian.lua", 166,
+    "G.pad_clear_of_weapons(self)",
+    "G.pad_clear(self)",
+    "The rule asks the plain pad question again, as before Gameplay Fixes BH, and it passes the enemy tree: the rule says yes and the barbarian throws as the classic one does, so EventKindExactly(play_sound, 0) reads 1 and WeaponFamilyCount(FAMILY_BOULDER, 0, 0) reads 1."
+};
+
+// --- mage_bot_wave_door_pad (fix BH, #590: ENERGY WAVE wants the fireball's pad clear of an enemy door) ---
+// mage_bot_wave_pad_body's caster and its four towers on the same lower
+// ground as druid_bot_grow_tree_tree_pad: a hostile level-10 mage bot (slot 4
+// open) at (120, 160), heading UP at spawn, so the fireball ENERGY WAVE rides
+// on is placed on the 8x8 pad (124, 151). A closed enemy door (team 2, so no
+// key opens it) stands on the pad at (120, 140): a still weapon-order body,
+// which the plain pad question passes and fire() meets on its clash rolls.
+// The 16x16 door meets the pad after collide()'s 1 px shrink and touches
+// neither body. Four TOWER1 of the player's team stand within 110 px, so the
+// classic gate ("fewer than one or more than three foes within 110 px") says
+// yes; the one at (115, 110), past the door, is the nearest (55 px between the
+// top-left corners; the others 65, 80 and 70) and faced, so every other term
+// of the rule says yes. The seed (2, the first from 0 at which the classic row
+// reaches the cast in the budget: on seeds 0 and 1 nothing sounds by tick 3)
+// makes the mage roll ENERGY WAVE on tick 0. The classic mage casts: on this
+// seed the fireball's clash rolls against the door go its way, so it leaves
+// (SOUND_BLAST), and the wave takes its place and rides on. With the setting
+// on (Gameplay Fixes BH) the rule asks the pad the strict way, takes the clash
+// roll as lost, says no and holds; the roll takes the bot's ordinary act (fix
+// W), which sounds nothing in the budget, and no tower shoots by then on this
+// seed. The budget is mage_bot_wave_pad_body's, 3. The classic row's pin turns
+// the mage's fixed rule on with the setting off (its mage then holds the
+// cast); the setting-on row's asks the plain pad question again (its mage then
+// casts as the classic one does).
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_wave_door_pad_scen99[] = {
+    { FAMILY_DOOR,    2, kOrderWeapon, 120, 140, 0, 0 },           // a closed enemy door on the fireball's pad; team 2, so no key opens it
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 110, 0, 0 },           // the nearest foe, faced, past the door: 55 px corner to corner
+    { FAMILY_TOWER1,  0, kOrderLiving, 180, 165, 0, 0 },           // three more foes within 110 px: the classic gate wants four
+    { FAMILY_TOWER1,  0, kOrderLiving,  70, 190, 0, 0 },
+    { FAMILY_TOWER1,  0, kOrderLiving, 130, 220, 0, 0 },
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 160, 0, 0, 10, 600 },  // hostile level-10 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_mage_bot_wave_door_pad_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands on the fireball's pad"),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic mage casts ENERGY WAVE at the enemy door on its pad: on this seed the fireball's clash rolls go its way and it sounds as it leaves, once"),
+    pred::WeaponFamilyCount(FAMILY_WAVE, 1, 1,
+        "consequence: the wave takes the fireball's place and rides on"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0),
+    // negative_assertion: no fireball is left on either value: the classic cast kills it when the wave takes its place, and with the setting on none is fired.
+};
+inline constexpr Mutation kMut_mage_bot_wave_door_pad_scen99 = {
+    "packs/core/families/living-03-mage.lua", 144,
+    "if gf.on() then",
+    "if true then",
+    "The mage's fixed rule answers with the setting off too, as Gameplay Fixes BH has it with the setting on: its strict pad question finds the enemy door and holds ENERGY WAVE, so EventKindExactly(play_sound, 1) reads 0 and WeaponFamilyCount(FAMILY_WAVE, 1, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_mage_bot_wave_door_pad_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands on the fireball's pad"),
+    // negative_assertion: nothing sounds with the setting on; the pin asks the plain pad question again and the fireball's sound returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule asks the fireball's pad the strict way, finds the enemy door, takes the clash roll as lost and holds ENERGY WAVE; the bot's ordinary act sounds nothing in the budget"),
+    pred::WeaponFamilyCount(FAMILY_WAVE, 0, 0),
+    // negative_assertion: no wave rides with the setting on; the pin lets the cast make one (0 -> 1).
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0),
+    // negative_assertion: no fireball on either value.
+};
+inline constexpr Mutation kMut_mage_bot_wave_door_pad_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 120,
+    "G.pad_clear_of_weapons(self)",
+    "G.pad_clear(self)",
+    "The rule asks the plain pad question again, as before Gameplay Fixes BH, and it passes the enemy door: the rule says yes and the mage casts as the classic one does, so EventKindExactly(play_sound, 0) reads 1 and WeaponFamilyCount(FAMILY_WAVE, 0, 0) reads 1."
+};
+
+// --- archer_bot_bolt_door_pad (fix BH, #590: EXPLODING BOLT wants the fire arrow's pad clear of an enemy door) ---
+// archer_bot_bolt_at_blows's caster on the same lower ground as
+// druid_bot_grow_tree_tree_pad: a hostile level-7 archer bot at (120, 160),
+// heading UP at spawn, so the fire arrow EXPLODING BOLT fires is placed on
+// the 9x9 pad (123, 150). A closed enemy door (team 2, so no key opens it)
+// stands on the pad at (120, 140): a still weapon-order body, which the
+// plain pad question passes and fire() meets on its clash rolls. The 16x16
+// door meets the pad after collide()'s 1 px shrink and touches neither body.
+// The TOWER1 of the player's team at (115, 110) is past it: the archer's foe
+// (the classic gate's search, a foe within 130 px, takes it), faced, inside
+// the fire arrow's flight and outside the archer's own blast (55 px between
+// the top-left corners against 15 + 4 * 7 = 43), with no ally of the
+// archer's in the blast, so every other term of the rule says yes. The seed
+// (5, the first from 0 at which the classic row reaches the cast in the
+// budget: on seeds 0, 1, 3 and 4 nothing sounds by tick 3, and on seed 2 the
+// archer's tick-0 cast is BARRAGE) makes the archer roll EXPLODING BOLT on
+// tick 0. The classic archer's gate says yes (a foe within 130 px): on this
+// seed the fire arrow's clash roll against the door is lost, so fire() lands
+// a blow on the door (one clang) and the cast refuses COULD NOT FIRE; no fire
+// arrow flies. With the setting on (Gameplay Fixes BH) the rule asks the pad
+// the strict way, takes the clash roll as lost, says no and holds; the roll
+// takes the bot's ordinary act (fix W), which sounds nothing in the budget.
+// The budget is 3. The classic row's pin lets every fixed rule that runs
+// behind its classic gate answer with the setting off (its archer then holds
+// the cast); the setting-on row's asks the plain pad question again (its
+// archer then casts as the classic one does).
+inline constexpr SpawnSpec kFamilySpawns_archer_bot_bolt_door_pad_scen99[] = {
+    { FAMILY_DOOR,    2, kOrderWeapon, 120, 140, 0, 0 },           // a closed enemy door on the fire arrow's pad; team 2, so no key opens it
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 110, 0, 0 },           // the foe past the door: faced, 55 px corner to corner, outside the 43 px blast
+    { FAMILY_ARCHER,  1, kOrderLiving, 120, 160, 0, 0, 7, 200 },   // hostile level-7 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_archer_bot_bolt_door_pad_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands on the fire arrow's pad"),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic archer casts EXPLODING BOLT at the enemy door on its pad: on this seed the fire arrow's clash roll is lost, so fire() lands a blow on the door and it clangs, once"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 0, 0),
+    // negative_assertion: no fire arrow flies on either value: the classic one never leaves the pad, and with the setting on none is fired.
+};
+inline constexpr Mutation kMut_archer_bot_bolt_door_pad_scen99 = {
+    "packs/core/lib/gates.lua", 786,
+    "    if not gf.on() then",
+    "    if false then",
+    "Every fixed rule behind a classic gate answers with the setting off too: the archer's, as Gameplay Fixes BH has it with the setting on, finds the enemy door with its strict pad question and holds EXPLODING BOLT, so EventKindExactly(play_sound, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_archer_bot_bolt_door_pad_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 1, 1,
+        "anchor: the door stands on the fire arrow's pad"),
+    // negative_assertion: nothing sounds with the setting on; the pin asks the plain pad question again and the blow on the door returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule asks the fire arrow's pad the strict way, finds the enemy door, takes the clash roll as lost and holds EXPLODING BOLT; the bot's ordinary act sounds nothing in the budget"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 0, 0),
+    // negative_assertion: no fire arrow on either value.
+};
+inline constexpr Mutation kMut_archer_bot_bolt_door_pad_fixes_scen99 = {
+    "packs/core/families/living-02-archer.lua", 198,
+    "G.pad_clear_of_weapons(self, WEAPON_FIRE_ARROW)",
+    "G.pad_clear(self, WEAPON_FIRE_ARROW)",
+    "The rule asks the plain pad question again, as before Gameplay Fixes BH, and it passes the enemy door: the rule says yes and the archer casts as the classic one does, its fire arrow meeting the door on this seed and the blow clanging, so EventKindExactly(play_sound, 0) reads 1."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -16134,6 +16396,62 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_soldier_boomerang_door_tree_fixes_scen99, std::size(kFacts_soldier_boomerang_door_tree_fixes_scen99),
       kMut_soldier_boomerang_door_tree_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "druid_bot_grow_tree_tree_pad_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_grow_tree_tree_pad_scen99, std::size(kFamilySpawns_druid_bot_grow_tree_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_grow_tree_tree_pad_scen99, std::size(kFacts_druid_bot_grow_tree_tree_pad_scen99),
+      kMut_druid_bot_grow_tree_tree_pad_scen99 },
+    { "druid_bot_grow_tree_tree_pad_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_grow_tree_tree_pad_scen99, std::size(kFamilySpawns_druid_bot_grow_tree_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_grow_tree_tree_pad_fixes_scen99, std::size(kFacts_druid_bot_grow_tree_tree_pad_fixes_scen99),
+      kMut_druid_bot_grow_tree_tree_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "barbarian_bot_boulder_tree_pad_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_bot_boulder_tree_pad_scen99, std::size(kFamilySpawns_barbarian_bot_boulder_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_bot_boulder_tree_pad_scen99, std::size(kFacts_barbarian_bot_boulder_tree_pad_scen99),
+      kMut_barbarian_bot_boulder_tree_pad_scen99 },
+    { "barbarian_bot_boulder_tree_pad_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_bot_boulder_tree_pad_scen99, std::size(kFamilySpawns_barbarian_bot_boulder_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_bot_boulder_tree_pad_fixes_scen99, std::size(kFacts_barbarian_bot_boulder_tree_pad_fixes_scen99),
+      kMut_barbarian_bot_boulder_tree_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "mage_bot_wave_door_pad_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_wave_door_pad_scen99, std::size(kFamilySpawns_mage_bot_wave_door_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_wave_door_pad_scen99, std::size(kFacts_mage_bot_wave_door_pad_scen99),
+      kMut_mage_bot_wave_door_pad_scen99 },
+    { "mage_bot_wave_door_pad_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_wave_door_pad_scen99, std::size(kFamilySpawns_mage_bot_wave_door_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_wave_door_pad_fixes_scen99, std::size(kFacts_mage_bot_wave_door_pad_fixes_scen99),
+      kMut_mage_bot_wave_door_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bot_bolt_door_pad_scen99", "scen/scen1.fss", 0x00000005u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_bolt_door_pad_scen99, std::size(kFamilySpawns_archer_bot_bolt_door_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_bolt_door_pad_scen99, std::size(kFacts_archer_bot_bolt_door_pad_scen99),
+      kMut_archer_bot_bolt_door_pad_scen99 },
+    { "archer_bot_bolt_door_pad_fixes_scen99", "scen/scen1.fss", 0x00000005u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_bolt_door_pad_scen99, std::size(kFamilySpawns_archer_bot_bolt_door_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_bolt_door_pad_fixes_scen99, std::size(kFacts_archer_bot_bolt_door_pad_fixes_scen99),
+      kMut_archer_bot_bolt_door_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
