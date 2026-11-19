@@ -2762,53 +2762,67 @@ TEST_F(SemBotDoor, a_bot_with_the_key_opens_the_door_it_walks_into)
     }
 }
 
-// Gameplay Fixes BF, the foe. An archer facing up fires a real arrow (waver 0)
-// at an enemy door on the line (the door spot of stage_door_line), on the
-// stream whose first clash roll at the door is lost, so the arrow strikes the
-// door: on both settings the door loses hit points (the blow itself is
-// unchanged). (a) The archer holds no foe: setting off, the blow makes the door
-// its foe (classic); setting on, it still holds none. (b) Its foe is an orc
-// that sits beyond the door: off, its foe is then the door; on, still the orc.
-// (c) The door already is its foe (a level script or a mod named it, set_foe):
-// on both settings it still is, and the blow names it again, as a blow on any
-// foe does (the archer's foe field is written: its snapshot mark is set).
+// Gameplay Fixes BF, the foe, for anyone's weapon: the archer is a bot (no
+// player drives it, user -1) and then a seat's walker (user 0, ACT_CONTROL),
+// each case run for both. A seat's shot must not name a door either: a fighter
+// a player leaves (Switch Character unseats it, sim_switch_control) is a bot
+// from then on, and a door its player's shot had made its foe would stay its
+// foe, which the foe exception lets it shoot and swing at. The archer, facing
+// up, fires a real arrow (waver 0) at an enemy door on the line (the door spot
+// of stage_door_line), on the stream whose first clash roll at the door is
+// lost, so the arrow strikes the door: on both settings the door loses hit
+// points (the blow itself is unchanged). (a) The archer holds no foe: setting
+// off, the blow makes the door its foe (classic); setting on, it still holds
+// none. (b) Its foe is an orc that sits beyond the door: off, its foe is then
+// the door; on, still the orc. (c) The door already is its foe (a level script
+// or a mod named it, set_foe): on both settings it still is, and the blow
+// names it again, as a blow on any foe does (the archer's foe field is
+// written: its snapshot mark is set).
 TEST_F(SemBotDoor, a_blow_on_a_door_does_not_make_it_the_owners_foe_with_the_setting_on)
 {
     enum class Held { Nobody, TheOrc, TheDoor };
-    for (const Held held : {Held::Nobody, Held::TheOrc, Held::TheDoor}) {
-        for (short fixes : {short{0}, short{1}}) {
-            SCOPED_TRACE(std::string(held == Held::Nobody   ? "(a) no foe, "
-                                     : held == Held::TheOrc ? "(b) the orc its foe, "
-                                                            : "(c) the door its foe, ") +
-                         (fixes ? "Gameplay Fixes on" : "Gameplay Fixes off"));
-            walker* archer = up_archer(fixes);
-            ASSERT_NE(nullptr, archer);
-            const ShotPlan p = plan_of(archer, FACE_UP);
-            ASSERT_GT(p.los, 1);
-            walker* door = nullptr;
-            walker* orc = nullptr;
-            ASSERT_NO_FATAL_FAILURE(
-                stage_door_line(archer, p, 1, held == Held::TheOrc ? FAMILY_ORC : -1, door, orc));
-            walker* const before = held == Held::Nobody ? nullptr : held == Held::TheOrc ? orc : door;
-            archer->set_foe(before);
-            const float whole = door->stats()->hitpoints();
-            world().rng_.state_ =
-                state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
-            archer->clear_dirty();
-            walker* shot = archer->fire();
-            ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
-            for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
-                shot->act();
-            ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
-            EXPECT_LT(door->stats()->hitpoints(), whole) << "the arrow strikes the door: it takes the blow";
-            if (held == Held::TheDoor) {
-                EXPECT_EQ(door, archer->foe()) << "a door that is the foe stays the foe";
-                EXPECT_TRUE(archer->is_dirty(og::dirty::BIT_FOE_ID))
-                    << "the blow names it again, as a blow on any foe does";
-            } else if (fixes) {
-                EXPECT_EQ(before, archer->foe()) << "a blow on a door names no foe: the foe is what it was";
-            } else {
-                EXPECT_EQ(door, archer->foe()) << "classic: the blow makes the door the archer's foe";
+    for (const bool seat : {false, true}) {
+        for (const Held held : {Held::Nobody, Held::TheOrc, Held::TheDoor}) {
+            for (short fixes : {short{0}, short{1}}) {
+                SCOPED_TRACE(std::string(seat ? "a seat's archer, " : "a bot's archer, ") +
+                             (held == Held::Nobody   ? "(a) no foe, "
+                              : held == Held::TheOrc ? "(b) the orc its foe, "
+                                                     : "(c) the door its foe, ") +
+                             (fixes ? "Gameplay Fixes on" : "Gameplay Fixes off"));
+                walker* archer = up_archer(fixes);
+                ASSERT_NE(nullptr, archer);
+                const ShotPlan p = plan_of(archer, FACE_UP);
+                ASSERT_GT(p.los, 1);
+                walker* door = nullptr;
+                walker* orc = nullptr;
+                ASSERT_NO_FATAL_FAILURE(
+                    stage_door_line(archer, p, 1, held == Held::TheOrc ? FAMILY_ORC : -1, door, orc));
+                walker* const before = held == Held::Nobody ? nullptr : held == Held::TheOrc ? orc : door;
+                if (seat) {
+                    archer->set_user(0);
+                    archer->set_act_type(ACT_CONTROL);
+                }
+                ASSERT_EQ(seat ? 0 : -1, static_cast<int>(archer->user())) << "the staging: who drives the archer";
+                archer->set_foe(before);
+                const float whole = door->stats()->hitpoints();
+                world().rng_.state_ =
+                    state_where_then(p.waver_bound, p.waver_zero, 10, 1, [](std::uint32_t r) { return r <= 3; });
+                archer->clear_dirty();
+                walker* shot = archer->fire();
+                ASSERT_NE(nullptr, shot) << "the staging: the arrow leaves the pad";
+                for (int a = 0; !shot->dead() && a < 4 * p.los; ++a)
+                    shot->act();
+                ASSERT_TRUE(shot->dead()) << "the staging: the arrow ends inside its range";
+                EXPECT_LT(door->stats()->hitpoints(), whole) << "the arrow strikes the door: it takes the blow";
+                if (held == Held::TheDoor) {
+                    EXPECT_EQ(door, archer->foe()) << "a door that is the foe stays the foe";
+                    EXPECT_TRUE(archer->is_dirty(og::dirty::BIT_FOE_ID))
+                        << "the blow names it again, as a blow on any foe does";
+                } else if (fixes) {
+                    EXPECT_EQ(before, archer->foe()) << "a blow on a door names no foe: the foe is what it was";
+                } else {
+                    EXPECT_EQ(door, archer->foe()) << "classic: the blow makes the door the archer's foe";
+                }
             }
         }
     }
@@ -2875,9 +2889,12 @@ TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
 // Gameplay Fixes BF, through ticks: a bot whose foe stands behind a door it
 // cannot open never attacks the door. A WALKING archer bot (ACT_RANDOM: not a
 // tower, not held on a post; its specials off, as a level can place it, so that
-// only its bow and its bumps can strike) on the field of up_archer, facing up;
-// a wall across the whole field three tiles above it but for one tile straight
-// above it, which an enemy door of team 1 fills (one tile, asserted); a hostile
+// only its bow and its bumps can strike: a special cast before it reaches the
+// door, whose gate asks the foe's reach and not the path, could put arrows
+// into the door, and this rule does not cover it) on the field of up_archer,
+// facing up; a wall across the whole field three tiles above it but for one
+// tile straight above it, which an enemy door of team 1 fills (one tile,
+// asserted); a hostile
 // orc sitting two tiles above the door, straight up and inside the reach gate,
 // the archer's foe. Nothing but the door stands between them, and there is no
 // way round. The world ticks kTicks times. Setting on: the archer walks into
