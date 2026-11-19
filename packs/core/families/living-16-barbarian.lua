@@ -153,7 +153,7 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight
   -- tests: GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it
   -- tests: FamilyBehaviors.check_special_default_families, parity:barbarian_bot_boulder_far_scen99
-  -- tests: parity:barbarian_bot_explode_lone_scen99
+  -- tests: parity:barbarian_bot_explode_lone_scen99, parity:barbarian_bot_boulder_tree_pad_scen99
   if not gf.on() then
     return true
   end
@@ -162,7 +162,7 @@ local function check_special_ai(self)
   --   the strict question of fix BH an enemy door, grown tree or shot in flight too), does not roll a throw.
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   -- tests: GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall, GameplayFixesBots.barbarian_throws_want_the_hammers_pad_clear_of_a_door_a_grown_tree_and_a_shot
-  -- tests: parity:barbarian_bot_boulder_pad_body_fixes_scen99
+  -- tests: parity:barbarian_bot_boulder_pad_body_fixes_scen99, parity:barbarian_bot_boulder_tree_pad_fixes_scen99
   if lc.is_busy(self) or not G.pad_clear_of_weapons(self) then
     return false
   end

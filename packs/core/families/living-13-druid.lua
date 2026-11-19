@@ -250,7 +250,7 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot
   -- tests: GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle
   -- tests: parity:druid_bot_tree_behind_scen99, parity:druid_bot_faerie_alone_scen99
-  -- tests: parity:druid_bot_protection_idle_scen99
+  -- tests: parity:druid_bot_protection_idle_scen99, parity:druid_bot_grow_tree_tree_pad_scen99
   if not gf.on() then
     return true -- the classic druid casts every roll
   end
@@ -274,7 +274,7 @@ local function check_special_ai(self)
     -- rule: Gameplay Fixes: GROW TREE pays only between the druid and a living foe closing on it, the
     --   bolt's pad clear by the strict question (fix BH: no enemy door, grown tree or shot in flight on it).
     -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching, GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
-    -- tests: GameplayFixesBots.druid_tree_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot, parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
+    -- tests: GameplayFixesBots.druid_tree_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot, parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99, parity:druid_bot_grow_tree_tree_pad_fixes_scen99
     if f == nil or not G.pad_clear_of_weapons(self) then
       return false
     end

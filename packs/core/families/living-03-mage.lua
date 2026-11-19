@@ -116,7 +116,7 @@ local function fixed_gate(self, foe_count)
     --   the fire heading, and the fireball's pad clear (the wave rides a fired bolt) by the strict question (fix BH: no enemy door, grown tree or shot in flight on it).
     -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110, GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall
     -- tests: GameplayFixesBots.mage_energy_wave_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot
-    -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
+    -- tests: parity:mage_bot_wave_pad_body_fixes_scen99, parity:mage_bot_wave_door_pad_fixes_scen99
     return faced and G.pad_clear_of_weapons(self)
   end
   -- HEARTBURST: slot 5 and every unmapped slot (the family's default cast)
@@ -140,7 +140,7 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on
   -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110
   -- tests: GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on
-  -- tests: KitRests.bot_gates_hold_a_resting_special
+  -- tests: KitRests.bot_gates_hold_a_resting_special, parity:mage_bot_wave_door_pad_scen99
   if gf.on() then
     return fixed_gate(self, foe_count)
   end

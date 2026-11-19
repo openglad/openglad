@@ -809,8 +809,9 @@ Fixes X to BH, in play:
   does not change in stock play. The rule asks the pad, not the path: a
   cast from a few steps back at a foe behind a door or a wall is still
   made (#591). With the setting off a bot has no such rule, so no
-  setting-off golden moves; it is in this branch only so far, not yet in
-  the old game.
+  setting-off golden moves; the rows that show it with the setting off and
+  on are listed under [Parity](#parity) (SUMMON FAERIE has none, since its
+  faerie's room gives the same answers).
 
 ## Refusals at a glance
 
@@ -1443,10 +1444,15 @@ The parity goldens are captures from the old game (branch
   guard (BG): `d3755554` (BF) and `dff9b822` (BG), one per commit, neither
   moving a recording, and the table mirror `8c0cdcd1` (their four new
   arenas, each with the setting off and on, below; nothing else moved).
-  Eight new goldens; no setting-off golden moved. `8c0cdcd1` is the commit
-  the goldens are captured from: 400 of 400 goldens `cmp` equal to a full
-  capture there, and every capture there `cmp`s equal to this game's run of
-  the same row. `tests/parity/golden/DRIFT_LEDGER.md` records each one.
+  Eight new goldens; no setting-off golden moved. Then the pad rules (BH):
+  `5b973aa5` (BH, moving no recording), the table mirror `710489a6` (its
+  four new arenas, each with the setting off and on, below; nothing else
+  moved) and the table mirror `b822bb83` (the words of three of them;
+  nothing moved). Eight new goldens; no setting-off golden moved.
+  `b822bb83` is the commit the goldens are captured from: 408 of 408
+  goldens `cmp` equal to a full capture there, and every capture there
+  `cmp`s equal to this game's run of the same row.
+  `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
 
@@ -1489,6 +1495,7 @@ The rows with the setting on, by fix:
 | BE | `orc_refused_shot_turn_fixes_scen99` (a new arena, with its setting-off twin), and the rows below that it moves |
 | BF | `tower_foe_behind_door_fixes_scen99` (a new arena, with its setting-off twin), and the row below that it moves; for the bump and the blow, `orc_bot_bumps_door_fixes_scen99` and `tower_blow_names_door_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
 | BG | `cleric_shield_door_tree_fixes_scen99` and `soldier_boomerang_door_tree_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
+| BH | `druid_bot_grow_tree_tree_pad_fixes_scen99`, `barbarian_bot_boulder_tree_pad_fixes_scen99`, `mage_bot_wave_door_pad_fixes_scen99` and `archer_bot_bolt_door_pad_fixes_scen99` (four new arenas, each with its setting-off twin: see below; SUMMON FAERIE has none) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -1889,6 +1896,27 @@ blow from naming a door with the setting off; the setting-on rows' pins drop the
 name the door again, and drop the door (the shield's row) or the tree (the boomerang's row) from the guard's question.
 All eight rows are captured from the old game at `8c0cdcd1`, after the ports (`d3755554`, `dff9b822`), and each `cmp`s
 equal to this game's run.
+
+Fix BH has four arenas, one for each cast a recording can show, every one with its setting-off twin; its port moved no
+existing row. Each stands a hostile bot caster on the lower ground of `elf_bot_rocks_tree_pad`, heading up, with an
+enemy body on the pad its cast fires from and a tower of the player's side past it, so that every other term of the
+cast's rule says yes: `druid_bot_grow_tree_tree_pad` (GROW TREE, an enemy grown tree on the bolt's pad),
+`barbarian_bot_boulder_tree_pad` (HURL BOULDER, an enemy grown tree on the hammer's pad), `mage_bot_wave_door_pad`
+(ENERGY WAVE, an enemy door on the fireball's pad, with the three more towers the classic gate wants) and
+`archer_bot_bolt_door_pad` (EXPLODING BOLT, an enemy door on the fire arrow's pad). With the setting off the classic bot
+casts on tick 0, on the first seed from 0 on which it casts inside the recording's three ticks: the druid's bolt, the
+barbarian's hammer and the mage's fireball pass the body on their clash rolls, so a second tree grows, a boulder rolls
+and a wave rides; the archer's fire arrow loses a clash roll, so its blow lands on the door and clangs. With the setting
+on each rule asks the pad the strict way and holds the cast, and nothing sounds. The classic rows' pins turn the
+family's fixed rule on with the setting off (the archer's through the combinator its classic gate shares,
+`G.with_classic`); the setting-on rows' pins ask the plain pad question again. SUMMON FAERIE has no row: its faerie's
+room (fix AR) says no to every enemy door, grown tree or shot in flight the strict pad says no to, its faerie standing
+on the bolt's spot in a box of the bolt's size, so no recording can tell the two questions apart there; the strict half
+of `G.summon_pad_clear` is shown by `BotGatesLib.summon_pad_clear_asks_the_weapons_pad_the_strict_way`. All eight rows
+are captured from the old game at `710489a6`, after the port (`5b973aa5`), and again at `b822bb83` with the same bytes,
+and each `cmp`s equal to this game's run. Captured from a copy of the old game without the port, the bot of each of the
+four setting-on rows casts at the body on its pad (its cast sounds on tick 0), and each classic row reads byte for byte
+as with the port: so each of the four ported calls is what its setting-on row shows.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
