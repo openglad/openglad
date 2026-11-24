@@ -648,7 +648,7 @@ bool living::act_round()
 					else if (!current_game->world->rng_.next(2))
 						set_foe(current_game->world->find_nearest_foe(this));
 					else
-						stats_->idle_walk(20);
+						stats_->idle_walk(*this, 20);
 
 					return 1;
 				}
@@ -1069,7 +1069,7 @@ bool living::act_random()
 	if (!current_game->world->rng_.next(80) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
 	if (!foe())
-		return stats_->idle_walk(40);
+		return stats_->idle_walk(*this, 40);
 
 	xdist = static_cast<short>(foe()->xpos() - xpos());
 	ydist = static_cast<short>(foe()->ypos() - ypos());

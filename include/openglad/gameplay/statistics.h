@@ -175,8 +175,9 @@ class statistics
 		// shot_attacks: direct_walk's shot test (fire_check; on a pass the orders wiped, a turn to
 		// the foe and an ATTACK of 30+rng(25) rounds); true when it passed.
 		bool shot_attacks(float xdelta, float ydelta);
-		// idle_walk: the wander of a bot with no foe; a bot shut out by a door stays where it is.
-		short idle_walk(std::int32_t rounds);
+		// idle_walk: the wander of `bot` (the living deciding, not the stats' owner) with no foe;
+		// a bot shut out by a door stays where it is.
+		short idle_walk(walker& bot, std::int32_t rounds);
 		// foes_not_door_shut: how many of `foes` are not door-shut for the bot (the near branch).
 		std::int32_t foes_not_door_shut(const std::list<walker*>& foes);
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's

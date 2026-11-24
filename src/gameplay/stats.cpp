@@ -2830,15 +2830,18 @@ bool statistics::shot_attacks(float xdelta, float ydelta)
 }
 
 // The wander of a bot with no foe (living.cpp: the seek's coin and act_random's), Gameplay Fixes
-// BJ. Appended at the end of the file so the parity pins above never shift.
-short statistics::idle_walk(Sint32 rounds)
+// BJ. `bot` is the living that is deciding, which passes itself: the stats' owner is not read
+// (a snapshot resolves it by id, so it may be nobody or another walker), as the classic wander
+// read none. Appended at the end of the file so the parity pins above never shift.
+short statistics::idle_walk(walker& bot, Sint32 rounds)
 {
 	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (og::reach::shut_out: some enemy on
 	//   its floor only a door keeps it from) queues no wander and makes neither of its two direction
-	//   draws: it stays where it is. Every other walker, and every walker with the setting off,
+	//   draws: it stays where it is. The question is asked of the living that is deciding, whatever
+	//   its stats name as their owner. Every other walker, and every walker with the setting off,
 	//   wanders as before (try_random_walk).
 	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
-	if (og::reach::shut_out(*controller_))
+	if (og::reach::shut_out(bot))
 		return 0;
 	return try_random_walk(rounds);
 }
