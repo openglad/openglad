@@ -701,10 +701,10 @@ short living::shove(walker  *target, short x, short y)
 			// side effects. The rng_.next(3) draw above stays unconditional,
 			// so the RNG stream is unchanged on every path.
 			// rule: A shove never steals an ally's orders when the step it would inject is blocked
-			//   by terrain (the 2026-07-10 livelock fix): the ally keeps its own search.
-			// tests: LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable
-			// tests: LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step
-			if (!current_game->world->query_grid_passable(
+			//   by terrain (the 2026-07-10 livelock fix) or, for a bot ally with the setting on, by a door it
+			//   cannot open (Gameplay Fixes BI, a door a bot cannot open is a wall to it): it keeps its own search.
+			// tests: LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable, LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step, SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before
+			if (current_game->world->step_refused(
 			        target->xpos() + static_cast<float>(x),
 			        target->ypos() + static_cast<float>(y), target))
 				return 0;

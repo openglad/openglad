@@ -473,7 +473,7 @@ void number_regions(GameWorld& world, walker& w, Layer& layer)
                 layer.region[static_cast<std::size_t>(ni)] = r;
                 queue.push_back(ni);
             };
-            for_each_step(world, w, ux * GRID_SIZE, uy * GRID_SIZE, uf, multifloor, nonflyer, cells, visit);
+            for_each_step(world, ux * GRID_SIZE, uy * GRID_SIZE, uf, multifloor, nonflyer, cells, visit);
         }
     }
 }
@@ -526,6 +526,12 @@ Ground& ground_of(MapsData& d, GameWorld& world, walker& w, const GroundKey& key
                 // tests: SemReach.the_maps_steps_and_regions_are_the_route_finders_for_six_kinds
                 if (terrain_passes(world, w, x * GRID_SIZE, y * GRID_SIZE, f, StepTest::Flank, multifloor, nonflyer))
                     b = static_cast<std::uint8_t>(b | kFlank);
+                // rule: og::reach: (the landing bit, the same rule: a stair's hop may land on the
+                //   cell)
+                // tests: SemReach.the_maps_steps_and_regions_are_the_route_finders_for_six_kinds
+                // tests: SemBotReach.a_stair_whose_landing_a_door_closes_is_no_way_up
+                if (terrain_passes(world, w, x * GRID_SIZE, y * GRID_SIZE, f, StepTest::Landing, multifloor, nonflyer))
+                    b = static_cast<std::uint8_t>(b | kLanding);
                 layer.bits[static_cast<std::size_t>(layer.index(x, y, f))] = b;
             }
         }
@@ -653,8 +659,10 @@ Map& map_of(MapsData& d, GameWorld& world, walker& w, Ground& ground, const Barr
                     // rule: og::reach: a barring door closes the cells that stand with the doors
                     //   open and on which the kind's box, its corner on the cell's corner, meets the
                     //   door's box by the body map's own test (collide; the height test never spares
-                    //   a living, whose height is 0); closed, a cell answers neither test.
+                    //   a living, whose height is 0); closed, a cell answers none of its tests (a
+                    //   stair's hop does not land on it either).
                     // tests: SemReach.a_door_off_the_grid_closes_exactly_the_cells_its_box_meets
+                    // tests: SemBotReach.a_stair_whose_landing_a_door_closes_is_no_way_up
                     if ((open.bits[i] & kStep) == 0 ||
                         !collide(static_cast<short>(x * GRID_SIZE), static_cast<short>(y * GRID_SIZE),
                                  static_cast<short>(sx), static_cast<short>(sy),
@@ -753,7 +761,7 @@ void reach_from(GameWorld& world, walker& w, const Layer& layer, std::int32_t st
         const int cf = c / (layer.w * layer.h);
         const int cy = (c / layer.w) % layer.h;
         const int cx = c % layer.w;
-        for_each_step(world, w, cx * GRID_SIZE, cy * GRID_SIZE, cf, multifloor, nonflyer, bits, step);
+        for_each_step(world, cx * GRID_SIZE, cy * GRID_SIZE, cf, multifloor, nonflyer, bits, step);
     }
     std::sort(cells.begin(), cells.end());
 }
@@ -1461,7 +1469,93 @@ bool shoots_at(walker& w, const walker& b)
     return flown.value_or(true);
 }
 
+// --------------------------------------------------------------------------------------------
+// Gameplay Fixes BI, a door a bot cannot open is a wall to it: its route, its straight walk and
+// the push an ally gives it.
+// --------------------------------------------------------------------------------------------
+
+bool door_is_a_wall_to(const walker* w)
+{
+    // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: only with the setting on
+    //   and only for a bot (walker::is_bot: a living no seat drives); a player's own fighter, and
+    //   every walker with the setting off, routes, walks and is pushed as before.
+    // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+    // tests: SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+    // tests: SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before
+    return w != nullptr && og::sim::session_gameplay_fixes() != 0 && w->is_bot();
+}
+
+bool RouteCells::only_the_foe_closes(int x, int y, int f) const
+{
+    // plumbing: no bot named, or no world: no cell is opened for the route
+    if (foe_door_of == nullptr || current_game == nullptr || current_game->world == nullptr)
+        return false;
+    return !current_game->world->door_bars_at(static_cast<short>(x), static_cast<short>(y), foe_door_of, f);
+}
+
+RoutePlan plan_route(walker& w, Cell goal, const walker* foe)
+{
+    RoutePlan plan;
+    // rule: Gameplay Fixes BI: the route of a walker the rule does not name is the classic solve.
+    // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+    if (!door_is_a_wall_to(&w))
+        return plan;
+    Asker a(w);
+    plan.cells.view = a.cells();
+    // plumbing: nothing judged (no body map): the classic solve
+    if (plan.cells.view.shut == nullptr)
+        return plan;
+    plan.judged = true;
+    plan.start = a.start_cell();
+    plan.goal = goal;
+    const bool standing = a.region_of(plan.start, Mode::Shut) >= 0;
+    // rule: Gameplay Fixes BI: a bot whose foe is a door that bars it is routed into that door: the
+    //   cells only that door closes stand for the solve (RouteCells), the goal stays the door's
+    //   corner cell, and the search is not run when the start cell has a region and the bot does
+    //   not walk to the door with the doors that bar it shut.
+    // tests: SemBotReach.a_bot_whose_foe_is_a_door_is_routed_into_that_door_and_no_other
+    if (foe != nullptr && door_bars(&w, foe))
+    {
+        plan.cells.foe_door_of = &w;
+        plan.run = !standing || a.walks_to(*foe, Mode::Shut);
+        return plan;
+    }
+    // rule: Gameplay Fixes BI: the goal of a route to a foe is the foe's corner cell, but when that
+    //   cell stands with the doors open and not with them shut (only a barring door closes it), it
+    //   is the nearest approach cell the bot gets to; with none, the goal stays and the search below
+    //   is not run. Asked only from a start cell with a region.
+    // tests: SemBotReach.a_foe_whose_cell_a_door_closes_is_routed_to_from_beside_it
+    if (foe != nullptr && standing && a.region_of(goal, Mode::Shut) < 0 && a.region_of(goal, Mode::Open) >= 0)
+    {
+        Cell near{};
+        // plumbing: no approach cell reached: the goal stays, and reaches() below answers no
+        if (a.nearest_approach(*foe, Mode::Shut, near))
+            plan.goal = near;
+    }
+    // rule: Gameplay Fixes BI: a search that must fail is not run: from a start cell with a region,
+    //   a goal in no region the bot gets to leaves the route empty, as a failed search leaves it;
+    //   from a start cell with no region the search runs.
+    // tests: SemBotReach.a_search_that_must_fail_is_not_run
+    plan.run = !standing || a.reaches(plan.start, plan.goal, Mode::Shut);
+    return plan;
+}
+
 }  // namespace og::reach
+
+bool GameWorld::step_refused(float x, float y, walker* w)
+{
+    // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: the straight walk's and the
+    //   shove's step test refuses a box the terrain refuses (the classic test) and, for a bot with
+    //   the setting on, a box a door that bars it meets (door_bars_at: not its own foe, nothing
+    //   drawn); no air test is added.
+    // tests: SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+    // tests: SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before
+    // tests: SemBotReach.on_a_level_with_floors_and_no_door_the_straight_walk_steps_onto_air_as_before
+    if (!query_grid_passable(x, y, w))
+        return true;
+    return og::reach::door_is_a_wall_to(w) &&
+           door_bars_at(static_cast<short>(x), static_cast<short>(y), w, w->floor());
+}
 
 bool GameWorld::door_bars_at(short x, short y, walker* w, int floor)
 {

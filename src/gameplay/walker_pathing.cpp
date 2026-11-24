@@ -25,6 +25,23 @@
 #define MAKE_STATE(x, y, f) reinterpret_cast<PathState>(static_cast<intptr_t>(static_cast<intptr_t>(f) * FLOOR_STRIDE + ((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
 #define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
 
+namespace {
+
+// The path state of a 16 px cell (og::reach::Cell): MAKE_STATE of the cell's corner pixel, so a
+// walker's corner cell gives the state of its corner.
+PathState cell_state(const og::reach::Cell& c)
+{
+    return MAKE_STATE(c.x * GRID_SIZE, c.y * GRID_SIZE, c.floor);
+}
+
+// The cell of a pixel spot on a floor.
+og::reach::Cell cell_of(int x, int y, int floor)
+{
+    return og::reach::Cell{x / GRID_SIZE, y / GRID_SIZE, floor};
+}
+
+}  // namespace
+
 void walker::find_path_to_foe()
 {
     // plumbing: No foe / no game / no pathfinding state: no path solved.
@@ -37,6 +54,27 @@ void walker::find_path_to_foe()
         return;
 
     float total_cost = 0.0f;
+    // Gameplay Fixes BI, a door a bot cannot open is a wall to it: a bot's route is planned by
+    // og::reach::plan_route (its start cell, its goal, whether the search can succeed at all) and
+    // solved on its kind's shut layer.
+    const og::reach::RoutePlan plan =
+        og::reach::plan_route(*this, cell_of(foe()->xpos(), foe()->ypos(), foe()->floor()), foe());
+    // rule: Gameplay Fixes BI: a bot's route (the setting on) runs from its start cell to the goal
+    //   plan_route names, on its kind's shut layer; a search that must fail is not run and leaves
+    //   the route empty, as a failed search leaves it.
+    // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+    // tests: SemBotReach.a_bot_under_a_door_is_routed_away_from_it_and_not_through_it
+    if (plan.judged)
+    {
+        path_to_foe.clear();
+        // plumbing: a plan that cannot succeed is not searched (plan_route's rule); the failed
+        //   search would leave the same empty route and draw nothing
+        if (plan.run)
+            pathing->solve_for(this, cell_state(plan.start), cell_state(plan.goal), path_to_foe, total_cost,
+                               &plan.cells);
+        return;
+    }
+
     const PathState start_state = MAKE_STATE(xpos(), ypos(), floor());
     const PathState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos(), foe()->floor());
 
@@ -57,6 +95,23 @@ void walker::find_path_to_point(short x, short y)
         return;
 
     float total_cost = 0.0f;
+    // Gameplay Fixes BI, a door a bot cannot open is a wall to it: a bot's route to a point is
+    // planned and solved as its route to a foe is, with the point's cell as the goal.
+    const og::reach::RoutePlan plan = og::reach::plan_route(*this, cell_of(x, y, floor()), nullptr);
+    // rule: Gameplay Fixes BI: a bot's route to a point (the setting on) runs from its start cell on
+    //   its kind's shut layer; a search that must fail is not run.
+    // tests: SemBotReach.a_route_to_a_point_goes_round_a_door
+    if (plan.judged)
+    {
+        path_to_foe.clear();
+        // plumbing: a plan that cannot succeed is not searched (plan_route's rule); the failed
+        //   search would leave the same empty route and draw nothing
+        if (plan.run)
+            pathing->solve_for_point(this, x, y, cell_state(plan.start), cell_state(plan.goal), path_to_foe,
+                                     total_cost, &plan.cells);
+        return;
+    }
+
     const PathState start_state = MAKE_STATE(xpos(), ypos(), floor());
     const PathState end_state = MAKE_STATE(x, y, floor());
 

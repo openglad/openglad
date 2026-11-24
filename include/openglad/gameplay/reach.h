@@ -70,8 +70,9 @@ struct CellAnswer
     bool operator==(const CellAnswer&) const = default;
 };
 
-// The two tests a step asks of a cell.
-enum class StepTest : std::uint8_t { Step, Flank };
+// The tests a step asks of a cell: a step may end on it, a diagonal may pass beside it, a stair's
+// hop may land on it.
+enum class StepTest : std::uint8_t { Step, Flank, Landing };
 // What a step is: to one of the eight neighbours on its floor, or a stair's hop to another floor.
 enum class StepKind : std::uint8_t { Straight, Diagonal, Stair };
 
@@ -93,6 +94,7 @@ namespace detail {
 
 constexpr std::uint8_t kStep = 1;
 constexpr std::uint8_t kFlank = 2;
+constexpr std::uint8_t kLanding = 4;
 
 // A stored layer's answer to a step test of the cell whose corner is at pixels (x, y) on floor f:
 // the one reading of a layer, for the maps' own walks and for a route finder's view (CellsView).
@@ -104,10 +106,11 @@ inline bool stored_passes(const std::uint8_t* bits, int w, int h, int floors, in
     if (bits == nullptr || x < 0 || y < 0 || f < 0 || x / GRID_SIZE >= w || y / GRID_SIZE >= h ||
         f >= floors)
         return false;
-    // rule: og::reach: a stored cell answers a step's test by its step bit and a diagonal's flank
-    //   test by its flank bit.
+    // rule: og::reach: a stored cell answers a step's test by its step bit, a diagonal's flank
+    //   test by its flank bit and a stair hop's landing test by its landing bit.
     // tests: SemReach.the_maps_steps_and_regions_are_the_route_finders_for_six_kinds
-    const std::uint8_t want = test == StepTest::Step ? kStep : kFlank;
+    // tests: SemBotReach.a_stair_whose_landing_a_door_closes_is_no_way_up
+    const std::uint8_t want = test == StepTest::Step ? kStep : test == StepTest::Flank ? kFlank : kLanding;
     return (bits[static_cast<std::size_t>((f * h + y / GRID_SIZE) * w + x / GRID_SIZE)] & want) != 0;
 }
 
@@ -166,6 +169,61 @@ struct CellsView
         return detail::stored_passes(mode == Mode::Shut ? shut : open, w, h, floors, x, y, f, test);
     }
 };
+
+// What a bot's route reads for each neighbour (Gameplay Fixes BI, a door a bot cannot open is a
+// wall to it): the shut layer of its kind, where a door that bars it closes the cells its box would
+// meet as a wall closes them. For a bot whose foe is a door that bars it (a door a level script or a
+// mod named its foe), a cell that stands with the doors open and that no barring door but that foe
+// meets stands too (GameWorld::door_bars_at leaves the walker's own foe out), so its route can end
+// in the door. A Cells of for_each_step. Valid for one solve, as its view is.
+struct RouteCells
+{
+    CellsView view;
+    walker* foe_door_of = nullptr;  // the bot, when its foe is a door that bars it; else none
+
+    [[nodiscard]] bool operator()(int x, int y, int f, StepTest test) const
+    {
+        // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: a bot's route reads
+        //   every step, flank and landing test from its kind's shut layer.
+        // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+        if (view(x, y, f, test))
+            return true;
+        // rule: Gameplay Fixes BI: for a bot whose foe is a door that bars it, a cell closed by no
+        //   barring door but that foe stands for its route, so the route ends in the door.
+        // tests: SemBotReach.a_bot_whose_foe_is_a_door_is_routed_into_that_door_and_no_other
+        if (foe_door_of == nullptr || !view.passes(Mode::Open, x, y, f, test))
+            return false;
+        return only_the_foe_closes(x, y, f);
+    }
+    // No barring door but the walker's own foe meets its box at (x, y) on floor f (reach.cpp).
+    [[nodiscard]] bool only_the_foe_closes(int x, int y, int f) const;
+};
+
+// The route of a bot (Gameplay Fixes BI), worked out before its solve: where the solve starts and
+// ends, what it reads for each neighbour, and whether it is run at all.
+struct RoutePlan
+{
+    bool judged = false;  // false: the classic solve runs (the setting off, not a bot, no world)
+    bool run = false;     // false: the search could only fail; the route is left empty
+    Cell start{};
+    Cell goal{};
+    RouteCells cells;
+};
+
+// Who plans its route, its straight walk and the push an ally gives it with a door it cannot open
+// as a wall (Gameplay Fixes BI): the setting is on and w is a bot (walker::is_bot).
+[[nodiscard]] bool door_is_a_wall_to(const walker* w);
+
+// The plan of a bot's route to the cell `goal`; `foe` is the walker's foe when the route is to it
+// (goal its corner's cell), null for a route to a point. The solve starts from start_cell(w). Its
+// goal is `goal`, but when `foe` is given and its corner's cell stands with the doors open and not
+// with them shut, the nearest approach cell w gets to. When the start cell has a region and the
+// goal lies in no region w gets to, the search is not run. When `foe` is a door that bars w, the
+// cells only that door closes stand for the solve, the goal stays the door's corner cell, and the
+// search is not run when the start has a region and w does not walk to the door. With a start cell
+// of no region the search runs to `goal`. Not judged (door_is_a_wall_to says no, or nothing is
+// judged): judged = false.
+[[nodiscard]] RoutePlan plan_route(walker& w, Cell goal, const walker* foe);
 
 // A walker resolved once for many questions: its kind (its box, order, flags and side, holding its
 // own keys or the keys given), the kind's map and its start cell. A search's candidates, the cast
@@ -318,6 +376,12 @@ bool terrain_passes(World& world, Walker& w, int x, int y, int f, StepTest test,
     // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
     if (!world.query_grid_passable(static_cast<float>(x), static_cast<float>(y), &w, f))
         return false;
+    // rule: A stair's hop asks its landing cell the terrain's test alone (a landing on air is a
+    //   link, as it always was).
+    // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+    // tests: SemReach.the_maps_steps_and_regions_are_the_route_finders_for_six_kinds
+    if (test == StepTest::Landing)
+        return true;
     // Non-flyers avoid "air" holes in pathing (they would fall), so
     // AI routes around pits and only changes floors via Z-stairs.
     // Gated on multifloor so single-floor expansion is unchanged.
@@ -334,14 +398,15 @@ bool terrain_passes(World& world, Walker& w, int x, int y, int f, StepTest test,
              world.smoother_for_floor(f).query_genre_x_y(x / GRID_SIZE, y / GRID_SIZE) == TYPE_AIR);
 }
 
-// The steps out of the cell whose corner is at pixels (x1, y1) on floor f, for walker w: each of
+// The steps out of the cell whose corner is at pixels (x1, y1) on floor f: each of
 // the eight neighbours (in the route finder's order) whose cell passes `cells(x, y, f, Step)`, a
-// diagonal only when both flanking cells pass `cells(x, y, f, Flank)`; then a stair's hop.
+// diagonal only when both flanking cells pass `cells(x, y, f, Flank)`; then a stair's hop, when
+// its landing passes `cells(x1, y1, tf, Landing)`.
 // `emit(x, y, f, kind)` is called for each, in that order. `cells` is the terrain's answer for
 // the route finder (terrain_passes) and a map's stored answer for a map.
-template <class World, class Walker, class Cells, class Emit>
-void for_each_step(World& world, Walker& w, int x1, int y1, int f, bool multifloor, bool nonflyer,
-                   Cells&& cells, Emit&& emit)
+template <class World, class Cells, class Emit>
+void for_each_step(World& world, int x1, int y1, int f, bool multifloor, bool nonflyer, Cells&& cells,
+                   Emit&& emit)
 {
     // plumbing: 8-neighbour expansion (skip self); rules below,
     //   below
@@ -415,8 +480,10 @@ void for_each_step(World& world, Walker& w, int x1, int y1, int f, bool multiflo
     // expansion is byte-identical.
     // rule: On stacked levels a walker that cannot fly plans floor changes only through stairs:
     //   an up-stair links to the floor above, a down-stair to the floor below, if that floor
-    //   exists and its cell is passable; flyers never change floors.
+    //   exists and its cell passes the landing test (the terrain's; in a shut layer a landing a
+    //   barring door closes is no link); flyers never change floors.
     // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+    // tests: SemBotReach.a_stair_whose_landing_a_door_closes_is_no_way_up
     if (multifloor && nonflyer)
     {
         const int tile = world.smoother_for_floor(f).query_x_y(x1 / GRID_SIZE, y1 / GRID_SIZE);
@@ -429,10 +496,10 @@ void for_each_step(World& world, Walker& w, int x1, int y1, int f, bool multiflo
         else if (tile == PIX_ZSTAIR_DOWN && f > 0)
             tf = f - 1;
         // rule: On stacked levels a walker that cannot fly plans floor changes only through
-        //   stairs.
+        //   stairs, onto a landing that passes the landing test.
         // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
-        if (tf >= 0 &&
-            world.query_grid_passable(static_cast<float>(x1), static_cast<float>(y1), &w, tf))
+        // tests: SemBotReach.a_stair_whose_landing_a_door_closes_is_no_way_up
+        if (tf >= 0 && cells(x1, y1, tf, StepTest::Landing))
             emit(x1, y1, tf, StepKind::Stair);
     }
 }

@@ -78,6 +78,7 @@ public:
         short goal_x = 0;
         short goal_y = 0;
         bool has_goal = false;
+        const og::reach::RouteCells* cells = nullptr;  // a bot's route (Gameplay Fixes BI), else none
     };
 
     explicit PathingMap(Owner* owner)
@@ -212,7 +213,16 @@ public:
 
             adjacent.push_back(cost);
         };
-        og::reach::for_each_step(world, *aw, x1, y1, f, multifloor, nonflyer, terrain, price);
+        // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: a bot's route (the
+        //   setting on) reads its steps from its kind's shut layer (og::reach::RouteCells), so a door
+        //   that bars it is a wall to the route; every other solve reads the terrain's answers. The
+        //   costs are the same: a door the walker can open still costs ten, as any body does.
+        // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+        // tests: SemPathing.a_door_the_walker_can_open_costs_ten_and_is_walked
+        if (owner_->cells != nullptr)
+            og::reach::for_each_step(world, x1, y1, f, multifloor, nonflyer, *owner_->cells, price);
+        else
+            og::reach::for_each_step(world, x1, y1, f, multifloor, nonflyer, terrain, price);
     }
 
 private:
@@ -246,7 +256,8 @@ void GameplayPathfindingState::solve_for(walker* owner,
                                          void* start_state,
                                          void* end_state,
                                          std::vector<void*>& path_out,
-                                         float& total_cost)
+                                         float& total_cost,
+                                         const og::reach::RouteCells* cells)
 {
     path_out.clear();
     total_cost = 0.0f;
@@ -258,8 +269,10 @@ void GameplayPathfindingState::solve_for(walker* owner,
     // Set the walker that the path is being generated for
     impl_->owner.active_walker = owner;
     impl_->owner.has_goal = false;
+    impl_->owner.cells = cells;
     // solve() resets its own per-search state while retaining scratch capacity.
     (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
+    impl_->owner.cells = nullptr;
 }
 
 void GameplayPathfindingState::solve_for_point(walker* owner,
@@ -268,7 +281,8 @@ void GameplayPathfindingState::solve_for_point(walker* owner,
                                                void* start_state,
                                                void* end_state,
                                                std::vector<void*>& path_out,
-                                               float& total_cost)
+                                               float& total_cost,
+                                               const og::reach::RouteCells* cells)
 {
     path_out.clear();
     total_cost = 0.0f;
@@ -281,9 +295,11 @@ void GameplayPathfindingState::solve_for_point(walker* owner,
     impl_->owner.goal_x = goal_x;
     impl_->owner.goal_y = goal_y;
     impl_->owner.has_goal = true;
+    impl_->owner.cells = cells;
     // solve() resets its own per-search state while retaining scratch capacity.
     (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
     impl_->owner.has_goal = false;
+    impl_->owner.cells = nullptr;
 }
 
 GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context)

@@ -1738,7 +1738,7 @@ bool statistics::direct_walk()
 	}
 
 	// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-	//   allows it (bodies are not checked here), else slides along x, else along y; it fails
+	//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y; it fails
 	//   (returns 0, no move) when every straight move is walled or the foe is exactly on top of it.
 	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
@@ -1757,28 +1757,28 @@ bool statistics::direct_walk()
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
 	// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-	//   allows it (bodies are not checked here), else slides along x, else along y.
+	//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-	if (!current_game->world->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller_) )
+	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+	if (current_game->world->step_refused(controlx+xdeltastep, controly+ydeltastep, controller_) )
 	{
 		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-		//   allows it (bodies are not checked here), else slides along x, else along y.
+		//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-		// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-		if (!current_game->world->query_grid_passable(controlx+xdeltastep,controly+0,controller_) )
+		// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+		if (current_game->world->step_refused(controlx+xdeltastep,controly+0,controller_) )
 		{
 			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
-			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
+			//   GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-			// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-			if (!current_game->world->query_grid_passable(controlx+0,controly+ydeltastep,controller_) )
+			// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+			if (current_game->world->step_refused(controlx+0,controly+ydeltastep,controller_) )
 			{
 				return 0;
 
@@ -1788,7 +1788,7 @@ bool statistics::direct_walk()
 			else //y ok
 			{
 				// rule: The straight-line chase takes the diagonal unit step toward the foe when
-				//   the GRID allows it (bodies are not checked here), else slides along x, else
+				//   the GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else
 				//   along y.
 				// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 				// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
@@ -1806,7 +1806,7 @@ bool statistics::direct_walk()
 		else //x ok
 		{
 			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
-			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
+			//   GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1824,7 +1824,7 @@ bool statistics::direct_walk()
 	else //x and y ok
 	{
 		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-		//   allows it (bodies are not checked here), else slides along x, else along y.
+		//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -2250,32 +2250,32 @@ bool statistics::direct_walk_to_point(short x, short y)
 	xdeltastep = xdelta * controller_->stepsize();
 	ydeltastep = ydelta * controller_->stepsize();
 
-	// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-	//   slide, else the y slide, and fails when walled or already there; it never attacks (same
-	//   ladder as above).
+	// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+	//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled
+	//   or already there; it never attacks (same ladder as above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-	// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-	if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))
+	// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+	if (current_game->world->step_refused(controlx + xdeltastep, controly + ydeltastep, controller_))
 	{
-		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-		//   slide, else the y slide, and fails when walled or already there.
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+		//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-		if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + 0, controller_))
+		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+		if (current_game->world->step_refused(controlx + xdeltastep, controly + 0, controller_))
 		{
-			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
-			//   the x slide, else the y slide, and fails when walled or already there.
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+			//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-			if (!current_game->world->query_grid_passable(controlx + 0, controly + ydeltastep, controller_))
+			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+			if (current_game->world->step_refused(controlx + 0, controly + ydeltastep, controller_))
 			{
 				// No straight-line move brings us closer to the point.
 				return 0;
 			}
 			else // y ok
 			{
-				// rule: A walk toward a point takes the diagonal unit step when the grid allows,
-				//   else the x slide, else the y slide, and fails when walled or already there.
+				// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+				//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 				// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 				// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 				if (ydelta == 0.0f)
@@ -2286,8 +2286,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 		}
 		else // x ok
 		{
-			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
-			//   the x slide, else the y slide, and fails when walled or already there.
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+			//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 			if (xdelta == 0.0f)
@@ -2298,8 +2298,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 	}
 	else // x and y ok
 	{
-		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-		//   slide, else the y slide, and fails when walled or already there.
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+		//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 		if (xdelta == 0.0f && ydelta == 0.0f)
@@ -2711,7 +2711,12 @@ void statistics::attack_face_or_fight(short deltax, short deltay)
 // Appended at the end of the file so the parity pins above stay on their lines.
 void statistics::level_written() noexcept
 {
+	// rule: og::reach: the walker whose level was written is told by its owner first and its
+	//   controller second (as mark_dirty finds it), so a door whose controller link was cleared
+	//   still tells its world's maps; statistics of no walker tell nothing.
+	// tests: SemBotReach.a_doors_level_written_after_its_controller_link_was_cleared_still_counts
+	walker* const told = owner_ != nullptr ? owner_ : controller_;
 	// plumbing: statistics built for no walker have no door to tell; the rule is the door's
-	if (controller_ != nullptr)
-		controller_->door_state_written();
+	if (told != nullptr)
+		told->door_state_written();
 }

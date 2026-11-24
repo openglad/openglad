@@ -486,6 +486,12 @@ public:
     // (obmap::DoorsOnly): nothing eaten, opened, collided or drawn. False with no body map or no
     // walker. Defined in reach.cpp.
     bool door_bars_at(short x, short y, walker* w, int floor);
+    // The step test of the straight walk (to a foe and to a point) and of the shove: the terrain
+    // refuses w's box at (x, y) on w's floor (the 3-arg query_grid_passable), or, with the Gameplay
+    // Fixes setting on and w a bot, a door that bars w and is not its foe meets the box
+    // (door_bars_at; Gameplay Fixes BI, a door a bot cannot open is a wall to it). Defined in
+    // reach.cpp.
+    bool step_refused(float x, float y, walker* w);
     // Side-effect-free landing probe for floor transitions (Z-stairs, air
     // falls, cross-floor teleports): true when ob's bbox at (x, y) on
     // target_floor is grid-passable AND overlaps no blocking entity there.

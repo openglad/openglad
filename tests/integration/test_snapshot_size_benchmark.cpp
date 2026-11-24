@@ -386,6 +386,14 @@ TEST(SnapshotSizeBenchmark,
     for (int i = 0; i < 4; ++i)
         ASSERT_NE(nullptr, game_screen.viewob[i]);
     const std::vector<short> player_teams = capture_view_teams(game_screen, 4);
+    // The benchmark measures snapshot and delta sizes; its 110 ticks need the four single-fighter
+    // teams alive (the server ends a match no bound team has a living member in), and that
+    // depends on what the level's bots do. With the Gameplay Fixes setting on, Gameplay Fixes
+    // BI (a door a bot cannot open is a wall to it) changed the monsters' routes on this level and
+    // the match ended at the replay's 105th frame. The benchmark states the setting off, so it plays the
+    // classic game, which no gameplay fix moves; the replay world takes the setting from the
+    // recorded snapshot (asserted below).
+    world.gameplay_fixes = 0;
 
     const RecordedBenchmarkReplay recorded = record_benchmark_replay(game_screen);
 
@@ -400,6 +408,7 @@ TEST(SnapshotSizeBenchmark,
         make_benchmark_fixture_config(player_teams));
     initialize_fixture_world(replay_fixture, player.initial_snapshot());
     GameWorld& replay_world = replay_fixture.server_world();
+    ASSERT_EQ(0, replay_world.gameplay_fixes) << "the replay plays the classic game the recording stated";
 
     for (int tick = 0; tick < kWarmupTicks; ++tick)
     {
