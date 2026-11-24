@@ -28,6 +28,7 @@
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -1539,6 +1540,72 @@ RoutePlan plan_route(walker& w, Cell goal, const walker* foe)
     // tests: SemBotReach.a_search_that_must_fail_is_not_run
     plan.run = !standing || a.reaches(plan.start, plan.goal, Mode::Shut);
     return plan;
+}
+
+// --------------------------------------------------------------------------------------------
+// Gameplay Fixes BK, a bot that holds the key to a door on its way walks its route into the door.
+// --------------------------------------------------------------------------------------------
+
+namespace detail {
+
+// w holds the key of a live door filed on its floor (the key bit 2^level, as door_bars reads it).
+// Read from the maps' list of doors: no map is built and no Asker resolved.
+bool holds_door_key(walker& w)
+{
+    // plumbing: nothing judged (judged's rule): no list of doors to read
+    if (!judged(w))
+        return false;
+    const MapsData& d = current(*current_game->world);
+    const int f = obmap::filed_floor(w.floor());
+    // plumbing: each live filed door, judged below
+    for (const DoorRec& door : d.doors)
+    {
+        // rule: Gameplay Fixes BK: the cheap test of opens_way: a live door filed on the bot's floor
+        //   whose key (key bit 2^level) it holds; a door on another floor does not count.
+        // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+        if (door.floor == f && (w.keys() & static_cast<std::uint32_t>(key_level_mask(door.level))) != 0)
+            return true;
+    }
+    return false;
+}
+
+}  // namespace detail
+
+bool opens_way(walker& w, const walker& b)
+{
+    // rule: Gameplay Fixes BK: only a walker og::reach::asks names is asked (the setting on, a bot,
+    //   not a tower, not a guard at its post); every other walker takes today's branch.
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
+    if (!asks(&w))
+        return false;
+    // rule: Gameplay Fixes BK: a foe on another floor is not judged (the near branch's site never
+    //   asks a walker's foe on another floor: a ground walker's is a cross-floor chase).
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    if (b.floor() != w.floor())
+        return false;
+    // rule: Gameplay Fixes BK: a bot that holds the key of no live door on its floor is answered
+    //   no before any map is read or any Asker resolved (the cheap tests come first).
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    if (!holds_door_key(w))
+        return false;
+    Asker a(w);
+    // rule: Gameplay Fixes BK: a bot whose start cell has no region (it stands inside terrain or on
+    //   air) is not judged.
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    if (a.region_of(a.start_cell(), Mode::Shut) < 0)
+        return false;
+    // rule: Gameplay Fixes BK: a bot that does not walk to its foe even with the doors it holds the
+    //   keys of open (the doors that bar it shut) has no way a key opens.
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    if (!a.walks_to(b, Mode::Shut))
+        return false;
+    // rule: Gameplay Fixes BK: its key opens the way only when a walker of its box, flags and side
+    //   holding no key (the keyless kind, Asker(w, 0)) would not walk to the foe: a foe with a way
+    //   that needs no key is not one.
+    // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
+    // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
+    return !Asker(w, 0).walks_to(b, Mode::Shut);
 }
 
 }  // namespace og::reach

@@ -320,6 +320,12 @@ bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
 [[nodiscard]] bool shut_out(walker& w);
 // w gets at b: walks_to(w, b, Shut) or shoots_at(w, b).
 [[nodiscard]] bool gets_at(walker& w, const walker& b);
+// Gameplay Fixes BK, a bot that holds the key to a door on its way walks its route into the door:
+// only a key w holds opens its way to b. asks(w), b on w's floor, and w holds the key of a live door
+// on its floor (the cheap tests, answered before any map is read or any Asker resolved); then
+// start_cell(w) has a region, w walks to b with the doors that bar it shut, and a walker of w's box,
+// flags and side holding no key (Asker(w, 0), the keyless kind) would not walk to b.
+[[nodiscard]] bool opens_way(walker& w, const walker& b);
 
 struct MapsData;
 

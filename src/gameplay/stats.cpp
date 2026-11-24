@@ -2021,17 +2021,17 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller_->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or
-		//   any chaser on a crowded map (more than 200 objects, dead included), skips A*: if any
-		//   foe is within 100 px it wipes its orders, turns toward the foe (turn_to_foe), starts an
-		//   ATTACK of 30+rng(25) rounds and may swing (near_swing); if no foe is that close it
-		//   abandons its current order (front count zeroed) and falls through to the walk.
-		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
-		// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or any chaser on a
+		//   crowded map (more than 200 objects, dead included), skips A*: if any foe is within 100 px it wipes its
+		//   orders, turns toward the foe (turn_to_foe), starts an ATTACK of 30+rng(25) rounds and may swing
+		//   (near_swing); if no foe is that close it abandons its current order (front count zeroed) and falls
+		//   through to the walk. Gameplay Fixes BK: not a bot whose way to its foe only its key opens (opens_way).
+		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 		// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
 		// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
+		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
 		if (!cross_floor &&
-		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT))
+		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) && !og::reach::opens_way(*controller_, *foe))
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
@@ -2086,13 +2086,13 @@ bool statistics::walk_to_foe()
 			}
 		}
 		else if (!flyer || foe->floor() == controller_->floor())  // rule: A far (>= 100 px) foe on an
-			//   uncrowded map is reached by A*; a ground walker that cannot path to a foe on
-			//   another floor routes to the nearest stair toward it; a flyer never paths to a foe
-			//   on another floor (it cannot change floors) and instead shadows the foe's 2D
-			//   position from its own floor.
+			//   uncrowded map, or a foe whose way only the bot's key opens (Gameplay Fixes BK), is reached
+			//   by A*; a ground walker that cannot path to a foe on another floor routes to the nearest
+			//   stair toward it; a flyer never paths to a foe on another floor (it cannot change floors)
+			//   and instead shadows the foe's 2D position from its own floor.
 			// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
 			// tests: ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair
-			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches
+			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches, SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
         {
             controller_->find_path_to_foe();
             // Cross-floor foe whose exact cell A* cannot reach (sparse upper

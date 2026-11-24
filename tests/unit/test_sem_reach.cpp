@@ -15,7 +15,9 @@
 // gives it, which ask the maps in play; and Gameplay Fixes BJ, a bot treats an enemy that only a
 // locked door keeps it from as if it were not there: the foe searches, the top of its rounds, the
 // near branch, a follower, the wander, the hold of a foe kept only by the shot and the cast rules,
-// some in played scenes. Each test is named after the rule it asserts, asserts both
+// some in played scenes; and Gameplay Fixes BK, a bot that holds the key to a door on its way walks
+// its route into the door: og::reach::opens_way, its one site in the re-plan block of walk_to_foe,
+// and played scenes of a key handed out. Each test is named after the rule it asserts, asserts both
 // settings where the setting decides, and names in its comment the game line whose breaking turns
 // it red.
 //
@@ -45,6 +47,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <list>
@@ -1658,6 +1661,54 @@ protected:
         const Cell gap = pen(10, 10, 14, 14);
         return door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
     }
+    // The room of the key holder's tests: walls round the interior cells x 16..26, y 8..15, an enemy
+    // door (team 3, key level 1) in the bottom wall at cell (21,16), a soldier (team 2) inside at cell
+    // (19,14). The door returned, the soldier into `soldier`.
+    walker* keyed_room(walker*& soldier)
+    {
+        room(16, 8, 26, 15);
+        tile(0, 21, 16, PIX_GRASS1);
+        soldier = living_at(FAMILY_SOLDIER, 2, 19 * GRID_SIZE, 14 * GRID_SIZE, 16, 16);
+        return door_at(21 * GRID_SIZE, 16 * GRID_SIZE);
+    }
+    // The room of the played door scenes: interior cells x 16..29, y 8..15, walls round it; a door of
+    // a third side (team 2, level 3) in its bottom wall at cell (25,16), 16 x 16 at (400,256); twelve
+    // orcs (team 1) inside at x 368, 400, 432, 464 by y 160, 192, 224; four crew bots (team 0: elf,
+    // archer, cleric, barbarian) 160 px below the door on row 432, at x 352, 384, 416, 448.
+    struct DoorRoom
+    {
+        walker* door = nullptr;
+        std::vector<walker*> orcs;
+        std::vector<walker*> crew;
+        std::vector<walker*> all() const
+        {
+            std::vector<walker*> out = orcs;
+            out.insert(out.end(), crew.begin(), crew.end());
+            return out;
+        }
+    };
+    DoorRoom door_room()
+    {
+        DoorRoom r;
+        room(16, 8, 29, 15);
+        tile(0, 25, 16, PIX_GRASS1);
+        r.door = door_at(400, 256, 2, 3);
+        for (short y : {short{160}, short{192}, short{224}})
+            for (short x : {short{368}, short{400}, short{432}, short{464}})
+                r.orcs.push_back(scene_bot(FAMILY_ORC, 1, x, y));
+        const int crew_family[4] = {FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN};
+        for (int i = 0; i < 4; ++i)
+            r.crew.push_back(scene_bot(crew_family[i], 0, static_cast<short>(352 + 32 * i), 432));
+        return r;
+    }
+    // Is a COMMAND_ATTACK among w's orders?
+    static bool attack_queued(walker* w)
+    {
+        for (const auto& c : w->stats()->commands)
+            if (c.commandtype == COMMAND_ATTACK)
+                return true;
+        return false;
+    }
 };
 
 }  // namespace
@@ -3256,5 +3307,437 @@ TEST_F(SemBotReach, a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_
         ASSERT_EQ(12 * GRID_SIZE, orc->xpos()) << "tick " << tick;
         ASSERT_EQ(12 * GRID_SIZE, orc->ypos()) << "tick " << tick;
         ASSERT_EQ(nullptr, orc->foe()) << "tick " << tick;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Gameplay Fixes BK, a bot that holds the key to a door on its way walks its route into the door
+// (og::reach::opens_way), asked in the re-plan block of statistics::walk_to_foe only when the near
+// test would hold (the foe within 100 px, or more than 200 bodies on the map). The keyed room
+// (keyed_room) unless a test says otherwise.
+// ---------------------------------------------------------------------------------------------
+
+// The re-plan block of statistics::walk_to_foe (stats.cpp, its near test). An orc bot (team 1)
+// holding the door's key (key level 1) stands outside, below the room, at cell (18,18), 80 px from
+// the soldier (Manhattan), so the near test holds; its straight line to the soldier meets the wall
+// left of the door. Setting on: only its key opens its way (opens_way), so the near branch is not
+// taken: no ATTACK is queued, its SEARCH order keeps its count, and its route (A*) runs through the
+// door's cell. Setting off, and for a seat's fighter with the setting on: the classic near branch, an
+// ATTACK queued and no route. On a crowded map (200 more bodies of its side) with the orc at cell
+// (18,21), 128 px off: setting on, the route through the door; setting off, the classic crowded
+// branch (no foe within 100 px: its order ended, no route, no ATTACK).
+// Fails when broken: the near test without its opens_way term (with the setting on the orc queues an
+// ATTACK, and on the crowded map ends its order with no route); opens_way without its asks test (the
+// seat's fighter is routed).
+TEST_F(SemBotReach, a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch)
+{
+    struct Case
+    {
+        const char* name;
+        short fixes;
+        bool seat;
+        bool crowded;
+    };
+    const Case cases[] = {
+        {"Gameplay Fixes on", 1, false, false},
+        {"Gameplay Fixes off", 0, false, false},
+        {"Gameplay Fixes on, a seat's fighter", 1, true, false},
+        {"Gameplay Fixes on, a crowded map", 1, false, true},
+        {"Gameplay Fixes off, a crowded map", 0, false, true},
+    };
+    const std::uint32_t s = a_state_whose_first_draw_of(300);
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world(c.fixes);
+        walker* soldier = nullptr;
+        ASSERT_NE(nullptr, keyed_room(soldier));
+        ASSERT_NE(nullptr, soldier);
+        walker* orc = bot_at(18 * GRID_SIZE, static_cast<short>((c.crowded ? 21 : 18) * GRID_SIZE));
+        ASSERT_NE(nullptr, orc);
+        orc->set_keys(static_cast<std::uint32_t>(key_level_mask(1)));
+        if (c.seat)
+            orc->set_user(0);
+        if (c.crowded) {
+            ASSERT_NO_FATAL_FAILURE(crowd(200));
+        }
+        ASSERT_EQ(c.crowded ? 128 : 80, orc->distance_to_ob(soldier));
+        const bool rule = c.fixes != 0 && !c.seat;
+        EXPECT_EQ(rule, og::reach::opens_way(*orc, *soldier)) << "the staging";
+        orc->set_foe(soldier);
+        orc->stats()->clear_command();
+        orc->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        orc->stats()->set_last_distance(15000);
+        orc->set_path_check_counter(0);
+        world().rng_.state_ = s;
+        (void)orc->stats()->walk_to_foe();
+        const std::vector<Cell> route = route_of(orc);
+        ASSERT_FALSE(orc->stats()->commands.empty());
+        if (rule) {
+            EXPECT_FALSE(attack_queued(orc)) << "the near branch is not taken";
+            EXPECT_EQ(COMMAND_SEARCH, orc->stats()->commands.front().commandtype);
+            EXPECT_EQ(9, orc->stats()->commands.front().commandcount) << "its order stands";
+            EXPECT_TRUE(holds(route, Cell{21, 16, 0})) << "its route runs through the door: " << text(route);
+        } else if (!c.crowded) {
+            EXPECT_TRUE(attack_queued(orc)) << "classic: the near branch";
+            EXPECT_TRUE(route.empty()) << text(route);
+        } else {
+            EXPECT_FALSE(attack_queued(orc));
+            EXPECT_EQ(0, orc->stats()->commands.front().commandcount) << "classic: no foe within 100 px, its order ended";
+            EXPECT_TRUE(route.empty()) << text(route);
+        }
+        EXPECT_EQ(soldier, orc->foe());
+    }
+}
+
+// og::reach::opens_way and each of its exits, asked directly (the orc bot of the test above at cell
+// (18,18), its foe the soldier inside, unless a case says otherwise). Yes: the orc holds the door's
+// key, walks to the soldier with the doors that bar it shut (none: its key opens the one door), and
+// with no key would not (the door closes the room). No, each by its own exit: the setting off; a
+// seat's fighter and a guard at its post (each would walk to the soldier with the key and not
+// without, asserted); the orc holding no key, and the orc holding only the key of a door on floor 1
+// (both answered before any Asker is resolved: Maps::resolutions does not move); a second gap in the
+// room's wall at cell (15,12) (the keyless kind walks in by it, asserted); the soldier walled in on
+// its cell (no way even with the key); the orc standing inside a wall tile at cell (18,19) (its start
+// cell has no region, asserted, though from inside the wall it would reach the open ground and, with
+// the key, the room, asserted); and, on two floors, the orc inside the room at cell (19,12) and its
+// foe on floor 1 at cell (21,24), beyond an up-stair outside the room at cell (21,20) (with the key
+// it would walk to that foe and without it not, asserted). Every question draws nothing.
+// Fails when broken: opens_way without its asks test (the seat's fighter and the guard: yes); without
+// its floor test (the foe upstairs: yes); without its key test (a resolution for the orc with no
+// key); holds_door_key counting a door on another floor (a resolution for the orc holding the key
+// upstairs); without its start-region test (the orc inside the wall: yes); without its walks_to test
+// (the walled-in soldier: yes); without its keyless test (the second gap: yes).
+TEST_F(SemBotReach, the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way)
+{
+    enum class V { Yes, Off, Seat, Guard, NoKey, KeyUpstairs, NeedsNoKey, NoWay, NoRegion, FoeUpstairs };
+    const std::pair<V, const char*> cases[] = {
+        {V::Yes, "the key opens the only way"},
+        {V::Off, "Gameplay Fixes off"},
+        {V::Seat, "a seat's fighter"},
+        {V::Guard, "a guard at its post"},
+        {V::NoKey, "no key"},
+        {V::KeyUpstairs, "only the key of a door on floor 1"},
+        {V::NeedsNoKey, "a second gap: a way that needs no key"},
+        {V::NoWay, "the soldier walled in: no way even with the key"},
+        {V::NoRegion, "the orc inside a wall tile: no region"},
+        {V::FoeUpstairs, "its foe on floor 1, beyond a stair"},
+    };
+    for (const auto& [v, name] : cases) {
+        SCOPED_TRACE(name);
+        fresh_world(v == V::Off ? 0 : 1);
+        if (v == V::KeyUpstairs || v == V::FoeUpstairs)
+            two_floors();
+        walker* soldier = nullptr;
+        ASSERT_NE(nullptr, keyed_room(soldier));
+        ASSERT_NE(nullptr, soldier);
+        walker* foe = soldier;
+        short ox = 18 * GRID_SIZE;
+        short oy = 18 * GRID_SIZE;
+        std::uint32_t keys = static_cast<std::uint32_t>(key_level_mask(1));
+        switch (v) {
+        case V::NoKey:
+            keys = 0;
+            break;
+        case V::KeyUpstairs:
+            keys = static_cast<std::uint32_t>(key_level_mask(2));
+            ASSERT_NE(nullptr, door_at(5 * GRID_SIZE, 5 * GRID_SIZE, kDoorTeam, 2, 1));
+            break;
+        case V::NeedsNoKey:
+            tile(0, 15, 12, PIX_GRASS1);
+            break;
+        case V::NoWay:
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                    if (dx != 0 || dy != 0)
+                        tile(0, 19 + dx, 14 + dy, PIX_H_WALL1);
+            break;
+        case V::NoRegion:
+            oy = 19 * GRID_SIZE;
+            tile(0, 18, 19, PIX_H_WALL1);
+            break;
+        case V::FoeUpstairs:
+            ox = 19 * GRID_SIZE;
+            oy = 12 * GRID_SIZE;
+            tile(0, 21, 20, PIX_ZSTAIR_UP);
+            tile(1, 21, 20, PIX_ZSTAIR_DOWN);
+            foe = living_at(FAMILY_SOLDIER, 2, 21 * GRID_SIZE, 24 * GRID_SIZE, 16, 16, 1);
+            ASSERT_NE(nullptr, foe);
+            break;
+        default:
+            break;
+        }
+        walker* orc = bot_at(ox, oy);
+        ASSERT_NE(nullptr, orc);
+        orc->set_keys(keys);
+        if (v == V::Seat)
+            orc->set_user(0);
+        if (v == V::Guard)
+            orc->set_act_type(ACT_GUARD);
+        const std::uint64_t r0 = world().reach_maps.resolutions();
+        const std::uint32_t s0 = world().rng_.state_;
+        EXPECT_EQ(v == V::Yes, og::reach::opens_way(*orc, *foe));
+        EXPECT_EQ(s0, world().rng_.state_) << "the question draws nothing";
+        if (v == V::Off || v == V::Seat || v == V::Guard || v == V::NoKey || v == V::KeyUpstairs) {
+            EXPECT_EQ(r0, world().reach_maps.resolutions()) << "answered before any Asker is resolved";
+        }
+        if (v == V::Off || v == V::NoKey || v == V::KeyUpstairs)
+            continue;
+        // The staging: what the other exits would answer, so the case's own exit is the one that
+        // says no.
+        og::reach::Asker keyless(*orc, 0);
+        switch (v) {
+        case V::NeedsNoKey:
+            EXPECT_TRUE(keyless.walks_to(*foe, Mode::Shut)) << "the keyless kind walks in by the gap";
+            break;
+        case V::NoWay:
+            EXPECT_FALSE(og::reach::walks_to(*orc, *foe, Mode::Shut));
+            break;
+        case V::NoRegion:
+            EXPECT_GT(0, og::reach::region_of(*orc, og::reach::start_cell(*orc), Mode::Shut)) << "no region";
+            EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "from inside the wall, with the key";
+            EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut));
+            break;
+        default:  // Yes, Seat, Guard, FoeUpstairs
+            EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "with the key";
+            EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut)) << "with no key";
+            break;
+        }
+    }
+}
+
+// A re-plan whose near test does not hold does not ask opens_way (stats.cpp: the question is the
+// near test's last term). The orc bot holding the key stands at cell (18,24), 176 px from the
+// soldier, on an uncrowded map. The maps of the orc's own kind are built first (a walks_to
+// question); opens_way's keyless kind is built by opens_way alone, so Maps::builds tells whether it
+// was asked. Setting on: the far re-plan plans the route through the door (A*, as for any far foe)
+// and builds nothing; asked directly afterwards, opens_way answers yes and builds the keyless kind's
+// door half (one build). The same orc at cell (18,18), 80 px off: its near re-plan builds that one
+// door half (it was asked) and routes through the door. Setting off: nothing is built, and the far
+// route runs through the door as the classic route does.
+// Fails when broken: opens_way asked before the near test (the far re-plan builds the keyless door
+// half); the near test without its opens_way term (the near re-plan builds nothing).
+TEST_F(SemBotReach, a_far_replan_does_not_ask_whether_a_key_opens_the_way)
+{
+    const std::uint32_t s = a_state_whose_first_draw_of(300);
+    for (short fixes : {short{0}, short{1}}) {
+        for (int near = 0; near < 2; ++near) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") +
+                         (near ? ", its foe 80 px off" : ", its foe 176 px off"));
+            fresh_world(fixes);
+            walker* soldier = nullptr;
+            ASSERT_NE(nullptr, keyed_room(soldier));
+            ASSERT_NE(nullptr, soldier);
+            walker* orc = bot_at(18 * GRID_SIZE, static_cast<short>((near ? 18 : 24) * GRID_SIZE));
+            ASSERT_NE(nullptr, orc);
+            orc->set_keys(static_cast<std::uint32_t>(key_level_mask(1)));
+            ASSERT_EQ(near ? 80 : 176, orc->distance_to_ob(soldier));
+            ASSERT_TRUE(og::reach::walks_to(*orc, *soldier, Mode::Shut));
+            const std::uint64_t b0 = world().reach_maps.builds();
+            orc->set_foe(soldier);
+            orc->stats()->clear_command();
+            orc->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+            orc->stats()->set_last_distance(15000);
+            orc->set_path_check_counter(0);
+            world().rng_.state_ = s;
+            (void)orc->stats()->walk_to_foe();
+            if (!fixes) {
+                EXPECT_EQ(0u, world().reach_maps.builds()) << "nothing is built with the setting off";
+                if (!near) {
+                    EXPECT_TRUE(holds(route_of(orc), Cell{21, 16, 0})) << "classic: " << text(route_of(orc));
+                }
+                continue;
+            }
+            EXPECT_EQ(b0 + (near ? 1u : 0u), world().reach_maps.builds())
+                << (near ? "the near re-plan asked: the keyless kind's door half" : "the far re-plan asked nothing");
+            EXPECT_TRUE(holds(route_of(orc), Cell{21, 16, 0})) << text(route_of(orc));
+            EXPECT_FALSE(attack_queued(orc));
+            if (!near) {
+                EXPECT_TRUE(og::reach::opens_way(*orc, *soldier));
+                EXPECT_EQ(b0 + 1u, world().reach_maps.builds()) << "asked, opens_way builds the keyless kind's door half";
+            }
+        }
+    }
+}
+
+// Scenes 1W and 1Wf, a crew bot handed the key of the room's door (door_room). The elf, nearest the
+// door with the three other crew bots (a tie at 160 px, box to box; the first is taken), is given
+// the door's key (key level 3): after tick 200 (1W), or before the first tick (1Wf). Setting on,
+// three seeds each, ticks until the door dies: on every tick at whose start opens_way held for the
+// elf and its foe (asked after the tick before), the elf queues no ATTACK (the near branch is not
+// taken) and every step it takes is the whole step it headed (its move equals its heading, lastx and
+// lasty: no step of its was refused by the terrain and turned into the baby step, the sidestep or the
+// corner slide); opens_way holds on some tick; the door dies (no bot strikes a door, Gameplay Fixes
+// BF, so only a key opens it here), the elf's box within one step of it on that tick (the elf's step
+// opened it); on the next tick every live bot without a leader holds a foe. Setting off: after tick 1
+// every bot holds a foe (the classic hand-out), and opens_way says no for the elf.
+// Fails when broken: the near test without its opens_way term (near the door the elf queues an
+// ATTACK and steps at the wall beside the door).
+TEST_F(SemBotReach, a_crew_bot_handed_the_key_walks_its_route_into_the_door_and_opens_it)
+{
+    const std::uint32_t key3 = static_cast<std::uint32_t>(key_level_mask(3));
+    for (int key_tick : {200, 0}) {
+        {
+            SCOPED_TRACE(std::string("Gameplay Fixes off, ") + (key_tick ? "1W" : "1Wf"));
+            fresh_world(0);
+            const DoorRoom r = door_room();
+            ASSERT_NE(nullptr, r.door);
+            for (walker* w : r.all()) {
+                ASSERT_NE(nullptr, w);
+            }
+            walker* elf = r.crew[0];
+            elf->set_keys(elf->keys() | key3);
+            world().tick();
+            for (walker* w : r.all()) {
+                EXPECT_TRUE(w->foe() != nullptr && !w->is_friendly(w->foe())) << "classic: every bot holds a foe after tick 1";
+            }
+            ASSERT_NE(nullptr, elf->foe());
+            EXPECT_FALSE(og::reach::opens_way(*elf, *elf->foe()));
+        }
+        for (std::uint32_t seed : {42u, 1337u, 2025u}) {
+            SCOPED_TRACE(std::string("Gameplay Fixes on, ") + (key_tick ? "1W" : "1Wf") + ", seed " + std::to_string(seed));
+            fresh_world(1);
+            const DoorRoom r = door_room();
+            ASSERT_NE(nullptr, r.door);
+            for (walker* w : r.all()) {
+                ASSERT_NE(nullptr, w);
+            }
+            walker* elf = r.crew[0];
+            // The door is a weapon: the tick it dies it is destroyed, so it is known by its id and box.
+            const std::uint32_t door_id = r.door->entity_id();
+            const short dx = r.door->xpos(), dy = r.door->ypos(), dsx = r.door->sizex(), dsy = r.door->sizey();
+            world().rng_.state_ = seed;
+            if (key_tick == 0)
+                elf->set_keys(elf->keys() | key3);
+            bool held = false;  // opens_way for the elf and its foe, after the tick before
+            int held_ticks = 0;
+            int attacks = 0, first_attack = -1;
+            int slips = 0, first_slip = -1;
+            int died = -1;
+            for (int tick = 1; tick <= 600 && died < 0; ++tick) {
+                const float x0 = elf->worldx();
+                const float y0 = elf->worldy();
+                world().tick();
+                ASSERT_FALSE(elf->dead()) << "tick " << tick;
+                if (tick == key_tick)
+                    elf->set_keys(elf->keys() | key3);
+                if (world().find_by_id(door_id) == nullptr) {
+                    died = tick;
+                    break;
+                }
+                if (held) {
+                    ++held_ticks;
+                    if (attack_queued(elf) && attacks++ == 0)
+                        first_attack = tick;
+                    const bool moved = elf->worldx() != x0 || elf->worldy() != y0;
+                    if (moved && (elf->worldx() - x0 != elf->lastx() || elf->worldy() - y0 != elf->lasty()) &&
+                        slips++ == 0)
+                        first_slip = tick;
+                }
+                held = elf->foe() != nullptr && og::reach::opens_way(*elf, *elf->foe());
+            }
+            EXPECT_GT(died, 0) << "the door opens within 600 ticks";
+            EXPECT_GT(held_ticks, 0) << "the staging: the elf's way only its key opens";
+            EXPECT_EQ(0, attacks) << "first on tick " << first_attack;
+            EXPECT_EQ(0, slips) << "a step not taken whole, first on tick " << first_slip;
+            if (died < 0)
+                continue;
+            const short reach = static_cast<short>(std::ceil(elf->stepsize()));
+            EXPECT_NE(0, ::collide(static_cast<short>(elf->xpos() - reach), static_cast<short>(elf->ypos() - reach),
+                                   static_cast<short>(elf->sizex() + 2 * reach), static_cast<short>(elf->sizey() + 2 * reach),
+                                   dx, dy, dsx, dsy))
+                << "the elf's step met the door on tick " << died;
+            world().tick();
+            std::size_t judged = 0;
+            const std::vector<walker*> all = r.all();
+            for (std::size_t i = 0; i < all.size(); ++i) {
+                walker* w = all[i];
+                if (w->dead() || w->leader() != nullptr)
+                    continue;
+                ++judged;
+                EXPECT_TRUE(w->foe() != nullptr && !w->foe()->dead() && !w->is_friendly(w->foe()))
+                    << "bot " << i << " holds a foe the tick after the door opened (tick " << died + 1 << ")";
+            }
+            EXPECT_LT(0u, judged);
+        }
+    }
+}
+
+// Scene 1Wo, an orc handed its own room's key (door_room). After tick 200 the orc nearest the door,
+// box to box (three of the bottom row tie at 16 px; the first in the list, at (368,224), is taken),
+// is given the door's key. Setting on, three seeds: until tick 200 every bot stands where it was put
+// (each is shut out); the door then dies within the 600 ticks (no bot strikes a door, Gameplay Fixes
+// BF), the keyed orc's box within one step of it on that tick (its step opened it), and the keyed orc
+// stands outside the room, below its wall, on some tick after. Setting off: after tick 1 every bot
+// holds a foe (the classic hand-out).
+// Fails when broken: the maps reading a key holder as holding no key (barring_of asking door_bars
+// with no key: the keyed orc stays shut out by its own door and the door stands).
+TEST_F(SemBotReach, an_orc_handed_its_rooms_key_walks_out_through_its_door)
+{
+    const std::uint32_t key3 = static_cast<std::uint32_t>(key_level_mask(3));
+    {
+        SCOPED_TRACE("Gameplay Fixes off");
+        fresh_world(0);
+        const DoorRoom r = door_room();
+        ASSERT_NE(nullptr, r.door);
+        for (walker* w : r.all()) {
+            ASSERT_NE(nullptr, w);
+        }
+        world().tick();
+        for (walker* w : r.all()) {
+            EXPECT_TRUE(w->foe() != nullptr && !w->is_friendly(w->foe())) << "classic: every bot holds a foe after tick 1";
+        }
+    }
+    for (std::uint32_t seed : {42u, 1337u, 2025u}) {
+        SCOPED_TRACE("Gameplay Fixes on, seed " + std::to_string(seed));
+        fresh_world(1);
+        const DoorRoom r = door_room();
+        ASSERT_NE(nullptr, r.door);
+        std::vector<std::pair<short, short>> spot;
+        for (walker* w : r.all()) {
+            ASSERT_NE(nullptr, w);
+            spot.emplace_back(w->xpos(), w->ypos());
+        }
+        // The door is a weapon: the tick it dies it is destroyed, so it is known by its id and box.
+        const std::uint32_t door_id = r.door->entity_id();
+        const short dx = r.door->xpos(), dy = r.door->ypos(), dsx = r.door->sizex(), dsy = r.door->sizey();
+        // The orc nearest the door, box to box (the larger of the two axis gaps), the first of a tie.
+        const auto gap = [&](const walker* o) {
+            const int gx = std::max({dx - (o->xpos() + o->sizex()), o->xpos() - (dx + dsx), 0});
+            const int gy = std::max({dy - (o->ypos() + o->sizey()), o->ypos() - (dy + dsy), 0});
+            return std::max(gx, gy);
+        };
+        walker* keyed = r.orcs[0];
+        for (walker* o : r.orcs)
+            if (gap(o) < gap(keyed))
+                keyed = o;
+        ASSERT_EQ(r.orcs[8], keyed) << "the staging: the orc at (368,224)";
+        world().rng_.state_ = seed;
+        int died = -1;
+        int outside = -1;
+        for (int tick = 1; tick <= 600 && outside < 0; ++tick) {
+            world().tick();
+            if (tick == 200) {
+                const std::vector<walker*> all = r.all();
+                for (std::size_t i = 0; i < all.size(); ++i) {
+                    ASSERT_EQ(spot[i].first, all[i]->xpos()) << "bot " << i << " at tick 200";
+                    ASSERT_EQ(spot[i].second, all[i]->ypos()) << "bot " << i << " at tick 200";
+                }
+                keyed->set_keys(keyed->keys() | key3);
+            }
+            if (keyed->dead())
+                break;
+            if (died < 0 && world().find_by_id(door_id) == nullptr) {
+                died = tick;
+                const short reach = static_cast<short>(std::ceil(keyed->stepsize()));
+                EXPECT_NE(0, ::collide(static_cast<short>(keyed->xpos() - reach), static_cast<short>(keyed->ypos() - reach),
+                                       static_cast<short>(keyed->sizex() + 2 * reach),
+                                       static_cast<short>(keyed->sizey() + 2 * reach), dx, dy, dsx, dsy))
+                    << "the keyed orc's step met the door on tick " << died;
+            }
+            if (died > 0 && keyed->ypos() >= dy + dsy)
+                outside = tick;
+        }
+        EXPECT_GT(died, 200) << "the door opens after the key, within 600 ticks";
+        EXPECT_GT(outside, died) << "the keyed orc walks out below the wall";
     }
 }
