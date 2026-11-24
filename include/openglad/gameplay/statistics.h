@@ -181,7 +181,8 @@ class statistics
 		// let_go: a held foe let go (no foe, orders, leader and route cleared).
 		void let_go(walker& bot);
 		// keeps_door: Gameplay Fixes BL's keep of a live door `bot` holds (LetGo after letting it
-		// go, Kept otherwise, the door possibly replaced by the one breaks answers).
+		// go, Kept otherwise, the door possibly replaced by the one breaks answers); Kept for a
+		// bot these statistics do not name as their owner.
 		FoeKeep keeps_door(walker& bot);
 		// foes_not_door_shut: how many of `foes` are not door-shut for the bot (the near branch).
 		std::int32_t foes_not_door_shut(const std::list<walker*>& foes);

@@ -2733,8 +2733,7 @@ statistics::FoeKeep statistics::keeps_foe()
 	walker* const foe = controller_->foe();
 	// rule: Gameplay Fixes BL: a held door (a door is no fighter, so the question below would keep
 	//   it) is asked the last-resort rule's keep instead (keeps_door).
-	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
-	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	// tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
 	if (foe->is_door())
 		return keeps_door(*controller_);
 	const og::reach::Exit why = og::reach::door_shut_exit(*controller_, *foe);
@@ -2839,22 +2838,23 @@ bool statistics::shot_attacks(float xdelta, float ydelta)
 // wander read none. Appended at the end of the file so the parity pins above never shift.
 short statistics::idle_walk(walker& bot, Sint32 rounds)
 {
-	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (og::reach::shut_out: some enemy on
-	//   its floor only a door keeps it from) queues no wander and makes neither of its two direction
-	//   draws. The question is asked of the living that is deciding, whatever its stats name as their
-	//   owner. Every other walker, and every walker with the setting off, wanders as before
-	//   (try_random_walk).
+	// One question of one Asker: whether the bot is shut out (og::reach::shut_out's answer) and the
+	// door og::reach::breaks would hand it, read from one walk over its hostiles.
+	const og::reach::Asker::LastResort last = og::reach::Asker(bot).last_resort(nullptr);
+	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (some enemy on its floor only a door
+	//   keeps it from) queues no wander and makes neither of its two direction draws. The question
+	//   is asked of the living that is deciding, whatever its stats name as their owner. Every
+	//   other walker, and every walker with the setting off, wanders as before (try_random_walk).
 	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
-	if (og::reach::shut_out(bot))
+	if (last.shut)
 	{
-		walker* const door = og::reach::breaks(bot);
 		// rule: Gameplay Fixes BL: the shut-out bot is handed the locked door in its way as its foe
-		//   when it has no enemy it can get at (og::reach::breaks); only when that answers none does
-		//   it stay where it is.
+		//   when it has no enemy it can get at (the door og::reach::breaks answers); only when there
+		//   is none does it stay where it is.
 		// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
 		// tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
-		if (door != nullptr)
-			bot.set_foe(door);
+		if (last.door != nullptr)
+			bot.set_foe(const_cast<walker*>(last.door));
 		return 0;
 	}
 	return try_random_walk(rounds);
@@ -2873,17 +2873,23 @@ void statistics::let_go(walker& bot)
 // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
 // keep of a held door, asked at the top of a SEARCH and an ATTACK round (keeps_foe) and after every
 // act (GameWorld::tick: a bot in a swing never reaches the top of its round). `bot` is the living
-// whose foe is asked about (it passes itself). Draws nothing. Appended at the end of the file so the
-// parity pins above never shift.
+// whose foe is asked about (it passes itself). Its let-go clears the orders through clear_command,
+// which writes to the statistics' owner, so a bot these statistics do not name as their owner (a
+// snapshot resolves the owner by id: it may be nobody or another walker) is not asked. Draws
+// nothing. Appended at the end of the file so the parity pins above never shift.
 statistics::FoeKeep statistics::keeps_door(walker& bot)
 {
 	walker* const door = bot.foe();
 	// rule: Gameplay Fixes BL: the keep is asked only of a bot og::reach::asks names (the setting on,
-	//   not a tower, not a guard at its post) whose foe is a live door, whether that door bars it or
-	//   not; every other walker keeps its foe as before.
+	//   not a tower, not a guard at its post, not a player's fighter) whose foe is a live door,
+	//   whether that door bars it or not, and whose statistics name it as their owner; every other
+	//   walker keeps its foe as before, and a bot whose statistics name nobody or another walker
+	//   keeps its door untouched (no owner's orders, leader or weapon is written).
 	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
 	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
-	if (!og::reach::asks(&bot) || door == nullptr || door->dead() || !door->is_door())
+	// tests: SemBotBreak.guards_far_off_are_handed_nothing_and_the_orcs_inside_are
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	if (!og::reach::asks(&bot) || controller_ != &bot || door == nullptr || door->dead() || !door->is_door())
 		return FoeKeep::Kept;
 	walker* const kept = og::reach::keeps_door(bot, *door);
 	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut

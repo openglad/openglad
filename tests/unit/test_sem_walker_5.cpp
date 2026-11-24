@@ -2884,8 +2884,8 @@ TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
 
 // Gameplay Fixes BF, through ticks: a bot whose foe stands behind a door it
 // cannot open, and to which no other rule makes the door its foe, never attacks
-// the door. An archer bot that is a guard holding its post (ACT_GUARD, hold
-// post: Gameplay Fixes BJ and BL ask no guard at its post, so its foe stays
+// the door. With the setting on, an archer bot that is a guard holding its post
+// (ACT_GUARD, hold post: Gameplay Fixes BJ and BL ask no guard at its post, so its foe stays
 // the orc and the door is never handed to it as a last resort, while this rule
 // asks every bot; its specials off, as a level can place it, so that only its
 // bow and its bumps can strike: a special cast at the orc, whose gate asks the
@@ -2904,7 +2904,9 @@ TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
 // moving bot in the archer's place is handed the door by Gameplay Fixes BL
 // (SemBotBreak in og_unit_sim): it attacks the door because the door is then
 // its foe.
-// Setting off: the door loses hit points (to its shots and its bumps' blows,
+// Setting off, the archer a walking bot (ACT_RANDOM, as before Gameplay Fixes
+// BL: with the setting off no rule of BJ or BL asks it, so its staging is the
+// classic one): the door loses hit points (to its shots and its bumps' blows,
 // each meeting the door's clash roll: this half holds by the draws, the
 // setting-on half by the rules).
 TEST_F(SemBotDoor, a_guard_at_its_post_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on)
@@ -2915,8 +2917,10 @@ TEST_F(SemBotDoor, a_guard_at_its_post_whose_foe_is_behind_a_door_never_attacks_
         walker* archer = up_archer(fixes);
         ASSERT_NE(nullptr, archer);
         archer->set_specials_disabled(true);
-        archer->set_act_type(ACT_GUARD);
-        archer->set_guard_hold_post(true);
+        if (fixes) {
+            archer->set_act_type(ACT_GUARD);
+            archer->set_guard_hold_post(true);
+        }
         const ShotPlan p = plan_of(archer, FACE_UP);
         ASSERT_GT(p.los, 1);
         const int col = (archer->xpos() + archer->sizex() / 2) / GRID_SIZE;

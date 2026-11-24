@@ -268,16 +268,23 @@ public:
     [[nodiscard]] std::vector<const walker*> doors_beside(int region);
     // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way:
     // the door breaks() answers for this walker (none when its conditions fail or no edge door
-    // leads to a hostile), and whether `held` is an edge door that leads to a hostile (the keep's
-    // "no flip between doors"). See breaks() and keeps_door() below.
+    // leads to a hostile), whether `held` is an edge door that leads to a hostile (the keep's
+    // "no flip between doors"), and whether the walker is shut out (shut_out's answer, read from
+    // the same walk over its hostiles, so the idle decision asks one question). See breaks() and
+    // keeps_door() below.
     struct LastResort
     {
         const walker* door = nullptr;
         bool held_leads = false;
+        bool shut = false;
     };
     [[nodiscard]] LastResort last_resort(const walker* held);
 
 private:
+    // The hostiles this walker is judged against (shut_out and last_resort), each with
+    // door_shut_exit's answer, in the object list's order, until `visit` answers true (reach.cpp).
+    template <class Visit>
+    void judge_hostiles(Visit&& visit);
     // The maps current and the resolution made from them; false when nothing is judged (reach.cpp).
     bool fresh();
     detail::Map& map();
@@ -328,8 +335,6 @@ bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
 // asks(w), and some live, awake, visible hostile living or generator on w's floor is door_shut
 // for it (cloaked or not, at any distance, no roll, no draw).
 [[nodiscard]] bool shut_out(walker& w);
-// w gets at b: walks_to(w, b, Shut) or shoots_at(w, b).
-[[nodiscard]] bool gets_at(walker& w, const walker& b);
 // Gameplay Fixes BK, a bot that holds the key to a door on its way walks its route into the door:
 // only a key w holds opens its way to b. asks(w), b on w's floor, and w holds the key of a live door
 // on its floor (the cheap tests, answered before any map is read or any Asker resolved); then
@@ -338,7 +343,8 @@ bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
 [[nodiscard]] bool opens_way(walker& w, const walker& b);
 // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
 // door w is handed as its foe, or none. None unless asks(w), shut_out(w), no live, awake, visible
-// hostile living or generator on w's floor is one w gets at (walks_to Shut, or shoots_at), and
+// hostile living or generator on w's floor is one w gets at (walks_to Shut, or shoots_at: the
+// words of "w gets at b", which only this question asks, from door_shut_exit's answer), and
 // start_cell(w) has a region; a key w holds changes nothing here (a door it can open bars it not,
 // so it is open in its map). The door walk: for w's kind a barring door closes the cells that stand
 // with the doors open and on which the kind's box meets it; it touches a region of the shut layer

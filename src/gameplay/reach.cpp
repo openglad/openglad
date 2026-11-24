@@ -1260,32 +1260,49 @@ bool Asker::door_shut(const walker& b)
     return door_shut_exit(b) == Exit::DoorShut;
 }
 
-bool Asker::shut_out()
+template <class Visit>
+void Asker::judge_hostiles(Visit&& visit)
 {
-    // plumbing: a walker asks() does not name is never shut out (door_shut_exit asks the same of
-    //   every enemy below); answered at once, before the list is walked
+    // plumbing: a walker asks() does not name is judged against nobody (door_shut_exit answers it
+    //   NotAsked for every enemy); answered at once, before the list is walked; and nothing judged
+    //   (fresh's rule) likewise
     if (!asks(w_) || !fresh())
-        return false;
+        return;
     // plumbing: with no live door barring its kind nothing is door-shut for it (door_shut_exit's own
-    //   exit); answered at once, before the list is walked
+    //   exit), so it is shut out by nothing; answered at once, before the list is walked
     if (r_.barring->doors.empty())
-        return false;
+        return;
     walker& w = *w_;
     // plumbing: every body of the object list, judged by the rule below
     for (const auto& up : current_game->world->oblist)
     {
         const walker* b = up.get();
-        // rule: og::reach: the walker is shut out when some live, awake, visible hostile living or
-        //   generator on its floor (GameWorld::foe_candidate, the searches' one test, without their
-        //   cloak roll) is door-shut for it (cloaked or not, at any distance).
+        // rule: og::reach: a walker is judged against the live, awake, visible hostile livings and
+        //   generators on its floor (GameWorld::foe_candidate, the searches' one test, without their
+        //   cloak roll), cloaked or not, at any distance: shut_out and Gameplay Fixes BL's door walk
+        //   (last_resort) walk this one list.
         // tests: SemReach.a_bot_is_shut_out_by_an_enemy_only_a_door_keeps_from_it
+        // tests: SemBotBreak.a_bot_shut_out_only_from_a_tent_is_handed_the_door_to_it
+        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
         if (b == nullptr || b == &w || b->floor() != w.floor() || !GameWorld::foe_candidate(w, *b))
             continue;
-        // plumbing: the first door-shut enemy answers
-        if (door_shut_exit(*b) == Exit::DoorShut)
-            return true;
+        // plumbing: the asker ends the walk once its answers are settled
+        if (visit(*b, door_shut_exit(*b)))
+            return;
     }
-    return false;
+}
+
+bool Asker::shut_out()
+{
+    bool shut = false;
+    // rule: og::reach: the walker is shut out when some hostile it is judged against
+    //   (judge_hostiles) is door-shut for it; the first such hostile answers.
+    // tests: SemReach.a_bot_is_shut_out_by_an_enemy_only_a_door_keeps_from_it
+    judge_hostiles([&shut](const walker&, Exit e) {
+        shut = e == Exit::DoorShut;
+        return shut;
+    });
+    return shut;
 }
 
 CellsView Asker::cells()
@@ -1436,11 +1453,6 @@ bool door_shut(walker& w, const walker& b)
 bool shut_out(walker& w)
 {
     return Asker(w).shut_out();
-}
-
-bool gets_at(walker& w, const walker& b)
-{
-    return Asker(w).walks_to(b, Mode::Shut) || shoots_at(w, b);
 }
 
 bool shoots_at(walker& w, const walker& b)
@@ -1640,55 +1652,60 @@ bool opens_way(walker& w, const walker& b)
 Asker::LastResort Asker::last_resort(const walker* held)
 {
     LastResort out;
-    // plumbing: a walker og::reach::asks does not name (the setting off, a player's fighter, a tower,
-    //   a guard at its post) is shut out by nothing (door_shut_exit's own NotAsked exit, which every
-    //   hostile below would answer), so it is handed none: answered at once; and nothing judged
-    //   (fresh's rule) hands none either
-    if (!asks(w_) || !fresh())
+    bool gets_at = false;
+    std::vector<const walker*> hostiles;
+    std::vector<const walker*> no_way_open;
+    // A walker asks() does not name, a walker no live door bars and one whose start cell has no
+    // region (each hostile's door_shut_exit answers it NotAsked, NoBarringDoor or NoRegion) are
+    // shut out by nothing, so they get out.shut false and no door.
+    const auto judge = [&](const walker& b, Exit e) {
+        // rule: Gameplay Fixes BL: a bot that gets at a hostile (walks to it with the doors that bar
+        //   it shut, or its shot lands on it from where it stands: "w gets at b") is handed no door.
+        // tests: SemBotBreak.while_an_enemy_outside_lives_the_crew_holds_no_door_and_strikes_none
+        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
+        if (e == Exit::WalksShut || e == Exit::Shot)
+            gets_at = true;
+        // plumbing: a hostile it has no way to even with every door open is got at only by a shot
+        //   from where it stands (shoots_at, which door_shut_exit leaves unasked there): asked
+        //   below, once the walk shows the answer turns on it
+        if (e == Exit::NoWayOpen)
+            no_way_open.push_back(&b);
+        // plumbing: some hostile only a door keeps it from: the bot is shut out (shut_out's own
+        //   question, answered by the same walk)
+        if (e == Exit::DoorShut)
+            out.shut = true;
+        hostiles.push_back(&b);
+        return gets_at && out.shut;
+    };
+    judge_hostiles(judge);
+    // plumbing: a bot that is not shut out (no hostile only a door keeps it from) is handed no door;
+    //   the walk below would answer none either (a region the walk reaches through doors is one the
+    //   bot walks to with every door open, so a hostile there would be door-shut): answered at once
+    if (!out.shut)
         return out;
-    // plumbing: a bot no live door bars is shut out by no door (door_shut_exit's own first exit,
-    //   which every hostile below would answer), so it is handed none: answered at once
-    if (r_.barring->doors.empty())
+    // rule: Gameplay Fixes BL: (the same rule) a bot that gets at a hostile is handed no door.
+    // tests: SemBotBreak.while_an_enemy_outside_lives_the_crew_holds_no_door_and_strikes_none
+    // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
+    if (gets_at)
         return out;
+    // plumbing: each hostile it has no way to even with every door open, judged below
+    for (const walker* b : no_way_open)
+    {
+        // rule: Gameplay Fixes BL: a bot whose shot lands from where it stands on a hostile it has no
+        //   way to even with every door open (an archer's shot across water) gets at it, so it is
+        //   handed no door.
+        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
+        if (shoots_at(*w_, *b))
+            return out;
+    }
     index_start();
-    // plumbing: a bot whose start cell has no region (inside terrain, on air) is shut out by no
-    //   door (door_shut_exit's own NoRegion exit, which every hostile below would answer), so it is
-    //   handed none: answered at once
+    // plumbing: a bot whose start cell has no region (inside terrain, on air) is shut out by nothing
+    //   (door_shut_exit answers every hostile NoRegion, so out.shut is false above); the door walk
+    //   below never starts from no region
     if (r_.start_region[static_cast<std::size_t>(Mode::Shut)] < 0)
         return out;
     walker& w = *w_;
     GameWorld& world = *current_game->world;
-    bool shut = false;
-    std::vector<const walker*> hostiles;
-    // plumbing: every body of the object list, judged below
-    for (const auto& up : world.oblist)
-    {
-        const walker* b = up.get();
-        // rule: Gameplay Fixes BL: the hostiles judged are the live, awake, visible hostile livings
-        //   and generators on the bot's floor (GameWorld::foe_candidate, the searches' one test,
-        //   without their cloak roll), cloaked or not, at any distance.
-        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
-        // tests: SemBotBreak.a_bot_shut_out_only_from_a_tent_is_handed_the_door_to_it
-        if (b == nullptr || b == &w || b->floor() != w.floor() || !GameWorld::foe_candidate(w, *b))
-            continue;
-        const Exit e = door_shut_exit(*b);
-        // rule: Gameplay Fixes BL: a bot that gets at a hostile (walks to it with the doors that bar
-        //   it shut, or its shot lands on it from where it stands) is handed no door.
-        // tests: SemBotBreak.while_an_enemy_outside_lives_the_crew_holds_no_door_and_strikes_none
-        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
-        if (e == Exit::WalksShut || e == Exit::Shot || (e == Exit::NoWayOpen && shoots_at(w, *b)))
-            return LastResort{};
-        // plumbing: some hostile only a door keeps it from (shut_out's own question, asked of the
-        //   same list)
-        if (e == Exit::DoorShut)
-            shut = true;
-        hostiles.push_back(b);
-    }
-    // plumbing: a bot that is not shut out (no hostile only a door keeps it from) is handed no door;
-    //   the walk below would answer none either (a region the walk reaches through doors is one the
-    //   bot walks to with every door open, so a hostile there would be door-shut): answered at once
-    if (!shut)
-        return out;
     Map& m = map();
     Layer& layer = layer_of(m, Mode::Shut);
     const std::size_t regions = static_cast<std::size_t>(layer.regions);
@@ -1745,9 +1762,11 @@ Asker::LastResort Asker::last_resort(const walker* held)
     const auto mark_end = [&](Cell, std::int32_t i) {
         const std::int32_t r = layer.region[static_cast<std::size_t>(i)];
         // rule: Gameplay Fixes BL, the door walk: a region holding an approach cell of a live
-        //   hostile living or generator is where the walk ends (cost 0 from it).
+        //   hostile living or generator is where the walk ends (cost 0 from it); a region with none
+        //   (a closet's) is no end, so a door that leads only there gets no count.
         // tests: SemBotBreak.a_bot_shut_out_only_from_a_tent_is_handed_the_door_to_it
         // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+        // tests: SemBotBreak.a_closets_door_is_handed_to_nobody_and_takes_no_blow
         if (r >= 0 && cost[static_cast<std::size_t>(r)] != 0)
         {
             cost[static_cast<std::size_t>(r)] = 0;
@@ -1829,9 +1848,9 @@ Asker::LastResort Asker::last_resort(const walker* held)
         const std::int32_t c = cost[regions + k];
         // rule: Gameplay Fixes BL: a door is handed only when it is an edge door (a barring door on
         //   the bot's floor touching a region it gets to) that leads to a region holding an approach
-        //   cell of a hostile.
-        // tests: SemBotBreak.a_closets_door_is_handed_to_nobody_and_takes_no_blow
+        //   cell of a hostile (it has a count); the keep reads a held door the same way.
         // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
+        // tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
         if (door.floor != floor || !edge || c >= kNever)
             continue;
         // plumbing: the held door still qualifies (the keep reads it)
