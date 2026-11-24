@@ -211,7 +211,8 @@ struct RoutePlan
 };
 
 // Who plans its route, its straight walk and the push an ally gives it with a door it cannot open
-// as a wall (Gameplay Fixes BI): the setting is on and w is a bot (walker::is_bot).
+// as a wall (Gameplay Fixes BI): the setting is on and w is a bot (walker::is_bot), a tower and a
+// guard at its post included (asks() leaves them out; this rule does not).
 [[nodiscard]] bool door_is_a_wall_to(const walker* w);
 
 // The plan of a bot's route to the cell `goal`; `foe` is the walker's foe when the route is to it

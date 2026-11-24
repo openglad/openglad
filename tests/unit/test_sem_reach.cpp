@@ -1710,8 +1710,14 @@ TEST_F(SemBotReach, a_bot_under_a_door_is_routed_away_from_it_and_not_through_it
 // The route to a point (walker::find_path_to_point, plan_route with no foe). The door fence of
 // the_route_goes_round_a_door_fence_and_never_through_it; the orc at (20,14) is routed to the point
 // of cell (20,26), nobody there. Setting off: through the fence. Setting on: round, by the gap.
+// Then the staging of a_bot_under_a_door_is_routed_away_from_it_and_not_through_it: a door in
+// cell 20 of a wall at row 10, the orc at pixel (320,175), its corner 1 px inside the door's cell,
+// routed to the point of cell (20,4) above the wall. Setting off: from its corner's cell, the
+// door's, straight up through the door. Setting on: from the cell below, which its box overlaps
+// most, never through the door's cell, and across row 10 once, in the gap.
 // Fails when broken: find_path_to_point not planning a bot's route (the classic solve runs through
-// the fence with the setting on).
+// the fence with the setting on); find_path_to_point solving from the corner's cell instead of the
+// plan's start cell (the route starts in the door's cell with the setting on).
 TEST_F(SemBotReach, a_route_to_a_point_goes_round_a_door)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -1732,6 +1738,31 @@ TEST_F(SemBotReach, a_route_to_a_point_goes_round_a_door)
         }
         EXPECT_EQ(fixes ? 0 : 1, through_doors) << text(route);
         EXPECT_EQ(fixes ? 1 : 0, through_gap) << text(route);
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, under a door" : "Gameplay Fixes off, under a door");
+        fresh_world(fixes);
+        const std::vector<walker*> doors = door_fence(10, {20});
+        walker* bot = bot_at(20 * GRID_SIZE, 175);
+        ASSERT_TRUE(bot && doors[0]);
+        ASSERT_EQ(0, ::collide(bot->xpos(), bot->ypos(), bot->sizex(), bot->sizey(), doors[0]->xpos(),
+                               doors[0]->ypos(), doors[0]->sizex(), doors[0]->sizey()))
+            << "the staging: the orc's box does not meet the door";
+        bot->find_path_to_point(20 * GRID_SIZE, 4 * GRID_SIZE);
+        const std::vector<Cell> route = route_of(bot);
+        ASSERT_GE(route.size(), 2u) << text(route);
+        EXPECT_EQ((Cell{20, 4, 0}), route.back()) << text(route);
+        if (fixes) {
+            EXPECT_EQ((Cell{20, 11, 0}), route.front()) << "the cell its box overlaps most: " << text(route);
+            EXPECT_FALSE(holds(route, {20, 10, 0})) << "never the door's cell: " << text(route);
+            int through_gap = 0;
+            for (const Cell& c : route)
+                through_gap += (c.y == 10 && c.x >= 36) ? 1 : 0;
+            EXPECT_EQ(1, through_gap) << "row 10 crossed once, in the gap: " << text(route);
+        } else {
+            EXPECT_EQ((Cell{20, 10, 0}), route[0]) << "classic: from its corner's cell, the door's";
+            EXPECT_EQ((Cell{20, 9, 0}), route[1]) << "classic: straight up through the door";
+        }
     }
 }
 
@@ -1786,9 +1817,13 @@ TEST_F(SemBotReach, a_search_that_must_fail_is_not_run)
 // (344,160), its box touching the door's, so its corner cell (21,10) is closed though it stands
 // free. The orc at cell (21,20). Setting off: the route ends on (21,10). Setting on: on the nearest
 // approach cell the orc gets to, (21,11), worked out from the boxes (the cells 20 to 23, rows 9 to
-// 11, whose box grown by a cell meets the foe's; (21,11) is nine cells off, the next ten).
+// 11, whose box grown by a cell meets the foe's; (21,11) is nine cells off, the next ten). With the
+// orc standing inside a wall cell (its start cell has no region) the goal is not moved: the plan
+// keeps the foe's closed cell as its goal and runs, and the search finds no route, since no step
+// enters a closed cell. Setting off, from the wall cell too: the classic route to (21,10).
 // Fails when broken: plan_route keeping the closed corner cell as the goal (the search is not run
-// and the route is empty with the setting on).
+// and the route is empty with the setting on); plan_route moving the goal from a start cell with
+// no region (the walled orc's goal becomes (21,11) and a route is found).
 TEST_F(SemBotReach, a_foe_whose_cell_a_door_closes_is_routed_to_from_beside_it)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -1808,6 +1843,22 @@ TEST_F(SemBotReach, a_foe_whose_cell_a_door_closes_is_routed_to_from_beside_it)
         ASSERT_FALSE(route.empty()) << "a route on both settings";
         EXPECT_EQ(fixes ? (Cell{21, 11, 0}) : (Cell{21, 10, 0}), route.back()) << text(route);
         EXPECT_FALSE(fixes && (holds(route, {20, 10, 0}) || holds(route, {21, 10, 0}))) << text(route);
+
+        SCOPED_TRACE("the orc inside a wall cell");
+        tile(0, 21, 20, PIX_H_WALL1);
+        bot->find_path_to_foe();
+        if (!fixes) {
+            ASSERT_FALSE(bot->path_to_foe.empty()) << "classic: a route from the wall cell";
+            EXPECT_EQ((Cell{21, 10, 0}), route_of(bot).back()) << text(route_of(bot));
+            continue;
+        }
+        ASSERT_LT(og::reach::region_of(*bot, og::reach::start_cell(*bot), Mode::Shut), 0)
+            << "the staging: the orc stands inside a wall, its start cell has no region";
+        const og::reach::RoutePlan walled = og::reach::plan_route(*bot, Cell{21, 10, 0}, foe);
+        EXPECT_TRUE(walled.judged);
+        EXPECT_EQ((Cell{21, 10, 0}), walled.goal) << "from a start cell with no region the goal is not moved";
+        EXPECT_TRUE(walled.run) << "and the search runs";
+        EXPECT_TRUE(bot->path_to_foe.empty()) << "and finds no route into the closed cell: " << text(route_of(bot));
     }
 }
 
@@ -1816,9 +1867,14 @@ TEST_F(SemBotReach, a_foe_whose_cell_a_door_closes_is_routed_to_from_beside_it)
 // from x 0 to 35 (the gap 36 to 39), its cell 20 holding door B. The orc above both at cell (20,8),
 // door A its foe. Setting off: the classic route runs through door B and ends in door A's cell.
 // Setting on: the route ends in door A's cell (only door A's cells stand for it) and never enters
-// door B's cell: it goes round by the gap.
+// door B's cell: it goes round by the gap. Then the orc in a pen of walls whose one gap holds door
+// B, door A alone in the field above it, its foe: the orc does not walk to door A with the doors
+// that bar it shut, so with the setting on the plan is judged and not run, the route stays empty,
+// and the solve on the plan's cells, run anyway, finds nothing either (door B's cells stay closed
+// for it). Setting off: the classic route runs through door B into door A.
 // Fails when broken: RouteCells opening every barring door's cells (the route runs through door B);
-// plan_route without its door branch (the route ends beside door A, at (20,24)).
+// plan_route without its door branch (the route ends beside door A, at (20,24)); the door branch
+// running every search (the pen's plan reads run).
 TEST_F(SemBotReach, a_bot_whose_foe_is_a_door_is_routed_into_that_door_and_no_other)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -1845,6 +1901,38 @@ TEST_F(SemBotReach, a_bot_whose_foe_is_a_door_is_routed_into_that_door_and_no_ot
         } else {
             EXPECT_TRUE(holds(route, {20, 15, 0})) << "classic: through door B: " << text(route);
         }
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, in a pen" : "Gameplay Fixes off, in a pen");
+        fresh_world(fixes);
+        const Cell gap = pen(10, 10, 14, 14);
+        walker* door_b = door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
+        walker* door_a = door_at(12 * GRID_SIZE, 4 * GRID_SIZE);
+        walker* bot = bot_at(12 * GRID_SIZE, 12 * GRID_SIZE);
+        ASSERT_TRUE(door_a && door_b && bot);
+        bot->set_foe(door_a);
+        const og::reach::RoutePlan plan = og::reach::plan_route(*bot, Cell{12, 4, 0}, door_a);
+        EXPECT_EQ(fixes != 0, plan.judged);
+        bot->find_path_to_foe();
+        if (!fixes) {
+            ASSERT_FALSE(bot->path_to_foe.empty()) << "classic: a route through door B";
+            EXPECT_TRUE(holds(route_of(bot), {12, 10, 0})) << text(route_of(bot));
+            EXPECT_EQ((Cell{12, 4, 0}), route_of(bot).back()) << text(route_of(bot));
+            continue;
+        }
+        ASSERT_GE(og::reach::region_of(*bot, og::reach::start_cell(*bot), Mode::Shut), 0)
+            << "the staging: the orc's start cell has a region";
+        ASSERT_FALSE(og::reach::walks_to(*bot, *door_a, Mode::Shut)) << "the staging: door B shuts the pen";
+        EXPECT_FALSE(plan.run) << "the orc does not walk to door A: the search is not run";
+        EXPECT_TRUE(bot->path_to_foe.empty()) << text(route_of(bot));
+        std::vector<PathState> path;
+        float cost = 0.0f;
+        const auto state = [](Cell c) {
+            return reinterpret_cast<PathState>(static_cast<intptr_t>(
+                static_cast<intptr_t>(c.floor) * FLOOR_STRIDE + c.y * MAP_WIDTH + c.x));
+        };
+        ensure_pathfinding_state(*current_game)->solve_for(bot, state(plan.start), state(plan.goal), path, cost, &plan.cells);
+        EXPECT_TRUE(path.empty()) << "the solve on the plan's cells could only fail";
     }
 }
 
@@ -1940,12 +2028,15 @@ TEST_F(SemBotReach, the_straight_walk_takes_no_step_into_a_door_it_cannot_open)
 }
 
 // The straight walk adds no air test (it keeps its terrain test and adds the door term alone). Two
-// floors and no door; the cell (21,19) of floor 0, which the orc's diagonal step from (320,320)
-// toward (420,220) covers, is air. On both settings, to the foe and to the point, the walk asks for
-// the classic diagonal step onto it (read off enddir as in the test above; the route finder's step
-// test refuses that cell to a walker that cannot fly, asserted with the setting on).
-// Fails when broken: step_refused asking the map's step test (the air refuses the step with the
-// setting on).
+// floors and no door; the orc's diagonal step from (320,320) toward (420,220) sets its box corner in
+// the cell (20,19) of floor 0 and its box's right column over (21,19): both cells are air, so an
+// air test of the step's own cell (the route finder's, which reads the cell of the pixel it is
+// given) and one of any cell the box covers both see air. On both settings, to the foe and to the
+// point, the walk asks for the classic diagonal step onto it (read off enddir as in the test above;
+// the route finder's step test refuses the step's cell to a walker that cannot fly, asserted with
+// the setting on).
+// Fails when broken: step_refused asking the route finder's air test of the step's cell (the air
+// refuses the step with the setting on).
 TEST_F(SemBotReach, on_a_level_with_floors_and_no_door_the_straight_walk_steps_onto_air_as_before)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -1954,15 +2045,18 @@ TEST_F(SemBotReach, on_a_level_with_floors_and_no_door_the_straight_walk_steps_o
                          (to_point ? "to a point" : "to the foe"));
             fresh_world(fixes);
             two_floors();
+            tile(0, 20, 19, PIX_AIR);
             tile(0, 21, 19, PIX_AIR);
             walker* bot = bot_at(320, 320);
             walker* foe = living_at(FAMILY_SOLDIER, 2, 420, 220, 16, 16);
             ASSERT_TRUE(bot && foe);
             const float s = bot->stepsize();
+            const Cell stepped{static_cast<int>(320 + s) / GRID_SIZE, static_cast<int>(320 - s) / GRID_SIZE, 0};
+            ASSERT_EQ((Cell{20, 19, 0}), stepped) << "the staging: the diagonal step's corner lies in an air cell";
             ASSERT_TRUE(world().query_grid_passable(320 + s, 320 - s, bot)) << "the staging: the terrain passes air";
             if (fixes) {
-                ASSERT_FALSE(og::reach::cell_answer(*bot, {21, 19, 0}, Mode::Shut).step)
-                    << "the staging: the route finder's step test refuses the air cell";
+                ASSERT_FALSE(og::reach::cell_answer(*bot, stepped, Mode::Shut).step)
+                    << "the staging: the route finder's step test refuses the step's air cell";
             }
             bot->set_foe(foe);
             bot->set_curdir(static_cast<signed char>(FACE_DOWN));
@@ -2024,4 +2118,60 @@ TEST_F(SemBotReach, a_doors_level_written_after_its_controller_link_was_cleared_
     door->stats()->set_level(5);
     EXPECT_EQ(before + 1, world().reach_maps.door_count());
     door->stats()->set_controller(door);
+}
+
+// Gameplay Fixes BI asks only "the setting is on and the walker is a bot" (door_is_a_wall_to), so a
+// tower and a guard at its post are bots to it as any other bot is. (1) A tower (a stationary bot,
+// 16 x 16) at cell (20,14) behind the door fence of the_route_goes_round_a_door_fence_and_never_through_it,
+// its foe at (20,26): a tower's SEARCH order plans this route and its step only turns it along the
+// route's first hop (walker::walkstep's stationary arm). Setting on: the route goes round by the
+// gap and never enters a cell a door closes; setting off: through the fence. (2) A guard at its
+// post (ACT_GUARD), holding a SEARCH order, standing just under a door, is shoved four pixels up by
+// an ally on a stream whose roll lets the shove proceed: setting on, the shove is refused and the
+// guard keeps its order; setting off, it is shoved (its order a WALK).
+// Fails when broken: door_is_a_wall_to leaving out a stationary walker (the tower's route runs
+// through the fence with the setting on); door_is_a_wall_to leaving out a guard at its post (the
+// guard is shoved into the door with the setting on).
+TEST_F(SemBotReach, a_tower_and_a_guard_at_its_post_are_bots_to_this_rule)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, a tower" : "Gameplay Fixes off, a tower");
+        fresh_world(fixes);
+        const std::vector<walker*> doors = door_fence(20, {18, 19, 20, 21});
+        walker* tower = living_at(FAMILY_TOWER1, 1, 20 * GRID_SIZE, 14 * GRID_SIZE, 16, 16);
+        walker* foe = living_at(FAMILY_SOLDIER, 2, 20 * GRID_SIZE, 26 * GRID_SIZE, 16, 16);
+        ASSERT_TRUE(tower && foe && doors.size() == 4);
+        ASSERT_TRUE(tower->stationary() && tower->is_bot()) << "the staging: a tower no seat drives";
+        tower->set_foe(foe);
+        tower->find_path_to_foe();
+        const std::vector<Cell> route = route_of(tower);
+        ASSERT_FALSE(route.empty()) << "the staging: a route on both settings";
+        EXPECT_EQ((Cell{20, 26, 0}), route.back()) << text(route);
+        int through_doors = 0;
+        int through_gap = 0;
+        for (const Cell& c : route) {
+            through_doors += (c.y == 20 && c.x >= 18 && c.x <= 21) ? 1 : 0;
+            through_gap += (c.y == 20 && c.x >= 36) ? 1 : 0;
+        }
+        EXPECT_EQ(fixes ? 0 : 1, through_doors) << text(route);
+        EXPECT_EQ(fixes ? 1 : 0, through_gap) << text(route);
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, a guard at its post" : "Gameplay Fixes off, a guard at its post");
+        fresh_world(fixes);
+        ASSERT_NE(nullptr, door_at(320, 304));
+        walker* a = bot_at(320, 400);
+        walker* guard = bot_at(320, 320);
+        ASSERT_TRUE(a && guard);
+        guard->set_act_type(ACT_GUARD);
+        ASSERT_TRUE(guard->is_bot()) << "the staging: a guard no seat drives";
+        guard->stats()->clear_command();
+        guard->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        world().rng_.state_ = a_shoving_state();
+        const short shoved = static_cast<living*>(a)->shove(guard, short{0}, short{-4});
+        const auto& orders = guard->stats()->commands;
+        ASSERT_FALSE(orders.empty());
+        EXPECT_EQ(fixes ? 0 : 1, shoved);
+        EXPECT_EQ(fixes ? COMMAND_SEARCH : COMMAND_WALK, orders.front().commandtype);
+    }
 }

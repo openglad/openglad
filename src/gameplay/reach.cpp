@@ -1477,11 +1477,14 @@ bool shoots_at(walker& w, const walker& b)
 bool door_is_a_wall_to(const walker* w)
 {
     // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: only with the setting on
-    //   and only for a bot (walker::is_bot: a living no seat drives); a player's own fighter, and
-    //   every walker with the setting off, routes, walks and is pushed as before.
+    //   and only for a bot (walker::is_bot: a living no seat drives), a tower and a guard at its
+    //   post included (unlike og::reach::asks): a tower's route and straight walk only turn it, and
+    //   a guard or a tower at such a door is not pushed into it; a player's own fighter, and every
+    //   walker with the setting off, routes, walks and is pushed as before.
     // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
     // tests: SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
     // tests: SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before
+    // tests: SemBotReach.a_tower_and_a_guard_at_its_post_are_bots_to_this_rule
     return w != nullptr && og::sim::session_gameplay_fixes() != 0 && w->is_bot();
 }
 
