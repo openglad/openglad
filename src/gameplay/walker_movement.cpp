@@ -767,8 +767,8 @@ walker::FlightStep walker::flight_step()
 // loop's spots, 0, 1, 3, 6 ... steps out, step over bodies and one-tile walls. Gameplay Fixes BF:
 // an enemy door on the shot's path refuses the check, as a wall does, unless it is the shooter's
 // foe. The test weapon meets that door without the clash roll. Appended below the parity pins.
-std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_foe,
-                                              FireCheckDenial* denial)
+std::optional<bool> walker::line_check_flight(walker* weapon, const walker* ignored_foe,
+                                              FireCheckDenial* denial, bool every_door_stops)
 {
     // rule: Gameplay Fixes BD (#538): classic (the setting off) nothing is asked here and
     //   fire_check's own loop tests 0, 1, 3, 6 ... steps out.
@@ -796,13 +796,13 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
                          ignored_foe->sizey());
     };
     // Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which the door arm of
-    // ob_pass_check records) is a live enemy door that is not the shooter's own foe. A door of
-    // the shooter's side never stops it: ob_pass_check lets a weapon pass its own side. A door
-    // is walker::is_door, which asks the order too, since a golem's family number is a door's.
+    // ob_pass_check records) is a live enemy door that is not the shooter's own foe, or with
+    // every_door_stops (og::reach's shot term) any live enemy door. A door of the shooter's side
+    // never stops it; a door is walker::is_door, which asks the order too (a golem is no door).
     const auto stopped_by_a_door = [&] {
         const walker* met = weapon->collide_ob();
         return met != nullptr && !met->dead() && met->is_door() &&
-               met != foe();
+               (every_door_stops || met != foe());
     };
     // rule: Gameplay Fixes BD (#538): the pad first, as fire() asks it: terrain there refuses
     //   (the shot would be wasted), the mode ball there passes, and so does a live body that is
@@ -817,11 +817,11 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
     weapon->set_collide_ob(nullptr);  // as fire_check did: the pad reads this question's answer
     if (!world.query_object_passable(weapon->xpos(), weapon->ypos(), weapon))
     {
-        // rule: Gameplay Fixes BF: a pad held by a live enemy door that is not the shooter's
-        //   foe refuses (WallBlocked: to a shot a shut door is a wall); a door that is the foe,
-        //   and every other body, passes, a golem too though its family number is a door's.
+        // rule: Gameplay Fixes BF: a pad held by a live enemy door that is not the shooter's foe
+        //   (for og::reach's shot term, any live enemy door) refuses (WallBlocked: to a shot a shut
+        //   door is a wall); a door that is the foe, and every other body, passes, a golem too.
         // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
-        // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+        // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check, SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
         // tests: SemLineCheck.a_golem_on_the_line_still_passes_the_check_though_its_family_number_is_a_doors
         if (stopped_by_a_door())
             return answer(false, FireCheckDenial::WallBlocked);
@@ -865,11 +865,11 @@ std::optional<bool> walker::line_check_flight(walker* weapon, walker* ignored_fo
         {
             // rule: Gameplay Fixes BF: a step struck by a live enemy door that is not the
             //   shooter's foe refuses (WallBlocked), as a step a wall stops does; a door that is
-            //   the foe passes, as every foe does (a level script or a mod can name one; with the
-            //   setting on a blow that lands on a door names none, walker::attack); a golem, whose
-            //   family number is a door's, passes as every other body does.
+            //   the foe passes, as every foe does (a script or a mod can name one; a blow on a door
+            //   names none, walker::attack), except in og::reach's shot term, where every live enemy
+            //   door refuses; a golem, whose family number is a door's, passes as every body does.
             // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on
-            // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check
+            // tests: SemLineCheck.a_door_that_is_the_shooters_foe_passes_the_check, SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
             // tests: SemLineCheck.a_bot_whose_foe_is_behind_a_door_does_not_shoot_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
             // tests: SemLineCheck.a_refused_check_at_a_door_tells_no_one_a_key_is_needed
             // tests: SemLineCheck.a_shot_that_lands_on_a_door_leaves_the_check_refused_with_the_setting_on

@@ -195,7 +195,14 @@ class statistics
         OG_STATS_DIRTY_FIELD(float, heal_per_round, og::dirty::BIT_HEAL_PER_ROUND);
         OG_STATS_DIRTY_FIELD(float, armor, og::dirty::BIT_ARMOR);
 
-        OG_STATS_DIRTY_FIELD(std::int32_t, level, og::dirty::BIT_LEVEL);
+        // A door's level is the key it wants: og::reach's maps read it (level_written).
+        [[nodiscard]] std::int32_t level() const noexcept { return level_; }
+        void set_level(std::int32_t value)
+        {
+            level_ = value;
+            mark_dirty(og::dirty::BIT_LEVEL);
+            level_written();
+        }
         // frozen_delay: freeze/paralysis timer. NEGATIVE = thaw-immunity phase
         // (runaway-specials §3.3), written ONLY by the player-side drain.
         // ALWAYS read via frozen_delay() (masked — never returns negatives, so
@@ -265,6 +272,8 @@ class statistics
 
 	private:
         void mark_dirty(std::uint8_t bit_index);
+        // The level of a door's statistics is a door question's (SimEntity::door_state_written).
+        void level_written() noexcept;
         // Gameplay Fixes BE: turn_to_foe's kept turn (setting on, foe not faced); end of stats.cpp.
         bool keep_turn(short aim);
 

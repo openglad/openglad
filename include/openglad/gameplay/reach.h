@@ -1,0 +1,300 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+#pragma once
+
+// What a bot can get at: for a bot and a body, "can it walk to it with the doors it cannot open
+// shut", "could it with every door open", "does its shot land on it from where it stands", and so
+// "does only a locked door keep it from this enemy" and "is this bot shut out". The answers are read
+// from maps of where each kind of fighter can stand, kept by the world (GameWorld::reach_maps):
+// derived state only, never in a snapshot, a save, a replay or on the wire, a pure function of the
+// grids, the live doors and the kind, the same headless and drawn. With the Gameplay Fixes setting
+// off nothing is asked and no map is built. Defined in src/gameplay/reach.cpp; the door predicate
+// door_bars beside the door arm of ob_pass_check (obmap.cpp).
+//
+// The route finder's neighbour rule, its passability half (for_each_step below), is written here
+// once: the route finder (PathingMap::adjacent_cost, gameplay_context.cpp) prices the steps it
+// answers, and the maps number their regions with the same steps. It is a template over the world
+// and the walker so that the route finder keeps its inlined cost; this header is light enough for
+// game_world.h to hold the maps by value.
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/terrain_types.h>
+
+class GameWorld;
+class walker;
+
+namespace og::reach {
+
+// A door bars `mover` when the door is alive, is a door (walker::is_door), is not of the mover's
+// side (mover->is_friendly(door) is false) and the mover does not hold its key. No exception for a
+// door that is the mover's foe. The door arm of ob_pass_check asks it for its two key tests.
+[[nodiscard]] bool door_bars(const walker* mover, const walker* door);
+
+// Who is asked at the sites of Gameplay Fixes BJ, BK and BL: the setting is on, `w` is a bot
+// (walker::is_bot), not stationary (a tower) and not a guard at its post (ACT_GUARD).
+[[nodiscard]] bool asks(const walker* w);
+
+// The two modes of a map: the doors that bar the kind shut, or every door open.
+enum class Mode : std::uint8_t { Shut, Open };
+
+// A cell of the 16 px grid (x, y in cells) on a floor.
+struct Cell
+{
+    int x = 0;
+    int y = 0;
+    int floor = 0;
+    bool operator==(const Cell&) const = default;
+};
+
+// What a cell answers a step in a mode (the route finder's two tests): a step may end on it; a
+// diagonal may pass beside it.
+struct CellAnswer
+{
+    bool step = false;
+    bool flank = false;
+    bool operator==(const CellAnswer&) const = default;
+};
+
+// The cell w starts its walks from: the cell of its corner, but when only a barring door closes
+// that cell, the standing cell (shut) its box overlaps most (row by row, left to right, a tie
+// keeps the first); when none stands, the corner's cell, which then has no region. With the
+// setting off, or no door barring its kind, the corner's cell.
+[[nodiscard]] Cell start_cell(walker& w);
+// The region of `c` for w's kind in `mode`, or -1 (not a standing cell, or not judged).
+[[nodiscard]] int region_of(walker& w, Cell c, Mode mode);
+// What `c` answers a step of w's kind in `mode` (with the setting off: the terrain's answer).
+[[nodiscard]] CellAnswer cell_answer(walker& w, Cell c, Mode mode);
+// Does a route of w's kind lead from `from` to `to` in `mode` (the route finder's question: true
+// for the same cell, else `to` lies in a region `from` gets to, or is a cell that is not a
+// standing cell but is reached, as a stair's landing on air)? Not judged: true.
+[[nodiscard]] bool reaches(walker& w, Cell from, Cell to, Mode mode);
+// The approach cells of (w, b) in `mode`: every standing cell c of w's kind such that w's box set
+// on c, grown by one cell on every side, meets b's box (collide). Row by row, left to right.
+[[nodiscard]] std::vector<Cell> approach_cells(walker& w, const walker& b, Mode mode);
+// The nearest approach cell w gets to from start_cell(w) (Manhattan in cells, ties by row then
+// column), into `out`; false when there is none or it is not judged.
+bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
+// Some approach cell of (w, b) that stands in `mode` lies in a region w gets to from
+// start_cell(w). Not judged (the setting off, no world, a non-living asker): true.
+[[nodiscard]] bool walks_to(walker& w, const walker& b, Mode mode);
+// The shot term: false for a melee-only bot (BIT_NO_RANGED); else b is inside w's firing box
+// (walker::in_firing_box), within the reach of w's weapon read without the family's weapon hook
+// (walker::unhooked_weapon, walker::weapon_reach), and the line check's flight
+// (walker::line_check_flight) passes for a detached test weapon on fire()'s pad for the facing
+// toward b (the raw delta snapped 3:1), headed that way with no waver, stopped by every live enemy
+// door, b included. A family with no weapon descriptor, the setting off: true (not judged).
+[[nodiscard]] bool shoots_at(walker& w, const walker& b);
+// The cells the barring door `door` closes for w's kind (standing with the doors open, the box
+// meeting the door), row by row; empty when it does not bar w or it is not judged.
+[[nodiscard]] std::vector<Cell> closed_cells(walker& w, const walker& door);
+
+// Which exit door_shut answered from, in its order; only DoorShut is "a door keeps it".
+enum class Exit : std::uint8_t
+{
+    NotAsked,       // not asks(w)
+    NoBarringDoor,  // no live door bars w's kind
+    NotAFighter,    // b is not a live living or generator
+    OtherFloor,     // b is on another floor
+    NoRegion,       // start_cell(w) has no region
+    WalksShut,      // walks_to(w, b, Shut)
+    NoWayOpen,      // not walks_to(w, b, Open)
+    Shot,           // shoots_at(w, b)
+    DoorShut,       // only a locked door keeps w from b
+};
+[[nodiscard]] Exit door_shut_exit(walker& w, const walker& b);
+// Only a door keeps w from b: door_shut_exit(w, b) == Exit::DoorShut.
+[[nodiscard]] bool door_shut(walker& w, const walker& b);
+// asks(w), and some live, awake, visible hostile living or generator on w's floor is door_shut
+// for it (cloaked or not, at any distance, no roll, no draw).
+[[nodiscard]] bool shut_out(walker& w);
+// w gets at b: walks_to(w, b, Shut) or shoots_at(w, b).
+[[nodiscard]] bool gets_at(walker& w, const walker& b);
+
+struct MapsData;
+
+// The maps a world keeps (GameWorld::reach_maps). Built on first need, stale by the writers and
+// compared at every question: a door's body added to, moved in or removed from the body map (the
+// body map's own door count, obmap::door_writes), a door's dead, team and level setters
+// (note_doors), and a grid replaced, resized, moved in, written by a snapshot or a floor added or
+// dropped (note_terrain).
+class Maps
+{
+public:
+    Maps();
+    ~Maps();
+    Maps(const Maps&) = delete;
+    Maps& operator=(const Maps&) = delete;
+
+    // A writer changed what a door question reads: the door halves are stale.
+    void note_doors() noexcept { ++door_count_; }
+    // A writer changed the terrain: every map is stale.
+    void note_terrain() noexcept { ++terrain_count_; }
+    [[nodiscard]] std::uint64_t door_count() const noexcept { return door_count_; }
+    [[nodiscard]] std::uint64_t terrain_count() const noexcept { return terrain_count_; }
+    // How many maps (terrain halves and door halves) were built: with the setting off it stays 0.
+    [[nodiscard]] std::uint64_t builds() const noexcept;
+    // How many walk answers the tick's memo gave instead of the arrays.
+    [[nodiscard]] std::uint64_t memo_hits() const noexcept;
+
+    MapsData& data() noexcept { return *data_; }
+
+private:
+    std::uint64_t door_count_ = 0;
+    std::uint64_t terrain_count_ = 0;
+    std::unique_ptr<MapsData> data_;
+};
+
+// --------------------------------------------------------------------------------------------
+// The route finder's neighbour rule, its passability half.
+// --------------------------------------------------------------------------------------------
+
+// The two tests a step asks of a cell.
+enum class StepTest : std::uint8_t { Step, Flank };
+// What a step is: to one of the eight neighbours on its floor, or a stair's hop to another floor.
+enum class StepKind : std::uint8_t { Straight, Diagonal, Stair };
+
+// The terrain's answer to a step test of the cell whose corner is at pixels (x, y) on floor f, for
+// walker w; `multifloor` and `nonflyer` are the level's and the walker's, read once by the caller.
+// The route finder asks it; the terrain half of a map stores its answers.
+template <class World, class Walker>
+bool terrain_passes(World& world, Walker& w, int x, int y, int f, StepTest test, bool multifloor,
+                    bool nonflyer)
+{
+    // Any terrain in the way?  This checks boundaries too.
+    // rule: The AI never plans a step into terrain the walker cannot enter (walls, trees for
+    //   non-forestwalkers, water for non-swimmers, off-map), nor past a flank such terrain holds.
+    // tests: Decor.grounder_routes_around_decor_boulder_strip_flyer_crosses
+    // tests: NewTiles.grounder_routes_around_lava_strip_flyer_crosses
+    // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
+    if (!world.query_grid_passable(static_cast<float>(x), static_cast<float>(y), &w, f))
+        return false;
+    // Non-flyers avoid "air" holes in pathing (they would fall), so
+    // AI routes around pits and only changes floors via Z-stairs.
+    // Gated on multifloor so single-floor expansion is unchanged.
+    // rule: On stacked levels a walker that cannot fly never plans a step onto air (it would fall);
+    //   flyers (permanent or potion) may.
+    // tests: SemPathing.a_non_flyer_never_plans_a_step_onto_air_on_stacked_levels
+    if (test == StepTest::Step)
+        return !(multifloor && nonflyer &&
+                 world.smoother_for_floor(f).query_genre_x_y(x / GRID_SIZE, y / GRID_SIZE) == TYPE_AIR);
+    // rule: A walker that cannot fly never plans a diagonal past an air flank, on every level (a
+    //   body swept over an air flank can clip its center into the hole and fall).
+    // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
+    return !(nonflyer &&
+             world.smoother_for_floor(f).query_genre_x_y(x / GRID_SIZE, y / GRID_SIZE) == TYPE_AIR);
+}
+
+// The steps out of the cell whose corner is at pixels (x1, y1) on floor f, for walker w: each of
+// the eight neighbours (in the route finder's order) whose cell passes `cells(x, y, f, Step)`, a
+// diagonal only when both flanking cells pass `cells(x, y, f, Flank)`; then a stair's hop.
+// `emit(x, y, f, kind)` is called for each, in that order. `cells` is the terrain's answer for
+// the route finder (terrain_passes) and a map's stored answer for a map.
+template <class World, class Walker, class Cells, class Emit>
+void for_each_step(World& world, Walker& w, int x1, int y1, int f, bool multifloor, bool nonflyer,
+                   Cells&& cells, Emit&& emit)
+{
+    // plumbing: 8-neighbour expansion (skip self); rules below,
+    //   below
+    for (int i = -1; i <= 1; i++)
+    {
+        // plumbing: 8-neighbour expansion (skip self); rules below,
+        //   below
+        for (int j = -1; j <= 1; j++)
+        {
+            // plumbing: 8-neighbour expansion (skip self); rules below,
+            //   below
+            if (i == 0 && j == 0)
+                continue;
+
+            const int adj_x = x1 + i * GRID_SIZE;
+            const int adj_y = y1 + j * GRID_SIZE;
+
+            // rule: The AI never plans a step into a cell the cell's step test refuses (terrain the
+            //   walker cannot enter; air for a walker that cannot fly on stacked levels).
+            // tests: Decor.grounder_routes_around_decor_boulder_strip_flyer_crosses
+            // tests: NewTiles.grounder_routes_around_lava_strip_flyer_crosses
+            // tests: SemPathing.a_non_flyer_never_plans_a_step_onto_air_on_stacked_levels
+            if (!cells(adj_x, adj_y, f, StepTest::Step))
+                continue;
+            // No corner cutting (2026-07, deliberate fix; see
+            // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). A full-cell body can
+            // only make a diagonal cell transition when BOTH flanking
+            // orthogonal cells are open: its swept box necessarily
+            // overlaps them, so a diagonal past a blocked flank is
+            // pixel-impassable at EVERY offset. The classic graph emitted
+            // such hops anyway; when the map pinched (lava + scree
+            // boulder in an X around the hop) the follower seized on an
+            // edge it could never take — permanently (the L24 terrace
+            // wedge). Flanks impose the same rules as targets: grid
+            // passability plus the non-flyer air skip (a body swept over
+            // an air flank can clip its center into the hole and fall).
+            // 2026-07-10: the multifloor gate is REMOVED — single-floor
+            // corridor mazes (Westlands L2 "The Forest Road") exhibit the
+            // same permanent corner seizures the gate was preserving, so
+            // corner-cut edges are now pruned on every level. This is an
+            // audited single-floor parity rebaseline (see the doc row);
+            // the rule consumes no RNG, so drift is position/timing only.
+            // rule: The AI never plans a diagonal step past a blocked corner: a diagonal needs
+            //   both orthogonal neighbours open (and, for non-flyers, not air). Deliberate fix
+            //   on every level, ported to the old game.
+            // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
+            // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
+            // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
+            // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
+            // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
+            if (i != 0 && j != 0)
+            {
+                // rule: The AI never plans a diagonal step past a blocked corner: a diagonal
+                //   needs both orthogonal neighbours open (and, for non-flyers, not air); the
+                //   flank across x is asked first, as the classic loop asked it.
+                // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
+                // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
+                // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
+                if (!cells(adj_x, y1, f, StepTest::Flank) || !cells(x1, adj_y, f, StepTest::Flank))
+                    continue;
+                emit(adj_x, adj_y, f, StepKind::Diagonal);
+                continue;
+            }
+            emit(adj_x, adj_y, f, StepKind::Straight);
+        }
+    }
+
+    // Cross-floor Z-stair edge: if the current cell is a stair tile, add a
+    // vertical neighbor on the connected floor (positional: UP→f+1,
+    // DOWN→f-1). Non-flyers only; gated on multifloor so single-floor A*
+    // expansion is byte-identical.
+    // rule: On stacked levels a walker that cannot fly plans floor changes only through stairs:
+    //   an up-stair links to the floor above, a down-stair to the floor below, if that floor
+    //   exists and its cell is passable; flyers never change floors.
+    // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+    if (multifloor && nonflyer)
+    {
+        const int tile = world.smoother_for_floor(f).query_x_y(x1 / GRID_SIZE, y1 / GRID_SIZE);
+        int tf = -1;
+        // rule: On stacked levels a walker that cannot fly plans floor changes only through
+        //   stairs.
+        // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+        if (tile == PIX_ZSTAIR_UP && (f + 1) < world.floor_count())
+            tf = f + 1;
+        else if (tile == PIX_ZSTAIR_DOWN && f > 0)
+            tf = f - 1;
+        // rule: On stacked levels a walker that cannot fly plans floor changes only through
+        //   stairs.
+        // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+        if (tf >= 0 &&
+            world.query_grid_passable(static_cast<float>(x1), static_cast<float>(y1), &w, tf))
+            emit(x1, y1, tf, StepKind::Stair);
+    }
+}
+
+}  // namespace og::reach

@@ -113,6 +113,7 @@ from dataclasses import dataclass, field
 # headers, networking, snapshot serialization, mapgen and the lobby left out.
 SCOPE_CPP: tuple[str, ...] = (
     "include/openglad/gameplay/game_world.h",
+    "include/openglad/gameplay/reach.h",
     "include/openglad/gameplay/statistics.h",
     "include/openglad/gameplay/walker.h",
     "src/gameplay/astar.cpp",
@@ -130,6 +131,7 @@ SCOPE_CPP: tuple[str, ...] = (
     "src/gameplay/obmap.cpp",
     "src/gameplay/placement.cpp",
     "src/gameplay/possession.cpp",
+    "src/gameplay/reach.cpp",
     "src/gameplay/respawn/respawn.cpp",
     "src/gameplay/scenario_strip.cpp",
     "src/gameplay/script/bindings_entity.cpp",

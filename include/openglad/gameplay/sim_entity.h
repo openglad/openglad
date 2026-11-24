@@ -95,6 +95,7 @@ public:
     {
         team_num_ = value;
         mark_dirty(og::dirty::BIT_TEAM_NUM);
+        door_state_written();
     }
 
     [[nodiscard]] unsigned char real_team_num() const noexcept
@@ -119,6 +120,7 @@ public:
     {
         dead_ = value;
         mark_dirty(og::dirty::BIT_DEAD);
+        door_state_written();
     }
 
     [[nodiscard]] short death_called() const noexcept { return death_called_; }
@@ -222,6 +224,14 @@ public:
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     [[nodiscard]] short frame() const noexcept { return frame_; }
+
+    // The world whose lists hold this entity (null outside one).
+    [[nodiscard]] GameWorld* owning_world() const noexcept { return owning_world_; }
+
+    // A door's dead, team and level setters change what a door question of og::reach reads
+    // (reach.h): on a door of a world this tells that world's maps (Maps::note_doors). The
+    // statistics' level setter calls it too. Defined in sim_entity.cpp.
+    void door_state_written() noexcept;
 
 protected:
     void set_frame_state(short value) noexcept

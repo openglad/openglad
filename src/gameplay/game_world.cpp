@@ -1844,7 +1844,7 @@ void GameWorld::set_floor_count(int count)
     // tests: SemWorld.shrinking_the_floor_count_drops_the_upper_floors
     if (count < 1)
         count = 1;
-    const std::size_t extra = static_cast<std::size_t>(count - 1);
+    reach_maps.note_terrain(); const std::size_t extra = static_cast<std::size_t>(count - 1);
     if (extra < extra_floors_.size())
     {
         extra_floors_.resize(extra);
@@ -2309,7 +2309,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
 
 void GameWorld::delete_grid()
 {
-    clear_grid_dirty_tiles();
+    grid_replaced();
     grid.free();
     decor.free();
     pixmaxx = 0;
@@ -2319,7 +2319,7 @@ void GameWorld::delete_grid()
 
 void GameWorld::create_new_grid()
 {
-    clear_grid_dirty_tiles();
+    grid_replaced();
     grid.free();
     decor.free();
 
@@ -2410,7 +2410,7 @@ void GameWorld::resize_grid(int width, int height)
     grid.frames = 1;
     grid.w = static_cast<unsigned char>(width);
     grid.h = static_cast<unsigned char>(height);
-    clear_grid_dirty_tiles();
+    grid_replaced();
     pixmaxx = grid.w * GRID_SIZE;
     pixmaxy = grid.h * GRID_SIZE;
 

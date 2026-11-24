@@ -1075,16 +1075,16 @@ bool living::act_random()
 	ydist = static_cast<short>(foe()->ypos() - ypos());
 
 	// If foe is in firing range, turn and fire
-	// rule: act_random: a foe inside the line-of-sight box is fired at if a shot can reach it
-	//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe, and with
-	//   Gameplay Fixes on the turn is kept (fix BE: statistics::turn_to_foe; its next acts finish
-	//   it and a tower faces the foe at once). Either way out of a shot, it searches 200 steps.
+	// rule: act_random: a foe inside the line-of-sight box (walker::in_firing_box, the box
+	//   og::reach's shot term judges in too) is fired at if a shot can reach it (COMMAND_FIRE for
+	//   a random 0-23 count); a blocked shot turns toward the foe, and with Gameplay Fixes on the
+	//   turn is kept (fix BE: statistics::turn_to_foe; its next acts finish it and a tower faces
+	//   the foe at once). Either way out of a shot, it searches 200 steps.
 	// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
 	// tests: SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it
 	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on
 	// tests: SemAi5.a_half_turn_takes_four_acts_and_then_the_search_runs
-	if (abs(xdist) < lineofsight() * GRID_SIZE &&
-	        abs(ydist) < lineofsight() * GRID_SIZE)
+	if (in_firing_box(xdist, ydist))
 	{
 		// rule: act_random: a foe inside the line-of-sight box is fired at if a shot can reach it
 		//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe, and with

@@ -25,6 +25,7 @@
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/reach.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/core/irandom.h>
 
@@ -190,6 +191,12 @@ public:
     short par_value = 1;
     short time_bonus_limit = 4000;
     short difficulty = 100;
+
+    // og::reach (reach.h): the maps of what a bot can get at. Derived state only (a pure function of
+    // the grids, the live doors and the kind of fighter that asks), built on first need; never in
+    // a snapshot, a save, a replay or on the wire. Declared before the entity lists, which the
+    // destructor empties first: a door's death in that teardown still finds its world's maps.
+    og::reach::Maps reach_maps;
 
     int living_count = 0;
     EntityList oblist;
@@ -381,6 +388,8 @@ public:
     // calls this afterwards; smoothers_in_sync() above is its oracle.
     void rebind_smoothers() noexcept
     {
+        // The grids moved in are new terrain to og::reach's maps.
+        reach_maps.note_terrain();
         mysmoother.set_rng(&rng_);
         // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets it
         //   when the grid is gone) and the world RNG after a world handoff
@@ -472,6 +481,11 @@ public:
     bool query_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false, bool weapons_block = false);
     bool query_grid_passable(float x, float y, walker* ob, int floor, bool quiet = false);
+    // og::reach: is a door that bars `w` (og::reach::door_bars) and is not w's own foe met by w's
+    // box at (x, y) on `floor`? Asked through obmap::query_list's own loop in its doors-only mode
+    // (obmap::DoorsOnly): nothing eaten, opened, collided or drawn. False with no body map or no
+    // walker. Defined in reach.cpp.
+    bool door_bars_at(short x, short y, walker* w, int floor);
     // Side-effect-free landing probe for floor transitions (Z-stairs, air
     // falls, cross-floor teleports): true when ob's bbox at (x, y) on
     // target_floor is grid-passable AND overlaps no blocking entity there.
@@ -773,6 +787,13 @@ public:
     bool applying_snapshot_ = false;
 
 private:
+    // A new grid (made, resized or freed): the network delta's dirty tiles start over, and so do
+    // og::reach's terrain maps.
+    void grid_replaced() noexcept
+    {
+        clear_grid_dirty_tiles();
+        reach_maps.note_terrain();
+    }
     walker* add_to_list(Order order, std::int32_t family,
                         EntityList& target_list,
                         bool count_living, bool atstart);

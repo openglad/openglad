@@ -1129,6 +1129,7 @@ og_add_unit_group(og_unit_sim NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_seats.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_engine.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_quiet_probe.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_reach.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_walk.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_charm.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_owner_chain_loop.cpp

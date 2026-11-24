@@ -2705,3 +2705,13 @@ void statistics::attack_face_or_fight(short deltax, short deltay)
 	else
 		controller_->walkstep(deltax, deltay);
 }
+
+// og::reach: the level of a door's statistics is the key the door wants, which a door question
+// reads; the setter tells the door (SimEntity::door_state_written), which tells its world's maps.
+// Appended at the end of the file so the parity pins above stay on their lines.
+void statistics::level_written() noexcept
+{
+	// plumbing: statistics built for no walker have no door to tell; the rule is the door's
+	if (controller_ != nullptr)
+		controller_->door_state_written();
+}

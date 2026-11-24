@@ -2256,7 +2256,7 @@ bool apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapsho
     const std::size_t grid_size =
         static_cast<std::size_t>(world.grid.w) * world.grid.h;
 
-    bool grid_applied = true;
+    bool grid_applied = true; world.reach_maps.note_terrain();  // og::reach: new terrain
     if (snapshot.grid_full_resend)
     {
         if (snapshot.full_grid_data.size() != grid_size)

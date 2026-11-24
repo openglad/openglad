@@ -121,13 +121,18 @@ class walker : public og::sim::SimEntity
 		void follow_path_to_foe();
 		bool init_fire();
 		bool init_fire(short xdir, short ydir);
+		// fire_check's test weapon, placed and headed for the way this walker faces, its waver
+		// drawn as fire() draws a shot's; the heading table itself takes the facing `dir` and the
+		// waver (og::reach's shot term asks it with the facing toward its body and no waver).
 		void set_weapon_heading(walker *weapon);
+		void set_weapon_heading(walker *weapon, short dir, signed char waver);
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
-		// facing(lastx(), lasty()) names. The one table fire() and
-		// set_weapon_heading() read.
+		// facing(lastx(), lasty()) names (or `dir`). The one table fire(),
+		// set_weapon_heading() and og::reach's shot term read.
 		void weapon_pad(const walker& weapon, short& px, short& py);
+		void weapon_pad(const walker& weapon, short& px, short& py, short dir);
 		// What the pad fire() would place the weapon on holds, probed quietly
 		// with a detached weapon: Clear (the weapon would fly); Terrain (the
 		// grid refuses it: a wall, the map edge, a tree's crown or trunk for a
@@ -227,8 +232,29 @@ class walker : public og::sim::SimEntity
 		// answer with the setting off (the classic loop asks). When it answers it sets
 		// the probe dead and writes *denial. Gameplay Fixes BF: an enemy door that is not
 		// the foe refuses it (WallBlocked). Defined at the end of walker_movement.cpp.
-		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, walker* ignored_foe,
-		                                                    FireCheckDenial* denial);
+		// With every_door_stops (og::reach's shot term) every live enemy door refuses it, the
+		// shooter's own foe included.
+		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, const walker* ignored_foe,
+		                                                    FireCheckDenial* denial,
+		                                                    bool every_door_stops = false);
+		// fire_check's ray target besides the bodies it meets: `target` when it is a live, visible,
+		// hostile ignored body on the weapon's floor (a mode ball), else none. Defined at the end
+		// of walker.cpp.
+		[[nodiscard]] static const walker* ignored_target(const walker& target, const walker& weapon);
+		// The reach of a configured weapon: its step times its line of sight (the line check's
+		// reach gate, the prospective reach and og::reach's shot term read it).
+		[[nodiscard]] static std::int32_t weapon_reach(const walker& weapon);
+		// The detached test weapon (`weapon`, built with WeaponProfileProbeTag) of this walker's
+		// current weapon, profiled by configure_weapon_profile_base for the heading, without the
+		// family's weapon hook; false with no world or a weapon the loader cannot make. Defined at
+		// the end of walker.cpp.
+		bool unhooked_weapon(walker& weapon, float heading_x, float heading_y);
+		// The firing box: |xdelta| and |ydelta| both under lineofsight() * 16 (living::act_random
+		// fires only inside it; og::reach's shot term judges only inside it). Defined at the end of
+		// walker.cpp.
+		[[nodiscard]] bool in_firing_box(short xdelta, short ydelta) const;
+		// A bot: a living no player drives (user() == -1). Defined at the end of walker.cpp.
+		[[nodiscard]] bool is_bot() const;
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).
