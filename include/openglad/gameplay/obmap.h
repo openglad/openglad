@@ -58,10 +58,17 @@ class obmap
 		};
 		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false,
 		                 const DoorsOnly* doors_only = nullptr);
+		// The floor a body of floor `floor` is filed under: 0 to 120, a floor outside filed as floor
+		// 0 or floor 120. The one rule for a walker's own registration, a pile lookup by floor, the
+		// doors-only question and og::reach's maps, which close a door's cells on this floor.
+		static int filed_floor(int floor);
 		// How many times a door's body was filed in, moved in or taken out of this map (and once
 		// more when an external clear dropped the doors it filed): og::reach's maps compare it at
 		// every question, so a map built before such a change is not read after it.
 		std::uint64_t door_writes();
+		// Does this map file any door (walker::is_door)? A box question about doors asks nothing
+		// more when it does not.
+		bool files_a_door();
 		// Takes `ob` out of every pile walker_to_pos files it under and out of
 		// walker_to_pos: 1. A walker walker_to_pos does not know is a miss: 0,
 		// and nothing changes (#504). `ob` is only a key and is never read, so a

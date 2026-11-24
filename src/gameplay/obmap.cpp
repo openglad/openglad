@@ -50,17 +50,24 @@ inline constexpr int OBRES = 32; //GRID_SIZE
 // different floors never share a collision pile. Floor 0 maps to [0,199],
 // byte-identical to pre-Z. Clamped to keep the pos_to_walker short key in range.
 inline constexpr int OB_FLOOR_STRIDE = 256;
-// The numx band of floor `f`: one rule for a walker's own registration (floor_numx_offset), a pile
-// lookup by floor (floor_cell) and og::reach's doors-only question (query_list).
-static short floor_band(int f)
+// The floor a body is filed under (obmap.h): one rule for a walker's own registration
+// (floor_numx_offset), a pile lookup by floor (floor_cell), og::reach's doors-only question
+// (query_list) and og::reach's maps (reach.cpp), which close a door's cells on this floor.
+int obmap::filed_floor(int f)
 {
 	// rule: Walkers on different floors never share a collision pile, so they never block, hit or
 	//   eat each other; floors outside 0..120 collide as floor 0 / floor 120.
 	// tests: ZAxis.collision_is_floor_separated
 	// tests: SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty
+	// tests: SemReach.the_door_question_asks_the_floor_it_is_given_and_changes_nothing
 	if (f < 0) f = 0;
 	if (f > 120) f = 120;
-	return static_cast<short>(f * OB_FLOOR_STRIDE);
+	return f;
+}
+// The numx band of floor `f`: the band of the floor it is filed under.
+static short floor_band(int f)
+{
+	return static_cast<short>(obmap::filed_floor(f) * OB_FLOOR_STRIDE);
 }
 static short floor_numx_offset(const walker* ob)
 {
@@ -103,6 +110,12 @@ std::uint64_t obmap::door_writes()
 	return door_writes_;
 }
 
+bool obmap::files_a_door()
+{
+	sync_cell_index();
+	return !filed_doors_.empty();
+}
+
 // These are passed in as PIXEL coordinates now...
 obmap::obmap()
 {
@@ -133,8 +146,8 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_
 		return 1;
 	}
 	short fo = floor_numx_offset(ob);
-	// rule: og::reach: the doors-only question asks the piles of the floor it is given (clamped as
-	//   a walker's own registration is), not the asker's own floor.
+	// rule: og::reach: the doors-only question asks the piles of the floor it is given (filed as a
+	//   walker's own registration is, obmap::filed_floor), not the asker's own floor.
 	// tests: SemReach.the_door_question_asks_the_floor_it_is_given_and_changes_nothing
 	if (doors_only != nullptr)
 		fo = floor_band(doors_only->floor);
@@ -832,21 +845,29 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
 }
 
 // og::reach (reach.h): the door rule written once, beside the door arm above, whose two key tests
-// ask it. The maps of what a bot can get at ask it too.
+// ask it with the mover's own keys. The maps of what a bot can get at ask it too, also with keys
+// given (none: a walker of the mover's box, flags and side holding no key).
 bool og::reach::door_bars(const walker* mover, const walker* door)
 {
+	return mover != nullptr && door_bars(mover, door, mover->keys());
+}
+
+bool og::reach::door_bars(const walker* mover, const walker* door, std::uint32_t keys)
+{
 	// rule: og::reach: a door bars a walker when the door is alive, is a door (a golem, whose family
-	//   number is a door's, is not), is not of the walker's side and the walker holds no key of its
-	//   level (key bit 2^level); there is no exception for a door that is the walker's own foe.
+	//   number is a door's, is not), is not of the walker's side and the keys held (the walker's
+	//   own, or the keys a question names) hold no key of its level (key bit 2^level); there is no
+	//   exception for a door that is the walker's own foe.
 	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
 	// tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
+	// tests: SemReach.a_walker_holding_no_key_is_asked_as_a_kind_of_its_own
 	if (mover == nullptr || door == nullptr || door->dead() || !door->is_door())
 		return false;
 	// rule: og::reach: a door of the walker's own side never bars it (the arm's friendly pass).
 	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
 	if (mover->is_friendly(door))
 		return false;
-	return (mover->keys() & static_cast<std::uint32_t>(key_level_mask(door->stats()->level()))) == 0;
+	return (keys & static_cast<std::uint32_t>(key_level_mask(door->stats()->level()))) == 0;
 }
 
 short collide(short x,  short y,  short xsize,  short ysize,

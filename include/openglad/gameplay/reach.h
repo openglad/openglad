@@ -22,6 +22,7 @@
 // and the walker so that the route finder keeps its inlined cost; this header is light enough for
 // game_world.h to hold the maps by value.
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -39,9 +40,13 @@ namespace og::reach {
 // side (mover->is_friendly(door) is false) and the mover does not hold its key. No exception for a
 // door that is the mover's foe. The door arm of ob_pass_check asks it for its two key tests.
 [[nodiscard]] bool door_bars(const walker* mover, const walker* door);
+// The same rule for a walker of the mover's box, flags and side holding `keys` instead of its own
+// (0: no key at all). door_bars(mover, door) is door_bars(mover, door, mover->keys()).
+[[nodiscard]] bool door_bars(const walker* mover, const walker* door, std::uint32_t keys);
 
-// Who is asked at the sites of Gameplay Fixes BJ, BK and BL: the setting is on, `w` is a bot
-// (walker::is_bot), not stationary (a tower) and not a guard at its post (ACT_GUARD).
+// Who is asked at the sites of the rules for an enemy behind a locked door, a key holder at its
+// door and a door broken down as a last resort: the setting is on, `w` is a bot (walker::is_bot),
+// not stationary (a tower) and not a guard at its post (ACT_GUARD).
 [[nodiscard]] bool asks(const walker* w);
 
 // The two modes of a map: the doors that bar the kind shut, or every door open.
@@ -63,6 +68,157 @@ struct CellAnswer
     bool step = false;
     bool flank = false;
     bool operator==(const CellAnswer&) const = default;
+};
+
+// The two tests a step asks of a cell.
+enum class StepTest : std::uint8_t { Step, Flank };
+// What a step is: to one of the eight neighbours on its floor, or a stair's hop to another floor.
+enum class StepKind : std::uint8_t { Straight, Diagonal, Stair };
+
+// Which exit door_shut answered from, in its order; only DoorShut is "a door keeps it".
+enum class Exit : std::uint8_t
+{
+    NotAsked,       // not asks(w)
+    NoBarringDoor,  // no live door bars w's kind
+    NotAFighter,    // b is not a live living or generator
+    OtherFloor,     // b is on another floor
+    NoRegion,       // start_cell(w) has no region
+    WalksShut,      // walks_to(w, b, Shut)
+    NoWayOpen,      // not walks_to(w, b, Open)
+    Shot,           // shoots_at(w, b)
+    DoorShut,       // only a locked door keeps w from b
+};
+
+namespace detail {
+
+constexpr std::uint8_t kStep = 1;
+constexpr std::uint8_t kFlank = 2;
+
+// A stored layer's answer to a step test of the cell whose corner is at pixels (x, y) on floor f:
+// the one reading of a layer, for the maps' own walks and for a route finder's view (CellsView).
+inline bool stored_passes(const std::uint8_t* bits, int w, int h, int floors, int x, int y, int f,
+                          StepTest test)
+{
+    // plumbing: no layer, or a cell off it, stands nowhere (a step's corner is a multiple of 16,
+    //   so a negative one is off the layer)
+    if (bits == nullptr || x < 0 || y < 0 || f < 0 || x / GRID_SIZE >= w || y / GRID_SIZE >= h ||
+        f >= floors)
+        return false;
+    // rule: og::reach: a stored cell answers a step's test by its step bit and a diagonal's flank
+    //   test by its flank bit.
+    // tests: SemReach.the_maps_steps_and_regions_are_the_route_finders_for_six_kinds
+    const std::uint8_t want = test == StepTest::Step ? kStep : kFlank;
+    return (bits[static_cast<std::size_t>((f * h + y / GRID_SIZE) * w + x / GRID_SIZE)] & want) != 0;
+}
+
+struct BarringSet;
+struct Layer;
+struct Map;
+
+// What an Asker was resolved from (the world, the maps as they stood, the walker's box, order,
+// flags, side, life, keys and corner) and what it was resolved to. reach.cpp fills it.
+struct Resolution
+{
+    bool made = false;
+    const GameWorld* world = nullptr;
+    std::uint64_t generation = 0;
+    short x = 0;
+    short y = 0;
+    short floor = 0;
+    short sx = 0;
+    short sy = 0;
+    std::uint8_t order = 0;
+    std::uint8_t flags = 0;
+    unsigned char team = 0;
+    bool dead = false;
+    std::uint32_t keys = 0;
+    const BarringSet* barring = nullptr;
+    Map* map = nullptr;  // built on first need
+    bool started = false;  // start worked out
+    Cell start{};
+    bool indexed = false;  // start_index and start_region worked out
+    std::int32_t start_index[2] = {-1, -1};   // per Mode: the start cell in that layer, or -1
+    std::int32_t start_region[2] = {-1, -1};  // per Mode: its region, or -1
+};
+
+}  // namespace detail
+
+// A kind's two layers read cell by cell with no lookup: what a route finder's solve reads for each
+// neighbour (Asker::cells). The view itself is a Cells of for_each_step over the shut layer (the
+// doors that bar the kind shut); passes() reads either layer, so a cell's open and shut answers
+// can be read side by side. Valid while no writer bumps a count (Maps) and the walker keeps its
+// kind: fetch it again for each solve. Empty when nothing is judged (no cell stands).
+struct CellsView
+{
+    const std::uint8_t* shut = nullptr;
+    const std::uint8_t* open = nullptr;
+    int w = 0;
+    int h = 0;
+    int floors = 0;
+
+    [[nodiscard]] bool operator()(int x, int y, int f, StepTest test) const
+    {
+        return detail::stored_passes(shut, w, h, floors, x, y, f, test);
+    }
+    [[nodiscard]] bool passes(Mode mode, int x, int y, int f, StepTest test) const
+    {
+        // plumbing: the layer of the mode asked
+        return detail::stored_passes(mode == Mode::Shut ? shut : open, w, h, floors, x, y, f, test);
+    }
+};
+
+// A walker resolved once for many questions: its kind (its box, order, flags and side, holding its
+// own keys or the keys given), the kind's map and its start cell. A search's candidates, the cast
+// rules' list and shut_out's enemies are asked one after another of one Asker. Each question first
+// checks that what it was resolved from still stands (the maps' writers, the world, the walker's
+// box, flags, side, life, keys and corner) and resolves again when not, so a held Asker never reads
+// a dropped map and always answers the world as it stands. The free functions below are each one
+// question of a fresh Asker.
+class Asker
+{
+public:
+    // w as it stands, holding its own keys.
+    explicit Asker(walker& w) : w_(&w) {}
+    // w's box, order, flags and side holding `keys` instead of its own (0: no key at all, the
+    // keyless kind).
+    Asker(walker& w, std::uint32_t keys) : w_(&w), keys_(keys), keys_given_(true) {}
+
+    [[nodiscard]] Cell start_cell();
+    [[nodiscard]] int region_of(Cell c, Mode mode);
+    [[nodiscard]] CellAnswer cell_answer(Cell c, Mode mode);
+    [[nodiscard]] bool reaches(Cell from, Cell to, Mode mode);
+    [[nodiscard]] std::vector<Cell> approach_cells(const walker& b, Mode mode);
+    bool nearest_approach(const walker& b, Mode mode, Cell& out);
+    [[nodiscard]] bool walks_to(const walker& b, Mode mode);
+    [[nodiscard]] std::vector<Cell> closed_cells(const walker& door);
+    [[nodiscard]] Exit door_shut_exit(const walker& b);
+    [[nodiscard]] bool door_shut(const walker& b);
+    [[nodiscard]] bool shut_out();
+    // The view of the kind's two layers for one solve (see CellsView).
+    [[nodiscard]] CellsView cells();
+    // The barring doors of the kind filed on `floor` (obmap::filed_floor), in the order the world
+    // lists them (its weapons first).
+    [[nodiscard]] std::vector<const walker*> barring_doors(int floor);
+    // The regions of the shut layer that a barring door touches: one of the cells it closes has a
+    // 4-neighbour standing cell (shut) in the region. Sorted; empty for a door that does not bar.
+    [[nodiscard]] std::vector<int> regions_touched(const walker& door);
+    // The barring doors a barring door touches: one of its closed cells is, or is a 4-neighbour
+    // of, one of theirs (two doors in a row with no floor between them). In the world's order.
+    [[nodiscard]] std::vector<const walker*> doors_touched(const walker& door);
+    // The barring doors beside a region of the shut layer (each touches it), in the world's order.
+    [[nodiscard]] std::vector<const walker*> doors_beside(int region);
+
+private:
+    // The maps current and the resolution made from them; false when nothing is judged (reach.cpp).
+    bool fresh();
+    detail::Map& map();
+    void start();
+    void index_start();
+
+    walker* w_;
+    std::uint32_t keys_ = 0;
+    bool keys_given_ = false;
+    detail::Resolution r_;
 };
 
 // The cell w starts its walks from: the cell of its corner, but when only a barring door closes
@@ -91,26 +247,12 @@ bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
 // (walker::in_firing_box), within the reach of w's weapon read without the family's weapon hook
 // (walker::unhooked_weapon, walker::weapon_reach), and the line check's flight
 // (walker::line_check_flight) passes for a detached test weapon on fire()'s pad for the facing
-// toward b (the raw delta snapped 3:1), headed that way with no waver, stopped by every live enemy
-// door, b included. A family with no weapon descriptor, the setting off: true (not judged).
+// toward b, headed that way with no waver, stopped by every live enemy door, b included. A family
+// with no weapon descriptor, the setting off: true (not judged).
 [[nodiscard]] bool shoots_at(walker& w, const walker& b);
 // The cells the barring door `door` closes for w's kind (standing with the doors open, the box
 // meeting the door), row by row; empty when it does not bar w or it is not judged.
 [[nodiscard]] std::vector<Cell> closed_cells(walker& w, const walker& door);
-
-// Which exit door_shut answered from, in its order; only DoorShut is "a door keeps it".
-enum class Exit : std::uint8_t
-{
-    NotAsked,       // not asks(w)
-    NoBarringDoor,  // no live door bars w's kind
-    NotAFighter,    // b is not a live living or generator
-    OtherFloor,     // b is on another floor
-    NoRegion,       // start_cell(w) has no region
-    WalksShut,      // walks_to(w, b, Shut)
-    NoWayOpen,      // not walks_to(w, b, Open)
-    Shot,           // shoots_at(w, b)
-    DoorShut,       // only a locked door keeps w from b
-};
 [[nodiscard]] Exit door_shut_exit(walker& w, const walker& b);
 // Only a door keeps w from b: door_shut_exit(w, b) == Exit::DoorShut.
 [[nodiscard]] bool door_shut(walker& w, const walker& b);
@@ -145,6 +287,9 @@ public:
     [[nodiscard]] std::uint64_t builds() const noexcept;
     // How many walk answers the tick's memo gave instead of the arrays.
     [[nodiscard]] std::uint64_t memo_hits() const noexcept;
+    // How many times an asker was resolved to its kind's barring doors and map (Asker): once for
+    // all the questions of one Asker while what it was resolved from stands.
+    [[nodiscard]] std::uint64_t resolutions() const noexcept;
 
     MapsData& data() noexcept { return *data_; }
 
@@ -157,11 +302,6 @@ private:
 // --------------------------------------------------------------------------------------------
 // The route finder's neighbour rule, its passability half.
 // --------------------------------------------------------------------------------------------
-
-// The two tests a step asks of a cell.
-enum class StepTest : std::uint8_t { Step, Flank };
-// What a step is: to one of the eight neighbours on its floor, or a stair's hop to another floor.
-enum class StepKind : std::uint8_t { Straight, Diagonal, Stair };
 
 // The terrain's answer to a step test of the cell whose corner is at pixels (x, y) on floor f, for
 // walker w; `multifloor` and `nonflyer` are the level's and the walker's, read once by the caller.

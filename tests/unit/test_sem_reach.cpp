@@ -43,6 +43,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -312,10 +314,14 @@ TEST_F(SemReach, a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row)
 }
 
 // obmap.cpp, query_list: the doors-only question asks the piles of the floor it is given, not the
-// asker's; and it changes nothing: no draw, no pile, no notice, the door alive, the asker's
-// collide_ob kept, no door count moved. A seat's soldier (it would be told "Key N needed!") at
-// 320,320 on floor 0, an enemy locked door at 335,320 on floor 1. Both settings.
-// Fails when broken: query_list ignoring doors_only->floor (the floor-1 door is not met on floor 1).
+// asker's, that floor filed as the body map files a body's (obmap::filed_floor: below 0 as floor 0,
+// past 120 as floor 120); and it changes nothing: no draw, no pile, no notice, the doors alive, the
+// asker's collide_ob kept, no door count moved. A seat's soldier (it would be told "Key N needed!")
+// at 320,320 on floor 0; enemy locked doors at 335,320 on floor 1, at 335,400 on floor 0 and at
+// 335,480 on floor 120. Both settings.
+// Fails when broken: query_list ignoring doors_only->floor (the floor-1 door is not met on floor 1,
+// the floor-120 door not on floor 300); obmap::filed_floor without its clamp (floor -5 and floor
+// 300 meet no door).
 TEST_F(SemReach, the_door_question_asks_the_floor_it_is_given_and_changes_nothing)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -324,15 +330,22 @@ TEST_F(SemReach, the_door_question_asks_the_floor_it_is_given_and_changes_nothin
         two_floors();
         walker* mover = living_at(FAMILY_SOLDIER, 1, 320, 320, 16, 16);
         walker* door = door_at(335, 320, kDoorTeam, 2, 1);
+        walker* ground_door = door_at(335, 400, kDoorTeam, 2, 0);
+        walker* high_door = door_at(335, 480, kDoorTeam, 2, 120);
         ASSERT_NE(nullptr, mover);
         ASSERT_NE(nullptr, door);
+        ASSERT_NE(nullptr, ground_door);
+        ASSERT_NE(nullptr, high_door);
         mover->set_user(0);
-        const Seen before = seen(mover, {door});
+        const Seen before = seen(mover, {door, ground_door, high_door});
         EXPECT_FALSE(world().door_bars_at(321, 320, mover, 0)) << "floor 0: the floor-1 door is not in its piles";
         EXPECT_TRUE(world().door_bars_at(321, 320, mover, 1)) << "floor 1: the door bars the box";
-        EXPECT_FALSE(world().door_bars_at(321, 320, mover, 300)) << "a floor past 120 is asked as floor 120";
-        EXPECT_FALSE(world().door_bars_at(321, 320, mover, -5)) << "a floor below 0 is asked as floor 0";
-        EXPECT_TRUE(before == seen(mover, {door})) << "the questions changed nothing";
+        EXPECT_TRUE(world().door_bars_at(321, 400, mover, -5)) << "a floor below 0 is asked as floor 0";
+        EXPECT_FALSE(world().door_bars_at(321, 400, mover, 1)) << "control: no door there on floor 1";
+        EXPECT_TRUE(world().door_bars_at(321, 480, mover, 300)) << "a floor past 120 is asked as floor 120";
+        EXPECT_TRUE(world().door_bars_at(321, 480, mover, 120));
+        EXPECT_FALSE(world().door_bars_at(321, 480, mover, 119)) << "control: no door there on floor 119";
+        EXPECT_TRUE(before == seen(mover, {door, ground_door, high_door})) << "the questions changed nothing";
         EXPECT_EQ(0u, tw_->events.size()) << "no 'Key N needed!' for the seat";
     }
 }
@@ -358,16 +371,28 @@ TEST_F(SemReach, the_door_question_leaves_the_walkers_own_foe_out)
 }
 
 // og::reach's maps against the route finder (PathingMap::adjacent_cost, which walks the same
-// passability half, og::reach::for_each_step). Six kinds on a painted two-floor field holding a
-// wall, water, tree crowns, a boulder of the decor plane, an air row, two stairs (one landing on
-// air) and a door off the grid: (1) every cell's two answers in the open mode are the terrain's
-// (terrain_passes), and in the shut mode the same except where a barring door meets the box
-// (door_bars_at); (2) "the goal's region is one the start gets to" equals "the solve finds a route
-// or stands on its goal" for a sample naming a start on air, inside terrain, beside the door, start
-// equal to goal, a stair landing on air; (3) a door's death and a key open the shut route, a
-// snapshot applied puts it back; a snapshot's bytes are equal with and without maps built.
-// Fails when broken: number_regions without the stair link (P5, P7 differ from the solver); the door
-// half without clearing the closed cell (shut answers differ).
+// passability half, og::reach::for_each_step, with the terrain's answers, terrain_passes). Six kinds
+// on a painted two-floor field holding a wall, water, tree crowns, a boulder of the decor plane, an
+// air row, three stairs (one landing on air, one landing in a walled pocket of floor 1), a pocket
+// of floor 0 whose only way in is a diagonal between two walls that meet at a corner, and a door
+// off the grid: (1) every cell's two answers in the open mode are the terrain's, and in the shut
+// mode the same except where a barring door meets the box (door_bars_at); the kind's view
+// (Asker::cells) answers as the cells do, and for_each_step over the view's open layer emits from
+// every cell exactly the steps it emits over the terrain's answers (adjacent_cost's), over its shut
+// layer the steps of the shut answers; (2) "the goal's region is one the start gets to" equals
+// "the solve finds a route or stands on its goal" for a sample naming a start on air, inside
+// terrain, beside the door, start equal to goal, a stair landing on air, the corner pocket and the
+// up-stair's link walked backwards; (3) a door's death and a key open the shut route, a snapshot
+// applied puts it back; a snapshot's bytes are equal with and without maps built.
+// Why no pair for a diagonal past an air flank on a one-floor field: the flank test refuses only
+// what the step test refuses or air (terrain_passes), and an air cell a step may end on is itself a
+// way round the diagonal (two straight steps through it), so it never changes a region; only a
+// flank the step test also refuses (the corner pocket's walls) can.
+// Fails when broken: number_regions without the stair link (the stair pairs differ from the solver);
+// the regions' walk answering every flank test yes (the corner pocket is reached); a stair link
+// walked both ways (the pocket of floor 1 reaches floor 0); the door half without clearing the
+// closed cell (shut answers differ); a stored layer read with the step bit for a flank test (the
+// view of the one-floor air cell); the view's open layer read from the shut one (the door's cells).
 TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
 {
     const auto paint = [&]() {
@@ -396,6 +421,17 @@ TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
         }
         wall_column(33, 12, 16);
         wall_column(37, 12, 16);
+        // The corner pocket: (16,35) walled on seven sides; its eighth neighbour (17,34) is open,
+        // and the diagonal from it passes between the walls at (16,34) and (17,35).
+        const int pocket[][2] = {{15, 34}, {16, 34}, {15, 35}, {17, 35}, {15, 36}, {16, 36}, {17, 36}};
+        for (const auto& c : pocket)
+            tile(0, c[0], c[1], PIX_H_WALL1);
+        // An up-stair at (25,36) whose landing on floor 1 is walled on all eight sides.
+        tile(0, 25, 36, PIX_ZSTAIR_UP);
+        for (int x = 24; x <= 26; ++x)
+            for (int y = 35; y <= 37; ++y)
+                if (x != 25 || y != 36)
+                    tile(1, x, y, PIX_H_WALL1);
     };
     paint();
     walker* door = door_at(178, 150);
@@ -430,9 +466,12 @@ TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
         {"across the air row", {5, 23, 1}, {5, 28, 1}},
         {"round the trees", {27, 4, 0}, {32, 4, 0}},
         {"into a walled box", {31, 14, 0}, {35, 14, 0}},
+        {"into the corner pocket", {19, 33, 0}, {16, 35, 0}},
+        {"down the up-stair's link", {25, 36, 1}, {25, 38, 0}},
     };
-    // The plain walker's answers, worked out from the paint: every pair has a route but the box.
-    const bool plain[] = {true, true, true, true, true, true, true, true, true, false};
+    // The plain walker's answers, worked out from the paint: every pair has a route but the box,
+    // the corner pocket and the walled landing.
+    const bool plain[] = {true, true, true, true, true, true, true, true, true, false, false, false};
     for (const Kind& k : kinds) {
         SCOPED_TRACE(k.name);
         w->stats()->set_bit_flags(BIT_FLYING | BIT_FORESTWALK | BIT_SWIMMING | BIT_ETHEREAL, 0);
@@ -441,6 +480,8 @@ TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
         w->set_sizex(k.size);
         w->set_sizey(k.size);
         const bool nonflyer = !w->flies();
+        const og::reach::CellsView view = og::reach::Asker(*w).cells();
+        std::vector<CellAnswer> shut_answers(static_cast<std::size_t>(2 * kW * kW));
         int closed = 0;
         for (int f = 0; f < 2; ++f) {
             for (int y = 0; y < kW; ++y) {
@@ -457,13 +498,57 @@ TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
                     const CellAnswer shut = og::reach::cell_answer(*w, c, Mode::Shut);
                     const CellAnswer want_shut = (terrain.step && door_meets) ? CellAnswer{} : terrain;
                     ASSERT_EQ(want_shut, shut) << cell_name(c) << " shut";
+                    shut_answers[static_cast<std::size_t>((f * kW + y) * kW + x)] = want_shut;
                     closed += (terrain.step && door_meets) ? 1 : 0;
+                    ASSERT_EQ(shut.step, view(x * GRID_SIZE, y * GRID_SIZE, f, og::reach::StepTest::Step))
+                        << cell_name(c) << " the view, shut";
+                    ASSERT_EQ(shut.flank, view(x * GRID_SIZE, y * GRID_SIZE, f, og::reach::StepTest::Flank))
+                        << cell_name(c) << " the view, shut";
+                    ASSERT_EQ(terrain.step, view.passes(Mode::Open, x * GRID_SIZE, y * GRID_SIZE, f, og::reach::StepTest::Step))
+                        << cell_name(c) << " the view, open";
+                    ASSERT_EQ(terrain.flank, view.passes(Mode::Open, x * GRID_SIZE, y * GRID_SIZE, f, og::reach::StepTest::Flank))
+                        << cell_name(c) << " the view, open";
                 }
             }
         }
         EXPECT_EQ(k.size == 16 ? 4 : 6, closed)
             << "the door at 178,150 closes the four grass cells (11..12, 9..10) of a 16 px kind; of a "
                "32 px kind the six of (10..12, 9..10), row 8 under the 32 px box being wall";
+        // The steps for_each_step emits from every cell: over the terrain's answers (adjacent_cost's
+        // own Cells) and over the view's open layer; over the shut answers and the view itself.
+        using Step = std::tuple<int, int, int, og::reach::StepKind>;
+        const auto steps = [&](int x, int y, int f, const auto& cells) {
+            std::vector<Step> out;
+            og::reach::for_each_step(world(), *w, x * GRID_SIZE, y * GRID_SIZE, f, multifloor, nonflyer, cells,
+                                     [&out](int ax, int ay, int af, og::reach::StepKind kind) {
+                                         out.emplace_back(ax, ay, af, kind);
+                                     });
+            return out;
+        };
+        const auto terrain_cells = [&](int px, int py, int pf, og::reach::StepTest test) {
+            return og::reach::terrain_passes(world(), *w, px, py, pf, test, multifloor, nonflyer);
+        };
+        const auto open_view = [&view](int px, int py, int pf, og::reach::StepTest test) {
+            return view.passes(Mode::Open, px, py, pf, test);
+        };
+        const auto shut_cells = [&shut_answers](int px, int py, int pf, og::reach::StepTest test) {
+            if (px < 0 || py < 0 || pf < 0 || px / GRID_SIZE >= kW || py / GRID_SIZE >= kW || pf >= 2)
+                return false;
+            const CellAnswer& a = shut_answers[static_cast<std::size_t>((pf * kW + py / GRID_SIZE) * kW + px / GRID_SIZE)];
+            return test == og::reach::StepTest::Step ? a.step : a.flank;
+        };
+        std::size_t emitted = 0;
+        for (int f = 0; f < 2; ++f) {
+            for (int y = 0; y < kW; ++y) {
+                for (int x = 0; x < kW; ++x) {
+                    const std::vector<Step> by_terrain = steps(x, y, f, terrain_cells);
+                    ASSERT_EQ(by_terrain, steps(x, y, f, open_view)) << cell_name(Cell{x, y, f}) << " open steps";
+                    ASSERT_EQ(steps(x, y, f, shut_cells), steps(x, y, f, view)) << cell_name(Cell{x, y, f}) << " shut steps";
+                    emitted += by_terrain.size();
+                }
+            }
+        }
+        EXPECT_GT(emitted, static_cast<std::size_t>(kW * kW)) << "the staging: steps to compare";
         for (std::size_t i = 0; i < std::size(pairs); ++i) {
             const Pair& p = pairs[i];
             SCOPED_TRACE(p.name);
@@ -525,6 +610,9 @@ TEST_F(SemReach, the_maps_steps_and_regions_are_the_route_finders_for_six_kinds)
     ASSERT_NE(nullptr, walker1);
     EXPECT_EQ((CellAnswer{true, false}), og::reach::cell_answer(*walker1, {8, 8, 0}, Mode::Open));
     EXPECT_EQ((CellAnswer{true, false}), og::reach::cell_answer(*walker1, {8, 8, 0}, Mode::Shut));
+    const og::reach::CellsView air_view = og::reach::Asker(*walker1).cells();
+    EXPECT_TRUE(air_view(8 * GRID_SIZE, 8 * GRID_SIZE, 0, og::reach::StepTest::Step)) << "the view reads the step bit";
+    EXPECT_FALSE(air_view(8 * GRID_SIZE, 8 * GRID_SIZE, 0, og::reach::StepTest::Flank)) << "and the flank bit";
     walker1->stats()->set_bit_flags(BIT_FLYING, 1);
     EXPECT_EQ((CellAnswer{true, true}), og::reach::cell_answer(*walker1, {8, 8, 0}, Mode::Open));
 }
@@ -553,8 +641,10 @@ TEST_F(SemReach, every_writer_of_the_doors_and_the_terrain_bumps_its_count)
     ASSERT_EQ(1, om.add(door, 160, 160));
     EXPECT_EQ(writes + 1, om.door_writes()) << "filed";
     EXPECT_EQ((std::vector<Cell>{{10, 10, 0}}), og::reach::closed_cells(*bot, *door));
+    EXPECT_TRUE(om.files_a_door());
     ASSERT_EQ(1, om.remove(door));
     EXPECT_EQ(writes + 2, om.door_writes()) << "taken out";
+    EXPECT_FALSE(om.files_a_door()) << "the only door taken out";
     EXPECT_TRUE(og::reach::closed_cells(*bot, *door).empty()) << "a door filed nowhere bars nothing";
     ASSERT_EQ(1, om.add(door, 160, 160));
 
@@ -908,8 +998,13 @@ TEST_F(SemReach, a_door_off_the_grid_closes_exactly_the_cells_its_box_meets)
 
 // With the setting off nothing is asked and no map is built: every question answers today's
 // ("not judged"), the build counter stays 0, also through a 600-tick battle beside doors. With the
-// setting on the same first question builds a terrain half and a door half (2).
-// Fails when broken: judged() without its setting test (the counter moves with the setting off).
+// setting on the same first question builds a terrain half and a door half (2). An orc bot in a pen
+// whose gap holds an enemy door, a second door just outside the gap (the two touch), its foe
+// outside; an archer bot far off, the foe outside its firing box.
+// Fails when broken: judged() without its setting test (the counter moves with the setting off);
+// the shot term without its not-judged exit (the archer's far foe reads "no shot" with the setting
+// off); cell_answer's not-judged arm answering no terrain (the door's cell reads closed, or the
+// wall's open).
 TEST_F(SemReach, nothing_is_asked_or_built_with_the_setting_off)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -917,9 +1012,12 @@ TEST_F(SemReach, nothing_is_asked_or_built_with_the_setting_off)
         fresh_world(fixes);
         const Cell gap = pen(10, 10, 14, 14);
         walker* door = door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
+        walker* door2 = door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>((gap.y - 1) * GRID_SIZE));
         walker* orc = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
         walker* foe = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
-        ASSERT_TRUE(door && orc && foe);
+        walker* archer = living_at(FAMILY_ARCHER, 1, 30 * GRID_SIZE, 30 * GRID_SIZE, 16, 16);
+        ASSERT_TRUE(door && door2 && orc && foe && archer);
+        archer->set_lineofsight(5);  // a box of 80 px; the foe is 288 px off on each axis
         const og::reach::Maps& maps = world().reach_maps;
         const bool on = fixes != 0;
         EXPECT_EQ(on ? Exit::DoorShut : Exit::NotAsked, og::reach::door_shut_exit(*orc, *foe));
@@ -927,6 +1025,7 @@ TEST_F(SemReach, nothing_is_asked_or_built_with_the_setting_off)
         EXPECT_EQ(!on, og::reach::walks_to(*orc, *foe, Mode::Shut));
         EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Open));
         EXPECT_EQ(!on, og::reach::gets_at(*orc, *foe));
+        EXPECT_EQ(!on, og::reach::shoots_at(*archer, *foe)) << "off: not judged (yes); on: outside the firing box";
         EXPECT_EQ((Cell{12, 12, 0}), og::reach::start_cell(*orc));
         EXPECT_EQ(on ? 1u : 0u, og::reach::closed_cells(*orc, *door).size());
         EXPECT_EQ(!on, og::reach::reaches(*orc, {12, 12, 0}, {12, 5, 0}, Mode::Shut));
@@ -934,6 +1033,20 @@ TEST_F(SemReach, nothing_is_asked_or_built_with_the_setting_off)
         EXPECT_EQ(on, !og::reach::approach_cells(*orc, *foe, Mode::Open).empty());
         Cell near{};
         EXPECT_EQ(on, og::reach::nearest_approach(*orc, *foe, Mode::Open, near));
+        EXPECT_EQ((CellAnswer{}), og::reach::cell_answer(*orc, {10, 12, 0}, Mode::Shut)) << "the pen's wall, either way";
+        EXPECT_EQ((on ? CellAnswer{} : CellAnswer{true, true}), og::reach::cell_answer(*orc, gap, Mode::Shut))
+            << "the door's cell: closed with the setting on, the terrain's grass with it off";
+        og::reach::Asker asker(*orc);
+        const og::reach::CellsView view = asker.cells();
+        EXPECT_EQ(on, view.shut != nullptr);
+        EXPECT_EQ(on, view.passes(Mode::Open, 12 * GRID_SIZE, 5 * GRID_SIZE, 0, og::reach::StepTest::Step))
+            << "off: the empty view holds no standing cell";
+        EXPECT_EQ(on ? (std::vector<const walker*>{door, door2}) : std::vector<const walker*>{}, asker.barring_doors(0));
+        EXPECT_EQ(on, !asker.regions_touched(*door).empty());
+        EXPECT_EQ(on ? (std::vector<const walker*>{door2}) : std::vector<const walker*>{}, asker.doors_touched(*door));
+        const int outside = og::reach::region_of(*orc, {12, 5, 0}, Mode::Shut);
+        EXPECT_EQ(on ? (std::vector<const walker*>{door2}) : std::vector<const walker*>{},
+                  asker.doors_beside(on ? outside : 0));
         EXPECT_EQ(on ? 2u : 0u, maps.builds()) << "the orc's kind: a terrain half and a door half";
         // A battle beside doors.
         fresh_world(fixes);
@@ -1245,4 +1358,148 @@ TEST_F(SemReach, a_bot_is_shut_out_by_an_enemy_only_a_door_keeps_from_it)
     EXPECT_TRUE(og::reach::shut_out(*orc)) << "a tent outside";
     door->set_team_num(1);
     EXPECT_FALSE(og::reach::shut_out(*orc)) << "no barring door";
+}
+
+// A walker holding no key is asked as a kind of its own (og::reach::Asker with keys given,
+// door_bars with keys given): an orc bot outside a pen, holding the key of the enemy door in the
+// pen's gap, walks to its foe inside; the same orc asked holding no key does not (only the door
+// keeps it: door-shut), and the door closes its cell in that kind's map; asking changes no key of
+// the orc. Setting on.
+// Fails when broken: door_bars reading the mover's own keys instead of the keys given (the keyless
+// orc walks through the door).
+TEST_F(SemReach, a_walker_holding_no_key_is_asked_as_a_kind_of_its_own)
+{
+    const Cell gap = pen(10, 10, 14, 14);
+    walker* door = door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
+    walker* foe = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+    walker* orc = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
+    ASSERT_TRUE(door && foe && orc);
+    const std::uint32_t key = static_cast<std::uint32_t>(key_level_mask(door->stats()->level()));
+    orc->set_keys(key);
+    EXPECT_FALSE(og::reach::door_bars(orc, door)) << "its own key is held";
+    EXPECT_FALSE(og::reach::door_bars(orc, door, key)) << "the same keys given";
+    EXPECT_TRUE(og::reach::door_bars(orc, door, 0)) << "no key given: the door bars it";
+    EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "its key opens the pen";
+    EXPECT_EQ(Exit::NoBarringDoor, og::reach::door_shut_exit(*orc, *foe));
+    EXPECT_TRUE(og::reach::closed_cells(*orc, *door).empty());
+    og::reach::Asker keyless(*orc, 0);
+    EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut)) << "holding no key it would not walk to its foe";
+    EXPECT_TRUE(keyless.walks_to(*foe, Mode::Open));
+    EXPECT_EQ(Exit::DoorShut, keyless.door_shut_exit(*foe)) << "only the door keeps the keyless orc from its foe";
+    EXPECT_EQ((std::vector<Cell>{{gap.x, gap.y, 0}}), keyless.closed_cells(*door));
+    EXPECT_EQ(key, orc->keys()) << "asking changed no key";
+}
+
+// The door walk's facts, kept with each door half (reach.cpp, note_touches; Asker::barring_doors,
+// regions_touched, doors_touched, doors_beside). A wall band three cells deep (rows 10 to 12) across
+// the field; at column 20 a doorway two doors deep with no floor between them (door A in row 10,
+// door B in row 11, row 12 open); at column 30 a doorway with floor between (door C in row 10, the
+// cell of row 11 open, door D in row 12); two doors on one spot north of the band at (8,5), E and
+// F; a door of the bot's side at (25,5), G. A 16 px orc bot north of the band. Each barring door
+// closes its own cell. North of the band is region N, south of it S, the cell (30,11) between C
+// and D a region of its own, M. A touches N and B; B touches A and S (through row 12); C touches N
+// and M, D touches M and S, and C and D do not touch; E and F touch each other (they close the
+// same cell) and N; G bars nothing. Setting on.
+// Fails when broken: note_touches reading the closed cell's own region instead of its
+// 4-neighbours' (no region is touched); only the closed cells themselves compared between doors (A
+// and B do not touch); only the 4-neighbours compared (E and F do not touch); the per-region list
+// left empty; barring_doors not asking the floor (floor 1 lists the doors of floor 0).
+TEST_F(SemReach, the_door_half_keeps_the_regions_and_the_doors_each_barring_door_touches)
+{
+    for (int y = 10; y <= 12; ++y)
+        wall_row(y, 0, kW - 1);
+    tile(0, 20, 10, PIX_GRASS1);
+    tile(0, 20, 11, PIX_GRASS1);
+    tile(0, 20, 12, PIX_GRASS1);
+    tile(0, 30, 10, PIX_GRASS1);
+    tile(0, 30, 11, PIX_GRASS1);
+    tile(0, 30, 12, PIX_GRASS1);
+    walker* a = door_at(20 * GRID_SIZE, 10 * GRID_SIZE);
+    walker* b = door_at(20 * GRID_SIZE, 11 * GRID_SIZE);
+    walker* c = door_at(30 * GRID_SIZE, 10 * GRID_SIZE);
+    walker* d = door_at(30 * GRID_SIZE, 12 * GRID_SIZE);
+    walker* e = door_at(8 * GRID_SIZE, 5 * GRID_SIZE);
+    walker* f = door_at(8 * GRID_SIZE, 5 * GRID_SIZE);
+    walker* g = door_at(25 * GRID_SIZE, 5 * GRID_SIZE, 1);
+    walker* orc = living_at(FAMILY_ORC, 1, 5 * GRID_SIZE, 3 * GRID_SIZE, 16, 16);
+    ASSERT_TRUE(a && b && c && d && e && f && g && orc);
+    using Doors = std::vector<const walker*>;
+    og::reach::Asker asker(*orc);
+    const int n = asker.region_of({5, 5, 0}, Mode::Shut);
+    const int s = asker.region_of({5, 15, 0}, Mode::Shut);
+    const int m = asker.region_of({30, 11, 0}, Mode::Shut);
+    ASSERT_GE(n, 0);
+    ASSERT_GE(s, 0);
+    ASSERT_GE(m, 0);
+    ASSERT_NE(n, s) << "the staging: the doors part the field";
+    ASSERT_NE(n, m);
+    ASSERT_NE(m, s);
+    EXPECT_EQ((Doors{a, b, c, d, e, f}), asker.barring_doors(0)) << "the world's order; G is of the orc's side";
+    EXPECT_EQ(Doors{}, asker.barring_doors(1)) << "no door is filed on floor 1";
+    const auto sorted = [](std::vector<int> v) {
+        std::sort(v.begin(), v.end());
+        return v;
+    };
+    EXPECT_EQ(std::vector<int>{n}, asker.regions_touched(*a));
+    EXPECT_EQ(std::vector<int>{s}, asker.regions_touched(*b)) << "through the open cell of row 12";
+    EXPECT_EQ(sorted({n, m}), asker.regions_touched(*c));
+    EXPECT_EQ(sorted({m, s}), asker.regions_touched(*d));
+    EXPECT_EQ(std::vector<int>{n}, asker.regions_touched(*e));
+    EXPECT_EQ(std::vector<int>{n}, asker.regions_touched(*f));
+    EXPECT_TRUE(asker.regions_touched(*g).empty()) << "a door of its side bars nothing";
+    EXPECT_EQ(Doors{b}, asker.doors_touched(*a)) << "two doors in a row, no floor between";
+    EXPECT_EQ(Doors{a}, asker.doors_touched(*b));
+    EXPECT_EQ(Doors{}, asker.doors_touched(*c)) << "floor between C and D";
+    EXPECT_EQ(Doors{}, asker.doors_touched(*d));
+    EXPECT_EQ(Doors{f}, asker.doors_touched(*e)) << "two doors closing the same cell";
+    EXPECT_EQ(Doors{e}, asker.doors_touched(*f));
+    EXPECT_EQ((Doors{a, c, e, f}), asker.doors_beside(n));
+    EXPECT_EQ((Doors{c, d}), asker.doors_beside(m));
+    EXPECT_EQ((Doors{b, d}), asker.doors_beside(s));
+    EXPECT_EQ(Doors{}, asker.doors_beside(-1));
+}
+
+// An asker (og::reach::Asker) is resolved to its kind once (Maps::resolutions): twelve door-shut
+// questions of one Asker and its shut_out resolve it once, and a free question is one resolution
+// (not one per exit it passes); after the walker moves, a door dies or comes back, or the walker
+// picks up a key, the next question of the same Asker resolves again and answers the world as it
+// now stands. An orc bot in a pen whose gap holds an enemy door, twelve foes outside. Setting on.
+// Fails when broken: Asker::fresh resolving at every question (the counts move per question);
+// Asker::fresh keeping its resolution when the walker moved (the start cell is the old one).
+TEST_F(SemReach, an_asker_is_resolved_once_and_resolved_again_when_what_it_read_changes)
+{
+    const Cell gap = pen(10, 10, 14, 14);
+    walker* door = door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
+    walker* orc = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+    ASSERT_TRUE(door && orc);
+    std::vector<walker*> foes;
+    for (int i = 0; i < 12; ++i) {
+        walker* foe = living_at(FAMILY_SOLDIER, 2, static_cast<short>((2 + 2 * i) * GRID_SIZE), 3 * GRID_SIZE, 16, 16);
+        ASSERT_NE(nullptr, foe);
+        foes.push_back(foe);
+    }
+    const og::reach::Maps& maps = world().reach_maps;
+    og::reach::Asker asker(*orc);
+    const std::uint64_t before = maps.resolutions();
+    for (walker* foe : foes)
+        EXPECT_EQ(Exit::DoorShut, asker.door_shut_exit(*foe));
+    EXPECT_TRUE(asker.shut_out());
+    EXPECT_EQ((Cell{12, 12, 0}), asker.start_cell());
+    EXPECT_EQ(before + 1, maps.resolutions()) << "fourteen questions of one Asker, one resolution";
+    EXPECT_EQ(Exit::DoorShut, og::reach::door_shut_exit(*orc, *foes[0]));
+    EXPECT_EQ(before + 2, maps.resolutions()) << "a free question is one resolution";
+
+    orc->setxy(static_cast<short>(12 * GRID_SIZE), static_cast<short>(5 * GRID_SIZE));
+    EXPECT_EQ((Cell{12, 5, 0}), asker.start_cell()) << "the walker moved out of the pen";
+    EXPECT_EQ(Exit::WalksShut, asker.door_shut_exit(*foes[0]));
+    EXPECT_EQ(before + 3, maps.resolutions());
+    orc->setxy(static_cast<short>(12 * GRID_SIZE), static_cast<short>(12 * GRID_SIZE));
+    EXPECT_EQ(Exit::DoorShut, asker.door_shut_exit(*foes[0])) << "back in the pen";
+    door->set_dead(1);
+    EXPECT_EQ(Exit::NoBarringDoor, asker.door_shut_exit(*foes[0])) << "the door's death is read at the next question";
+    door->set_dead(0);
+    EXPECT_EQ(Exit::DoorShut, asker.door_shut_exit(*foes[0])) << "and its coming back";
+    orc->set_keys(static_cast<std::uint32_t>(key_level_mask(door->stats()->level())));
+    EXPECT_EQ(Exit::NoBarringDoor, asker.door_shut_exit(*foes[0])) << "a key picked up is read at the next question";
+    EXPECT_TRUE(asker.walks_to(*foes[0], Mode::Shut));
 }
