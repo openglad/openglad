@@ -13,6 +13,7 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -536,9 +537,17 @@ public:
     // Scan all live, non-dormant foes and return the nearest by 2D distance;
     // floor-blind except for a flyer on a level with floors (#512).
     walker* find_nearest_foe(walker* ob);
+    // The one test of a foe candidate that the quick foe search, the full scan, the range finder
+    // (find_foes_in_range) and og::reach::shut_out ask: `w` is alive, awake (not dormant), visible
+    // (not hidden), not friendly to `searcher`, and a Living or a Generator. No cloak roll (each
+    // search makes its own), no draw. Defined at the end of game_world.cpp.
+    [[nodiscard]] static bool foe_candidate(const walker& searcher, const walker& w);
     // The full foe scan's answer, kept in its one pass: the nearest foe on any
     // floor and, for a living that flies on a level with more than one floor,
-    // the nearest on its own floor (#512).
+    // the nearest on its own floor (#512). With Gameplay Fixes on a candidate
+    // that would replace either pick and that only a locked door keeps the
+    // searcher from (og::reach, asked of one Asker for the whole scan) is
+    // passed over for both (fix BJ).
     struct NearestFoePick
     {
         walker* any = nullptr;
@@ -546,7 +555,8 @@ public:
         walker* own = nullptr;
         std::int32_t own_distance = 10000;
         int own_floor = -1;  // -1: the searcher does not fly, or the level has one floor
-        void set_searcher(const walker& ob, int floors);
+        std::optional<og::reach::Asker> asker;  // the searcher, for the door question
+        void set_searcher(walker& ob, int floors);
         void offer(walker* foe, std::int32_t distance);
         [[nodiscard]] walker* answer() const;
     };
@@ -560,6 +570,9 @@ public:
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                      std::int32_t range, std::int32_t* howmany, walker* ob);
+    // The live, awake, visible, non-friendly Livings and Generators within range (foe_candidate);
+    // no cloak roll. While a bot's cast rule is asked (cast_rule_for names it) a candidate only a
+    // locked door keeps that bot from is left out of the list and the count (Gameplay Fixes BJ).
     std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                           std::int32_t range, std::int32_t* howmany, walker* ob);
     // Live hostile weapons in range; normal projectiles use weaplist, and
@@ -653,6 +666,28 @@ public:
     // enemy door without the clash roll, so the door stops it and nothing is drawn (fix BF). Null
     // at every other time; never saved, never sent. The old game's field has the same name.
     const walker* slit_open_for = nullptr;
+    // While living::check_special asks a bot's cast rule (its family's check_special_ai, through
+    // living::cast_rule) this names that bot, and find_foes_in_range, asked by it, leaves out of its
+    // list and its count every candidate that only a locked door keeps the bot from (Gameplay Fixes
+    // BJ; og::reach::door_shut). Null at every other time, and for a walker og::reach::asks does not
+    // name; never saved, never sent. Set and cleared by CastRuleScope alone.
+    const walker* cast_rule_for = nullptr;
+    // Names `bot` in cast_rule_for for its lifetime and puts the old value back on every way out.
+    class CastRuleScope
+    {
+    public:
+        CastRuleScope(GameWorld& world, const walker* bot) : world_(world), before_(world.cast_rule_for)
+        {
+            world_.cast_rule_for = bot;
+        }
+        ~CastRuleScope() { world_.cast_rule_for = before_; }
+        CastRuleScope(const CastRuleScope&) = delete;
+        CastRuleScope& operator=(const CastRuleScope&) = delete;
+
+    private:
+        GameWorld& world_;
+        const walker* before_;
+    };
     // Whether `w` is the test weapon line_check_flight is flying now (slit_open_for); false for
     // null. The door rule of Gameplay Fixes BF asks this.
     [[nodiscard]] bool is_line_check_probe(const walker* w) const
@@ -800,6 +835,11 @@ private:
         clear_grid_dirty_tiles();
         reach_maps.note_terrain();
     }
+    // find_foes_in_range's cast-rule filter (Gameplay Fixes BJ): `w` is left out when the walker
+    // asking (`ob`) is the bot cast_rule_for names and only a locked door keeps it from `w`; the
+    // range finder's one Asker of `ob` is made on the first candidate it asks about. Defined at the
+    // end of game_world.cpp.
+    bool cast_rule_leaves_out(walker& ob, const walker& w, std::optional<og::reach::Asker>& asker) const;
     walker* add_to_list(Order order, std::int32_t family,
                         EntityList& target_list,
                         bool count_living, bool atstart);

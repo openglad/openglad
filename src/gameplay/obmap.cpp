@@ -485,10 +485,12 @@ static bool passes_on_the_clash(const walker* ob, const walker* w, bool quiet, b
     // tests: SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
     if (w->family() == FAMILY_DOOR && current_game->world->is_line_check_probe(ob))
         return false;
-    // rule: og::reach: a detached test weapon (built with WeaponProfileProbeTag: dormant from its
-    //   construction, never in the body map, never acting; the shot term's) passes every other
-    //   enemy weapon-order body (a grown tree, a shot in flight) without a roll, as a quiet probe
-    //   does, and draws nothing.
+    // rule: og::reach: any dormant weapon passes every other enemy weapon-order body (a grown
+    //   tree, a shot in flight) without a roll, as a quiet probe does, and draws nothing. The only
+    //   dormant weapon ever flown loudly is the shot term's detached test weapon (built with
+    //   WeaponProfileProbeTag: dormant from its construction, never in the body map, never acting):
+    //   the loader makes no weapon dormant, a dormant walker does not act (GameWorld::tick), no
+    //   script can set the flag, and the line check's own weapon is a body create_weapon adds.
     // tests: SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
     if (ob->dormant())
         return true;

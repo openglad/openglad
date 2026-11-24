@@ -627,10 +627,10 @@ bool living::act_round()
 					// rule: Seeking: a bot without a foe looks for a near one; with a foe it snaps
 					//   its facing to the nearest even (orthogonal) direction and searches for it
 					//   for 300 steps; with none near it either finds the nearest foe anywhere
-					//   (half the time) or wanders 20 steps.
-					// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-					// tests: CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command
-					// tests: SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero
+					//   (half the time) or wanders 20 steps (statistics::idle_walk: with Gameplay
+					//   Fixes BJ a bot shut out by a locked door stays where it is).
+					// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches, CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command
+					// tests: SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
 					if (!foe())
 					{
 						set_foe(current_game->world->find_near_foe(this));
@@ -648,7 +648,7 @@ bool living::act_round()
 					else if (!current_game->world->rng_.next(2))
 						set_foe(current_game->world->find_nearest_foe(this));
 					else
-						stats_->try_random_walk(20);
+						stats_->idle_walk(20);
 
 					return 1;
 				}
@@ -920,12 +920,12 @@ bool living::check_special()
 	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 
 	auto* fd = get_family_descriptor(family());
-	const auto hook_result = og::script::hooks::check_special_ai(fd, this);
-	// rule: The family's Lua bot gate (check_special_ai) can refuse the cast (no foe in reach,
-	//   nothing to heal...); without a gate a bot always may.
-	// tests: LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no
-	// tests: KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced
-	// tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot
+	const auto hook_result = cast_rule(fd);
+	// rule: The family's Lua bot gate (check_special_ai, asked by cast_rule) can refuse the cast (no
+	//   foe in reach, nothing to heal...); without a gate a bot always may. With Gameplay Fixes BJ
+	//   the gate's range finder counts no foe only a locked door keeps the bot from.
+	// tests: LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no, KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced
+	// tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot, SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
 	if (hook_result.has_value() && !*hook_result)
 		return false;
 	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold
@@ -1062,14 +1062,14 @@ bool living::act_random()
 
 	// Find our foe
 	// rule: act_random retargets to a near foe one time in 80 (or whenever it has none); with no
-	//   foe near it wanders 40 steps.
-	// tests: WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue
-	// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none
+	//   foe near it wanders 40 steps (statistics::idle_walk: with Gameplay Fixes BJ a bot shut out
+	//   by a locked door stays where it is).
+	// tests: WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue, LivingCombat.living_round7_act_random_and_do_action_targeted_branches
+	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
 	if (!current_game->world->rng_.next(80) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
 	if (!foe())
-		return stats_->try_random_walk(40);
+		return stats_->idle_walk(40);
 
 	xdist = static_cast<short>(foe()->xpos() - xpos());
 	ydist = static_cast<short>(foe()->ypos() - ypos());
@@ -1157,13 +1157,13 @@ bool living::do_action()
 			// tests: LivingUnit.living_r11_act_owner_dead_and_action_follow
 			if (!leader())
 				return 0;       // continue as normal ... shouldn't happen
-			// rule: An ally on Follow (Summon Defense) fights its own foe if it has one.
-			// tests: LivingCombat.living_walk_and_do_action_edge_branches
-			// tests: LivingCombat.living_do_action_follow_leader_null_and_command_paths
-			// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai
-			// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-			// tests: LivingUnit.living_r11_act_owner_dead_and_action_follow
-			if (leader()->foe())
+			// rule: An ally on Follow (Summon Defense) takes up its leader's foe, but with Gameplay
+			//   Fixes BJ not one only a locked door keeps it from (og::reach::door_shut): then it
+			//   follows as it does when the leader has no foe.
+			// tests: LivingCombat.living_walk_and_do_action_edge_branches, LivingCombat.living_do_action_follow_leader_null_and_command_paths
+			// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai, LivingCombat.living_round7_act_random_and_do_action_targeted_branches
+			// tests: LivingUnit.living_r11_act_owner_dead_and_action_follow, SemBotReach.a_follower_follows_instead_of_taking_its_leaders_foe_behind_a_door
+			if (leader()->foe() && !og::reach::door_shut(*this, *leader()->foe()))
 			{
 				set_foe(leader()->foe());
 				return 0;       // continue from this point ..
@@ -1192,4 +1192,20 @@ bool living::leaves_a_door_alone(const walker* body) const
 	// tests: SemBotDoor.a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
 	return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&
 	       body != foe();
+}
+
+// The family's bot gate asked for a cast (check_special), Gameplay Fixes BJ: while it is asked, a
+// bot that og::reach::asks names is named on the world (GameWorld::cast_rule_for), and the range
+// finder it calls (GameWorld::find_foes_in_range) leaves out every foe only a locked door keeps it
+// from. Whom an effect strikes and the cast itself are asked outside this call. Appended at the end
+// of the file so the parity pins above stay on their lines.
+std::optional<bool> living::cast_rule(const FamilyDescriptor* fd)
+{
+	// rule: Gameplay Fixes BJ: the cast rule of a bot og::reach::asks names is asked with that bot
+	//   named (the scope puts the old name back on every way out); any other walker's (a player's
+	//   fighter, a tower, a guard at its post, every walker with the setting off) is asked with
+	//   nobody named, as before.
+	// tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
+	const GameWorld::CastRuleScope named(*current_game->world, og::reach::asks(this) ? this : nullptr);
+	return og::script::hooks::check_special_ai(fd, this);
 }

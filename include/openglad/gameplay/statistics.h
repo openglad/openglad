@@ -158,6 +158,27 @@ class statistics
 		// floor (#447: a flyer never changes floors). Defined at the end of
 		// stats.cpp.
 		bool near_adopts(const walker* near_foe, std::uint32_t held_distance, bool flyer) const;
+		// Gameplay Fixes BJ: a bot treats an enemy that only a locked door keeps it from as if it
+		// were not there (og::reach::door_shut_exit). All defined at the end of stats.cpp.
+		// keeps_foe: asked of a live held foe at the top of a SEARCH and an ATTACK round; a foe
+		// only a door keeps the bot from is let go (no foe, orders and route cleared: LetGo); one
+		// it holds only by its shot is ByShot; every other foe is Kept.
+		enum class FoeKeep : std::uint8_t { Kept, ByShot, LetGo };
+		FoeKeep keeps_foe();
+		// search_round: the SEARCH order's round with a live foe: keeps_foe, then the hunt
+		// (walk_to_foe), or for a foe held only by the shot a turn to it and the shot test, no step.
+		void search_round();
+		// end_order: the front order's count to 0 (the round's tail pops it), if one is left.
+		void end_order();
+		// attack_step: the ATTACK order's step toward its foe; none for a foe held only by the shot.
+		void attack_step(short xdelta, short ydelta);
+		// shot_attacks: direct_walk's shot test (fire_check; on a pass the orders wiped, a turn to
+		// the foe and an ATTACK of 30+rng(25) rounds); true when it passed.
+		bool shot_attacks(float xdelta, float ydelta);
+		// idle_walk: the wander of a bot with no foe; a bot shut out by a door stays where it is.
+		short idle_walk(std::int32_t rounds);
+		// foes_not_door_shut: how many of `foes` are not door-shut for the bot (the near branch).
+		std::int32_t foes_not_door_shut(const std::list<walker*>& foes);
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
 		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
 		// first, and only a free half takes the classic loud step. Off, the loud step.

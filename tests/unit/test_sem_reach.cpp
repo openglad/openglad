@@ -12,7 +12,10 @@
 // make a map stale, the start cell, the approach cells, the shot term and the exits of door_shut
 // (suite SemReach, each question asked directly); and, in suite SemBotReach, Gameplay Fixes BI, a
 // door a bot cannot open is a wall to it: the bot's route, its straight walk and the push an ally
-// gives it, which ask the maps in play. Each test is named after the rule it asserts, asserts both
+// gives it, which ask the maps in play; and Gameplay Fixes BJ, a bot treats an enemy that only a
+// locked door keeps it from as if it were not there: the foe searches, the top of its rounds, the
+// near branch, a follower, the wander, the hold of a foe kept only by the shot and the cast rules,
+// some in played scenes. Each test is named after the rule it asserts, asserts both
 // settings where the setting decides, and names in its comment the game line whose breaking turns
 // it red.
 //
@@ -44,6 +47,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -1586,6 +1590,74 @@ protected:
                 return st;
         }
     }
+    // A state of the world stream whose first rng_.next(bound) is not 0.
+    static std::uint32_t a_state_whose_first_draw_of(std::uint32_t bound)
+    {
+        for (std::uint32_t st = 1;; ++st) {
+            og::sim::SimRandom r(st);
+            if (r.next(bound) != 0)
+                return st;
+        }
+    }
+    // Eight doors (team 3, 16 x 16) on the cells around the cell (cx, cy): a ring that closes only
+    // its own eight cells (a box touching a door by its edge does not meet it), so a body on (cx, cy)
+    // has no approach cell outside the ring.
+    std::vector<walker*> ring_of_doors(int cx, int cy)
+    {
+        std::vector<walker*> ring;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx)
+                if (dx != 0 || dy != 0)
+                    ring.push_back(door_at(static_cast<short>((cx + dx) * GRID_SIZE),
+                                           static_cast<short>((cy + dy) * GRID_SIZE)));
+        return ring;
+    }
+    // n orcs of team 1 on the cells x 30..39, y 0..(n/10): a crowd of the orc bots' own side, far
+    // from every scene of these tests, that makes the body map hold more than 200 bodies.
+    void crowd(int n)
+    {
+        for (int k = 0; k < n; ++k)
+            ASSERT_NE(nullptr, living_at(FAMILY_ORC, 1, static_cast<short>((30 + k % 10) * GRID_SIZE),
+                                         static_cast<short>((k / 10) * GRID_SIZE), 16, 16));
+    }
+    // A wall ring of PIX_H_WALL1 round the interior [x0..x1] x [y0..y1] (cells), on floor 0.
+    void room(int x0, int y0, int x1, int y1)
+    {
+        for (int x = x0 - 1; x <= x1 + 1; ++x) {
+            tile(0, x, y0 - 1, PIX_H_WALL1);
+            tile(0, x, y1 + 1, PIX_H_WALL1);
+        }
+        for (int y = y0 - 1; y <= y1 + 1; ++y) {
+            tile(0, x0 - 1, y, PIX_H_WALL1);
+            tile(0, x1 + 1, y, PIX_H_WALL1);
+        }
+    }
+    // A bot of a real family and its own box for a played scene, ready to act (walking, not busy).
+    walker* scene_bot(int family, unsigned char team, short x, short y)
+    {
+        walker* w = living_at(family, team, x, y);
+        if (w != nullptr) {
+            w->set_busy(0.0f);
+            w->set_ani_type(ANI_WALK);
+        }
+        return w;
+    }
+    // How many live walkers of the weapon list a walker of `owners` owns (shots and swings in flight).
+    int weapons_owned_by(const std::vector<walker*>& owners)
+    {
+        int n = 0;
+        for (const auto& up : world().weaplist)
+            if (up && !up->dead() && std::find(owners.begin(), owners.end(), up->owner()) != owners.end())
+                ++n;
+        return n;
+    }
+    // The pen of each_exit_of_door_shut_gives_todays_answer: walls round cells 10..14, the gap at the
+    // top (12,10) holding an enemy door (team 3); the door returned.
+    walker* pen_with_a_door()
+    {
+        const Cell gap = pen(10, 10, 14, 14);
+        return door_at(static_cast<short>(gap.x * GRID_SIZE), static_cast<short>(gap.y * GRID_SIZE));
+    }
 };
 
 }  // namespace
@@ -2173,5 +2245,907 @@ TEST_F(SemBotReach, a_tower_and_a_guard_at_its_post_are_bots_to_this_rule)
         ASSERT_FALSE(orders.empty());
         EXPECT_EQ(fixes ? 0 : 1, shoved);
         EXPECT_EQ(fixes ? COMMAND_SEARCH : COMMAND_WALK, orders.front().commandtype);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Gameplay Fixes BJ: a bot treats an enemy that only a locked door keeps it from as if it were
+// not there (the searches, the top of a SEARCH and an ATTACK round, the near branch, a follower,
+// the wander, a bot kept only by its shot, the cast rules). The same fixture: bots are level 4 with
+// 400 hit points and 500 magic and no regeneration, so a blow, a shot or a cast shows in their
+// counts. "Door-shut" is og::reach::door_shut.
+// ---------------------------------------------------------------------------------------------
+
+// The quick foe search (GameWorld::find_near_foe). An orc bot at (320,320); a soldier R (team 2) at
+// cell (24,20), 64 px right, inside a ring of eight doors; a soldier F at (256,256), 128 px off in
+// the open. The spiral reads the body map's 32 px buckets from the orc's outward, its own bucket
+// never: R's bucket (12,10) is its 10th, F's (8,8) its 20th. A lone door with a cloak of 20 stands
+// in bucket (9,10), the 5th, and another in bucket (8,10), the 18th; R wears the same cloak. The body
+// map files a body in every bucket its box covers, its far edge included, so each body stands where
+// its box (16 px from a bucket's corner) covers one bucket and is rolled for once. A cloak
+// of 20 rolls rng.next(1): always 0, one draw; an uncloaked body rolls rng.next(0), which draws
+// nothing (SimRandom), so the draws count the cloaked bodies the search rolled for. Setting off: R
+// is answered after two draws (the first door's, R's). Setting on: only the ring keeps the orc from
+// R (asserted), so R is passed over after its own roll and the search goes on to F: three draws.
+// The same on a crowded map (200 more bodies of the orc's side, beyond the spiral's reach).
+// Fails when broken: find_near_foe without its door term (R answered with the setting on).
+TEST_F(SemBotReach, the_quick_search_passes_over_a_foe_in_a_ring_of_doors_after_its_cloak_roll)
+{
+    for (int crowded = 0; crowded < 2; ++crowded) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") +
+                         (crowded ? ", a crowded map" : ""));
+            fresh_world(fixes);
+            walker* orc = bot_at(320, 320);
+            walker* ringed = living_at(FAMILY_SOLDIER, 2, 24 * GRID_SIZE, 20 * GRID_SIZE, 16, 16);
+            const std::vector<walker*> ring = ring_of_doors(24, 20);
+            walker* far_foe = living_at(FAMILY_SOLDIER, 2, 256, 256, 16, 16);
+            walker* before = door_at(288, 320);
+            walker* after = door_at(256, 320);
+            ASSERT_TRUE(orc && ringed && far_foe && before && after);
+            ASSERT_EQ(8u, ring.size());
+            for (walker* d : ring) {
+                ASSERT_NE(nullptr, d);
+            }
+            if (crowded) {
+                ASSERT_NO_FATAL_FAILURE(crowd(200));
+                ASSERT_GT(world().myobmap->size(), 200u);
+            }
+            ringed->set_invisibility_left(20);
+            before->set_invisibility_left(20);
+            after->set_invisibility_left(20);
+            if (fixes) {
+                ASSERT_TRUE(og::reach::door_shut(*orc, *ringed)) << "the staging: only the ring keeps the orc from R";
+                ASSERT_FALSE(og::reach::door_shut(*orc, *far_foe)) << "the staging: F stands in the open";
+            }
+            const std::uint32_t s0 = world().rng_.state_;
+            walker* found = world().find_near_foe(orc);
+            const int draws = fixes ? 3 : 2;
+            og::sim::SimRandom expect(s0);
+            for (int k = 0; k < draws; ++k)
+                (void)expect.next(1);
+            EXPECT_EQ(fixes ? far_foe : ringed, found);
+            EXPECT_EQ(expect.state_, world().rng_.state_) << "exactly " << draws << " cloak rolls";
+        }
+    }
+}
+
+// The full scan (GameWorld::find_nearest_foe) and its two picks (NearestFoePick). Two floors; an
+// orc bot at (320,320) on floor 0; R inside a ring of doors at (384,320), 64 px; F in the open at
+// (256,256), 128 px; G on floor 1 at (320,416), 96 px. G, R and F, in that list order, wear a cloak
+// of 20: each rolls one draw that always reveals it, so the scan draws three on both settings (it
+// rolls for every candidate before it offers it). A flying orc on a level with floors is answered
+// its own floor's pick: off R, on F (R passed over for the own-floor pick). A walking orc is answered
+// the any-floor pick: off R, on G (R passed over for that pick too; G is on another floor, which the
+// door question does not judge).
+// Fails when broken: NearestFoePick::offer without its door rule (R answered with the setting on).
+TEST_F(SemBotReach, the_full_scan_passes_over_a_foe_in_a_ring_of_doors_for_both_picks)
+{
+    for (int flying = 0; flying < 2; ++flying) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") +
+                         (flying ? ", a flying orc" : ", a walking orc"));
+            fresh_world(fixes);
+            two_floors();
+            walker* orc = bot_at(320, 320);
+            walker* upstairs = living_at(FAMILY_SOLDIER, 2, 320, 416, 16, 16, 1);
+            walker* ringed = living_at(FAMILY_SOLDIER, 2, 24 * GRID_SIZE, 20 * GRID_SIZE, 16, 16);
+            walker* far_foe = living_at(FAMILY_SOLDIER, 2, 256, 256, 16, 16);
+            const std::vector<walker*> ring = ring_of_doors(24, 20);
+            ASSERT_TRUE(orc && upstairs && ringed && far_foe);
+            for (walker* d : ring) {
+                ASSERT_NE(nullptr, d);
+            }
+            if (flying)
+                orc->stats()->set_bit_flags(BIT_FLYING, 1);
+            ASSERT_EQ(flying != 0, orc->flies());
+            for (walker* w : {upstairs, ringed, far_foe})
+                w->set_invisibility_left(20);
+            if (fixes) {
+                ASSERT_TRUE(og::reach::door_shut(*orc, *ringed)) << "the staging: only the ring keeps the orc from R";
+            }
+            const std::uint32_t s0 = world().rng_.state_;
+            walker* found = world().find_nearest_foe(orc);
+            og::sim::SimRandom expect(s0);
+            for (int k = 0; k < 3; ++k)
+                (void)expect.next(1);
+            EXPECT_EQ(expect.state_, world().rng_.state_) << "three cloak rolls on both settings";
+            if (!fixes) {
+                EXPECT_EQ(ringed, found);
+            }
+            else {
+                EXPECT_EQ(flying ? far_foe : upstairs, found);
+            }
+        }
+    }
+}
+
+// The top of a SEARCH and of an ATTACK round (statistics::keeps_foe): a foe handed to a bot without
+// a search is let go there when only a locked door keeps the bot from it. A bot of team 1 in the pen
+// (walls round cells 10..14, an enemy door in the gap at the top); a soldier of team 2 outside, 112
+// px above it. Handed by a script (set_foe), or by the bot's own shot landing (an archer's arrow
+// strikes the soldier: walker::attack makes the struck body its owner's foe). The bot holds the
+// order (10 rounds), a leader of its side and a route of three cells. Setting on: after one round it
+// holds no foe, no order, no leader and no route, stands where it stood, and the round drew nothing.
+// Setting off: it still holds the soldier.
+// Fails when broken: keeps_foe never letting a foe go (the foe kept with the setting on).
+TEST_F(SemBotReach, a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round)
+{
+    for (const int order : {COMMAND_SEARCH, COMMAND_ATTACK}) {
+        for (int by_shot = 0; by_shot < 2; ++by_shot) {
+            for (short fixes : {short{0}, short{1}}) {
+                SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                             (order == COMMAND_SEARCH ? "a SEARCH round, " : "an ATTACK round, ") +
+                             (by_shot ? "handed by its own shot" : "handed by a script"));
+                fresh_world(fixes);
+                ASSERT_NE(nullptr, pen_with_a_door());
+                walker* bot = living_at(by_shot ? FAMILY_ARCHER : FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+                walker* foe = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
+                walker* ally = living_at(FAMILY_ORC, 1, 11 * GRID_SIZE, 13 * GRID_SIZE, 16, 16);
+                ASSERT_TRUE(bot && foe && ally);
+                if (by_shot) {
+                    walker* arrow = bot->create_weapon();
+                    ASSERT_NE(nullptr, arrow);
+                    ASSERT_TRUE(arrow->attack(foe)) << "the staging: the arrow lands";
+                } else {
+                    bot->set_foe(foe);
+                }
+                ASSERT_EQ(foe, bot->foe()) << "the staging: the foe was handed over";
+                if (fixes) {
+                    ASSERT_TRUE(og::reach::door_shut(*bot, *foe)) << "the staging: only the door keeps the bot from it";
+                }
+                bot->stats()->clear_command();
+                bot->stats()->add_command(order, 10, 0, 0);
+                bot->set_leader(ally);
+                bot->path_to_foe.assign(3, PathState{});
+                bot->set_ani_type(ANI_WALK);
+                const short x0 = bot->xpos();
+                const short y0 = bot->ypos();
+                const std::uint32_t s0 = world().rng_.state_;
+                bot->stats()->do_command();
+                if (fixes) {
+                    EXPECT_EQ(nullptr, bot->foe()) << "let go";
+                    EXPECT_TRUE(bot->stats()->commands.empty()) << "its orders cleared";
+                    EXPECT_EQ(nullptr, bot->leader()) << "its leader cleared";
+                    EXPECT_TRUE(bot->path_to_foe.empty()) << "its route cleared";
+                    EXPECT_EQ(x0, bot->xpos());
+                    EXPECT_EQ(y0, bot->ypos());
+                    EXPECT_EQ(s0, world().rng_.state_) << "the round drew nothing";
+                } else {
+                    EXPECT_EQ(foe, bot->foe()) << "classic: the foe is kept";
+                }
+            }
+        }
+    }
+}
+
+// The near branch of walk_to_foe (statistics::foes_not_door_shut). An orc bot at (320,320) holding a
+// soldier H; a soldier R inside a ring of doors 64 px right. The round is a SEARCH round on a re-plan
+// tick (the path counter at 0, a stream whose rng(300) is not 0). (1) H 96 px below: both settings
+// take the near branch (H counts); the quick search passes over R with the setting on, so the bot
+// keeps H and keeps its aim on it (enddir down: it faced up), where the classic bot takes R. (2) A
+// crowded map (200 more bodies of its side) and H 200 px below: the near branch is asked for the
+// crowd; R is the only foe within 100 px. Setting on: it counts no foe, its order ends and no ATTACK
+// is queued, and it keeps H. Setting off: it takes R and queues an ATTACK.
+// Fails when broken: foes_not_door_shut counting a door-shut foe (with the setting on the crowded
+// orc queues an ATTACK).
+TEST_F(SemBotReach, the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from)
+{
+    for (int crowded = 0; crowded < 2; ++crowded) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") +
+                         (crowded ? ", a crowded map, its foe 200 px off" : ", its foe 96 px off"));
+            fresh_world(fixes);
+            walker* orc = bot_at(320, 320);
+            walker* held = living_at(FAMILY_SOLDIER, 2, 320, crowded ? 520 : 416, 16, 16);
+            walker* ringed = living_at(FAMILY_SOLDIER, 2, 24 * GRID_SIZE, 20 * GRID_SIZE, 16, 16);
+            const std::vector<walker*> ring = ring_of_doors(24, 20);
+            ASSERT_TRUE(orc && held && ringed);
+            for (walker* d : ring) {
+                ASSERT_NE(nullptr, d);
+            }
+            if (crowded) {
+                ASSERT_NO_FATAL_FAILURE(crowd(200));
+            }
+            ASSERT_EQ(crowded ? 200 : 96, orc->distance_to_ob(held));
+            ASSERT_EQ(64, orc->distance_to_ob(ringed));
+            if (fixes) {
+                ASSERT_TRUE(og::reach::door_shut(*orc, *ringed));
+                ASSERT_FALSE(og::reach::door_shut(*orc, *held));
+            }
+            orc->set_foe(held);
+            orc->set_curdir(static_cast<signed char>(FACE_UP));
+            orc->set_enddir(static_cast<char>(FACE_UP));
+            orc->set_path_check_counter(0);
+            orc->stats()->clear_command();
+            orc->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+            world().rng_.state_ = a_state_whose_first_draw_of(300);
+            orc->stats()->do_command();
+            bool attack_queued = false;
+            for (const auto& c : orc->stats()->commands)
+                attack_queued = attack_queued || c.commandtype == COMMAND_ATTACK;
+            if (!fixes) {
+                EXPECT_EQ(ringed, orc->foe()) << "classic: the ringed soldier, the nearer";
+                EXPECT_TRUE(attack_queued);
+            } else if (!crowded) {
+                EXPECT_EQ(held, orc->foe()) << "the near branch keeps its foe";
+                EXPECT_TRUE(attack_queued);
+                EXPECT_EQ(FACE_DOWN, static_cast<int>(orc->enddir())) << "its aim on the held soldier";
+            } else {
+                EXPECT_EQ(held, orc->foe());
+                EXPECT_FALSE(attack_queued) << "no foe counted near: no ATTACK";
+            }
+        }
+    }
+}
+
+// An ally following the player's fighter takes up its leader's foe (living::do_action, ACTION_FOLLOW)
+// only when the foe is not door-shut for it. The player's fighter (team 0, seat 0) at (96,400)
+// holds a soldier inside the pen (walls round cells 10..14, an enemy door in the gap); the follower,
+// a bot of team 0, stands at (128,400) with no foe. Setting on: it takes no foe and queues its
+// FOLLOW (the act is spent: 1). Setting off: it takes the soldier (the act goes on: 0).
+// Fails when broken: do_action without its door term (the follower takes the soldier).
+TEST_F(SemBotReach, a_follower_follows_instead_of_taking_its_leaders_foe_behind_a_door)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        ASSERT_NE(nullptr, pen_with_a_door());
+        walker* inside = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+        walker* hero = living_at(FAMILY_SOLDIER, 0, 96, 400, 16, 16);
+        walker* follower = living_at(FAMILY_ORC, 0, 128, 400, 16, 16);
+        ASSERT_TRUE(inside && hero && follower);
+        hero->set_user(0);
+        hero->set_foe(inside);
+        follower->set_action(ACTION_FOLLOW);
+        if (fixes) {
+            ASSERT_TRUE(og::reach::door_shut(*follower, *inside)) << "the staging: only the door keeps it from the soldier";
+        }
+        const bool spent = static_cast<living*>(follower)->do_action();
+        EXPECT_EQ(hero, follower->leader());
+        if (fixes) {
+            EXPECT_TRUE(spent);
+            EXPECT_EQ(nullptr, follower->foe());
+            ASSERT_FALSE(follower->stats()->commands.empty());
+            EXPECT_EQ(COMMAND_FOLLOW, follower->stats()->commands.front().commandtype);
+        } else {
+            EXPECT_FALSE(spent);
+            EXPECT_EQ(inside, follower->foe());
+        }
+    }
+}
+
+// A room that is opened (scene 1K of the trial). The room's interior cells x 16..29, y 8..15, walls
+// round it; a door of a third side (team 2, level 3) in its bottom wall at cell (25,16); twelve orcs
+// (team 1) inside at x 368..464 by y 160..224; four crew bots (team 0: elf, archer, cleric,
+// barbarian) 160 px below the door at y 432. The door is killed at tick 200 by its own death path.
+// Setting on, after every tick to 199: no bot holds a foe, none lost a hit point or a magic point
+// (nobody struck, shot or cast at anybody), the door is whole, and every bot stands where it was put
+// (each is shut out: it queues no wander). On the door's death the maps join the two sides (every
+// orc walks to every crew bot, none is door-shut). After tick 201 every live bot with no leader
+// holds a foe (the tick's hand-out). Setting off: after tick 1 every bot holds a foe already.
+// Fails when broken: the full scan offering a door-shut foe (with the setting on the hand-out gives
+// every bot a foe on tick 1).
+TEST_F(SemBotReach, a_room_opened_by_its_doors_death_joins_both_sides_on_the_next_tick)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        room(16, 8, 29, 15);
+        tile(0, 25, 16, PIX_GRASS1);
+        walker* door = door_at(400, 256, 2, 3);
+        ASSERT_NE(nullptr, door);
+        std::vector<walker*> orcs, crew;
+        for (short y : {short{160}, short{192}, short{224}})
+            for (short x : {short{368}, short{400}, short{432}, short{464}})
+                orcs.push_back(scene_bot(FAMILY_ORC, 1, x, y));
+        const int crew_family[4] = {FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN};
+        for (int i = 0; i < 4; ++i)
+            crew.push_back(scene_bot(crew_family[i], 0, static_cast<short>(352 + 32 * i), 432));
+        std::vector<walker*> all = orcs;
+        all.insert(all.end(), crew.begin(), crew.end());
+        std::vector<std::pair<short, short>> spot;
+        for (walker* w : all) {
+            ASSERT_NE(nullptr, w);
+            spot.emplace_back(w->xpos(), w->ypos());
+        }
+        const float door_hp = door->stats()->hitpoints();
+        if (!fixes) {
+            world().tick();
+            for (walker* w : all) {
+                EXPECT_TRUE(w->foe() != nullptr && !w->is_friendly(w->foe())) << "classic: every bot holds a foe after tick 1";
+            }
+            continue;
+        }
+        for (int tick = 1; tick <= 199; ++tick) {
+            world().tick();
+            for (std::size_t i = 0; i < all.size(); ++i) {
+                walker* w = all[i];
+                ASSERT_EQ(nullptr, w->foe()) << "tick " << tick << ", bot " << i;
+                ASSERT_EQ(400.0f, w->stats()->hitpoints()) << "tick " << tick << ", bot " << i;
+                ASSERT_EQ(500.0f, w->stats()->magicpoints()) << "tick " << tick << ", bot " << i;
+                ASSERT_EQ(spot[i].first, w->xpos()) << "tick " << tick << ", bot " << i;
+                ASSERT_EQ(spot[i].second, w->ypos()) << "tick " << tick << ", bot " << i;
+            }
+            ASSERT_FALSE(door->dead());
+            ASSERT_EQ(door_hp, door->stats()->hitpoints()) << "tick " << tick;
+        }
+        world().tick();  // tick 200
+        door->set_dead(1);
+        door->death();
+        for (walker* o : orcs)
+            for (walker* c : crew) {
+                EXPECT_TRUE(og::reach::walks_to(*o, *c, Mode::Shut));
+                EXPECT_FALSE(og::reach::door_shut(*o, *c));
+            }
+        world().tick();  // tick 201
+        for (std::size_t i = 0; i < all.size(); ++i) {
+            walker* w = all[i];
+            if (w->dead() || w->leader() != nullptr)
+                continue;
+            EXPECT_TRUE(w->foe() != nullptr && !w->foe()->dead()) << "bot " << i << " holds a foe after tick 201";
+        }
+    }
+}
+
+// A chase to a door (scene 4 of the trial). The orc's room: interior cells x 20..27, y 6..11, walls
+// round it, its own side's door (team 1) at cell (23,12). A hurt orc (team 1, 100 hit points) at
+// (368,288) flees straight up through its door (a 54-round walk); a crew orc (team 0, melee only) at
+// (368,424) chases it; each holds the other. P is the first tick after which only the door keeps the
+// crew orc from the orc (door_shut, asked after the tick). Before P the crew orc holds the orc after
+// every tick. Setting on: after tick P it holds no foe, and it stands where it stood after tick P - 1
+// (it let go at the top of that tick's round, and took no step). Setting off: it still holds the orc.
+// Fails when broken: keeps_foe never letting a foe go (the crew orc holds the orc after tick P).
+TEST_F(SemBotReach, a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door)
+{
+    for (std::uint32_t seed : {42u, 1337u, 2025u}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, seed " : "Gameplay Fixes off, seed ") + std::to_string(seed));
+            fresh_world(fixes);
+            room(20, 6, 27, 11);
+            tile(0, 23, 12, PIX_GRASS1);
+            ASSERT_NE(nullptr, door_at(368, 192, 1, 3));
+            walker* orc = scene_bot(FAMILY_ORC, 1, 368, 288);
+            walker* chaser = scene_bot(FAMILY_ORC, 0, 368, 424);
+            ASSERT_TRUE(orc && chaser);
+            orc->stats()->set_hitpoints(100.0f);
+            orc->set_foe(chaser);
+            chaser->set_foe(orc);
+            orc->stats()->force_command(COMMAND_WALK, 54, 0, -1);
+            world().rng_.state_ = seed;
+            int passed = -1;
+            short x_before = chaser->xpos();
+            short y_before = chaser->ypos();
+            for (int tick = 1; tick <= 120 && passed < 0; ++tick) {
+                x_before = chaser->xpos();
+                y_before = chaser->ypos();
+                world().tick();
+                world().gameplay_fixes = 1;
+                const bool shut = og::reach::door_shut(*chaser, *orc);
+                world().gameplay_fixes = fixes;
+                if (shut)
+                    passed = tick;
+                else {
+                    ASSERT_EQ(orc, chaser->foe()) << "before the orc passes its door, tick " << tick;
+                }
+            }
+            ASSERT_GT(passed, 0) << "the staging: the orc passes its door within 120 ticks";
+            if (fixes) {
+                EXPECT_EQ(nullptr, chaser->foe()) << "let go on tick " << passed;
+                EXPECT_EQ(x_before, chaser->xpos());
+                EXPECT_EQ(y_before, chaser->ypos());
+            } else {
+                EXPECT_EQ(orc, chaser->foe());
+            }
+        }
+    }
+}
+
+// Archers behind a door (scenes 3 and 3S of the trial). The room: interior cells x 18..27, y 8..13,
+// walls round it; a door of a third side (team 2) in its bottom wall at cell (23,14). Two archers
+// (team 1) inside at (368,144) and (320,144); the crew (team 0) on row 288: archers at x 368 (the
+// door's column) and 320, orcs at 400 and 288. 600 ticks. With the plain wall every enemy of every
+// bot is door-shut (asserted for the two pairs of archers in line), so with the setting on, after
+// every tick, nobody holds a foe, owns a shot in flight, lost a hit point or a magic point, nor
+// stands anywhere but where it was put, and the door is whole. With the wall cell (20,14) an arrow
+// slit (PIX_WALL_ARROW_GRASS) between the two archers at x 320, each holds the other only by its
+// shot (asserted: Exit::Shot both ways): every bot still stands where it was put for 600 ticks (a
+// bot kept only by its shot takes no step), and the two slit archers each shoot (a shot of its own
+// is in flight after some tick). Setting off, the plain door: the archers shoot (a shot in flight).
+// Fails when broken: the quick search, the full scan or the keep taking a door-shut foe (with the
+// plain wall a bot holds a foe); the cast rule naming nobody (the plain door's archers fire rings at
+// nobody: magic spent); og::reach's shot exit left out (the slit archers let each other go and never
+// shoot).
+TEST_F(SemBotReach, archers_behind_a_door_shoot_only_through_an_arrow_slit_and_never_step)
+{
+    for (int slit = 0; slit < 2; ++slit) {
+        for (short fixes : {short{0}, short{1}}) {
+            if (slit && !fixes)
+                continue;
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") + (slit ? ", an arrow slit" : ", a plain wall"));
+            fresh_world(fixes);
+            world().rng_.state_ = 42u;
+            room(18, 8, 27, 13);
+            tile(0, 23, 14, PIX_GRASS1);
+            if (slit)
+                tile(0, 20, 14, PIX_WALL_ARROW_GRASS);
+            walker* door = door_at(368, 224, 2, 3);
+            walker* in1 = scene_bot(FAMILY_ARCHER, 1, 368, 144);
+            walker* in2 = scene_bot(FAMILY_ARCHER, 1, 320, 144);
+            walker* ca1 = scene_bot(FAMILY_ARCHER, 0, 368, 288);
+            walker* ca2 = scene_bot(FAMILY_ARCHER, 0, 320, 288);
+            walker* cm1 = scene_bot(FAMILY_ORC, 0, 400, 288);
+            walker* cm2 = scene_bot(FAMILY_ORC, 0, 288, 288);
+            ASSERT_TRUE(door && in1 && in2 && ca1 && ca2 && cm1 && cm2);
+            const std::vector<walker*> all = {in1, in2, ca1, ca2, cm1, cm2};
+            std::vector<std::pair<short, short>> spot;
+            for (walker* w : all)
+                spot.emplace_back(w->xpos(), w->ypos());
+            const float door_hp = door->stats()->hitpoints();
+            if (fixes) {
+                ASSERT_EQ(Exit::DoorShut, og::reach::door_shut_exit(*in1, *ca1)) << "the staging: the door's column";
+                EXPECT_EQ(slit ? Exit::Shot : Exit::DoorShut, og::reach::door_shut_exit(*in2, *ca2)) << "the staging";
+                EXPECT_EQ(slit ? Exit::Shot : Exit::DoorShut, og::reach::door_shut_exit(*ca2, *in2)) << "the staging";
+            }
+            bool in2_shot = false, ca2_shot = false, any_shot = false;
+            for (int tick = 1; tick <= 600; ++tick) {
+                world().tick();
+                any_shot = any_shot || weapons_owned_by(all) > 0;
+                in2_shot = in2_shot || weapons_owned_by({in2}) > 0;
+                ca2_shot = ca2_shot || weapons_owned_by({ca2}) > 0;
+                if (!fixes)
+                    continue;
+                for (std::size_t i = 0; i < all.size(); ++i) {
+                    ASSERT_EQ(spot[i].first, all[i]->xpos()) << "tick " << tick << ", bot " << i;
+                    ASSERT_EQ(spot[i].second, all[i]->ypos()) << "tick " << tick << ", bot " << i;
+                    if (slit)
+                        continue;
+                    ASSERT_EQ(nullptr, all[i]->foe()) << "tick " << tick << ", bot " << i;
+                    ASSERT_EQ(400.0f, all[i]->stats()->hitpoints()) << "tick " << tick << ", bot " << i;
+                    ASSERT_EQ(500.0f, all[i]->stats()->magicpoints()) << "tick " << tick << ", bot " << i;
+                }
+                if (!slit) {
+                    ASSERT_EQ(0, weapons_owned_by(all)) << "tick " << tick;
+                    ASSERT_EQ(door_hp, door->stats()->hitpoints()) << "tick " << tick;
+                }
+            }
+            if (!fixes) {
+                EXPECT_TRUE(any_shot) << "classic: the archers shoot through the door";
+            } else if (slit) {
+                EXPECT_TRUE(in2_shot) << "the archer inside shoots through the slit";
+                EXPECT_TRUE(ca2_shot) << "the crew's archer shoots through the slit";
+            }
+        }
+    }
+}
+
+// A bot kept only by its shot (statistics::search_round and attack_step). An island ringed by water
+// two cells wide (cells 4..14), its one bridge at (9,4)..(9,5) holding an enemy door; a soldier of
+// team 2 on the island at (144,144); an archer bot of team 1 on the shore at (144,256), 112 px below,
+// its line of sight 12 (the arrow's reach above 112 and the soldier inside its firing box: asserted).
+// Only the door keeps the archer from the soldier on foot, and its arrow lands across the water
+// (Exit::Shot, asserted). (a) A SEARCH round, the archer facing down (away): setting on, it faces up
+// at once (face_delta, before the shot test), takes no step, passes the shot test and holds an
+// ATTACK of 30+rng(25) rounds, one spent (29 to 53); setting off, the classic round neither faces
+// it at once nor stands (it is not facing up afterwards). (b) An ATTACK round, the archer facing up
+// with no magic for its arrow (cost 5): fire_check refuses for the magic; setting on, it takes no
+// step and keeps its facing; setting off, it steps up toward the soldier.
+// Fails when broken: keeps_foe answering Kept for a foe held only by the shot (the SEARCH round walks
+// instead of facing); attack_step without its shot term (the ATTACK round steps).
+TEST_F(SemBotReach, a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step)
+{
+    for (int attack_round = 0; attack_round < 2; ++attack_round) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (attack_round ? "(b) an ATTACK round" : "(a) a SEARCH round"));
+            fresh_world(fixes);
+            for (int x = 4; x <= 14; ++x)
+                for (int y = 4; y <= 14; ++y)
+                    if (x == 4 || x == 14 || y == 4 || y == 14 || x == 5 || x == 13 || y == 5 || y == 13)
+                        tile(0, x, y, PIX_WATER1);
+            tile(0, 9, 4, PIX_GRASS1);
+            tile(0, 9, 5, PIX_GRASS1);
+            walker* bridge_door = door_at(9 * GRID_SIZE, 4 * GRID_SIZE);
+            walker* islander = living_at(FAMILY_SOLDIER, 2, 144, 144, 16, 16);
+            walker* archer = living_at(FAMILY_ARCHER, 1, 144, 256, 16, 16);
+            ASSERT_TRUE(bridge_door && islander && archer);
+            archer->set_lineofsight(12);
+            weap test_weapon(walker::WeaponProfileProbeTag{});
+            ASSERT_TRUE(archer->unhooked_weapon(test_weapon, 0.0f, -1.0f));
+            ASSERT_GT(walker::weapon_reach(test_weapon), 112) << "the staging: the soldier is in reach";
+            ASSERT_TRUE(archer->in_firing_box(0, -112));
+            world().gameplay_fixes = 1;
+            ASSERT_EQ(Exit::Shot, og::reach::door_shut_exit(*archer, *islander)) << "the staging";
+            world().gameplay_fixes = fixes;
+            archer->set_foe(islander);
+            archer->stats()->clear_command();
+            archer->set_ani_type(ANI_WALK);
+            if (!attack_round) {
+                archer->face_delta(0, 1);
+                archer->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+            } else {
+                archer->face_delta(0, -1);
+                archer->stats()->set_weapon_cost(5);
+                archer->stats()->set_magicpoints(0.0f);
+                archer->stats()->add_command(COMMAND_ATTACK, 10, 0, 0);
+            }
+            const short x0 = archer->xpos();
+            const short y0 = archer->ypos();
+            archer->stats()->do_command();
+            const auto& orders = archer->stats()->commands;
+            if (!attack_round) {
+                if (fixes) {
+                    EXPECT_EQ(FACE_UP, static_cast<int>(archer->curdir())) << "faced at once";
+                    EXPECT_EQ(x0, archer->xpos());
+                    EXPECT_EQ(y0, archer->ypos());
+                    ASSERT_FALSE(orders.empty());
+                    EXPECT_EQ(COMMAND_ATTACK, orders.front().commandtype) << "the shot test passed";
+                    EXPECT_GE(orders.front().commandcount, 29);
+                    EXPECT_LE(orders.front().commandcount, 53);
+                } else {
+                    EXPECT_NE(FACE_UP, static_cast<int>(archer->curdir())) << "classic: not faced at once";
+                }
+            } else {
+                if (fixes) {
+                    EXPECT_EQ(x0, archer->xpos());
+                    EXPECT_EQ(y0, archer->ypos()) << "no step";
+                    EXPECT_EQ(FACE_UP, static_cast<int>(archer->curdir()));
+                } else {
+                    EXPECT_LT(archer->ypos(), y0) << "classic: the step toward the soldier";
+                }
+            }
+        }
+    }
+}
+
+// The judging flight of og::reach::shoots_at on a painted map, setting on. An archer bot of team 1
+// at (160,320), line of sight 12, a soldier of team 2 straight above it at (160,224), 96 px, across
+// the row of cells 17 (y 272), which is painted per case: a wall with an arrow slit at (10,17) on
+// the line (the check takes the slit as open: yes) and the same wall plain (no); water with a door
+// standing on a grass cell of the water row one cell beside the line, at (11,17) (yes: water passes
+// a shot and the door is off the line) and on the line, at (10,17) (no: every door stops it); open
+// grass with the soldier exactly at the arrow's reach above the archer (yes) and one pixel past it
+// (no).
+// Fails when broken: line_check_flight ignoring every_door_stops (the door on the line passes).
+TEST_F(SemBotReach, the_shot_term_takes_an_arrow_slit_and_water_and_stops_at_a_door_on_its_line)
+{
+    enum class Row { Slit, PlainWall, WaterDoorBeside, WaterDoorOnLine };
+    for (const Row row : {Row::Slit, Row::PlainWall, Row::WaterDoorBeside, Row::WaterDoorOnLine}) {
+        SCOPED_TRACE(row == Row::Slit ? "a slit" : row == Row::PlainWall ? "a plain wall" : row == Row::WaterDoorBeside ? "water, a door beside the line" : "water, a door on the line");
+        fresh_world(1);
+        const bool water = row == Row::WaterDoorBeside || row == Row::WaterDoorOnLine;
+        wall_row(17, 0, 39, water ? PIX_WATER1 : PIX_H_WALL1);
+        if (row == Row::Slit)
+            tile(0, 10, 17, PIX_WALL_ARROW_GRASS);
+        if (water) {
+            const int door_cell = row == Row::WaterDoorBeside ? 11 : 10;
+            tile(0, door_cell, 17, PIX_GRASS1);
+            ASSERT_NE(nullptr, door_at(static_cast<short>(door_cell * GRID_SIZE), 17 * GRID_SIZE));
+        }
+        walker* archer = living_at(FAMILY_ARCHER, 1, 160, 320, 16, 16);
+        walker* foe = living_at(FAMILY_SOLDIER, 2, 160, 224, 16, 16);
+        ASSERT_TRUE(archer && foe);
+        archer->set_lineofsight(12);
+        const bool yes = row == Row::Slit || row == Row::WaterDoorBeside;
+        EXPECT_EQ(yes, og::reach::shoots_at(*archer, *foe));
+    }
+    fresh_world(1);
+    walker* archer = living_at(FAMILY_ARCHER, 1, 160, 600, 16, 16);
+    ASSERT_NE(nullptr, archer);
+    archer->set_lineofsight(12);
+    weap test_weapon(walker::WeaponProfileProbeTag{});
+    ASSERT_TRUE(archer->unhooked_weapon(test_weapon, 0.0f, -1.0f));
+    const int reach = walker::weapon_reach(test_weapon);
+    ASSERT_GT(reach, 0);
+    ASSERT_LT(reach, 600) << "the staging: the reach ends on the field";
+    walker* at_reach = living_at(FAMILY_SOLDIER, 2, 160, static_cast<short>(600 - reach), 16, 16);
+    ASSERT_NE(nullptr, at_reach);
+    ASSERT_TRUE(archer->in_firing_box(0, static_cast<short>(-reach)));
+    EXPECT_TRUE(og::reach::shoots_at(*archer, *at_reach)) << "the reach's end";
+    at_reach->setxy(static_cast<short>(160), static_cast<short>(600 - reach - 1));
+    EXPECT_FALSE(og::reach::shoots_at(*archer, *at_reach)) << "one pixel past it";
+}
+
+// The cast rules (living::cast_rule; GameWorld::find_foes_in_range while cast_rule_for names the
+// bot). A soldier of team 2, 64 px right of the caster, inside a ring of doors of team 3 (or, as a
+// control, of the caster's own team 1: no door bars it). (1) An archer bot facing down, its FIRE
+// ARROWS slot: setting on, with the enemy ring its gate (one foe it does not face in the fire arrow's
+// flight pays) counts no foe and says no; with its own side's ring, yes; setting off (the classic
+// gate: a foe within 130), yes. (2) A mage bot, TELEPORT (yes when no foe within 110 or more than
+// three): on, yes; off, no. (3) The range finder asked outside any cast rule counts the ringed
+// soldier on both settings; inside the archer's scope it does not (on); inside another walker's
+// scope the archer's own question still counts it. (4) The cast made is the cast as before: FIRE
+// ARROWS queues the same orders on both settings. (5) A seat's archer (seat 0) is asked with nobody
+// named: yes with the enemy ring, setting on.
+// Fails when broken: cast_rule_leaves_out never leaving a candidate out, or cast_rule naming nobody
+// (the archer's gate says yes with the setting on).
+TEST_F(SemBotReach, a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from)
+{
+    const auto stage = [&](short fixes, int family, unsigned char ring_team, walker*& caster, walker*& foe) {
+        fresh_world(fixes);
+        caster = living_at(family, 1, 320, 320, 16, 16);
+        foe = living_at(FAMILY_SOLDIER, 2, 24 * GRID_SIZE, 20 * GRID_SIZE, 16, 16);
+        ASSERT_TRUE(caster && foe);
+        for (walker* d : ring_of_doors(24, 20)) {
+            ASSERT_NE(nullptr, d);
+            d->set_team_num(ring_team);
+        }
+        caster->face_delta(0, 1);
+        caster->set_current_special(1);
+        caster->set_ani_type(ANI_WALK);
+        caster->set_busy(0.0f);
+    };
+    walker* caster = nullptr;
+    walker* foe = nullptr;
+    for (short fixes : {short{0}, short{1}}) {
+        for (unsigned char ring_team : {kDoorTeam, static_cast<unsigned char>(1)}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") + (ring_team == 1 ? ", its own side's ring" : ", an enemy ring"));
+            ASSERT_NO_FATAL_FAILURE(stage(fixes, FAMILY_ARCHER, ring_team, caster, foe));
+            ASSERT_EQ(fixes && ring_team == kDoorTeam, og::reach::door_shut(*caster, *foe)) << "the staging";
+            EXPECT_EQ(!(fixes && ring_team == kDoorTeam), caster->check_special()) << "(1) FIRE ARROWS";
+            EXPECT_EQ(nullptr, world().cast_rule_for) << "the scope is gone after the call";
+        }
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, (2) TELEPORT" : "Gameplay Fixes off, (2) TELEPORT");
+        ASSERT_NO_FATAL_FAILURE(stage(fixes, FAMILY_MAGE, kDoorTeam, caster, foe));
+        EXPECT_EQ(fixes != 0, caster->check_special());
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, (3) the range finder" : "Gameplay Fixes off, (3) the range finder");
+        ASSERT_NO_FATAL_FAILURE(stage(fixes, FAMILY_ARCHER, kDoorTeam, caster, foe));
+        walker* other = living_at(FAMILY_ORC, 1, 100, 100, 16, 16);
+        ASSERT_NE(nullptr, other);
+        std::int32_t n = -1;
+        (void)world().find_foes_in_range(world().oblist, 110, &n, caster);
+        EXPECT_EQ(1, n) << "outside any cast rule";
+        {
+            const GameWorld::CastRuleScope named(world(), caster);
+            const std::list<walker*> found = world().find_foes_in_range(world().oblist, 110, &n, caster);
+            EXPECT_EQ(fixes ? 0 : 1, n) << "inside the archer's own scope";
+            EXPECT_EQ(static_cast<std::size_t>(n), found.size());
+        }
+        {
+            const GameWorld::CastRuleScope named(world(), other);
+            (void)world().find_foes_in_range(world().oblist, 110, &n, caster);
+            EXPECT_EQ(1, n) << "inside another walker's scope";
+        }
+        EXPECT_EQ(nullptr, world().cast_rule_for);
+    }
+    std::vector<int> queued[2];
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on, (4) the cast" : "Gameplay Fixes off, (4) the cast");
+        ASSERT_NO_FATAL_FAILURE(stage(fixes, FAMILY_ARCHER, kDoorTeam, caster, foe));
+        caster->stats()->clear_command();
+        ASSERT_TRUE(caster->special());
+        for (const auto& c : caster->stats()->commands)
+            queued[fixes].push_back(c.commandtype);
+    }
+    EXPECT_FALSE(queued[0].empty());
+    EXPECT_EQ(queued[0], queued[1]) << "the cast queues the same orders on both settings";
+    ASSERT_NO_FATAL_FAILURE(stage(1, FAMILY_ARCHER, kDoorTeam, caster, foe));
+    caster->set_user(0);
+    EXPECT_TRUE(caster->check_special()) << "(5) a seat's archer: nobody is named";
+}
+
+// A seat's fighter is never asked (og::reach::asks): an orc of team 1 driven by seat 0 inside the
+// pen (an enemy door in its gap), a soldier of team 2 outside, setting on and off alike: the quick
+// search and the full scan answer the soldier, a SEARCH round keeps it, and with no foe its wander
+// is queued.
+// Fails when broken: asks taking a seat's fighter for a bot (the searches pass over the soldier).
+TEST_F(SemBotReach, a_seats_fighter_is_never_asked)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        ASSERT_NE(nullptr, pen_with_a_door());
+        walker* seat = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+        walker* foe = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
+        ASSERT_TRUE(seat && foe);
+        seat->set_user(0);
+        EXPECT_EQ(Exit::NotAsked, og::reach::door_shut_exit(*seat, *foe));
+        EXPECT_EQ(foe, world().find_near_foe(seat));
+        EXPECT_EQ(foe, world().find_nearest_foe(seat));
+        seat->set_foe(foe);
+        seat->stats()->clear_command();
+        seat->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        seat->set_ani_type(ANI_WALK);
+        seat->stats()->do_command();
+        EXPECT_EQ(foe, seat->foe()) << "its SEARCH round keeps the soldier";
+        seat->set_foe(nullptr);
+        seat->stats()->clear_command();
+        (void)seat->stats()->idle_walk(20);
+        ASSERT_FALSE(seat->stats()->commands.empty());
+        EXPECT_EQ(COMMAND_WALK, seat->stats()->commands.front().commandtype) << "its wander is queued";
+    }
+}
+
+// A guard at its post keeps the classic search (og::reach::asks leaves it out): a guard bot (team 1,
+// ACT_GUARD) inside the pen, a soldier of team 2 outside at (192,64) (its box in one bucket of the
+// body map) wearing a cloak of 20 (one draw that always reveals it). On both settings the quick
+// search and the full scan answer the soldier, each after that one draw. An ordinary bot on the same
+// spot with the setting on is answered nobody (the soldier is door-shut for it): the full scan after
+// its one draw, the quick search after two (the soldier's roll in the spiral, which then goes on and
+// falls back to the full scan, which rolls for it again).
+// Fails when broken: asks taking a guard at its post (the guard is answered nobody).
+TEST_F(SemBotReach, a_guard_at_its_post_keeps_the_classic_search)
+{
+    for (int guard = 0; guard < 2; ++guard) {
+        for (short fixes : {short{0}, short{1}}) {
+            if (!guard && !fixes)
+                continue;
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") + (guard ? ", a guard at its post" : ", an ordinary bot"));
+            fresh_world(fixes);
+            ASSERT_NE(nullptr, pen_with_a_door());
+            walker* bot = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+            walker* foe = living_at(FAMILY_SOLDIER, 2, 192, 64, 16, 16);
+            ASSERT_TRUE(bot && foe);
+            if (guard)
+                bot->set_act_type(ACT_GUARD);
+            foe->set_invisibility_left(20);
+            for (int search = 0; search < 2; ++search) {
+                const std::uint32_t s0 = world().rng_.state_;
+                walker* found = search == 0 ? world().find_near_foe(bot) : world().find_nearest_foe(bot);
+                og::sim::SimRandom expect(s0);
+                const int draws = (search == 0 && !guard) ? 2 : 1;
+                for (int k = 0; k < draws; ++k)
+                    (void)expect.next(1);
+                EXPECT_EQ(guard ? foe : nullptr, found) << (search == 0 ? "the quick search" : "the full scan");
+                EXPECT_EQ(expect.state_, world().rng_.state_) << draws << " cloak rolls";
+            }
+        }
+    }
+}
+
+// A foe with a way round is kept and routed to: the door fence (a wall across row 20 from x 0 to 35,
+// doors in its cells 18 to 21, the way round by cells 36 to 39); an orc bot at cell (20,14), a
+// soldier at (20,26). Setting on: the soldier is not door-shut (the orc walks round), the quick
+// search answers it, and the orc's SEARCH round on a re-plan tick keeps it and plans its route round
+// the fence by the gap.
+// Fails when broken: door_shut_exit without its WalksShut exit (the soldier read door-shut).
+TEST_F(SemBotReach, a_foe_with_a_way_round_is_kept_and_routed_to)
+{
+    const std::vector<walker*> doors = door_fence(20, {18, 19, 20, 21});
+    walker* orc = bot_at(20 * GRID_SIZE, 14 * GRID_SIZE);
+    walker* foe = living_at(FAMILY_SOLDIER, 2, 20 * GRID_SIZE, 26 * GRID_SIZE, 16, 16);
+    ASSERT_TRUE(orc && foe);
+    EXPECT_EQ(Exit::WalksShut, og::reach::door_shut_exit(*orc, *foe));
+    EXPECT_EQ(foe, world().find_near_foe(orc));
+    orc->set_foe(foe);
+    orc->set_path_check_counter(0);
+    orc->stats()->clear_command();
+    orc->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+    orc->set_ani_type(ANI_WALK);
+    world().rng_.state_ = a_state_whose_first_draw_of(300);
+    orc->stats()->do_command();
+    EXPECT_EQ(foe, orc->foe());
+    const std::vector<Cell> route = route_of(orc);
+    ASSERT_FALSE(route.empty()) << "a route was planned";
+    int through_gap = 0;
+    for (const Cell& c : route)
+        through_gap += (c.y == 20 && c.x >= 36) ? 1 : 0;
+    EXPECT_EQ(1, through_gap) << "round the fence by the gap: " << text(route);
+}
+
+// A foe behind a wall keeps the classic walk step for step: an orc bot of team 1 in a closed box of
+// walls (cells 10..14, no gap), a soldier of team 2 outside at (192,80); with every door open there
+// is still no way, so the soldier is no door's (NoWayOpen, asserted). The world holds a door of a
+// third side far off at (560,560); its twin is the same world without the door. Setting on, 120
+// ticks each: after every tick both bots stand where their twins stand and the stream is the twin's.
+// Fails when broken: door_shut_exit without its NoWayOpen exit (the orc lets the walled soldier go
+// and stops walking).
+TEST_F(SemBotReach, a_foe_behind_a_wall_keeps_the_classic_walk_step_for_step)
+{
+    struct Step
+    {
+        short ox, oy, fx, fy;
+        std::uint32_t rng;
+        bool operator==(const Step&) const = default;
+    };
+    std::vector<Step> run[2];
+    for (int with_door = 0; with_door < 2; ++with_door) {
+        SCOPED_TRACE(with_door ? "a door far off" : "its twin with no door");
+        fresh_world(1);
+        world().rng_.state_ = 42u;
+        for (int x = 10; x <= 14; ++x) {
+            tile(0, x, 10, PIX_H_WALL1);
+            tile(0, x, 14, PIX_H_WALL1);
+        }
+        wall_column(10, 10, 14);
+        wall_column(14, 10, 14);
+        walker* orc = scene_bot(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE);
+        walker* foe = scene_bot(FAMILY_SOLDIER, 2, 192, 80);
+        ASSERT_TRUE(orc && foe);
+        if (with_door) {
+            ASSERT_NE(nullptr, door_at(560, 560));
+            ASSERT_EQ(Exit::NoWayOpen, og::reach::door_shut_exit(*orc, *foe)) << "the staging";
+        }
+        for (int tick = 1; tick <= 120; ++tick) {
+            world().tick();
+            run[with_door].push_back(Step{orc->xpos(), orc->ypos(), foe->xpos(), foe->ypos(), world().rng_.state_});
+        }
+        if (with_door) {
+            EXPECT_EQ(foe, orc->foe()) << "the walled soldier is still the orc's foe";
+        }
+    }
+    ASSERT_EQ(run[0].size(), run[1].size());
+    for (std::size_t t = 0; t < run[0].size(); ++t) {
+        ASSERT_TRUE(run[0][t] == run[1][t]) << "tick " << (t + 1);
+    }
+    bool moved = false;
+    for (const Step& s : run[1])
+        moved = moved || s.ox != run[1].front().ox || s.oy != run[1].front().oy;
+    EXPECT_TRUE(moved) << "the staging: the orc walks at its walled foe";
+}
+
+// A struck bot takes its striker at the blow and lets it go on its next round: an orc bot in the pen
+// (an enemy door in its gap) is struck by a soldier outside (statistics::hit_response, which this rule
+// leaves as it was). On both settings it holds the soldier at once. Its next round (a SEARCH order):
+// setting on, it lets the soldier go; setting off, it keeps it.
+// Fails when broken: keeps_foe never letting a foe go (the soldier kept with the setting on).
+TEST_F(SemBotReach, a_struck_bot_takes_its_striker_at_the_blow_and_lets_go_on_its_next_round)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        ASSERT_NE(nullptr, pen_with_a_door());
+        walker* orc = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+        walker* striker = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
+        ASSERT_TRUE(orc && striker);
+        orc->stats()->hit_response(striker);
+        EXPECT_EQ(striker, orc->foe()) << "it takes its striker at the blow";
+        orc->stats()->clear_command();
+        orc->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        orc->set_ani_type(ANI_WALK);
+        orc->stats()->do_command();
+        EXPECT_EQ(fixes ? nullptr : striker, orc->foe());
+    }
+}
+
+// The wander of a bot with no foe (statistics::idle_walk). An orc bot in the pen (an enemy door in its
+// gap), a soldier of team 2 outside. Setting on: the bot is shut out, so it queues no wander and the
+// stream is not drawn; with the soldier dead it queues the classic walk after the two direction draws
+// (rng(3), rng(3)). Setting off: the walk and its draws as always. Then, setting on, the world plays
+// 200 ticks: after every tick the orc stands on its cell and holds no foe.
+// Fails when broken: idle_walk without its shut_out test (the shut-out orc queues its wander).
+TEST_F(SemBotReach, a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell)
+{
+    for (int foe_dead = 0; foe_dead < 2; ++foe_dead) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off") + (foe_dead ? ", the soldier dead" : ", the soldier alive"));
+            fresh_world(fixes);
+            ASSERT_NE(nullptr, pen_with_a_door());
+            walker* orc = living_at(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE, 16, 16);
+            walker* foe = living_at(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE, 16, 16);
+            ASSERT_TRUE(orc && foe);
+            if (foe_dead)
+                foe->set_dead(1);
+            ASSERT_EQ(fixes && !foe_dead, og::reach::shut_out(*orc)) << "the staging";
+            orc->stats()->clear_command();
+            const std::uint32_t s0 = world().rng_.state_;
+            (void)orc->stats()->idle_walk(20);
+            og::sim::SimRandom expect(s0);
+            if (!(fixes && !foe_dead)) {
+                (void)expect.next(3);
+                (void)expect.next(3);
+                ASSERT_FALSE(orc->stats()->commands.empty());
+                EXPECT_EQ(COMMAND_WALK, orc->stats()->commands.front().commandtype);
+                EXPECT_EQ(20, orc->stats()->commands.front().commandcount);
+            } else {
+                EXPECT_TRUE(orc->stats()->commands.empty()) << "no wander";
+            }
+            EXPECT_EQ(expect.state_, world().rng_.state_);
+        }
+    }
+    fresh_world(1);
+    ASSERT_NE(nullptr, pen_with_a_door());
+    walker* orc = scene_bot(FAMILY_ORC, 1, 12 * GRID_SIZE, 12 * GRID_SIZE);
+    walker* foe = scene_bot(FAMILY_SOLDIER, 2, 12 * GRID_SIZE, 5 * GRID_SIZE);
+    ASSERT_TRUE(orc && foe);
+    for (int tick = 1; tick <= 200; ++tick) {
+        world().tick();
+        ASSERT_EQ(12 * GRID_SIZE, orc->xpos()) << "tick " << tick;
+        ASSERT_EQ(12 * GRID_SIZE, orc->ypos()) << "tick " << tick;
+        ASSERT_EQ(nullptr, orc->foe()) << "tick " << tick;
     }
 }

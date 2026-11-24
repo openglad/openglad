@@ -2893,7 +2893,11 @@ TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
 // asserted); a hostile
 // orc sitting two tiles above the door, straight up and inside the reach gate,
 // the archer's foe. Nothing but the door stands between them, and there is no
-// way round. The world ticks kTicks times. Setting on: the archer walks into
+// way round. The archer is sent up into the door by a walk order of 20 rounds,
+// as a level script can send it: with Gameplay Fixes BJ a bot lets go of a foe
+// that only a locked door keeps it from and stands, so its chase alone no
+// longer takes it to the door, and the bump this rule is about would not
+// happen. The world ticks kTicks times. Setting on: the archer walks into
 // the door (it is its collision body on some tick, asserted), starts no swing
 // and no shot in all that time (its firing delay never rose, no arrow of its
 // own flew), the door's hit points are whole, and the door is its foe on no
@@ -2930,6 +2934,7 @@ TEST_F(SemBotDoor, a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_
                                           static_cast<short>(orc->ypos() - archer->ypos())))
             << "the staging: the orc is straight up";
         archer->set_foe(orc);
+        archer->stats()->force_command(COMMAND_WALK, 20, 0, -1);
         const float door_whole = door->stats()->hitpoints();
         const std::uint32_t archer_id = archer->entity_id();
         const std::uint32_t door_id = door->entity_id();

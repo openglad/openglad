@@ -817,12 +817,12 @@ short statistics::do_command()
 		// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
 		// tests: StatsUnit.stats_r12_command_and_hit_response_branches
 		case COMMAND_SEARCH: // use right-hand rule to find foe
-			// rule: A SEARCH order hunts the held foe (walk_to_foe) while it lives; with no foe or
-			//   a dead foe the order is abandoned that round.
+			// rule: A SEARCH order hunts the held foe (search_round: walk_to_foe, after Gameplay Fixes
+			//   BJ's keeps_foe) while it lives; with no foe or a dead foe the order is abandoned that round.
 			// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
-			// tests: StatsUnit.stats_r12_command_and_hit_response_branches
+			// tests: StatsUnit.stats_r12_command_and_hit_response_branches, SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
 			if (controller_->foe() && !controller_->foe()->dead())
-				walk_to_foe();
+				search_round();
 			else // stop trying to walk to this foe
             {
 				commands.front().commandcount = 0;
@@ -875,13 +875,13 @@ short statistics::do_command()
 		// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 		// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			// rule: An ATTACK order ends as soon as the walker has no foe or its foe is dead.
-			// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
-			// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
-			// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
-			if (!controller_->foe() || controller_->foe()->dead())
+			// rule: An ATTACK order ends as soon as the walker has no foe or its foe is dead, and when
+			//   its bot lets go a foe only a locked door keeps it from (Gameplay Fixes BJ, keeps_foe).
+			// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot, SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
+			// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires, SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+			if (!controller_->foe() || controller_->foe()->dead() || keeps_foe() == FoeKeep::LetGo)
 			{
-				commands.front().commandcount = 0;
+				end_order();
 				result = 1;
 				break;
 			}
@@ -940,7 +940,7 @@ short statistics::do_command()
 					// repositioning), as does NoMagic (regen while closing).
 					// rule: An attacker standing exactly on its foe (a pass-through left the bodies
 					//   merged) steps out along its own facing to break the clinch,
-					//   deterministically and without RNG (always on).
+					//   deterministically and without RNG (always on; the step is attack_step's).
 					// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 					if (deltax == 0 && deltay == 0)
 					{
@@ -955,7 +955,7 @@ short statistics::do_command()
 						short stepx = 0, stepy = 0;
 						facing_step_delta(static_cast<char>(controller_->curdir()),
 						                  stepx, stepy);
-						controller_->walkstep(stepx, stepy);
+						attack_step(stepx, stepy);
 					}
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)  // rule: An attacking walker shoots
@@ -994,7 +994,7 @@ short statistics::do_command()
 						// tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 						// tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 						// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						controller_->walkstep(deltax, deltay);
+						attack_step(deltax, deltay);
 				}
 				else // (controller_->fire_check(deltax, deltay))
 				{
@@ -1720,20 +1720,20 @@ bool statistics::direct_walk()
 	//   lasting 30+rng(25) rounds.
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
-	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
-		ydelta = 0;
-	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
-		xdelta = 0;
+	walker::snap_three_to_one(xdelta, ydelta);
 
+	// The 3:1 snap and the shot test were written out here. Each is one function now: the snap
+	// (walker::snap_three_to_one) is shared with the planned approach of
+	// walker::can_approach_weapon_range, and the shot test (shot_attacks, at the end of this
+	// file) with a bot that keeps its foe only by its shot (Gameplay Fixes BJ, search_round).
+	// Both moved unchanged, their draws as they were, and line for line, so the parity pins
+	// below stay on their lines.
 	// rule: A chasing walker that can already land a shot on its foe along the (3:1-snapped, raw
-	//   pixel) delta stops chasing.
+	//   pixel) delta stops chasing (shot_attacks).
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks, SemAi4.a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on
-	if (controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
+	if (shot_attacks(xdelta, ydelta))
 	{
-		clear_command();
-		controller_->turn(controller_->facing(xdelta, ydelta));
-		add_command(COMMAND_ATTACK,static_cast<short>(30+rng(25)),0,0);
 		return 1;
 	}
 
@@ -2036,12 +2036,12 @@ bool statistics::walk_to_foe()
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
 			// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan),
-			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*.
-			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
-			// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*; a foe
+			//   only a locked door keeps a bot from is not counted near (Gameplay Fixes BJ, foes_not_door_shut).
+			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing, SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
-			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
-			if (howmany > 0)
+			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near, SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from
+			if (foes_not_door_shut(foelist) > 0)
 			{
 				clear_command();
 				// #320: find_near_foe's result was thrown away since the 2002
@@ -2719,4 +2719,145 @@ void statistics::level_written() noexcept
 	// plumbing: statistics built for no walker have no door to tell; the rule is the door's
 	if (told != nullptr)
 		told->door_state_written();
+}
+
+// Gameplay Fixes BJ: a bot treats an enemy that only a locked door keeps it from as if it were not
+// there. Asked at the top of a SEARCH round (search_round) and of an ATTACK round, of a live held
+// foe: a foe handed to the bot without a search (a blow, its own shot landing, a yell, a script)
+// reaches the rule here. The door question is og::reach::door_shut_exit (reach.h): it draws nothing
+// and answers "kept" for every walker og::reach::asks does not name (the setting off, a player's
+// fighter, a tower, a guard at its post). Appended at the end of the file so the parity pins above
+// never shift.
+statistics::FoeKeep statistics::keeps_foe()
+{
+	walker* const foe = controller_->foe();
+	const og::reach::Exit why = og::reach::door_shut_exit(*controller_, *foe);
+	// rule: Gameplay Fixes BJ: a held foe only a locked door keeps the bot from is let go: no foe, its
+	//   orders cleared (clear_command, which clears its leader too), its route cleared; the round
+	//   ends there, with no step and no draw.
+	// tests: SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+	// tests: SemBotReach.a_struck_bot_takes_its_striker_at_the_blow_and_lets_go_on_its_next_round
+	// tests: SemBotReach.a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door
+	if (why == og::reach::Exit::DoorShut)
+	{
+		controller_->set_foe(nullptr);
+		clear_command();
+		controller_->path_to_foe.clear();
+		return FoeKeep::LetGo;
+	}
+	// rule: Gameplay Fixes BJ: a held foe that only a locked door keeps the bot from on foot, but
+	//   that its shot lands on from where it stands, is kept only by the shot (search_round and
+	//   attack_step: it takes no step for it); every other held foe is kept as before.
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	return why == og::reach::Exit::Shot ? FoeKeep::ByShot : FoeKeep::Kept;
+}
+
+// The SEARCH order's round with a live held foe (do_command). Appended at the end of the file so
+// the parity pins above never shift.
+void statistics::search_round()
+{
+	const FoeKeep keep = keeps_foe();
+	// rule: Gameplay Fixes BJ: a SEARCH round whose foe was let go ends there (keeps_foe).
+	// tests: SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+	if (keep == FoeKeep::LetGo)
+		return;
+	// rule: Gameplay Fixes BJ: a bot that keeps its foe only by its shot takes no step: it faces the
+	//   foe along direct_walk's 3:1-snapped raw delta (face_delta: facing, end facing and heading),
+	//   then asks direct_walk's shot test (shot_attacks, its draws as they are): on a pass its orders
+	//   are wiped, it turns and starts an ATTACK of 30+rng(25) rounds; on a refusal the round ends.
+	//   Every other bot hunts as before (walk_to_foe).
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	// tests: SemBotReach.archers_behind_a_door_shoot_only_through_an_arrow_slit_and_never_step
+	if (keep == FoeKeep::ByShot)
+	{
+		const walker* const foe = controller_->foe();
+		float xdelta = static_cast<float>(foe->xpos() - controller_->xpos());
+		float ydelta = static_cast<float>(foe->ypos() - controller_->ypos());
+		walker::snap_three_to_one(xdelta, ydelta);
+		controller_->face_delta(static_cast<short>(xdelta), static_cast<short>(ydelta));
+		(void)shot_attacks(xdelta, ydelta);
+		return;
+	}
+	walk_to_foe();
+}
+
+// The ATTACK order's end when it has no live foe left, or its bot let its foe go (keeps_foe, which
+// cleared the orders already, so there may be none to end). Appended at the end of the file so the
+// parity pins above never shift.
+void statistics::end_order()
+{
+	// plumbing: the front order (the ATTACK being run) ends: its count goes to 0 and the round's
+	//   tail pops it; after a let-go the queue is empty and nothing is left to end
+	if (!commands.empty())
+		commands.front().commandcount = 0;
+}
+
+// The ATTACK order's two steps toward its foe (the step out of a merged clinch, and the step a
+// shot refused for its range, a wall, its magic or its ray takes). Appended at the end of the file
+// so the parity pins above never shift.
+void statistics::attack_step(short xdelta, short ydelta)
+{
+	walker* const foe = controller_->foe();
+	// rule: Gameplay Fixes BJ: in its ATTACK order a bot that keeps its foe only by its shot takes
+	//   neither step (its fire_check and its turn toward the foe stay); asked again here of the same
+	//   world the top of the round asked, so the answer is keeps_foe's. Every other walker steps as
+	//   before.
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	// tests: SemBotReach.archers_behind_a_door_shoot_only_through_an_arrow_slit_and_never_step
+	if (foe != nullptr && og::reach::door_shut_exit(*controller_, *foe) == og::reach::Exit::Shot)
+		return;
+	controller_->walkstep(xdelta, ydelta);
+}
+
+// direct_walk's shot test, written once: direct_walk asks it before its straight step, and a bot
+// that keeps its foe only by its shot asks it in its SEARCH round (search_round, Gameplay Fixes
+// BJ). The delta is the 3:1-snapped raw delta. Appended at the end of the file so the parity pins
+// above never shift.
+bool statistics::shot_attacks(float xdelta, float ydelta)
+{
+	// rule: A walker that can already land a shot on its foe along the delta (fire_check, its draws
+	//   as they are) wipes its orders, turns toward the foe and starts an ATTACK lasting 30+rng(25)
+	//   rounds; a refused shot changes nothing here.
+	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
+	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks, SemAi4.a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	if (!controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
+		return false;
+	clear_command();
+	controller_->turn(controller_->facing(xdelta, ydelta));
+	add_command(COMMAND_ATTACK,static_cast<short>(30+rng(25)),0,0);
+	return true;
+}
+
+// The wander of a bot with no foe (living.cpp: the seek's coin and act_random's), Gameplay Fixes
+// BJ. Appended at the end of the file so the parity pins above never shift.
+short statistics::idle_walk(Sint32 rounds)
+{
+	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (og::reach::shut_out: some enemy on
+	//   its floor only a door keeps it from) queues no wander and makes neither of its two direction
+	//   draws: it stays where it is. Every other walker, and every walker with the setting off,
+	//   wanders as before (try_random_walk).
+	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
+	if (og::reach::shut_out(*controller_))
+		return 0;
+	return try_random_walk(rounds);
+}
+
+// walk_to_foe's near branch: how many of the foes found within its reach the bot does not let go
+// as door-shut (Gameplay Fixes BJ), asked of one Asker. Appended at the end of the file so the
+// parity pins above never shift.
+std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
+{
+	og::reach::Asker asker(*controller_);
+	std::int32_t count = 0;
+	// plumbing: each foe of the list, judged below
+	for (walker* foe : foes)
+	{
+		// rule: Gameplay Fixes BJ: the near branch counts only the foes found within its reach that
+		//   are not door-shut for the bot (og::reach::Asker::door_shut); classic, every foe found.
+		// tests: SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from
+		if (!asker.door_shut(*foe))
+			++count;
+	}
+	return count;
 }

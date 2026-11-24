@@ -25,7 +25,9 @@
 #include <openglad/gameplay/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/kit_state.h>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <list>
 #include <memory>
 #include <optional>
@@ -255,6 +257,26 @@ class walker : public og::sim::SimEntity
 		[[nodiscard]] bool in_firing_box(short xdelta, short ydelta) const;
 		// A bot: a living no player drives (user() == -1). Defined at the end of walker.cpp.
 		[[nodiscard]] bool is_bot() const;
+		// The 3:1 snap of a delta toward a target: a delta more than three times longer on one axis
+		// than on the other is taken as straight along that axis (the other is zeroed). The chase's
+		// straight walk and its shot test (statistics::direct_walk, statistics::shot_attacks) and the
+		// planned approach (can_approach_weapon_range) ask it: one rule.
+		template <class T>
+		static void snap_three_to_one(T& dx, T& dy)
+		{
+			// rule: A delta more than three times longer on x than on y is taken as straight along x;
+			//   then one more than three times longer on y than on x as straight along y.
+			// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
+			// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
+			// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+			if (std::abs(dx) > std::abs(3 * dy))
+				dy = 0;
+			// rule: (the same rule, the y axis, asked after the x axis)
+			// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
+			// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
+			if (std::abs(dy) > std::abs(3 * dx))
+				dx = 0;
+		}
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

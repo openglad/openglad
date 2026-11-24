@@ -19,6 +19,11 @@
 // Definition of LIVING class
 
 #include <openglad/gameplay/walker.h>
+
+#include <optional>
+
+struct FamilyDescriptor;
+
 class living : public walker
 {
 	public:
@@ -37,6 +42,11 @@ class living : public walker
 		// Gameplay Fixes BF: a bot that walks into `body`, an enemy door that is not its foe,
 		// starts no swing at it with the setting on. Defined at the end of living.cpp.
 		[[nodiscard]] bool leaves_a_door_alone(const walker* body) const;
+		// Gameplay Fixes BJ: the family's bot gate (check_special_ai) asked with this bot named
+		// on the world while it runs, for a bot og::reach::asks names (GameWorld::cast_rule_for):
+		// its range finder then counts no foe only a locked door keeps the bot from. Defined at
+		// the end of living.cpp.
+		std::optional<bool> cast_rule(const FamilyDescriptor* fd);
 		bool           do_action(); // perform overriding action
 		walker* do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime) override;
 		void           set_difficulty(std::uint32_t whatlevel) override;

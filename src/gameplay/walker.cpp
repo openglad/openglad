@@ -2011,12 +2011,12 @@ bool walker::can_approach_weapon_range(const walker* objective)
 		std::int32_t dy = target_y - y;
 		// rule: The approach is predicted the way a bot actually walks at a target: a target mostly
 		//   along one axis (more than 3:1) is approached straight along that axis, otherwise
-		//   diagonally.
+		//   diagonally (walker::snap_three_to_one, the one 3:1 rule the chase's straight walk and
+		//   its shot test ask too).
 		// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
-		if (std::abs(dx) > std::abs(3 * dy))
-			dy = 0;
-		if (std::abs(dy) > std::abs(3 * dx))
-			dx = 0;
+		snap_three_to_one(dx, dy);
+		// (The snap's two tests were written out here; they moved into walker.h line for line, so
+		// the parity pins below stay on their lines.)
 		const short sx = static_cast<short>((dx > 0) - (dx < 0));
 		const short sy = static_cast<short>((dy > 0) - (dy < 0));
 		const bool cardinal = sx == 0 || sy == 0;

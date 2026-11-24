@@ -1259,12 +1259,10 @@ bool Asker::shut_out()
     {
         const walker* b = up.get();
         // rule: og::reach: the walker is shut out when some live, awake, visible hostile living or
-        //   generator on its floor is door-shut for it (cloaked or not, at any distance).
+        //   generator on its floor (GameWorld::foe_candidate, the searches' one test, without their
+        //   cloak roll) is door-shut for it (cloaked or not, at any distance).
         // tests: SemReach.a_bot_is_shut_out_by_an_enemy_only_a_door_keeps_from_it
-        if (b == nullptr || b == &w || b->dead() || b->dormant() || b->hidden() ||
-            b->floor() != w.floor() ||
-            (b->query_order() != Order::Living && b->query_order() != Order::Generator) ||
-            w.is_friendly(b))
+        if (b == nullptr || b == &w || b->floor() != w.floor() || !GameWorld::foe_candidate(w, *b))
             continue;
         // plumbing: the first door-shut enemy answers
         if (door_shut_exit(*b) == Exit::DoorShut)

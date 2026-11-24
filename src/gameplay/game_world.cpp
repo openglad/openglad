@@ -1885,7 +1885,7 @@ walker* GameWorld::find_near_foe(walker* ob)
     short targy = ob->ypos();
     short spread = 1;
     short xchange = 0;
-    short resolution = myobmap->obmapres;
+    short resolution = myobmap->obmapres; og::reach::Asker asker(*ob);  // the searcher, asked about doors (fix BJ)
 
     // plumbing: spiral legs and pile walk; see above and below
     while (spread < MAX_SPREAD)
@@ -1965,15 +1965,15 @@ walker* GameWorld::find_near_foe(walker* ob)
                     rng_.next(static_cast<std::uint32_t>(std::max<int>(w->invisibility_left(), 0) / 20)) == 0)  // clamp: invisibility_left is snapshot/Lua-writable and a negative would wrap to a ~4e9 next() bound, hiding the foe forever. No-op for every value >= 0.
                 {
                     // rule: In the quick search a candidate is acquired only if it is alive, not
-                    //   friendly to the searcher, a Living or a Generator (never a weapon, treasure
-                    //   or effect), and its cloak roll succeeds. Here: `Living || Generator`.
-                    // tests: SimWorldHeadless.negative_invisibility_does_not_hide_a_foe_from_search
-                    // tests: SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
-                    // tests: SemWorld.the_quick_foe_search_acquires_a_hostile_generator
-                    // tests: SemWorld.the_quick_foe_search_skips_friends_corpses_and_weapons
+                    //   friendly, a Living or a Generator, and its cloak roll succeeds. Here:
+                    //   foe_candidate (Living || Generator; a filed body is awake and visible). Gameplay
+                    //   Fixes BJ: a candidate only a locked door keeps a bot from is passed over after its
+                    //   roll and the search goes on (og::reach::Asker::door_shut, asked last).
+                    // tests: SimWorldHeadless.negative_invisibility_does_not_hide_a_foe_from_search, SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
+                    // tests: SemWorld.the_quick_foe_search_acquires_a_hostile_generator, SemWorld.the_quick_foe_search_skips_friends_corpses_and_weapons
                     // tests: SemWorld.the_quick_foe_search_skips_a_cloaked_foe_that_wins_its_roll
-                    if (w->query_order() == Order::Living ||
-                        w->query_order() == Order::Generator)
+                    // tests: SemBotReach.the_quick_search_passes_over_a_foe_in_a_ring_of_doors_after_its_cloak_roll
+                    if (foe_candidate(*ob, *w) && !asker.door_shut(*w))
                     {
                         return w;
                     }
@@ -2042,8 +2042,10 @@ walker* GameWorld::find_nearest_foe(walker* ob)
         // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe force
         //   below) returns the nearest-by-distance walker in the object list that is alive,
         //   awake (not dormant), visible (not hidden), not friendly to the searcher, a Living or
-        //   Generator, and wins its cloak roll. Here: `is_friendly==0 && (Living||Generator) &&
-        //   cloak roll`.
+        //   Generator, and wins its cloak roll. Here: foe_candidate (the one test of a candidate
+        //   every search asks; alive, awake and visible again after the early skip above, which
+        //   keeps the owner-chain repair off a dead body) and then the cloak roll, so a body that
+        //   is no candidate draws nothing.
         // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
         // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
         // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -2051,9 +2053,7 @@ walker* GameWorld::find_nearest_foe(walker* ob)
         // tests: SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
         // tests: SemWorld.the_full_foe_scan_breaks_a_tie_by_list_order
         // tests: SemWorld.the_full_foe_scan_finds_a_foe_on_another_floor
-        if (ob->is_friendly(foe) == 0 &&
-            (foe->query_order() == Order::Living ||
-             foe->query_order() == Order::Generator) &&
+        if (foe_candidate(*ob, *foe) &&
             (rng_.next(static_cast<std::uint32_t>(std::max<int>(foe->invisibility_left(), 0) / 20)) == 0))  // same clamp as find_near_foe: a negative cloak counter must not wrap into a ~4e9 next() bound.
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
@@ -2205,6 +2205,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
                                                  walker* ob)
 {
     std::list<walker*> result;
+    std::optional<og::reach::Asker> door_asker;  // the cast rule's bot, made on need (fix BJ)
     // plumbing: range finders: zero the count, null searcher or null count pointer -> empty result
     if (howmany != nullptr)
         *howmany = 0;
@@ -2218,15 +2219,14 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     {
         walker* w = uptr.get();
         // rule: find_foes_in_range returns the live, awake, visible, non-friendly Livings and
-        //   Generators within range (inclusive); no cloak roll, so an invisible foe IS found here.
-        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
-        // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
+        //   Generators within range (inclusive; foe_candidate); no cloak roll, so an invisible foe
+        //   IS found here. Gameplay Fixes BJ: while a bot's cast rule asks (cast_rule_for) a
+        //   candidate only a locked door keeps it from is left out (cast_rule_leaves_out, last).
+        // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches, KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
         // tests: SemWorld.find_foes_in_range_keeps_hostile_livings_and_generators_only
-        if (w && !w->dead() && !w->dormant() && !w->hidden() &&
-            (w->query_order() == Order::Living ||
-             w->query_order() == Order::Generator) &&
-            (ob->is_friendly(w) == 0) &&
-            ob->distance_to_ob(w) <= range)
+        // tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
+        if (w && foe_candidate(*ob, *w) && ob->distance_to_ob(w) <= range &&
+            !cast_rule_leaves_out(*ob, *w, door_asker))
         {
             result.push_back(w);
             (*howmany)++;
@@ -3833,8 +3833,9 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
 // every foe that passed its filters and its cloak roll, in list order; the
 // pick only compares distances and floors, so it draws nothing. Appended at
 // EOF so the parity canary pins above never shift.
-void GameWorld::NearestFoePick::set_searcher(const walker& ob, int floors)
+void GameWorld::NearestFoePick::set_searcher(walker& ob, int floors)
 {
+    asker.emplace(ob);
     // rule: #447, #512 (this game only, both settings): on a level with more than one floor a
     //   living that flies (walker::flies) never leaves its floor and prefers a foe on it. On a
     //   level with one floor, and for every other searcher, the scan stays floor-blind.
@@ -3845,11 +3846,20 @@ void GameWorld::NearestFoePick::set_searcher(const walker& ob, int floors)
 
 void GameWorld::NearestFoePick::offer(walker* foe, std::int32_t distance)
 {
+    const bool nearer = distance < any_distance;
+    const bool nearer_on_own_floor = own_floor >= 0 && foe->floor() == own_floor && distance < own_distance;
+    // rule: Gameplay Fixes BJ: a candidate that would replace either pick and that only a locked
+    //   door keeps the searcher from (og::reach::Asker::door_shut, asked last, of the scan's one
+    //   Asker) is passed over for both; its cloak roll is made already, and the scan goes on.
+    //   Classic, and for a walker og::reach::asks does not name, every candidate is offered.
+    // tests: SemBotReach.the_full_scan_passes_over_a_foe_in_a_ring_of_doors_for_both_picks
+    if ((nearer || nearer_on_own_floor) && asker.has_value() && asker->door_shut(*foe))
+        return;
     // rule: The full foe search keeps the strictly nearest qualifying walker; ties keep the earlier
     //   one in list order.
     // tests: SemWorld.the_full_foe_scan_breaks_a_tie_by_list_order
     // tests: SemWorld.the_full_foe_scan_finds_a_foe_on_another_floor
-    if (distance < any_distance)
+    if (nearer)
     {
         any_distance = distance;
         any = foe;
@@ -3861,7 +3871,7 @@ void GameWorld::NearestFoePick::offer(walker* foe, std::int32_t distance)
     //   on that searcher's floor.
     // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
     // tests: SemWorld.a_foe_on_floor_minus_one_is_not_on_the_floor_of_a_searcher_the_rule_is_not_for
-    if (own_floor >= 0 && foe->floor() == own_floor && distance < own_distance)
+    if (nearer_on_own_floor)
     {
         own_distance = distance;
         own = foe;
@@ -3876,4 +3886,41 @@ walker* GameWorld::NearestFoePick::answer() const
     // tests: SemWorld.the_full_foe_scan_answers_a_flyer_the_nearest_foe_on_its_own_floor
     // tests: SemWorld.the_own_floor_preference_draws_what_the_scan_always_drew
     return own != nullptr ? own : any;
+}
+
+// The one test of a foe candidate (game_world.h): the quick foe search, the full scan, the range
+// finder and og::reach::shut_out ask it, each making its own cloak roll where it makes one.
+// Appended at EOF so the parity canary pins above never shift.
+bool GameWorld::foe_candidate(const walker& searcher, const walker& w)
+{
+    // rule: A foe candidate is alive, awake (not dormant), visible (not hidden), not friendly to the
+    //   searcher, and a Living or a Generator (never a weapon, a treasure or an effect). No roll.
+    // tests: SemWorld.the_quick_foe_search_skips_friends_corpses_and_weapons
+    // tests: SemWorld.find_foes_in_range_keeps_hostile_livings_and_generators_only
+    // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
+    // tests: NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world
+    // tests: SemReach.a_bot_is_shut_out_by_an_enemy_only_a_door_keeps_from_it
+    return !w.dead() && !w.dormant() && !w.hidden() &&
+           (w.query_order() == Order::Living || w.query_order() == Order::Generator) &&
+           searcher.is_friendly(&w) == 0;
+}
+
+// find_foes_in_range's cast-rule filter (Gameplay Fixes BJ, game_world.h). Appended at EOF so the
+// parity canary pins above never shift.
+bool GameWorld::cast_rule_leaves_out(walker& ob, const walker& w, std::optional<og::reach::Asker>& asker) const
+{
+    // rule: Gameplay Fixes BJ: only while a bot's cast rule is asked (cast_rule_for, set by
+    //   living::cast_rule for a bot og::reach::asks names) and only for that bot's own question is a
+    //   candidate asked about doors; a range finder asked by anyone else, or outside a cast rule,
+    //   keeps every candidate (whom an effect strikes, the cast itself, a player's casts).
+    // tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
+    if (cast_rule_for == nullptr || cast_rule_for != &ob)
+        return false;
+    // plumbing: one Asker for the whole list, made on the first candidate asked about
+    if (!asker.has_value())
+        asker.emplace(ob);
+    // rule: Gameplay Fixes BJ: the cast rule's candidate only a locked door keeps the bot from
+    //   (og::reach::door_shut) is left out of the list and of the count.
+    // tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
+    return asker->door_shut(w);
 }
