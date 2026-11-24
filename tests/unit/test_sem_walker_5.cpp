@@ -2883,29 +2883,31 @@ TEST_F(SemBotDoor, a_blow_on_a_fighter_or_a_tree_still_makes_it_the_owners_foe)
 }
 
 // Gameplay Fixes BF, through ticks: a bot whose foe stands behind a door it
-// cannot open never attacks the door. A WALKING archer bot (ACT_RANDOM: not a
-// tower, not held on a post; its specials off, as a level can place it, so that
-// only its bow and its bumps can strike: a special cast before it reaches the
-// door, whose gate asks the foe's reach and not the path, could put arrows
-// into the door, and this rule does not cover it) on the field of up_archer,
-// facing up; a wall across the whole field three tiles above it but for one
-// tile straight above it, which an enemy door of team 1 fills (one tile,
-// asserted); a hostile
-// orc sitting two tiles above the door, straight up and inside the reach gate,
-// the archer's foe. Nothing but the door stands between them, and there is no
-// way round. The archer is sent up into the door by a walk order of 20 rounds,
-// as a level script can send it: with Gameplay Fixes BJ a bot lets go of a foe
-// that only a locked door keeps it from and stands, so its chase alone no
-// longer takes it to the door, and the bump this rule is about would not
-// happen. The world ticks kTicks times. Setting on: the archer walks into
-// the door (it is its collision body on some tick, asserted), starts no swing
-// and no shot in all that time (its firing delay never rose, no arrow of its
-// own flew), the door's hit points are whole, and the door is its foe on no
-// tick.
+// cannot open, and to which no other rule makes the door its foe, never attacks
+// the door. An archer bot that is a guard holding its post (ACT_GUARD, hold
+// post: Gameplay Fixes BJ and BL ask no guard at its post, so its foe stays
+// the orc and the door is never handed to it as a last resort, while this rule
+// asks every bot; its specials off, as a level can place it, so that only its
+// bow and its bumps can strike: a special cast at the orc, whose gate asks the
+// foe's reach and not the path, could put arrows into the door, and this rule
+// does not cover it) on the field of up_archer, facing up; a wall across the
+// whole field three tiles above it but for one tile straight above it, which
+// an enemy door of team 1 fills (one tile, asserted); a hostile orc sitting
+// two tiles above the door, straight up and inside the reach gate, the
+// archer's foe. Nothing but the door stands between them, and there is no way
+// round. The archer is sent up into the door by a walk order of 20 rounds, as
+// a level script can send it (a guard at its post does not walk to its foe).
+// The world ticks kTicks times. Setting on: the archer walks into the door (it
+// is its collision body on some tick, asserted), starts no swing and no shot
+// in all that time (its firing delay never rose, no arrow of its own flew),
+// the door's hit points are whole, and the door is its foe on no tick. A
+// moving bot in the archer's place is handed the door by Gameplay Fixes BL
+// (SemBotBreak in og_unit_sim): it attacks the door because the door is then
+// its foe.
 // Setting off: the door loses hit points (to its shots and its bumps' blows,
 // each meeting the door's clash roll: this half holds by the draws, the
 // setting-on half by the rules).
-TEST_F(SemBotDoor, a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on)
+TEST_F(SemBotDoor, a_guard_at_its_post_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on)
 {
     constexpr int kTicks = 600;
     for (short fixes : {short{0}, short{1}}) {
@@ -2913,6 +2915,8 @@ TEST_F(SemBotDoor, a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_
         walker* archer = up_archer(fixes);
         ASSERT_NE(nullptr, archer);
         archer->set_specials_disabled(true);
+        archer->set_act_type(ACT_GUARD);
+        archer->set_guard_hold_post(true);
         const ShotPlan p = plan_of(archer, FACE_UP);
         ASSERT_GT(p.los, 1);
         const int col = (archer->xpos() + archer->sizex() / 2) / GRID_SIZE;

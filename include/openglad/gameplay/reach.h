@@ -266,6 +266,16 @@ public:
     [[nodiscard]] std::vector<const walker*> doors_touched(const walker& door);
     // The barring doors beside a region of the shut layer (each touches it), in the world's order.
     [[nodiscard]] std::vector<const walker*> doors_beside(int region);
+    // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way:
+    // the door breaks() answers for this walker (none when its conditions fail or no edge door
+    // leads to a hostile), and whether `held` is an edge door that leads to a hostile (the keep's
+    // "no flip between doors"). See breaks() and keeps_door() below.
+    struct LastResort
+    {
+        const walker* door = nullptr;
+        bool held_leads = false;
+    };
+    [[nodiscard]] LastResort last_resort(const walker* held);
 
 private:
     // The maps current and the resolution made from them; false when nothing is judged (reach.cpp).
@@ -326,6 +336,27 @@ bool nearest_approach(walker& w, const walker& b, Mode mode, Cell& out);
 // start_cell(w) has a region, w walks to b with the doors that bar it shut, and a walker of w's box,
 // flags and side holding no key (Asker(w, 0), the keyless kind) would not walk to b.
 [[nodiscard]] bool opens_way(walker& w, const walker& b);
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// door w is handed as its foe, or none. None unless asks(w), shut_out(w), no live, awake, visible
+// hostile living or generator on w's floor is one w gets at (walks_to Shut, or shoots_at), and
+// start_cell(w) has a region; a key w holds changes nothing here (a door it can open bars it not,
+// so it is open in its map). The door walk: for w's kind a barring door closes the cells that stand
+// with the doors open and on which the kind's box meets it; it touches a region of the shut layer
+// when a closed cell has a 4-neighbour standing cell in that region, and touches another barring
+// door when a closed cell of one is, or is a 4-neighbour of, a closed cell of the other. The walk
+// goes region to door, door to door and door to region along the touches; every door entered costs
+// one; a region's stair links cost nothing and lead one way. The door: among the barring doors on
+// w's floor that touch a region w gets to (the edge doors), the one from which a region holding an
+// approach cell of such a hostile is reached at the least cost, that door counted; ties by
+// Manhattan cells from start_cell(w) to the door's corner cell, then row, then column. An edge door
+// that leads to no such region is never answered. Draws nothing.
+[[nodiscard]] walker* breaks(walker& w);
+// The keep of Gameplay Fixes BL, asked of a bot (asks) whose foe is the live door `held`, whether
+// that door bars it or not: `held` while breaks' conditions hold and `held` is an edge door that
+// leads to a hostile (it need not be the best: no flip between doors); while the conditions hold
+// and only another door qualifies, the door breaks(w) answers; otherwise none (the bot lets it go).
+// A door that does not bar w is no edge door. Draws nothing.
+[[nodiscard]] walker* keeps_door(walker& w, const walker& held);
 
 struct MapsData;
 

@@ -628,9 +628,9 @@ bool living::act_round()
 					//   its facing to the nearest even (orthogonal) direction and searches for it
 					//   for 300 steps; with none near it either finds the nearest foe anywhere
 					//   (half the time) or wanders 20 steps (statistics::idle_walk: with Gameplay
-					//   Fixes BJ a bot shut out by a locked door stays where it is).
+					//   Fixes BJ and BL a bot shut out by a locked door is handed it, or stays put).
 					// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches, CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command
-					// tests: SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
+					// tests: SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
 					if (!foe())
 					{
 						set_foe(current_game->world->find_near_foe(this));
@@ -1062,10 +1062,10 @@ bool living::act_random()
 
 	// Find our foe
 	// rule: act_random retargets to a near foe one time in 80 (or whenever it has none); with no
-	//   foe near it wanders 40 steps (statistics::idle_walk: with Gameplay Fixes BJ a bot shut out
-	//   by a locked door stays where it is).
+	//   foe near it wanders 40 steps (statistics::idle_walk: with Gameplay Fixes BJ and BL a bot shut
+	//   out by a locked door is handed the door in its way, or stays where it is).
 	// tests: WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue, LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
+	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
 	if (!current_game->world->rng_.next(80) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
 	if (!foe())
@@ -1182,14 +1182,14 @@ bool living::leaves_a_door_alone(const walker* body) const
 {
 	// rule: Gameplay Fixes BF: with the setting on a bot (a walker no player drives, user() -1)
 	//   that walks into an enemy door starts no swing at it, unless the door already is its foe
-	//   (a level script or a mod named it). A player's own fighter, a door that is the bot's foe,
-	//   a grown tree, a fighter and a golem (a door's family number, but a living) are swung at
-	//   as before; with the setting off every bump on a live enemy door swings (classic).
+	//   (a level script, a mod or Gameplay Fixes BL named it). A player's own fighter, a door that
+	//   is the bot's foe, a grown tree, a fighter and a golem (a door's family number, but a living)
+	//   are swung at as before; with the setting off every bump on a live enemy door swings (classic).
 	// tests: SemBotDoor.a_bot_that_walks_into_an_enemy_door_starts_no_swing_with_the_setting_on, parity:orc_bot_bumps_door_scen99, parity:orc_bot_bumps_door_fixes_scen99
 	// tests: SemBotDoor.a_players_fighter_still_swings_at_a_door_it_walks_into
 	// tests: SemBotDoor.a_bot_swings_at_a_door_that_is_its_foe
 	// tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
-	// tests: SemBotDoor.a_bot_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
+	// tests: SemBotDoor.a_guard_at_its_post_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
 	return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&
 	       body != foe();
 }

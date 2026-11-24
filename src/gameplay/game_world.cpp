@@ -2880,6 +2880,13 @@ void GameWorld::tick()
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                         level_done = 0; // an awake foe holds the level open
+                    // rule: Gameplay Fixes BL: after acting, a bot whose foe is a live door is asked
+                    //   the last-resort rule's keep (statistics::keeps_door; a bot in a swing never
+                    //   reaches the top of its round); on a let-go the hand-out below acts in the
+                    //   same tick. Every other walker is not asked (keeps_door answers Kept).
+                    // tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+                    if (ob->stats() != nullptr)
+                        (void)ob->stats()->keeps_door(*ob);
                     // Testing .. trying to FORCE foes :)
                     // rule: After acting, every live walker in the object list (any order, any
                     //   team) with neither a foe nor a leader is handed the nearest qualifying foe
@@ -2887,7 +2894,19 @@ void GameWorld::tick()
                     //   foe.
                     // tests: SemWorld.a_walker_without_foe_or_leader_is_handed_the_nearest_foe
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
+                    {
                         ob->set_foe(find_nearest_foe(ob));
+                        // rule: Gameplay Fixes BL: a bot the hand-out left with no foe is handed the
+                        //   locked door in its way when it has no enemy it can get at
+                        //   (og::reach::breaks; none for every other walker, and for every walker
+                        //   with the setting off).
+                        // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+                        walker* const door = ob->foe() == nullptr ? og::reach::breaks(*ob) : nullptr;
+                        // rule: Gameplay Fixes BL: (the same rule: the door handed, when there is one)
+                        // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+                        if (door != nullptr)
+                            ob->set_foe(door);
+                    }
                 }
             }
         }

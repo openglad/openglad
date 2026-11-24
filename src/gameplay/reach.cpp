@@ -767,6 +767,28 @@ void reach_from(GameWorld& world, walker& w, const Layer& layer, std::int32_t st
     std::sort(cells.begin(), cells.end());
 }
 
+// The reach of the standing cell `start` (an index into the layer), which is its region's: the
+// regions it gets to and the cells reached that are no standing cell, kept per region.
+void region_reach(GameWorld& world, walker& w, Layer& layer, std::int32_t start,
+                  const std::vector<std::uint8_t>*& regions_out, const std::vector<std::int32_t>*& cells_out)
+{
+    const std::int32_t rs = layer.region[static_cast<std::size_t>(start)];
+    // plumbing: size the per-region slots once
+    if (layer.gets.size() != static_cast<std::size_t>(layer.regions))
+    {
+        layer.gets.assign(static_cast<std::size_t>(layer.regions), {});
+        layer.gets_cells.assign(static_cast<std::size_t>(layer.regions), {});
+    }
+    std::vector<std::uint8_t>& regions = layer.gets[static_cast<std::size_t>(rs)];
+    std::vector<std::int32_t>& cells = layer.gets_cells[static_cast<std::size_t>(rs)];
+    // plumbing: fill this region's reach on first need (any standing cell of a region reaches what
+    //   the region reaches: reach_from brings the whole region in at once)
+    if (regions.empty())
+        reach_from(world, w, layer, start, regions, cells);
+    regions_out = &regions;
+    cells_out = &cells;
+}
+
 // Does the start cell reach the cell `goal` (an index into the layer)?
 bool reaches_index(GameWorld& world, walker& w, Layer& layer, std::int32_t start, std::int32_t goal)
 {
@@ -784,17 +806,11 @@ bool reaches_index(GameWorld& world, walker& w, Layer& layer, std::int32_t start
     //   rule: a start that is no standing cell is reached afresh, with the same answer)
     if (rs >= 0)
     {
-        // plumbing: size the per-region slots once
-        if (layer.gets.size() != static_cast<std::size_t>(layer.regions))
-        {
-            layer.gets.assign(static_cast<std::size_t>(layer.regions), {});
-            layer.gets_cells.assign(static_cast<std::size_t>(layer.regions), {});
-        }
-        std::vector<std::uint8_t>& regions = layer.gets[static_cast<std::size_t>(rs)];
-        std::vector<std::int32_t>& cells = layer.gets_cells[static_cast<std::size_t>(rs)];
-        // plumbing: fill this region's reach on first need
-        if (regions.empty())
-            reach_from(world, w, layer, start, regions, cells);
+        const std::vector<std::uint8_t>* reached = nullptr;
+        const std::vector<std::int32_t>* reached_cells = nullptr;
+        region_reach(world, w, layer, start, reached, reached_cells);
+        const std::vector<std::uint8_t>& regions = *reached;
+        const std::vector<std::int32_t>& cells = *reached_cells;
         // plumbing: a standing goal is asked by region, any other by cell
         if (rg >= 0)
             return regions[static_cast<std::size_t>(rg)] != 0;
@@ -1514,12 +1530,19 @@ RoutePlan plan_route(walker& w, Cell goal, const walker* foe)
     // rule: Gameplay Fixes BI: a bot whose foe is a door that bars it is routed into that door: the
     //   cells only that door closes stand for the solve (RouteCells), the goal stays the door's
     //   corner cell, and the search is not run when the start cell has a region and the bot does
-    //   not walk to the door with the doors that bar it shut.
+    //   not walk to the door with the doors that bar it shut, nor when the solve's own cells refuse
+    //   the goal both as a step's end and as a stair's landing (the route finder enters a cell only
+    //   by those two tests, so that search could only fail: a big bot whose foe is one door of a
+    //   two-door doorway, whose corner cell the other door closes too, Gameplay Fixes BL).
     // tests: SemBotReach.a_bot_whose_foe_is_a_door_is_routed_into_that_door_and_no_other
+    // tests: SemBotBreak.a_big_bot_whose_foe_is_one_door_of_a_two_door_doorway_runs_no_search_that_must_fail
     if (foe != nullptr && door_bars(&w, foe))
     {
         plan.cells.foe_door_of = &w;
-        plan.run = !standing || a.walks_to(*foe, Mode::Shut);
+        const bool goal_enterable =
+            plan.cells(goal.x * GRID_SIZE, goal.y * GRID_SIZE, goal.floor, StepTest::Step) ||
+            plan.cells(goal.x * GRID_SIZE, goal.y * GRID_SIZE, goal.floor, StepTest::Landing);
+        plan.run = !standing || (a.walks_to(*foe, Mode::Shut) && goal_enterable);
         return plan;
     }
     // rule: Gameplay Fixes BI: the goal of a route to a foe is the foe's corner cell, but when that
@@ -1607,6 +1630,252 @@ bool opens_way(walker& w, const walker& b)
     // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
     // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
     return !Asker(w, 0).walks_to(b, Mode::Shut);
+}
+
+// --------------------------------------------------------------------------------------------
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way, and
+// lets it go the moment it can get at one.
+// --------------------------------------------------------------------------------------------
+
+Asker::LastResort Asker::last_resort(const walker* held)
+{
+    LastResort out;
+    // plumbing: a walker og::reach::asks does not name (the setting off, a player's fighter, a tower,
+    //   a guard at its post) is shut out by nothing (door_shut_exit's own NotAsked exit, which every
+    //   hostile below would answer), so it is handed none: answered at once; and nothing judged
+    //   (fresh's rule) hands none either
+    if (!asks(w_) || !fresh())
+        return out;
+    // plumbing: a bot no live door bars is shut out by no door (door_shut_exit's own first exit,
+    //   which every hostile below would answer), so it is handed none: answered at once
+    if (r_.barring->doors.empty())
+        return out;
+    index_start();
+    // plumbing: a bot whose start cell has no region (inside terrain, on air) is shut out by no
+    //   door (door_shut_exit's own NoRegion exit, which every hostile below would answer), so it is
+    //   handed none: answered at once
+    if (r_.start_region[static_cast<std::size_t>(Mode::Shut)] < 0)
+        return out;
+    walker& w = *w_;
+    GameWorld& world = *current_game->world;
+    bool shut = false;
+    std::vector<const walker*> hostiles;
+    // plumbing: every body of the object list, judged below
+    for (const auto& up : world.oblist)
+    {
+        const walker* b = up.get();
+        // rule: Gameplay Fixes BL: the hostiles judged are the live, awake, visible hostile livings
+        //   and generators on the bot's floor (GameWorld::foe_candidate, the searches' one test,
+        //   without their cloak roll), cloaked or not, at any distance.
+        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
+        // tests: SemBotBreak.a_bot_shut_out_only_from_a_tent_is_handed_the_door_to_it
+        if (b == nullptr || b == &w || b->floor() != w.floor() || !GameWorld::foe_candidate(w, *b))
+            continue;
+        const Exit e = door_shut_exit(*b);
+        // rule: Gameplay Fixes BL: a bot that gets at a hostile (walks to it with the doors that bar
+        //   it shut, or its shot lands on it from where it stands) is handed no door.
+        // tests: SemBotBreak.while_an_enemy_outside_lives_the_crew_holds_no_door_and_strikes_none
+        // tests: SemBotBreak.a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_foe
+        if (e == Exit::WalksShut || e == Exit::Shot || (e == Exit::NoWayOpen && shoots_at(w, *b)))
+            return LastResort{};
+        // plumbing: some hostile only a door keeps it from (shut_out's own question, asked of the
+        //   same list)
+        if (e == Exit::DoorShut)
+            shut = true;
+        hostiles.push_back(b);
+    }
+    // plumbing: a bot that is not shut out (no hostile only a door keeps it from) is handed no door;
+    //   the walk below would answer none either (a region the walk reaches through doors is one the
+    //   bot walks to with every door open, so a hostile there would be door-shut): answered at once
+    if (!shut)
+        return out;
+    Map& m = map();
+    Layer& layer = layer_of(m, Mode::Shut);
+    const std::size_t regions = static_cast<std::size_t>(layer.regions);
+    const std::size_t n = m.barring->doors.size();
+    const MapsData& d = world.reach_maps.data();
+    // The regions the bot gets to at no door's cost: its own and those its stair links lead to.
+    std::vector<std::uint8_t> own(regions, 0);
+    const std::int32_t rs = r_.start_region[static_cast<std::size_t>(Mode::Shut)];
+    own[static_cast<std::size_t>(rs)] = 1;
+    // Per region, the regions that get to it at no door's cost (a stair link read backwards).
+    std::vector<std::vector<std::int32_t>> got_from(regions);
+    // plumbing: a layer with no stair joins no two regions at no cost
+    if (layer.any_link)
+    {
+        std::vector<std::int32_t> first(regions, -1);
+        // plumbing: one standing cell of each region (its reach is the region's)
+        for (std::size_t i = 0; i < layer.region.size(); ++i)
+        {
+            const std::int32_t r = layer.region[i];
+            // plumbing: the first cell met of each region
+            if (r >= 0 && first[static_cast<std::size_t>(r)] < 0)
+                first[static_cast<std::size_t>(r)] = static_cast<std::int32_t>(i);
+        }
+        // plumbing: each region's reach, read backwards
+        for (std::size_t r = 0; r < regions; ++r)
+        {
+            const std::vector<std::uint8_t>* reached = nullptr;
+            const std::vector<std::int32_t>* cells = nullptr;
+            region_reach(world, w, layer, first[r], reached, cells);
+            // plumbing: (the same walk)
+            for (std::size_t to = 0; to < regions; ++to)
+            {
+                // rule: Gameplay Fixes BL, the door walk: a region's stair links (and every region
+                //   the route finder's steps reach through them) cost nothing and lead one way; the
+                //   regions the bot gets to are those its start region reaches so.
+                // tests: SemBotBreak.the_door_walk_follows_stair_links_at_no_cost_and_one_way
+                if ((*reached)[to] != 0 && to != r)
+                {
+                    got_from[to].push_back(static_cast<std::int32_t>(r));
+                    // plumbing: the bot's own reach
+                    if (static_cast<std::int32_t>(r) == rs)
+                        own[to] = 1;
+                }
+            }
+        }
+    }
+    // The cost from each node to a region holding an approach cell of a hostile: the doors entered
+    // after it (nodes 0..regions-1 are regions, regions.. the barring doors in the barring order),
+    // walked backwards from those regions, a door entered costing one (a 0-1 walk).
+    constexpr std::int32_t kNever = 1 << 29;
+    std::vector<std::int32_t> cost(regions + n, kNever);
+    std::vector<std::int32_t> queue_front;
+    std::vector<std::int32_t> queue_back;
+    const auto mark_end = [&](Cell, std::int32_t i) {
+        const std::int32_t r = layer.region[static_cast<std::size_t>(i)];
+        // rule: Gameplay Fixes BL, the door walk: a region holding an approach cell of a live
+        //   hostile living or generator is where the walk ends (cost 0 from it).
+        // tests: SemBotBreak.a_bot_shut_out_only_from_a_tent_is_handed_the_door_to_it
+        // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+        if (r >= 0 && cost[static_cast<std::size_t>(r)] != 0)
+        {
+            cost[static_cast<std::size_t>(r)] = 0;
+            queue_front.push_back(r);
+        }
+        return false;
+    };
+    // plumbing: every hostile's approach cells, marked by their regions
+    for (const walker* b : hostiles)
+        for_each_approach(layer, w, *b, mark_end);
+    // plumbing: a 0-1 walk: the zero-cost steps first (a stack), then the next cost's (a list
+    //   started over when the stack is empty)
+    while (!queue_front.empty() || !queue_back.empty())
+    {
+        // plumbing: the stack empty: the next cost's nodes
+        if (queue_front.empty())
+        {
+            queue_front.swap(queue_back);
+            continue;
+        }
+        const std::int32_t u = queue_front.back();
+        queue_front.pop_back();
+        const std::int32_t cu = cost[static_cast<std::size_t>(u)];
+        const auto relax = [&](std::size_t v, std::int32_t c, bool free_step) {
+            // rule: Gameplay Fixes BL, the door walk: a door leads outward: the walk never steps back
+            //   into a region the bot gets to (so a held door that leads to a hostile only back
+            //   through the bot's own region and another door leads to none).
+            // tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+            if (v < regions && own[v] != 0)
+                return;
+            // plumbing: a cheaper way to v (a node already settled at that cost is not walked again)
+            if (c >= cost[v])
+                return;
+            cost[v] = c;
+            // plumbing: a free step stays at this cost (the stack), a door entered waits for the next
+            if (free_step)
+                queue_front.push_back(static_cast<std::int32_t>(v));
+            else
+                queue_back.push_back(static_cast<std::int32_t>(v));
+        };
+        // plumbing: a region's ways back, then a door's
+        if (static_cast<std::size_t>(u) < regions)
+        {
+            // rule: Gameplay Fixes BL, the door walk: from a door the walk steps into any region it
+            //   touches at no cost, and through a region's stair links at no cost.
+            // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
+            // tests: SemBotBreak.the_door_walk_follows_stair_links_at_no_cost_and_one_way
+            for (const std::uint16_t k : m.region_doors[static_cast<std::size_t>(u)])
+                relax(regions + k, cu, true);
+            // plumbing: (the same rule: the stair links read backwards)
+            for (const std::int32_t from : got_from[static_cast<std::size_t>(u)])
+                relax(static_cast<std::size_t>(from), cu, true);
+            continue;
+        }
+        const std::size_t k = static_cast<std::size_t>(u) - regions;
+        // rule: Gameplay Fixes BL, the door walk: entering a door costs one, from a region it
+        //   touches or from a door it touches (two doors in a row with no floor between them count
+        //   two).
+        // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
+        for (const std::int32_t r : m.door_regions[k])
+            relax(static_cast<std::size_t>(r), cu + 1, false);
+        // plumbing: (the same rule: a door touching this one)
+        for (const std::uint16_t e : m.door_doors[k])
+            relax(regions + e, cu + 1, false);
+    }
+    const int floor = obmap::filed_floor(w.floor());
+    std::int32_t best_cost = kNever;
+    int best_md = 0;
+    int best_y = 0;
+    int best_x = 0;
+    // plumbing: every barring door, judged below
+    for (std::size_t k = 0; k < n; ++k)
+    {
+        const DoorRec& door = d.doors[m.barring->doors[k]];
+        bool edge = false;
+        // plumbing: does it touch a region the bot gets to
+        for (const std::int32_t r : m.door_regions[k])
+            edge = edge || own[static_cast<std::size_t>(r)] != 0;
+        const std::int32_t c = cost[regions + k];
+        // rule: Gameplay Fixes BL: a door is handed only when it is an edge door (a barring door on
+        //   the bot's floor touching a region it gets to) that leads to a region holding an approach
+        //   cell of a hostile.
+        // tests: SemBotBreak.a_closets_door_is_handed_to_nobody_and_takes_no_blow
+        // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
+        if (door.floor != floor || !edge || c >= kNever)
+            continue;
+        // plumbing: the held door still qualifies (the keep reads it)
+        if (door.door == held)
+            out.held_leads = true;
+        const int cx = door.x / GRID_SIZE;
+        const int cy = door.y / GRID_SIZE;
+        const int md = std::abs(cx - r_.start.x) + std::abs(cy - r_.start.y);
+        // rule: Gameplay Fixes BL: of the qualifying doors the one reached at the least cost, that
+        //   door counted (fewest doors before distance); ties by Manhattan cells from the start cell
+        //   to the door's corner cell, then row, then column.
+        // tests: SemBotBreak.equal_door_counts_go_to_the_nearest_then_the_row_then_the_column
+        // tests: SemBotBreak.door_bots_on_all_four_sides_strike_their_door_from_their_own_side
+        if (out.door == nullptr || c < best_cost ||
+            (c == best_cost && (md < best_md || (md == best_md && (cy < best_y || (cy == best_y && cx < best_x))))))
+        {
+            out.door = door.door;
+            best_cost = c;
+            best_md = md;
+            best_y = cy;
+            best_x = cx;
+        }
+    }
+    return out;
+}
+
+walker* breaks(walker& w)
+{
+    // The door the world lists, as a walker the bot can hold.
+    return const_cast<walker*>(Asker(w).last_resort(nullptr).door);
+}
+
+walker* keeps_door(walker& w, const walker& held)
+{
+    const Asker::LastResort lr = Asker(w).last_resort(&held);
+    // rule: Gameplay Fixes BL, the keep: while breaks' conditions hold the held door is kept as long
+    //   as it is an edge door that leads to a hostile, the best or not (no flip between doors);
+    //   only when it no longer is, the door breaks answers is taken; when the conditions fail, or no
+    //   door qualifies, none (the bot lets it go).
+    // tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+    // tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+    if (lr.door == nullptr)
+        return nullptr;
+    return lr.held_leads ? const_cast<walker*>(&held) : const_cast<walker*>(lr.door);
 }
 
 }  // namespace og::reach

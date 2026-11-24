@@ -2731,6 +2731,12 @@ void statistics::level_written() noexcept
 statistics::FoeKeep statistics::keeps_foe()
 {
 	walker* const foe = controller_->foe();
+	// rule: Gameplay Fixes BL: a held door (a door is no fighter, so the question below would keep
+	//   it) is asked the last-resort rule's keep instead (keeps_door).
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	if (foe->is_door())
+		return keeps_door(*controller_);
 	const og::reach::Exit why = og::reach::door_shut_exit(*controller_, *foe);
 	// rule: Gameplay Fixes BJ: a held foe only a locked door keeps the bot from is let go: no foe, its
 	//   orders cleared (clear_command, which clears its leader too), its route cleared; the round
@@ -2740,9 +2746,7 @@ statistics::FoeKeep statistics::keeps_foe()
 	// tests: SemBotReach.a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door
 	if (why == og::reach::Exit::DoorShut)
 	{
-		controller_->set_foe(nullptr);
-		clear_command();
-		controller_->path_to_foe.clear();
+		let_go(*controller_);
 		return FoeKeep::LetGo;
 	}
 	// rule: Gameplay Fixes BJ: a held foe that only a locked door keeps the bot from on foot, but
@@ -2829,21 +2833,75 @@ bool statistics::shot_attacks(float xdelta, float ydelta)
 	return true;
 }
 
-// The wander of a bot with no foe (living.cpp: the seek's coin and act_random's), Gameplay Fixes
-// BJ. `bot` is the living that is deciding, which passes itself: the stats' owner is not read
-// (a snapshot resolves it by id, so it may be nobody or another walker), as the classic wander
-// read none. Appended at the end of the file so the parity pins above never shift.
+// The idle decision of a bot with no foe (living.cpp: the seek's coin and act_random's), Gameplay
+// Fixes BJ and BL. `bot` is the living that is deciding, which passes itself: the stats' owner is
+// not read (a snapshot resolves it by id, so it may be nobody or another walker), as the classic
+// wander read none. Appended at the end of the file so the parity pins above never shift.
 short statistics::idle_walk(walker& bot, Sint32 rounds)
 {
 	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (og::reach::shut_out: some enemy on
 	//   its floor only a door keeps it from) queues no wander and makes neither of its two direction
-	//   draws: it stays where it is. The question is asked of the living that is deciding, whatever
-	//   its stats name as their owner. Every other walker, and every walker with the setting off,
-	//   wanders as before (try_random_walk).
-	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_stands_on_its_cell
+	//   draws. The question is asked of the living that is deciding, whatever its stats name as their
+	//   owner. Every other walker, and every walker with the setting off, wanders as before
+	//   (try_random_walk).
+	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
 	if (og::reach::shut_out(bot))
+	{
+		walker* const door = og::reach::breaks(bot);
+		// rule: Gameplay Fixes BL: the shut-out bot is handed the locked door in its way as its foe
+		//   when it has no enemy it can get at (og::reach::breaks); only when that answers none does
+		//   it stay where it is.
+		// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
+		// tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+		if (door != nullptr)
+			bot.set_foe(door);
 		return 0;
+	}
 	return try_random_walk(rounds);
+}
+
+// Gameplay Fixes BJ and BL: the let-go of a held foe: no foe, the orders cleared (clear_command,
+// which clears the leader too), the route cleared. Draws nothing. Appended at the end of the file
+// so the parity pins above never shift.
+void statistics::let_go(walker& bot)
+{
+	bot.set_foe(nullptr);
+	clear_command();
+	bot.path_to_foe.clear();
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// keep of a held door, asked at the top of a SEARCH and an ATTACK round (keeps_foe) and after every
+// act (GameWorld::tick: a bot in a swing never reaches the top of its round). `bot` is the living
+// whose foe is asked about (it passes itself). Draws nothing. Appended at the end of the file so the
+// parity pins above never shift.
+statistics::FoeKeep statistics::keeps_door(walker& bot)
+{
+	walker* const door = bot.foe();
+	// rule: Gameplay Fixes BL: the keep is asked only of a bot og::reach::asks names (the setting on,
+	//   not a tower, not a guard at its post) whose foe is a live door, whether that door bars it or
+	//   not; every other walker keeps its foe as before.
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	if (!og::reach::asks(&bot) || door == nullptr || door->dead() || !door->is_door())
+		return FoeKeep::Kept;
+	walker* const kept = og::reach::keeps_door(bot, *door);
+	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut
+	//   out no more, or no door leads to a hostile; a door that bars it not is no edge door) is let
+	//   go as Gameplay Fixes BJ lets a foe go: no foe, orders, leader and route cleared.
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	if (kept == nullptr)
+	{
+		let_go(bot);
+		return FoeKeep::LetGo;
+	}
+	// rule: Gameplay Fixes BL: while the conditions hold and the held door no longer leads to a
+	//   hostile, the door breaks answers is taken and kept.
+	// tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+	if (kept != door)
+		bot.set_foe(kept);
+	return FoeKeep::Kept;
 }
 
 // walk_to_foe's near branch: how many of the foes found within its reach the bot does not let go
