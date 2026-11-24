@@ -1548,8 +1548,8 @@ RoutePlan plan_route(walker& w, Cell goal, const walker* foe)
 
 namespace detail {
 
-// w holds the key of a live door filed on its floor (the key bit 2^level, as door_bars reads it).
-// Read from the maps' list of doors: no map is built and no Asker resolved.
+// w holds the key of a live door filed on its floor (holds_key_of_level, the key test door_bars
+// asks). Read from the maps' list of doors: no map is built and no Asker resolved.
 bool holds_door_key(walker& w)
 {
     // plumbing: nothing judged (judged's rule): no list of doors to read
@@ -1561,9 +1561,10 @@ bool holds_door_key(walker& w)
     for (const DoorRec& door : d.doors)
     {
         // rule: Gameplay Fixes BK: the cheap test of opens_way: a live door filed on the bot's floor
-        //   whose key (key bit 2^level) it holds; a door on another floor does not count.
+        //   whose key it holds (holds_key_of_level, door_bars' own key test); a door on another
+        //   floor does not count.
         // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
-        if (door.floor == f && (w.keys() & static_cast<std::uint32_t>(key_level_mask(door.level))) != 0)
+        if (door.floor == f && holds_key_of_level(w.keys(), door.level))
             return true;
     }
     return false;

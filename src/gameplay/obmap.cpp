@@ -869,7 +869,7 @@ bool og::reach::door_bars(const walker* mover, const walker* door, std::uint32_t
 	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
 	if (mover->is_friendly(door))
 		return false;
-	return (keys & static_cast<std::uint32_t>(key_level_mask(door->stats()->level()))) == 0;
+	return !holds_key_of_level(keys, door->stats()->level());
 }
 
 short collide(short x,  short y,  short xsize,  short ysize,

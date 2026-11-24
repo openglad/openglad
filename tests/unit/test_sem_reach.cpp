@@ -3392,26 +3392,34 @@ TEST_F(SemBotReach, a_key_holder_whose_way_runs_through_its_door_plans_its_route
 // og::reach::opens_way and each of its exits, asked directly (the orc bot of the test above at cell
 // (18,18), its foe the soldier inside, unless a case says otherwise). Yes: the orc holds the door's
 // key, walks to the soldier with the doors that bar it shut (none: its key opens the one door), and
-// with no key would not (the door closes the room). No, each by its own exit: the setting off; a
-// seat's fighter and a guard at its post (each would walk to the soldier with the key and not
-// without, asserted); the orc holding no key, and the orc holding only the key of a door on floor 1
-// (both answered before any Asker is resolved: Maps::resolutions does not move); a second gap in the
-// room's wall at cell (15,12) (the keyless kind walks in by it, asserted); the soldier walled in on
-// its cell (no way even with the key); the orc standing inside a wall tile at cell (18,19) (its start
-// cell has no region, asserted, though from inside the wall it would reach the open ground and, with
-// the key, the room, asserted); and, on two floors, the orc inside the room at cell (19,12) and its
-// foe on floor 1 at cell (21,24), beyond an up-stair outside the room at cell (21,20) (with the key
-// it would walk to that foe and without it not, asserted). Every question draws nothing.
+// with no key would not (the door closes the room). Yes too for the orc resting against the door from
+// below, at (336,271), its corner one pixel inside the door's cell: with the key it starts from the
+// door's own cell, which stands for it, and holding no key from the cell below, which its box
+// overlaps 15 rows (each start cell asserted); the keyless walk starts from its own start cell, so it
+// stays outside, though from the door's cell it would step into the room (asserted). No, each by its
+// own exit: the setting off; a seat's fighter and a guard at its post (each would walk to the soldier
+// with the key and not without, asserted); the orc holding no key, and the orc holding only the key
+// of a door on floor 1 (both answered before any Asker is resolved: Maps::resolutions does not
+// move); a second gap in the room's wall at cell (15,12) (the keyless kind walks in by it,
+// asserted); the soldier walled in on its cell (no way even with the key); the orc standing inside a
+// wall tile at cell (18,19) (its start cell has no region, asserted, though from inside the wall it
+// would reach the open ground and, with the key, the room, asserted); and, on two floors, the orc
+// inside the room at cell (19,12) and its foe on floor 1 at cell (21,24), beyond an up-stair outside
+// the room at cell (21,20) (with the key it would walk to that foe and without it not, asserted).
+// Every question draws nothing.
 // Fails when broken: opens_way without its asks test (the seat's fighter and the guard: yes); without
 // its floor test (the foe upstairs: yes); without its key test (a resolution for the orc with no
 // key); holds_door_key counting a door on another floor (a resolution for the orc holding the key
 // upstairs); without its start-region test (the orc inside the wall: yes); without its walks_to test
-// (the walled-in soldier: yes); without its keyless test (the second gap: yes).
+// (the walled-in soldier: yes); without its keyless test (the second gap: yes); the keyless walk
+// started from the key holder's own start cell instead of the keyless kind's (the orc against the
+// door: no).
 TEST_F(SemBotReach, the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way)
 {
-    enum class V { Yes, Off, Seat, Guard, NoKey, KeyUpstairs, NeedsNoKey, NoWay, NoRegion, FoeUpstairs };
+    enum class V { Yes, AgainstDoor, Off, Seat, Guard, NoKey, KeyUpstairs, NeedsNoKey, NoWay, NoRegion, FoeUpstairs };
     const std::pair<V, const char*> cases[] = {
         {V::Yes, "the key opens the only way"},
+        {V::AgainstDoor, "resting against the door from below: the keyless walk from its own start cell"},
         {V::Off, "Gameplay Fixes off"},
         {V::Seat, "a seat's fighter"},
         {V::Guard, "a guard at its post"},
@@ -3435,6 +3443,10 @@ TEST_F(SemBotReach, the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_n
         short oy = 18 * GRID_SIZE;
         std::uint32_t keys = static_cast<std::uint32_t>(key_level_mask(1));
         switch (v) {
+        case V::AgainstDoor:
+            ox = 21 * GRID_SIZE;
+            oy = 16 * GRID_SIZE + 15;
+            break;
         case V::NoKey:
             keys = 0;
             break;
@@ -3475,7 +3487,7 @@ TEST_F(SemBotReach, the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_n
             orc->set_act_type(ACT_GUARD);
         const std::uint64_t r0 = world().reach_maps.resolutions();
         const std::uint32_t s0 = world().rng_.state_;
-        EXPECT_EQ(v == V::Yes, og::reach::opens_way(*orc, *foe));
+        EXPECT_EQ(v == V::Yes || v == V::AgainstDoor, og::reach::opens_way(*orc, *foe));
         EXPECT_EQ(s0, world().rng_.state_) << "the question draws nothing";
         if (v == V::Off || v == V::Seat || v == V::Guard || v == V::NoKey || v == V::KeyUpstairs) {
             EXPECT_EQ(r0, world().reach_maps.resolutions()) << "answered before any Asker is resolved";
@@ -3497,6 +3509,17 @@ TEST_F(SemBotReach, the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_n
             EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "from inside the wall, with the key";
             EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut));
             break;
+        case V::AgainstDoor: {
+            EXPECT_EQ((Cell{21, 16, 0}), og::reach::start_cell(*orc)) << "with the key: the door's own cell, which stands for it";
+            EXPECT_EQ((Cell{21, 17, 0}), keyless.start_cell()) << "holding no key: the cell below, which its box overlaps 15 rows";
+            EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "with the key";
+            EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut)) << "with no key, from its own start cell";
+            bool from_the_door = false;
+            for (const Cell& c : keyless.approach_cells(*foe, Mode::Shut))
+                from_the_door = from_the_door || keyless.reaches(Cell{21, 16, 0}, c, Mode::Shut);
+            EXPECT_TRUE(from_the_door) << "started from the door's cell, the keyless walk would step into the room";
+            break;
+        }
         default:  // Yes, Seat, Guard, FoeUpstairs
             EXPECT_TRUE(og::reach::walks_to(*orc, *foe, Mode::Shut)) << "with the key";
             EXPECT_FALSE(keyless.walks_to(*foe, Mode::Shut)) << "with no key";
@@ -3559,9 +3582,9 @@ TEST_F(SemBotReach, a_far_replan_does_not_ask_whether_a_key_opens_the_way)
     }
 }
 
-// Scenes 1W and 1Wf, a crew bot handed the key of the room's door (door_room). The elf, nearest the
-// door with the three other crew bots (a tie at 160 px, box to box; the first is taken), is given
-// the door's key (key level 3): after tick 200 (1W), or before the first tick (1Wf). Setting on,
+// Two scenes, a crew bot handed the key of the room's door (door_room). The elf, nearest the door
+// with the three other crew bots (a tie at 160 px, box to box; the first is taken), is given the
+// door's key (key level 3): after tick 200, or before the first tick. Setting on,
 // three seeds each, ticks until the door dies: on every tick at whose start opens_way held for the
 // elf and its foe (asked after the tick before), the elf queues no ATTACK (the near branch is not
 // taken) and every step it takes is the whole step it headed (its move equals its heading, lastx and
@@ -3577,7 +3600,8 @@ TEST_F(SemBotReach, a_crew_bot_handed_the_key_walks_its_route_into_the_door_and_
     const std::uint32_t key3 = static_cast<std::uint32_t>(key_level_mask(3));
     for (int key_tick : {200, 0}) {
         {
-            SCOPED_TRACE(std::string("Gameplay Fixes off, ") + (key_tick ? "1W" : "1Wf"));
+            SCOPED_TRACE(std::string("Gameplay Fixes off, ") +
+                         (key_tick ? "the key handed after tick 200" : "the key handed before the first tick"));
             fresh_world(0);
             const DoorRoom r = door_room();
             ASSERT_NE(nullptr, r.door);
@@ -3594,7 +3618,9 @@ TEST_F(SemBotReach, a_crew_bot_handed_the_key_walks_its_route_into_the_door_and_
             EXPECT_FALSE(og::reach::opens_way(*elf, *elf->foe()));
         }
         for (std::uint32_t seed : {42u, 1337u, 2025u}) {
-            SCOPED_TRACE(std::string("Gameplay Fixes on, ") + (key_tick ? "1W" : "1Wf") + ", seed " + std::to_string(seed));
+            SCOPED_TRACE(std::string("Gameplay Fixes on, ") +
+                         (key_tick ? "the key handed after tick 200" : "the key handed before the first tick") + ", seed " +
+                         std::to_string(seed));
             fresh_world(1);
             const DoorRoom r = door_room();
             ASSERT_NE(nullptr, r.door);
@@ -3662,13 +3688,15 @@ TEST_F(SemBotReach, a_crew_bot_handed_the_key_walks_its_route_into_the_door_and_
     }
 }
 
-// Scene 1Wo, an orc handed its own room's key (door_room). After tick 200 the orc nearest the door,
+// A scene, an orc handed its own room's key (door_room). After tick 200 the orc nearest the door,
 // box to box (three of the bottom row tie at 16 px; the first in the list, at (368,224), is taken),
 // is given the door's key. Setting on, three seeds: until tick 200 every bot stands where it was put
 // (each is shut out); the door then dies within the 600 ticks (no bot strikes a door, Gameplay Fixes
 // BF), the keyed orc's box within one step of it on that tick (its step opened it), and the keyed orc
 // stands outside the room, below its wall, on some tick after. Setting off: after tick 1 every bot
-// holds a foe (the classic hand-out).
+// holds a foe (the classic hand-out). Until the door dies the crew stands 160 px below it, so the
+// keyed orc's foe is 100 px or more away and opens_way decides nothing here: the scene shows a key
+// in the maps (Gameplay Fixes BI and BJ); the site test above stages an orc key holder near its foe.
 // Fails when broken: the maps reading a key holder as holding no key (barring_of asking door_bars
 // with no key: the keyed orc stays shut out by its own door and the door stands).
 TEST_F(SemBotReach, an_orc_handed_its_rooms_key_walks_out_through_its_door)
