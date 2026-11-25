@@ -21,6 +21,10 @@
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/reach.h>
+#include <openglad/gameplay/statistics.h>
+
+#include <iterator>
 
 #define MAKE_STATE(x, y, f) reinterpret_cast<PathState>(static_cast<intptr_t>(static_cast<intptr_t>(f) * FLOOR_STRIDE + ((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
 #define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
@@ -132,6 +136,43 @@ void walker::follow_path_to_foe()
         const PathState state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos());
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos());
+        // Gameplay Fixes BL: a melee-only bot walking into the door it holds reads where it stands
+        // from its route's start cell (og::reach::start_cell, the cell its route was planned from).
+        // That cell differs from its corner's cell only where a door closes the corner's cell, as
+        // for a bot below or right of its door, which rests one pixel inside the door's cell (the
+        // body map's box test shrinks each box by a pixel).
+        // rule: Gameplay Fixes BL: a melee-only bot whose foe is a live door (walks_into_door)
+        //   follows its route from its start cell: a node on that cell is reached, the door's own
+        //   cell (the last node) is never reached while the door stands, and from a corner inside
+        //   it the bot takes the hop from its start cell into it, so its step meets the door from
+        //   every side. Every other walker follows as before.
+        // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it
+        if (statistics::walks_into_door(*this, foe()))
+        {
+            const og::reach::Cell from = og::reach::start_cell(*this);
+            const bool on_from = GET_STATE_X(state) == from.x * GRID_SIZE && GET_STATE_Y(state) == from.y * GRID_SIZE &&
+                                 GET_STATE_FLOOR(state) == from.floor;
+            // rule: Gameplay Fixes BL: a node on the start cell of a melee door holder counts as
+            //   reached when its corner's cell is another cell (otherwise the route's first hop,
+            //   back to the start cell, would walk a bot below or right of its door away from it).
+            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it
+            if ((dx != 0 || dy != 0) && on_from)
+            {
+                path_to_foe.erase(node);
+                continue;
+            }
+            // rule: Gameplay Fixes BL: the door's own cell, the last node of a melee door holder's
+            //   route, is not reached when its corner stands in it: the step is the hop from its
+            //   start cell into the door's cell, which meets the door.
+            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it
+            if (dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&
+                GET_STATE_X(state) / GRID_SIZE == foe()->xpos() / GRID_SIZE &&
+                GET_STATE_Y(state) / GRID_SIZE == foe()->ypos() / GRID_SIZE && GET_STATE_FLOOR(state) == foe()->floor())
+            {
+                dx = (GET_STATE_X(state) / GRID_SIZE - from.x) * GRID_SIZE;
+                dy = (GET_STATE_Y(state) / GRID_SIZE - from.y) * GRID_SIZE;
+            }
+        }
 
         // rule: A path-follower drops every node whose grid cell its top-left corner already
         //   occupies, then takes one walk step (sign of the remaining delta per axis, possibly

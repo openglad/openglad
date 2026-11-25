@@ -2024,14 +2024,14 @@ bool statistics::walk_to_foe()
 		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or any chaser on a
 		//   crowded map (more than 200 objects, dead included), skips A*: if any foe is within 100 px it wipes its
 		//   orders, turns toward the foe (turn_to_foe), starts an ATTACK of 30+rng(25) rounds and may swing
-		//   (near_swing); if no foe is that close it abandons its current order (front count zeroed) and falls
-		//   through to the walk. Gameplay Fixes BK: not a bot whose way to its foe only its key opens (opens_way).
+		//   (near_swing); if no foe is that close it ends its order (front count zeroed) and falls to the walk.
+		//   Not a bot whose way only its key opens (Gameplay Fixes BK), nor a melee bot holding a door (BL).
 		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 		// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
 		// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
-		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
+		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
 		if (!cross_floor &&
-		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) && !og::reach::opens_way(*controller_, *foe))
+		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) && !og::reach::opens_way(*controller_, *foe) && !walks_into_door(*controller_, foe))
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
@@ -2086,13 +2086,13 @@ bool statistics::walk_to_foe()
 			}
 		}
 		else if (!flyer || foe->floor() == controller_->floor())  // rule: A far (>= 100 px) foe on an
-			//   uncrowded map, or a foe whose way only the bot's key opens (Gameplay Fixes BK), is reached
-			//   by A*; a ground walker that cannot path to a foe on another floor routes to the nearest
-			//   stair toward it; a flyer never paths to a foe on another floor (it cannot change floors)
-			//   and instead shadows the foe's 2D position from its own floor.
+			//   uncrowded map, a foe whose way only the bot's key opens (Gameplay Fixes BK) and a door a melee
+			//   bot holds (BL) are reached by A*; a ground walker that cannot path to a foe on another floor
+			//   routes to the nearest stair toward it; a flyer never paths to a foe on another floor (it
+			//   cannot change floors) and instead shadows the foe's 2D position from its own floor.
 			// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
 			// tests: ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair
-			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches, SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
+			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches, SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
         {
             controller_->find_path_to_foe();
             // Cross-floor foe whose exact cell A* cannot reach (sparse upper
@@ -2849,12 +2849,13 @@ short statistics::idle_walk(walker& bot, Sint32 rounds)
 	if (last.shut)
 	{
 		// rule: Gameplay Fixes BL: the shut-out bot is handed the locked door in its way as its foe
-		//   when it has no enemy it can get at (the door og::reach::breaks answers); only when there
-		//   is none does it stay where it is.
+		//   (hand_door) when it has no enemy it can get at (the door og::reach::breaks answers); only
+		//   when there is none does it stay where it is.
 		// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
 		// tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+		// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
 		if (last.door != nullptr)
-			bot.set_foe(const_cast<walker*>(last.door));
+			hand_door(bot, const_cast<walker*>(last.door));
 		return 0;
 	}
 	return try_random_walk(rounds);
@@ -2903,10 +2904,11 @@ statistics::FoeKeep statistics::keeps_door(walker& bot)
 		return FoeKeep::LetGo;
 	}
 	// rule: Gameplay Fixes BL: while the conditions hold and the held door no longer leads to a
-	//   hostile, the door breaks answers is taken and kept.
+	//   hostile, the door breaks answers is taken (hand_door) and kept.
 	// tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
 	if (kept != door)
-		bot.set_foe(kept);
+		hand_door(bot, kept);
 	return FoeKeep::Kept;
 }
 
@@ -2927,4 +2929,38 @@ std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
 			++count;
 	}
 	return count;
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: a
+// melee-only bot breaks its door by walking into it. Asked by walk_to_foe's near test (such a bot is
+// never taken by the near branch: it plans its route into the door at any distance and on a crowded
+// map, by the far arm), by hand_door (it re-plans on its next chase) and by
+// walker::follow_path_to_foe (its route's last hop meets the door from every side). A bot that
+// shoots keeps its walk and shoots at the door from where its line check passes. Draws nothing.
+// Appended at the end of the file so the parity pins above never shift.
+bool statistics::walks_into_door(const walker& bot, const walker* foe)
+{
+	// rule: Gameplay Fixes BL: a melee-only bot (BIT_NO_RANGED) that og::reach::asks names (the
+	//   setting on, a bot, not a tower, not a guard at its post) whose foe is a live door walks into
+	//   that door; every other walker (a bot that shoots, a seat's fighter, a bot whose foe is a
+	//   fighter), and every walker with the setting off, walks as before.
+	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
+	return foe != nullptr && !foe->dead() && foe->is_door() && og::reach::asks(&bot) && bot.stats() != nullptr &&
+	       bot.stats()->query_bit_flags(BIT_NO_RANGED);
+}
+
+// Gameplay Fixes BL: the hand-over of a door, written once for the three places that hand a bot
+// the door in its way (idle_walk, keeps_door's swap and the tick's hand-out in GameWorld::tick):
+// the door is set as the bot's foe, and a bot walks_into_door names re-plans on its next chase.
+// Draws nothing (the next chase draws its re-plan cadence, as every re-plan does). Appended at the
+// end of the file so the parity pins above never shift.
+void statistics::hand_door(walker& bot, walker* door)
+{
+	bot.set_foe(door);
+	// rule: Gameplay Fixes BL: a melee-only bot handed a door has its re-plan counter set to 0, so
+	//   its next chase re-plans at once (its route into the door, with the cadence draw every
+	//   re-plan makes) and takes no right-hand walk first; a bot that shoots keeps its counter.
+	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
+	if (walks_into_door(bot, door))
+		bot.set_path_check_counter(0);
 }

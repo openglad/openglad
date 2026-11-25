@@ -2902,10 +2902,12 @@ void GameWorld::tick()
                         //   with the setting off).
                         // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
                         walker* const door = ob->foe() == nullptr ? og::reach::breaks(*ob) : nullptr;
-                        // rule: Gameplay Fixes BL: (the same rule: the door handed, when there is one)
+                        // rule: Gameplay Fixes BL: (the same rule: the door handed, when there is one,
+                        //   by the one hand-over, statistics::hand_door)
                         // tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+                        // tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
                         if (door != nullptr)
-                            ob->set_foe(door);
+                            statistics::hand_door(*ob, door);
                     }
                 }
             }

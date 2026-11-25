@@ -184,6 +184,16 @@ class statistics
 		// go, Kept otherwise, the door possibly replaced by the one breaks answers); Kept for a
 		// bot these statistics do not name as their owner.
 		FoeKeep keeps_door(walker& bot);
+		// walks_into_door: Gameplay Fixes BL: is `bot` a melee-only bot (BIT_NO_RANGED) that
+		// og::reach::asks names, whose foe `foe` is a live door? Such a bot breaks its door by
+		// walking into it: its route at any distance (never walk_to_foe's near branch), a re-plan
+		// on its next chase after it is handed the door (hand_door), and its route's last hop into
+		// the door (walker::follow_path_to_foe).
+		static bool walks_into_door(const walker& bot, const walker* foe);
+		// hand_door: Gameplay Fixes BL: the one hand-over of a door (idle_walk, keeps_door's swap
+		// and the tick's hand-out): `door` set as the bot's foe, and its re-plan counter set to 0
+		// when walks_into_door names it.
+		static void hand_door(walker& bot, walker* door);
 		// foes_not_door_shut: how many of `foes` are not door-shut for the bot (the near branch).
 		std::int32_t foes_not_door_shut(const std::list<walker*>& foes);
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
