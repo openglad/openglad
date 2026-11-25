@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - name: Find the newest compatible compiler cache without downloading it
         id: seed
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/sccache-seed
           key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
@@ -91,7 +91,7 @@ jobs:
       # actions/cache derives a cache's version from its path as well as its
       # key, so the seed is restored into and saved from this one directory.
       - name: Restore the newest compatible cross-commit compiler cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/sccache-seed
           key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
@@ -137,7 +137,7 @@ jobs:
           path: build/sccache-shards
       - name: Restore the cross-commit compiler-cache seed
         id: sccache-seed
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/sccache-seed
           key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
@@ -209,7 +209,7 @@ jobs:
           cp -a --reflink=auto build/sccache-output/. build/sccache-seed/
       - name: Save the updated cross-commit compiler cache
         if: success() && steps.sccache-seed.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/sccache-seed
           key: native-sccache-v2-${{ runner.os }}-asan-${{ hashFiles('flake.lock') }}-${{ github.event.pull_request.head.sha || github.sha }}
