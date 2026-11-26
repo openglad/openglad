@@ -441,13 +441,24 @@ class door_asker
 			NotAsked, NoBarringDoor, NotAFighter, NoRegion, WalksShut, NoWayOpen, Shot, DoorShut
 		};
 		explicit door_asker(walker *asker);
+		// The same question asked of the walker holding `keys` instead of
+		// its own (keys 0: the keyless walker of Gameplay Fixes BK; the
+		// current game's Asker(w, 0)).
+		door_asker(walker *asker, Uint32 keys);
 		Exit door_shut_exit(walker *b);
 		bool door_shut(walker *b);
 		bool shut_out();
+		// Does the start cell (walker::start_cell, worked out once with
+		// these keys) stand with the doors shut (it lies in a region)?
+		bool start();
+		// Some approach cell of b standing in the mode is reached by the
+		// fill from the start cell in that mode (the current game's
+		// og::reach walks_to); start() first.
+		bool walks_to(walker *b, bool shut);
 	private:
 		bool barred();
-		bool walks_to(walker *b, bool shut);
 		walker *w;
+		Uint32 keys;
 		short barring;  // -1 not asked yet, 0 no barring door, 1 some
 		bool started;
 		bool start_stands;
@@ -460,5 +471,16 @@ class door_asker
 door_asker::Exit door_shut_exit(walker *w, walker *b);
 bool door_shut(walker *w, walker *b);
 bool shut_out(walker *w);
+
+// Gameplay Fixes BK, a bot that holds the key to a door on its way walks its
+// route into the door (port of the current game's 0b5647c36 and d61656373,
+// og::reach::opens_way): does only a key w holds open its way to b? Each exit
+// answers no, in this order: w is not asked (asks); w holds the key of no
+// live door filed in the obmap, of any side (holds_key_of_level, the one key
+// test); its start cell does not stand with the doors that bar it shut; it
+// does not walk to b with those doors shut; a walker of its box, flags and
+// side holding no key (door_asker with keys 0, from that walker's own start
+// cell) would walk to b too. Otherwise yes. Draws nothing.
+bool opens_way(walker *w, walker *b);
 
 #endif

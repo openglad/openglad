@@ -6207,14 +6207,20 @@ bool shoots_at(walker *w, walker *b)
 // The door question of one walker (walker.h; port of the current game's
 // f97bc3ec7, og::reach::Asker).
 door_asker::door_asker(walker *asker)
-	: w(asker), barring(-1), started(false), start_stands(false), sx(0), sy(0)
+	: w(asker), keys(asker != NULL ? asker->keys : 0), barring(-1), started(false), start_stands(false), sx(0), sy(0)
 {
 	filled[0] = filled[1] = false;
 }
 
-// Does some live door filed in the obmap bar the walker (door_bars, its own
-// keys)? The doors the current game's door question lists: a door filed
-// nowhere closes no cell.
+door_asker::door_asker(walker *asker, Uint32 asked_keys)
+	: w(asker), keys(asked_keys), barring(-1), started(false), start_stands(false), sx(0), sy(0)
+{
+	filled[0] = filled[1] = false;
+}
+
+// Does some live door filed in the obmap bar the walker (door_bars, the keys
+// asked about)? The doors the current game's door question lists: a door
+// filed nowhere closes no cell.
 bool door_asker::barred()
 {
 	if (barring < 0)
@@ -6230,7 +6236,7 @@ bool door_asker::barred()
 			{
 				walker *d = *e;
 				if (d != NULL && map != NULL && map->walker_to_pos.find(d) != map->walker_to_pos.end() &&
-				    door_bars(w, d, w->keys))
+				    door_bars(w, d, keys))
 				{
 					barring = 1;
 					break;
@@ -6241,19 +6247,32 @@ bool door_asker::barred()
 	return barring != 0;
 }
 
+// The start cell, worked out once a question (walker.h).
+bool door_asker::start()
+{
+	if (!started)
+	{
+		w->start_cell(&sx, &sy, keys);
+		start_stands = w->cell_stands(sx, sy, true, keys);
+		started = true;
+	}
+	return start_stands;
+}
+
 // Some approach cell of b standing in the mode is reached by the fill from
 // the start cell in that mode (the current game's og::reach walks_to); the
 // fill is made once a mode while this question lasts.
 bool door_asker::walks_to(walker *b, bool shut)
 {
 	std::vector<std::pair<short, short> > cells;
-	w->approach_cells(b, shut, w->keys, cells);
+	start();
+	w->approach_cells(b, shut, keys, cells);
 	if (cells.empty())
 		return false;
 	const int k = shut ? 1 : 0;
 	if (!filled[k])
 	{
-		reached[k] = w->reach_fill(sx, sy, shut, w->keys);
+		reached[k] = w->reach_fill(sx, sy, shut, keys);
 		filled[k] = true;
 	}
 	if (reached[k].empty())
@@ -6275,13 +6294,7 @@ door_asker::Exit door_asker::door_shut_exit(walker *b)
 		return Exit::NoBarringDoor;
 	if (b->dead || (b->query_order() != ORDER_LIVING && b->query_order() != ORDER_GENERATOR))
 		return Exit::NotAFighter;
-	if (!started)
-	{
-		w->start_cell(&sx, &sy, w->keys);
-		start_stands = w->cell_stands(sx, sy, true, w->keys);
-		started = true;
-	}
-	if (!start_stands)
+	if (!start())
 		return Exit::NoRegion;
 	if (walks_to(b, true))
 		return Exit::WalksShut;
@@ -6330,4 +6343,51 @@ bool shut_out(walker *w)
 {
 	door_asker asker(w);
 	return asker.shut_out();
+}
+
+// Gameplay Fixes BK (walker.h; port of the current game's 0b5647c36 and
+// d61656373): the cheap test of opens_way, a live door filed in the obmap
+// whose key w holds, of any side (holds_key_of_level, the key test
+// door_bars asks). This game has one floor.
+static bool holds_door_key(walker *w)
+{
+	obmap *map = myscreen->level_data.myobmap;
+	if (map == NULL)
+		return false;
+	std::list<walker*> *lists[3] = { &myscreen->level_data.weaplist,
+	                                 &myscreen->level_data.oblist,
+	                                 &myscreen->level_data.fxlist };
+	for (int k = 0; k < 3; k++)
+	{
+		for (auto e = lists[k]->begin(); e != lists[k]->end(); e++)
+		{
+			walker *d = *e;
+			if (d != NULL && !d->dead && d->is_door() &&
+			    map->walker_to_pos.find(d) != map->walker_to_pos.end() &&
+			    holds_key_of_level(w->keys, d->stats->level))
+				return true;
+		}
+	}
+	return false;
+}
+
+// Gameplay Fixes BK (walker.h).
+bool opens_way(walker *w, walker *b)
+{
+	if (!asks(w))
+		return false;
+	// the cheap test first: no key of a live door, no question
+	if (!holds_door_key(w))
+		return false;
+	door_asker asker(w);
+	// a start cell that does not stand with the doors shut: not judged
+	if (!asker.start())
+		return false;
+	// no way to b even with the doors its keys open
+	if (!asker.walks_to(b, true))
+		return false;
+	// its key opens the way only when the keyless walker, from its own start
+	// cell, would not walk to b
+	door_asker keyless(w, 0);
+	return !keyless.walks_to(b, true);
 }

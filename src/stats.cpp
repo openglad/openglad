@@ -1328,7 +1328,11 @@ bool statistics::walk_to_foe()
         
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		// Gameplay Fixes BK (port of the current game's 0b5647c36): not a
+		// bot whose way to its foe only a key it holds opens (opens_way): it
+		// plans its route by the far arm below and walks into the door.
+		if ((tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) &&
+		    !opens_way(controller, foe))
 		{
 			std::list<walker*> foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
