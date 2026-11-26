@@ -1569,13 +1569,19 @@ The parity goldens are captures from the old game (branch
   pairs, `orc_bot_room_opens` and `archer_bot_ring_no_cast`, whose four
   recordings were captured again there; nothing else moved). 38 new
   goldens; no golden of an earlier row moved. Their nineteen setting-on
-  twins were captured before the old game has the four door rules, so
-  they record the old game's play with the setting on (its earlier
-  ported fixes) without the door rules, and they differ from this game's
-  run of the same row until the rules are ported.
-  `2e277c44` is the commit the goldens are captured from: 446 of 446
-  goldens `cmp` equal to a full capture there, and every other capture
-  there `cmp`s equal to this game's run of the same row.
+  twins were first captured before the old game had the four door rules,
+  so they recorded the old game's play with the setting on (its earlier
+  ported fixes) without the door rules. Then the door rules' ports: three
+  commits that prepare them and change no play (`00e59da4`, `bba13164`,
+  `a6b80465`; nothing moved), then one rule a commit, `6cfc0683` (BI),
+  `1a898038` (BJ), `45530591` (BK) and `2612051c` (BL), which moved
+  setting-on twins of the door rows alone (BK's by itself none). The
+  nineteen twins were captured again at `2612051c`, and each is
+  byte-equal to this game's run of the same row; no setting-off golden
+  and no golden of an earlier row moved.
+  `2612051c` is the commit the goldens are captured from: 446 of 446
+  goldens `cmp` equal to a full capture there, and every capture there
+  `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -1620,10 +1626,10 @@ The rows with the setting on, by fix:
 | BF | `tower_foe_behind_door_fixes_scen99` (a new arena, with its setting-off twin), and the row below that it moves; for the bump and the blow, `orc_bot_bumps_door_fixes_scen99` and `tower_blow_names_door_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
 | BG | `cleric_shield_door_tree_fixes_scen99` and `soldier_boomerang_door_tree_fixes_scen99` (two new arenas, each with its setting-off twin: see below) |
 | BH | `druid_bot_grow_tree_tree_pad_fixes_scen99`, `barbarian_bot_boulder_tree_pad_fixes_scen99`, `mage_bot_wave_door_pad_fixes_scen99` and `archer_bot_bolt_door_pad_fixes_scen99` (four new arenas, each with its setting-off twin: see below; SUMMON FAERIE has none) |
-| BI | `orc_bot_route_door_fence_fixes_scen99` (a bot's route goes round a fence of doors it cannot open, where the classic route runs through it) and `orc_bots_shove_at_door_fence_fixes_scen99` (an ally pressed against the fence is not shoved along it), two new arenas, each with its setting-off twin |
-| BJ | `orc_bot_foe_in_door_ring_fixes_scen99` (the foe search passes a ringed enemy over), `orc_bot_handed_foe_let_go_fixes_scen99` (a ringed enemy a knife handed the bot is let go at its next round), `orc_bot_near_ring_crowded_fixes_scen99` (on a crowded map the near branch counts no ringed enemy), `archer_bot_shot_past_door_fence_fixes_scen99` (an archer shut in a pen holds its foe by a shot through a gap and takes no step), `soldier_bot_outside_ring_fixes_scen99` (the shot term reads a soldier's reach without its weapon hook) `archer_bot_ring_no_cast_fixes_scen99` (the ring rule of FIRE ARROWS counts no ringed enemy) and `orc_bot_room_opens_fixes_scen99` (a bot that held the door in its way takes the enemy in the room in the tick a key opens the room's door, acting after the key holder), seven new arenas, each with its setting-off twin |
-| BK | `orc_bot_keyed_at_wall_fixes_scen99` (a bot holding the key of the one door its key opens walks round the ring to it instead of pushing at the near doors), a new arena with its setting-off twin; and `orc_bot_keyed_door_scen99` with `orc_bot_keyed_door_fixes_scen99`, the key test the door rules share, whose fact (a door the key holder's step meets opens) holds on both settings |
-| BL | `orc_bot_breaks_ring_door_fixes_scen99` (a bot that gets at no enemy is handed the ring's door and strikes it), `orc_bot_lets_door_go_fixes_scen99` (it lets the door go when an enemy walks out of its pen), `orc_bot_two_rings_fixes_scen99` (the door behind which an enemy is reached through the fewest doors is handed, not the nearer one), and for the walk of a melee bot into the door it holds, `orc_bot_routes_to_held_door_fixes_scen99` (it plans its route into the door within 100 px), `orc_bot_handed_door_replans_fixes_scen99` (it re-plans at once when a door is handed), `orc_bot_held_door_start_cell_fixes_scen99` and `orc_bot_hops_into_held_door_fixes_scen99` (from beside the door, its corner inside the door's cell, it steps from its start cell into the door), and `archer_bot_random_act_keeps_door_fixes_scen99` (a bot that shoots keeps the door it holds through its random act's one-in-80 and starts its shot at the door on that act), eight new arenas, each with its setting-off twin |
+| BI | `orc_bot_route_door_fence_fixes_scen99` (a bot's route goes round a fence of doors it cannot open, where the classic route runs through it) and `orc_bots_shove_at_door_fence_fixes_scen99` (an ally pressed against the fence is not shoved along it), two new arenas, each with its setting-off twin; captured from the old game at `2612051c`, after the port (`6cfc0683`) |
+| BJ | `orc_bot_foe_in_door_ring_fixes_scen99` (the foe search passes a ringed enemy over), `orc_bot_handed_foe_let_go_fixes_scen99` (a ringed enemy a knife handed the bot is let go at its next round), `orc_bot_near_ring_crowded_fixes_scen99` (on a crowded map the near branch counts no ringed enemy), `archer_bot_shot_past_door_fence_fixes_scen99` (an archer shut in a pen holds its foe by a shot through a gap and takes no step), `soldier_bot_outside_ring_fixes_scen99` (the shot term reads a soldier's reach without its weapon hook) `archer_bot_ring_no_cast_fixes_scen99` (the ring rule of FIRE ARROWS counts no ringed enemy) and `orc_bot_room_opens_fixes_scen99` (a bot that held the door in its way takes the enemy in the room in the tick a key opens the room's door, acting after the key holder), seven new arenas, each with its setting-off twin; captured from the old game at `2612051c`, after the port (`1a898038`; five of the twins also need BL's) |
+| BK | `orc_bot_keyed_at_wall_fixes_scen99` (a bot holding the key of the one door its key opens walks round the ring to it instead of pushing at the near doors), a new arena with its setting-off twin; and `orc_bot_keyed_door_scen99` with `orc_bot_keyed_door_fixes_scen99`, the key test the door rules share, whose fact (a door the key holder's step meets opens) holds on both settings; captured from the old game at `2612051c`, after the port (`45530591`; both twins also need BL's, which first moves their orc) |
+| BL | `orc_bot_breaks_ring_door_fixes_scen99` (a bot that gets at no enemy is handed the ring's door and strikes it), `orc_bot_lets_door_go_fixes_scen99` (it lets the door go when an enemy walks out of its pen), `orc_bot_two_rings_fixes_scen99` (the door behind which an enemy is reached through the fewest doors is handed, not the nearer one), and for the walk of a melee bot into the door it holds, `orc_bot_routes_to_held_door_fixes_scen99` (it plans its route into the door within 100 px), `orc_bot_handed_door_replans_fixes_scen99` (it re-plans at once when a door is handed), `orc_bot_held_door_start_cell_fixes_scen99` and `orc_bot_hops_into_held_door_fixes_scen99` (from beside the door, its corner inside the door's cell, it steps from its start cell into the door), and `archer_bot_random_act_keeps_door_fixes_scen99` (a bot that shoots keeps the door it holds through its random act's one-in-80 and starts its shot at the door on that act), eight new arenas, each with its setting-off twin; captured from the old game at `2612051c`, after the port (`2612051c`) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
