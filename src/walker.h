@@ -229,6 +229,12 @@ class walker : public pixieN
 		// (port of the current game's 3d9dcdcd8, walker::is_bot), and so does
 		// Gameplay Fixes BF's bump (living::leaves_a_door_alone).
 		bool is_bot();
+		// The firing box: a body whose corner-to-corner delta is under
+		// lineofsight * 16 px on both axes is inside it. living::act_random
+		// fires only at a foe inside it, and the shot term of Gameplay Fixes
+		// BJ (shoots_at) judges only a body inside it. (port of the current
+		// game's f97bc3ec7, walker::in_firing_box)
+		bool in_firing_box(short xdelta, short ydelta);
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).
@@ -390,5 +396,69 @@ class walker : public pixieN
 // as a wall: only with the setting on, and only a bot (walker::is_bot), a
 // tower and a guard at its post included.
 bool door_is_a_wall_to(walker *w);
+
+// Gameplay Fixes BJ, a bot treats an enemy that only a locked door keeps it
+// from as if it were not there (port of the current game's f97bc3ec7 and
+// ec95086d1, og::reach). Who is asked at the sites of this rule: only with
+// the setting on, only a bot (walker::is_bot), not a tower and not a guard at
+// its post. Every other walker gets the classic answer at every site.
+// (port of the current game's og::reach::asks)
+bool asks(walker *w);
+
+// Does w's shot land on b from where w stands? Never for a melee-only bot
+// (BIT_NO_RANGED). b must be inside w's firing box (walker::in_firing_box)
+// and within the reach of w's weapon read without the family's own part
+// (unhooked_weapon: its step times its line of sight, against the Manhattan
+// distance), and the line check's flight (line_check_flight) must pass for
+// that detached weapon set on fire()'s pad for the facing toward b, headed
+// that way with no waver, every live enemy door stopping it, w's own foe
+// included. A weapon the loader cannot make answers yes (not judged). Draws
+// nothing. (port of the current game's og::reach::shoots_at)
+bool shoots_at(walker *w, walker *b);
+
+// The door question of one walker (port of the current game's
+// og::reach::Asker). This game keeps no map: the start cell and the two
+// fills (walker::reach_fill, the doors shut and open) are made on first need
+// and kept only while one question lasts (a search, a count, a let-go), in
+// which no body moves. Nothing is drawn.
+//
+// door_shut_exit: whether only a door keeps the walker from b, and which test
+// answered, in this order, each early exit answering "no door keeps it" (the
+// classic answer): not asked (asks); no live door filed in the obmap bars it
+// (door_bars, its own keys); b is no live living or generator; its start
+// cell (walker::start_cell) does not stand with the doors shut; some
+// approach cell of b (walker::approach_cells) stands with the doors shut in
+// the fill from the start cell (it walks to b); none does with them open (a
+// wall or water keeps it from b, not a door); its shot lands on b
+// (shoots_at: b is kept by the shot). Otherwise only a door keeps it from b.
+// shut_out: some live hostile living or generator (screen::foe_candidate) is
+// door-shut for the walker, cloaked or not, at any distance.
+class door_asker
+{
+	public:
+		enum class Exit
+		{
+			NotAsked, NoBarringDoor, NotAFighter, NoRegion, WalksShut, NoWayOpen, Shot, DoorShut
+		};
+		explicit door_asker(walker *asker);
+		Exit door_shut_exit(walker *b);
+		bool door_shut(walker *b);
+		bool shut_out();
+	private:
+		bool barred();
+		bool walks_to(walker *b, bool shut);
+		walker *w;
+		short barring;  // -1 not asked yet, 0 no barring door, 1 some
+		bool started;
+		bool start_stands;
+		short sx, sy;
+		bool filled[2];
+		std::vector<char> reached[2];
+};
+
+// One question of a fresh door_asker each.
+door_asker::Exit door_shut_exit(walker *w, walker *b);
+bool door_shut(walker *w, walker *b);
+bool shut_out(walker *w);
 
 #endif

@@ -405,7 +405,10 @@ short living::act()
 					else if (!random(2))
 						foe = myscreen->find_far_foe(this);
 					else
-						stats->try_command(COMMAND_RANDOM_WALK,20);
+						// Gameplay Fixes BJ (port of the current game's
+						// f97bc3ec7): a bot shut out by a locked door stays
+						// where it is (statistics::idle_walk)
+						stats->idle_walk(this, 20);
 
 					return 1;
 				}
@@ -595,12 +598,40 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 	return newob;
 }
 
+// Gameplay Fixes BJ (port of the current game's f97bc3ec7,
+// GameWorld::CastRuleScope): names `bot` in screen::cast_rule_for for its
+// lifetime and puts the old name back on every way out.
+class cast_rule_scope
+{
+	public:
+		explicit cast_rule_scope(walker *bot) : before(myscreen->cast_rule_for)
+		{
+			myscreen->cast_rule_for = bot;
+		}
+		~cast_rule_scope()
+		{
+			myscreen->cast_rule_for = before;
+		}
+		cast_rule_scope(const cast_rule_scope&) = delete;
+		cast_rule_scope& operator=(const cast_rule_scope&) = delete;
+	private:
+		walker *before;
+};
+
 // Returns true or false on whether it's good to do
 // the special or not ..
 short living::check_special()
 {
 	Uint32 distance, myrange;
 	short howmany;
+	// Gameplay Fixes BJ (port of the current game's f97bc3ec7,
+	// living::cast_rule): the cast rule of a bot asks names is asked with
+	// that bot named on the screen (cast_rule_for), so the range finder
+	// (find_foes_in_range, through which the cast rules below count) leaves
+	// out every foe only a locked door keeps it from; any other walker's is
+	// asked with nobody named, as before. Whom an effect strikes and the cast
+	// itself (walker::special) are asked outside this call.
+	const cast_rule_scope named(asks(this) ? this : NULL);
 
 	shifter_down = random(2); // on or off, randomly ..
 
@@ -1400,15 +1431,18 @@ short living::act_random()
 	// Find our foe
 	if (!random(80) || (!foe))
 		foe = myscreen->find_near_foe(this);
+	// Gameplay Fixes BJ (port of the current game's f97bc3ec7): a bot shut
+	// out by a locked door stays where it is (statistics::idle_walk)
 	if (!foe)
-		return stats->try_command(COMMAND_RANDOM_WALK,40);
+		return stats->idle_walk(this, 40);
 
 	xdist = (short) (foe->xpos - xpos);
 	ydist = (short) (foe->ypos - ypos);
 
 	// If foe is in firing range, turn and fire
-	if (abs(xdist) < lineofsight*GRID_SIZE &&
-	        abs(ydist) < lineofsight*GRID_SIZE)
+	// (the firing box, walker::in_firing_box, which the door rules' shot
+	// term asks too; port of the current game's f97bc3ec7)
+	if (in_firing_box(xdist, ydist))
 	{
 		if (fire_check(xdist, ydist))
 		{
@@ -1441,7 +1475,10 @@ short living::do_action()
 			leader = myscreen->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
-			if (leader->foe)
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7): not a
+			// foe only a locked door keeps this ally from (door_shut); then it
+			// follows as it does when the leader has no foe
+			if (leader->foe && !door_shut(this, leader->foe))
 			{
 				foe = leader->foe;
 				return 0;       // continue from this point ..

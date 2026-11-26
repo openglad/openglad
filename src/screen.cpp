@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <optional>
 #ifdef OG_PARITY_RECORDER
 #include "parity_event_log.h"
 #endif
@@ -133,6 +134,7 @@ screen::screen(short howmany)
 	enemy_freeze = 0;
 	gameplay_fixes = 0; // port of the current game's 0721756c
 	slit_open_for = NULL; // port of the current game's 2b36b5d09 (Gameplay Fixes BD)
+	cast_rule_for = NULL; // port of the current game's f97bc3ec7 (Gameplay Fixes BJ)
 
 	level_done = 0;
 	
@@ -1023,6 +1025,7 @@ walker *screen::find_near_foe(walker  *ob)
 	targx = ob->xpos;
 	targy = ob->ypos;
 	spread = 1;
+	door_asker asker(ob);  // the searcher, asked about doors (Gameplay Fixes BJ)
 
 	while (spread < MAX_SPREAD)
 	{
@@ -1053,8 +1056,13 @@ walker *screen::find_near_foe(walker  *ob)
 				        (random(w->invisibility_left/20)==0)
 				   )
 				{
-					if (w->query_order() == ORDER_LIVING ||
-					        w->query_order() == ORDER_GENERATOR)
+					// Gameplay Fixes BJ (port of the current game's
+					// f97bc3ec7): the candidate test is foe_candidate (a
+					// living or a generator; alive and hostile as above), and
+					// a candidate that only a locked door keeps a bot from is
+					// passed over after its cloak roll, and the search goes
+					// on (door_asker::door_shut, asked last).
+					if (foe_candidate(ob, w) && !asker.door_shut(w))
 						//done separately since they are logically more significant
 						return w; // this should be a valid foe
 				}
@@ -1093,6 +1101,7 @@ walker  *screen::find_far_foe(walker  *ob)
 	endfoe = NULL;
 	distance = 10000;
 	ob->stats->last_distance = 10000;
+	door_asker asker(ob);  // the searcher, asked about doors (Gameplay Fixes BJ)
 
     for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
@@ -1101,24 +1110,32 @@ walker  *screen::find_far_foe(walker  *ob)
 			continue;
         
 		// Check for valid objects ..
-		if (ob->is_friendly(foe) == 0)
+		// (foe_candidate: hostile, a living or a generator; then the cloak
+		// roll, so a body that is no candidate draws nothing, as before)
+		if (foe_candidate(ob, foe) && (!(random(foe->invisibility_left/20))))
 		{
-			if (
-			    (foe->query_order() == ORDER_LIVING ||
-			     foe->query_order() == ORDER_GENERATOR)  &&
-			    (!(random(foe->invisibility_left/20)))
-			)
+			tempdistance = ob->distance_to_ob(foe);
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7,
+			// NearestFoePick::offer): a candidate that would replace the pick
+			// and that only a locked door keeps a bot from is passed over
+			// (door_asker::door_shut, asked last); the scan goes on.
+			if (tempdistance < distance && !asker.door_shut(foe))
 			{
-				tempdistance = ob->distance_to_ob(foe);
-				if (tempdistance < distance)
-				{
-					distance = tempdistance;
-					endfoe = foe;
-				}
+				distance = tempdistance;
+				endfoe = foe;
 			}
 		}
 	}
 	return endfoe;
+}
+
+// The one test of a foe candidate (screen.h; port of the current game's
+// f97bc3ec7).
+bool screen::foe_candidate(walker *searcher, walker *w)
+{
+	return !w->dead &&
+	       (w->query_order() == ORDER_LIVING || w->query_order() == ORDER_GENERATOR) &&
+	       searcher->is_friendly(w) == 0;
 }
 
 walker* screen::set_walker(walker *ob, char order, char family)
@@ -1411,10 +1428,30 @@ walker* screen::find_nearest_player(walker *ob)
 	return returnob;
 }
 
+// find_foes_in_range's cast-rule filter, Gameplay Fixes BJ (port of the
+// current game's f97bc3ec7, GameWorld::cast_rule_leaves_out): only while a
+// bot's cast rule is asked (`named`, the range finder's screen::cast_rule_for,
+// set by living::check_special for a bot asks names) and only for that bot's own
+// question is a candidate asked about doors, and one only a locked door keeps
+// the bot from (door_asker::door_shut) is left out of the list and of the
+// count. A range finder asked by anyone else, or outside a cast rule, keeps
+// every candidate (whom an effect strikes, the cast itself, a player's
+// casts). The range finder's one door_asker is made on the first candidate
+// it asks about.
+static bool cast_rule_leaves_out(walker *named, walker *ob, walker *w, std::optional<door_asker>& asker)
+{
+	if (named == NULL || named != ob)
+		return false;
+	if (!asker)
+		asker.emplace(ob);
+	return asker->door_shut(w);
+}
+
 std::list<walker*> screen::find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
     std::list<walker*> result;
     *howmany = 0;
+    std::optional<door_asker> asker;  // the cast rule's bot, made on need (Gameplay Fixes BJ)
     
 	if(!ob)
 		return result;
@@ -1422,13 +1459,14 @@ std::list<walker*> screen::find_foes_in_range(std::list<walker*>& somelist, Sint
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
 	    walker* w = *e;
-		if (w && !w->dead &&
-		        (w->query_order() == ORDER_LIVING ||
-		         w->query_order() == ORDER_GENERATOR)
-		        && (ob->is_friendly(w) == 0)
-		   )
+		// foe_candidate: alive, a living or a generator, hostile (port of the
+		// current game's f97bc3ec7, the one candidate test)
+		if (w && foe_candidate(ob, w))
 		{
-			if (ob->distance_to_ob(w) <= range)
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7): while a
+			// bot's cast rule asks (cast_rule_for) a candidate only a locked
+			// door keeps it from is left out (cast_rule_leaves_out, last)
+			if (ob->distance_to_ob(w) <= range && !cast_rule_leaves_out(cast_rule_for, ob, w, asker))
 			{
 			    result.push_back(w);
 				(*howmany)++;

@@ -6157,3 +6157,177 @@ bool door_is_a_wall_to(walker *w)
 {
 	return w != NULL && myscreen->gameplay_fixes && w->is_bot();
 }
+
+// The firing box (walker.h; port of the current game's f97bc3ec7):
+// living::act_random's box test, written once.
+bool walker::in_firing_box(short xdelta, short ydelta)
+{
+	return abs(xdelta) < lineofsight*GRID_SIZE &&
+	       abs(ydelta) < lineofsight*GRID_SIZE;
+}
+
+// Gameplay Fixes BJ: who is asked (walker.h; port of the current game's
+// f97bc3ec7, og::reach::asks). The stationary living of this game is a
+// TOWER1, as everywhere here.
+bool asks(walker *w)
+{
+	return w != NULL && myscreen->gameplay_fixes && w->is_bot() &&
+	       !(w->query_order() == ORDER_LIVING && w->query_family() == FAMILY_TOWER1) &&
+	       w->query_act_type() != ACT_GUARD;
+}
+
+// Gameplay Fixes BJ: the shot term (walker.h; port of the current game's
+// f97bc3ec7, og::reach::shoots_at). The facing toward b is read from the raw
+// pixel delta: the 3:1 snap of statistics::direct_walk never changes a facing.
+bool shoots_at(walker *w, walker *b)
+{
+	if (w->stats->query_bit_flags(BIT_NO_RANGED))
+		return false;
+	// not judged (the setting off, or no living asks): no question, yes
+	if (!myscreen->gameplay_fixes || w->query_order() != ORDER_LIVING)
+		return true;
+	const short xdist = (short) (b->xpos - w->xpos);
+	const short ydist = (short) (b->ypos - w->ypos);
+	if (!w->in_firing_box(xdist, ydist))
+		return false;
+	walker *weapon = w->unhooked_weapon(xdist, ydist);
+	// a weapon the loader cannot make: not judged, yes
+	if (!weapon)
+		return true;
+	bool lands = false;
+	if (w->distance_to_ob(b) <= (Sint32) ( (Sint32) weapon->stepsize * (Sint32) weapon->lineofsight))
+	{
+		w->set_weapon_heading(weapon, w->facing(xdist, ydist), 0);  // fire()'s pad for that facing, no waver
+		lands = (w->line_check_flight(weapon, NULL, true) != 0);
+	}
+	delete weapon;
+	return lands;
+}
+
+// The door question of one walker (walker.h; port of the current game's
+// f97bc3ec7, og::reach::Asker).
+door_asker::door_asker(walker *asker)
+	: w(asker), barring(-1), started(false), start_stands(false), sx(0), sy(0)
+{
+	filled[0] = filled[1] = false;
+}
+
+// Does some live door filed in the obmap bar the walker (door_bars, its own
+// keys)? The doors the current game's door question lists: a door filed
+// nowhere closes no cell.
+bool door_asker::barred()
+{
+	if (barring < 0)
+	{
+		barring = 0;
+		obmap *map = myscreen->level_data.myobmap;
+		std::list<walker*> *lists[3] = { &myscreen->level_data.weaplist,
+		                                 &myscreen->level_data.oblist,
+		                                 &myscreen->level_data.fxlist };
+		for (int k = 0; k < 3 && barring == 0; k++)
+		{
+			for (auto e = lists[k]->begin(); e != lists[k]->end(); e++)
+			{
+				walker *d = *e;
+				if (d != NULL && map != NULL && map->walker_to_pos.find(d) != map->walker_to_pos.end() &&
+				    door_bars(w, d, w->keys))
+				{
+					barring = 1;
+					break;
+				}
+			}
+		}
+	}
+	return barring != 0;
+}
+
+// Some approach cell of b standing in the mode is reached by the fill from
+// the start cell in that mode (the current game's og::reach walks_to); the
+// fill is made once a mode while this question lasts.
+bool door_asker::walks_to(walker *b, bool shut)
+{
+	std::vector<std::pair<short, short> > cells;
+	w->approach_cells(b, shut, w->keys, cells);
+	if (cells.empty())
+		return false;
+	const int k = shut ? 1 : 0;
+	if (!filled[k])
+	{
+		reached[k] = w->reach_fill(sx, sy, shut, w->keys);
+		filled[k] = true;
+	}
+	if (reached[k].empty())
+		return false;
+	const int gw = myscreen->level_data.grid.w;
+	for (size_t i = 0; i < cells.size(); i++)
+	{
+		if (reached[k][(size_t) (cells[i].second*gw + cells[i].first)])
+			return true;
+	}
+	return false;
+}
+
+door_asker::Exit door_asker::door_shut_exit(walker *b)
+{
+	if (!asks(w))
+		return Exit::NotAsked;
+	if (!barred())
+		return Exit::NoBarringDoor;
+	if (b->dead || (b->query_order() != ORDER_LIVING && b->query_order() != ORDER_GENERATOR))
+		return Exit::NotAFighter;
+	if (!started)
+	{
+		w->start_cell(&sx, &sy, w->keys);
+		start_stands = w->cell_stands(sx, sy, true, w->keys);
+		started = true;
+	}
+	if (!start_stands)
+		return Exit::NoRegion;
+	if (walks_to(b, true))
+		return Exit::WalksShut;
+	if (!walks_to(b, false))
+		return Exit::NoWayOpen;
+	if (shoots_at(w, b))
+		return Exit::Shot;
+	return Exit::DoorShut;
+}
+
+bool door_asker::door_shut(walker *b)
+{
+	return door_shut_exit(b) == Exit::DoorShut;
+}
+
+// The hostiles judged: the object list in its order, each a live hostile
+// living or generator (screen::foe_candidate, the searches' one test,
+// without their cloak roll); the first that is door-shut answers.
+bool door_asker::shut_out()
+{
+	if (!asks(w) || !barred())
+		return false;
+	for (auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+	{
+		walker *b = *e;
+		if (b == NULL || b == w || !screen::foe_candidate(w, b))
+			continue;
+		if (door_shut_exit(b) == Exit::DoorShut)
+			return true;
+	}
+	return false;
+}
+
+door_asker::Exit door_shut_exit(walker *w, walker *b)
+{
+	door_asker asker(w);
+	return asker.door_shut_exit(b);
+}
+
+bool door_shut(walker *w, walker *b)
+{
+	return door_shut_exit(w, b) == door_asker::Exit::DoorShut;
+}
+
+bool shut_out(walker *w)
+{
+	door_asker asker(w);
+	return asker.shut_out();
+}

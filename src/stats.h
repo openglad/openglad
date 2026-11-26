@@ -100,6 +100,40 @@ class statistics
 		// (Port of the current game's 404ae76d8, the kept turn, Gameplay
 		// Fixes BE, #513; turn_to_foe was near_turn when fix BB shipped.)
 		bool turn_to_foe(short aim);
+		// Gameplay Fixes BJ, a bot treats an enemy that only a locked door
+		// keeps it from as if it were not there (port of the current game's
+		// f97bc3ec7 and ec95086d1). keeps_foe, asked at the top of a SEARCH
+		// and an ATTACK round of a live held foe: a foe only a locked door
+		// keeps the bot from is let go (no foe, the orders and the leader
+		// cleared, the route cleared: LetGo); one its shot lands on from
+		// where it stands is kept only by the shot (ByShot); every other is
+		// kept (Kept, also for every walker asks does not name). Draws
+		// nothing.
+		enum class FoeKeep { Kept, ByShot, LetGo };
+		FoeKeep keeps_foe();
+		// The SEARCH order's round with a live held foe: keeps_foe, then for
+		// a foe kept only by the shot the bot faces it (face_delta along the
+		// 3:1-snapped raw delta) and asks direct_walk's shot test
+		// (shot_attacks) with no step; else walk_to_foe as before.
+		void search_round();
+		// The ATTACK order's end (its count to 0) when an order is left to
+		// end: after a let-go the queue is empty.
+		void end_order();
+		// The ATTACK order's two steps toward its foe: neither is taken by a
+		// bot that keeps its foe only by its shot.
+		void attack_step(short xdelta, short ydelta);
+		// direct_walk's shot test, written once: fire_check along the delta;
+		// on a pass the orders are wiped, the bot turns toward its foe and
+		// starts an ATTACK of 30+random(25) rounds.
+		bool shot_attacks(float xdelta, float ydelta);
+		// The wander of a bot with no foe (living.cpp: the seek's coin and
+		// act_random's): `bot` is the living that is deciding. A bot shut out
+		// by a locked door (shut_out) queues no wander and makes neither of
+		// its two direction draws; every other walker wanders as before.
+		short idle_walk(walker *bot, short rounds);
+		// walk_to_foe's near branch: how many of `foes` are not door-shut for
+		// the bot (one door_asker).
+		short foes_not_door_shut(std::list<walker*>& foes);
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;

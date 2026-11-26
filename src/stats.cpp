@@ -416,8 +416,10 @@ short statistics::do_command()
 			controller->current_weapon = controller->default_weapon;
 			break;
 		case COMMAND_SEARCH: // use right-hand rule to find foe
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7): the
+			// round asks keeps_foe first (search_round)
 			if (controller->foe && !controller->foe->dead)
-				walk_to_foe();
+				search_round();
 			else // stop trying to walk to this foe
             {
 				commands.front().commandcount = 0;
@@ -435,9 +437,12 @@ short statistics::do_command()
 			}
 			break;
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			if (!controller->foe || controller->foe->dead)
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7): the
+			// order also ends when its bot lets go a foe only a locked door
+			// keeps it from (keeps_foe, which cleared the orders: end_order)
+			if (!controller->foe || controller->foe->dead || keeps_foe() == FoeKeep::LetGo)
 			{
-				commands.front().commandcount = 0;
+				end_order();
 				result = 1;
 				break;
 			}
@@ -486,7 +491,7 @@ short statistics::do_command()
 						short stepx = 0, stepy = 0;
 						facing_step_delta((char) controller->curdir,
 						                  stepx, stepy);
-						controller->walkstep(stepx, stepy);
+						attack_step(stepx, stepy);  // Gameplay Fixes BJ: no step for a foe kept only by the shot
 					}
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)
@@ -524,7 +529,7 @@ short statistics::do_command()
 						}
 					}
 					else
-						controller->walkstep(deltax, deltay);
+						attack_step(deltax, deltay);  // Gameplay Fixes BJ: no step for a foe kept only by the shot
 				}
 				else // (controller->fire_check(deltax, deltay))
 				{
@@ -1177,6 +1182,19 @@ bool statistics::path_probe(Side side, bool quiet)
 	return blocked;
 }
 
+// The 3:1 snap of a delta toward a foe: a delta more than three times longer
+// on x than on y is taken as straight along x; then one more than three times
+// longer on y than on x as straight along y. direct_walk and a bot that keeps
+// its foe only by its shot (search_round, Gameplay Fixes BJ) ask it. (port of
+// the current game's f97bc3ec7, walker::snap_three_to_one)
+static void snap_three_to_one(float& xdelta, float& ydelta)
+{
+	if (abs(xdelta) > abs(3*ydelta))
+		ydelta = 0;
+	if (abs(ydelta) > abs(3*xdelta))
+		xdelta = 0;
+}
+
 bool statistics::direct_walk()
 {
 	walker * foe = controller->foe;
@@ -1199,16 +1217,14 @@ bool statistics::direct_walk()
 
 	xdelta = xdest - controller->xpos;
 	ydelta = ydest - controller->ypos;
-	if (abs(xdelta) > abs(3*ydelta))
-		ydelta = 0;
-	if (abs(ydelta) > abs(3*xdelta))
-		xdelta = 0;
+	// The 3:1 snap and the shot test are each written once now (port of the
+	// current game's f97bc3ec7): snap_three_to_one, and shot_attacks, which a
+	// bot that keeps its foe only by its shot asks too (search_round,
+	// Gameplay Fixes BJ). Both moved unchanged, their draws as they were.
+	snap_three_to_one(xdelta, ydelta);
 
-	if (controller->fire_check(xdelta,ydelta))
+	if (shot_attacks(xdelta, ydelta))
 	{
-		clear_command();
-		controller->turn(controller->facing(xdelta, ydelta));
-		add_command(COMMAND_ATTACK,(short) (30+random(25)),0,0);
 		return 1;
 	}
 
@@ -1316,7 +1332,11 @@ bool statistics::walk_to_foe()
 		{
 			std::list<walker*> foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
-			if (howmany > 0)
+			// Gameplay Fixes BJ (port of the current game's f97bc3ec7): a foe
+			// only a locked door keeps a bot from is not counted near
+			// (foes_not_door_shut; classic, and for a walker asks does not
+			// name, every foe found, howmany)
+			if (foes_not_door_shut(foelist) > 0)
 			{
 				clear_command();
 				// #320, port of the current game's fix: adopt the strictly
@@ -1450,4 +1470,97 @@ bool statistics::turn_to_foe(short aim)
 	}
 	controller->turn(aim);
 	return faced;
+}
+
+// Gameplay Fixes BJ, a bot treats an enemy that only a locked door keeps it
+// from as if it were not there (stats.h; port of the current game's
+// f97bc3ec7 and ec95086d1): the keep of a held foe, asked at the top of a
+// SEARCH round (search_round) and of an ATTACK round. A foe handed to the bot
+// without a search (a blow, its own shot landing, a yell) reaches the rule
+// here. The door question draws nothing and answers "kept" for every walker
+// asks does not name.
+statistics::FoeKeep statistics::keeps_foe()
+{
+	walker *foe = controller->foe;
+	const door_asker::Exit why = door_shut_exit(controller, foe);
+	if (why == door_asker::Exit::DoorShut)
+	{
+		controller->foe = NULL;
+		clear_command();  // which clears the leader too
+		controller->path_to_foe.clear();
+		return FoeKeep::LetGo;
+	}
+	return why == door_asker::Exit::Shot ? FoeKeep::ByShot : FoeKeep::Kept;
+}
+
+// The SEARCH order's round with a live held foe (stats.h).
+void statistics::search_round()
+{
+	const FoeKeep keep = keeps_foe();
+	if (keep == FoeKeep::LetGo)
+		return;
+	if (keep == FoeKeep::ByShot)
+	{
+		walker *foe = controller->foe;
+		float xdelta = foe->xpos - controller->xpos;
+		float ydelta = foe->ypos - controller->ypos;
+		snap_three_to_one(xdelta, ydelta);
+		controller->face_delta((short) xdelta, (short) ydelta);
+		shot_attacks(xdelta, ydelta);
+		return;
+	}
+	walk_to_foe();
+}
+
+// The ATTACK order's end (stats.h).
+void statistics::end_order()
+{
+	if (!commands.empty())
+		commands.front().commandcount = 0;
+}
+
+// The ATTACK order's two steps (stats.h): the door question asked again here
+// of the same world the top of the round asked, so the answer is keeps_foe's.
+void statistics::attack_step(short xdelta, short ydelta)
+{
+	walker *foe = controller->foe;
+	if (foe != NULL && door_shut_exit(controller, foe) == door_asker::Exit::Shot)
+		return;
+	controller->walkstep(xdelta, ydelta);
+}
+
+// direct_walk's shot test, written once (stats.h).
+bool statistics::shot_attacks(float xdelta, float ydelta)
+{
+	if (controller->fire_check(xdelta,ydelta))
+	{
+		clear_command();
+		controller->turn(controller->facing(xdelta, ydelta));
+		add_command(COMMAND_ATTACK,(short) (30+random(25)),0,0);
+		return 1;
+	}
+	return 0;
+}
+
+// The wander of a bot with no foe (stats.h). The two direction draws are made
+// inside try_command(COMMAND_RANDOM_WALK, rounds) when it queues the walk, so
+// a bot that stays makes neither.
+short statistics::idle_walk(walker *bot, short rounds)
+{
+	if (shut_out(bot))
+		return 0;
+	return try_command(COMMAND_RANDOM_WALK, rounds);
+}
+
+// walk_to_foe's near branch count (stats.h).
+short statistics::foes_not_door_shut(std::list<walker*>& foes)
+{
+	door_asker asker(controller);
+	short count = 0;
+	for (auto e = foes.begin(); e != foes.end(); e++)
+	{
+		if (!asker.door_shut(*e))
+			count++;
+	}
+	return count;
 }

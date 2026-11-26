@@ -75,6 +75,13 @@ class screen : public video
 		short endgame(short ending, short nextlevel); // what level next?
 		walker *find_near_foe(walker *ob);
 		walker *find_far_foe(walker *ob);
+		// The one test of a foe candidate that the quick foe search, the full
+		// scan, the range finder and the door rules' shut-out question ask:
+		// w is alive, a living or a generator, and not friendly to the
+		// searcher. No cloak roll (each search makes its own), no draw.
+		// (port of the current game's f97bc3ec7, GameWorld::foe_candidate;
+		// this game has no dormant or hidden walker)
+		static bool foe_candidate(walker *searcher, walker *w);
 		void draw_panels(short howmany);
 		walker* find_nearest_blood(walker *who);
 		// Every stain find_nearest_blood would consider (live FAMILY_STAIN
@@ -139,6 +146,13 @@ class screen : public video
 		// door stops it and nothing is drawn (fix BF, port of the current
 		// game's e205957c6). NULL at every other time.
 		walker *slit_open_for;
+		// While living::check_special asks a bot's cast rule this names that
+		// bot (asks), and find_foes_in_range, asked by it, leaves out of its
+		// list and its count every candidate that only a locked door keeps
+		// the bot from (Gameplay Fixes BJ, port of the current game's
+		// f97bc3ec7, GameWorld::cast_rule_for). NULL at every other time, and
+		// for a walker asks does not name.
+		walker *cast_rule_for;
 		soundob *soundp;
 		short redrawme;
 		viewscreen  * viewob[5];
