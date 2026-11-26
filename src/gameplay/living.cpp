@@ -703,7 +703,7 @@ short living::shove(walker  *target, short x, short y)
 			// rule: A shove never steals an ally's orders when the step it would inject is blocked
 			//   by terrain (the 2026-07-10 livelock fix) or, for a bot ally with the setting on, by a door it
 			//   cannot open (Gameplay Fixes BI, a door a bot cannot open is a wall to it): it keeps its own search.
-			// tests: LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable, LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step, SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before
+			// tests: LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable, LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step, SemBotReach.a_shoved_bot_at_a_door_keeps_its_orders_and_a_seat_is_shoved_as_before, parity:orc_bots_shove_at_door_fence_scen99, parity:orc_bots_shove_at_door_fence_fixes_scen99
 			if (current_game->world->step_refused(
 			        target->xpos() + static_cast<float>(x),
 			        target->ypos() + static_cast<float>(y), target))
@@ -1180,7 +1180,7 @@ bool living::do_action()
 // starts. Appended at the end of the file so the parity pins above stay on their lines.
 bool living::leaves_a_door_alone(const walker* body) const
 {
-	// rule: Gameplay Fixes BF: with the setting on a bot (a walker no player drives, user() -1)
+	// rule: Gameplay Fixes BF: with the setting on a bot (walker::is_bot: a walker no player drives)
 	//   that walks into an enemy door starts no swing at it, unless the door already is its foe
 	//   (a level script, a mod or Gameplay Fixes BL named it). A player's own fighter, a door that
 	//   is the bot's foe, a grown tree, a fighter and a golem (a door's family number, but a living)
@@ -1190,7 +1190,7 @@ bool living::leaves_a_door_alone(const walker* body) const
 	// tests: SemBotDoor.a_bot_swings_at_a_door_that_is_its_foe
 	// tests: SemBotDoor.a_bot_still_swings_at_a_tree_and_at_a_fighter_it_walks_into
 	// tests: SemBotDoor.a_guard_at_its_post_whose_foe_is_behind_a_door_never_attacks_the_door_with_the_setting_on
-	return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&
+	return og::sim::session_gameplay_fixes() != 0 && is_bot() && body->is_door() &&
 	       body != foe();
 }
 

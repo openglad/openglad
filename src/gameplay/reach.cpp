@@ -1249,7 +1249,7 @@ Exit Asker::door_shut_exit(const walker& b)
     if (!walks_to(b, Mode::Open))
         return Exit::NoWayOpen;
     // rule: og::reach: a body the walker's shot lands on from where it stands is kept by the shot.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer, parity:archer_bot_shot_past_door_fence_scen99, parity:archer_bot_shot_past_door_fence_fixes_scen99
     if (shoots_at(*w_, b))
         return Exit::Shot;
     return Exit::DoorShut;
@@ -1481,7 +1481,7 @@ bool shoots_at(walker& w, const walker& b)
     const float yd = static_cast<float>(ydist);
     weap test_weapon(walker::WeaponProfileProbeTag{});
     // rule: og::reach: a family whose weapon the loader cannot make is not judged (yes).
-    // tests: SemReach.the_reach_read_without_the_weapon_hook_is_the_line_checks_for_three_families
+    // tests: SemReach.the_reach_read_without_the_weapon_hook_is_the_line_checks_for_three_families, parity:soldier_bot_outside_ring_scen99, parity:soldier_bot_outside_ring_fixes_scen99
     if (!w.unhooked_weapon(test_weapon, xd, yd))
         return true;
     // rule: og::reach: a body beyond the reach of w's weapon read without its hook (Manhattan
@@ -1640,7 +1640,7 @@ bool opens_way(walker& w, const walker& b)
     //   holding no key (the keyless kind, Asker(w, 0)) would not walk to the foe: a foe with a way
     //   that needs no key is not one.
     // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
-    // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
+    // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, parity:orc_bot_keyed_at_wall_scen99, parity:orc_bot_keyed_at_wall_fixes_scen99
     return !Asker(w, 0).walks_to(b, Mode::Shut);
 }
 
@@ -1825,7 +1825,7 @@ Asker::LastResort Asker::last_resort(const walker* held)
         // rule: Gameplay Fixes BL, the door walk: entering a door costs one, from a region it
         //   touches or from a door it touches (two doors in a row with no floor between them count
         //   two).
-        // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
+        // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest, parity:orc_bot_two_rings_scen99, parity:orc_bot_two_rings_fixes_scen99
         for (const std::int32_t r : m.door_regions[k])
             relax(static_cast<std::size_t>(r), cu + 1, false);
         // plumbing: (the same rule: a door touching this one)
@@ -1850,7 +1850,7 @@ Asker::LastResort Asker::last_resort(const walker* held)
         //   the bot's floor touching a region it gets to) that leads to a region holding an approach
         //   cell of a hostile (it has a count); the keep reads a held door the same way.
         // tests: SemBotBreak.the_door_walk_counts_every_door_entered_and_takes_the_fewest_before_the_nearest
-        // tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+        // tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears, parity:orc_bot_breaks_ring_door_scen99, parity:orc_bot_breaks_ring_door_fixes_scen99
         if (door.floor != floor || !edge || c >= kNever)
             continue;
         // plumbing: the held door still qualifies (the keep reads it)

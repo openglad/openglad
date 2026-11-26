@@ -1972,7 +1972,7 @@ walker* GameWorld::find_near_foe(walker* ob)
                     // tests: SimWorldHeadless.negative_invisibility_does_not_hide_a_foe_from_search, SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
                     // tests: SemWorld.the_quick_foe_search_acquires_a_hostile_generator, SemWorld.the_quick_foe_search_skips_friends_corpses_and_weapons
                     // tests: SemWorld.the_quick_foe_search_skips_a_cloaked_foe_that_wins_its_roll
-                    // tests: SemBotReach.the_quick_search_passes_over_a_foe_in_a_ring_of_doors_after_its_cloak_roll
+                    // tests: SemBotReach.the_quick_search_passes_over_a_foe_in_a_ring_of_doors_after_its_cloak_roll, parity:orc_bot_foe_in_door_ring_scen99, parity:orc_bot_foe_in_door_ring_fixes_scen99
                     if (foe_candidate(*ob, *w) && !asker.door_shut(*w))
                     {
                         return w;
@@ -3942,6 +3942,6 @@ bool GameWorld::cast_rule_leaves_out(walker& ob, const walker& w, std::optional<
         asker.emplace(ob);
     // rule: Gameplay Fixes BJ: the cast rule's candidate only a locked door keeps the bot from
     //   (og::reach::door_shut) is left out of the list and of the count.
-    // tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from
+    // tests: SemBotReach.a_cast_rule_counts_no_foe_only_a_door_keeps_the_bot_from, parity:archer_bot_ring_no_cast_scen99, parity:archer_bot_ring_no_cast_fixes_scen99
     return asker->door_shut(w);
 }

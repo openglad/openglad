@@ -66,7 +66,7 @@ void walker::find_path_to_foe()
     // rule: Gameplay Fixes BI: a bot's route (the setting on) runs from its start cell to the goal
     //   plan_route names, on its kind's shut layer; a search that must fail is not run and leaves
     //   the route empty, as a failed search leaves it.
-    // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+    // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it, parity:orc_bot_route_door_fence_scen99, parity:orc_bot_route_door_fence_fixes_scen99
     // tests: SemBotReach.a_bot_under_a_door_is_routed_away_from_it_and_not_through_it
     if (plan.judged)
     {
@@ -155,7 +155,7 @@ void walker::follow_path_to_foe()
             // rule: Gameplay Fixes BL: a node on the start cell of a melee door holder counts as
             //   reached when its corner's cell is another cell (otherwise the route's first hop,
             //   back to the start cell, would walk a bot below or right of its door away from it).
-            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it
+            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it, parity:orc_bot_held_door_start_cell_scen99, parity:orc_bot_held_door_start_cell_fixes_scen99
             if ((dx != 0 || dy != 0) && on_from)
             {
                 path_to_foe.erase(node);
@@ -164,7 +164,7 @@ void walker::follow_path_to_foe()
             // rule: Gameplay Fixes BL: the door's own cell, the last node of a melee door holder's
             //   route, is not reached when its corner stands in it: the step is the hop from its
             //   start cell into the door's cell, which meets the door.
-            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it
+            // tests: SemBotBreak.a_melee_door_holder_below_or_right_of_its_door_steps_from_its_start_cell_into_it, parity:orc_bot_hops_into_held_door_scen99, parity:orc_bot_hops_into_held_door_fixes_scen99
             if (dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&
                 GET_STATE_X(state) / GRID_SIZE == foe()->xpos() / GRID_SIZE &&
                 GET_STATE_Y(state) / GRID_SIZE == foe()->ypos() / GRID_SIZE && GET_STATE_FLOOR(state) == foe()->floor())

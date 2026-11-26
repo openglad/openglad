@@ -2029,7 +2029,7 @@ bool statistics::walk_to_foe()
 		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 		// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
 		// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
-		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
+		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door, parity:orc_bot_routes_to_held_door_scen99, parity:orc_bot_routes_to_held_door_fixes_scen99
 		if (!cross_floor &&
 		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) && !og::reach::opens_way(*controller_, *foe) && !walks_into_door(*controller_, foe))
 		{
@@ -2040,7 +2040,7 @@ bool statistics::walk_to_foe()
 			//   only a locked door keeps a bot from is not counted near (Gameplay Fixes BJ, foes_not_door_shut).
 			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing, SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
-			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near, SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from
+			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near, SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from, parity:orc_bot_near_ring_crowded_scen99, parity:orc_bot_near_ring_crowded_fixes_scen99
 			if (foes_not_door_shut(foelist) > 0)
 			{
 				clear_command();
@@ -2742,7 +2742,7 @@ statistics::FoeKeep statistics::keeps_foe()
 	//   ends there, with no step and no draw.
 	// tests: SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
 	// tests: SemBotReach.a_struck_bot_takes_its_striker_at_the_blow_and_lets_go_on_its_next_round
-	// tests: SemBotReach.a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door
+	// tests: SemBotReach.a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door, parity:orc_bot_handed_foe_let_go_scen99, parity:orc_bot_handed_foe_let_go_fixes_scen99
 	if (why == og::reach::Exit::DoorShut)
 	{
 		let_go(*controller_);
@@ -2897,7 +2897,7 @@ statistics::FoeKeep statistics::keeps_door(walker& bot)
 	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut
 	//   out no more, or no door leads to a hostile; a door that bars it not is no edge door) is let
 	//   go as Gameplay Fixes BJ lets a foe go: no foe, orders, leader and route cleared.
-	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door, parity:orc_bot_lets_door_go_scen99, parity:orc_bot_lets_door_go_fixes_scen99
 	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
 	if (kept == nullptr)
 	{
@@ -2998,7 +2998,7 @@ void statistics::hand_door(walker& bot, walker* door)
 	// rule: Gameplay Fixes BL: a melee-only bot handed a door has its re-plan counter set to 0, so
 	//   its next chase re-plans at once (its route into the door, with the cadence draw every
 	//   re-plan makes) and takes no right-hand walk first; a bot that shoots keeps its counter.
-	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
+	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed, parity:orc_bot_handed_door_replans_scen99, parity:orc_bot_handed_door_replans_fixes_scen99
 	if (walks_into_door(bot, door))
 		bot.set_path_check_counter(0);
 }

@@ -12693,8 +12693,8 @@ inline constexpr FactPredicate kFacts_orc_bot_bumps_door_scen99[] = {
 };
 inline constexpr Mutation kMut_orc_bot_bumps_door_scen99 = {
     "src/gameplay/living.cpp", 1193,
-    "return og::sim::session_gameplay_fixes() != 0 && user() == -1 && body->is_door() &&",
-    "return og::sim::session_gameplay_fixes() == 0 && user() == -1 && body->is_door() &&",
+    "return og::sim::session_gameplay_fixes() != 0 && is_bot() && body->is_door() &&",
+    "return og::sim::session_gameplay_fixes() == 0 && is_bot() && body->is_door() &&",
     "A bot leaves a door alone with the setting off too, as Gameplay Fixes BF has it with the setting on: the classic orc's bump starts no swing at the door and nothing clangs, so EventKindExactly(play_sound, 1) reads 0."
 };
 inline constexpr FactPredicate kFacts_orc_bot_bumps_door_fixes_scen99[] = {
@@ -13149,6 +13149,1217 @@ inline constexpr Mutation kMut_archer_bot_bolt_door_pad_fixes_scen99 = {
     "G.pad_clear_of_weapons(self, WEAPON_FIRE_ARROW)",
     "G.pad_clear(self, WEAPON_FIRE_ARROW)",
     "The rule asks the plain pad question again, as before Gameplay Fixes BH, and it passes the enemy door: the rule says yes and the archer casts as the classic one does, its fire arrow meeting the door on this seed and the blow clanging, so EventKindExactly(play_sound, 0) reads 1."
+};
+
+// --- orc_bot_route_door_fence (fix BI: a door a bot cannot open is a wall to it, the route) ---
+// A hostile level-1 orc bot (16x16, stepsize 3, melee only, 15 magic: no special) at (200, 160), its
+// foe the idle player soldier 200 px straight below at (200, 360), and between them a fence of eight
+// closed team-3 doors on row 16 (y 256), x 144 to 256: no key opens a team-3 door, and the fence is
+// open ground at both ends. The foe is 100 px or more away on a map of a few bodies, so the orc's
+// hunt plans a route (find_path_to_foe). Classic, the route finder prices each cell of a body's
+// 32 px bucket at ten and its straightness term (0.01 a pixel of the cross product with the line to
+// the foe) makes a way round the fence dearer than ten a cell: the route runs through the fence, the
+// orc's step meets a door on tick 27 (y 241: its box against the door row), and it stays pressed at
+// the fence for the rest of the budget; the soldier is never struck. With the setting on (Gameplay
+// Fixes BI) a door a bot cannot open is a wall to its route: the route goes round the fence's left
+// end (x 128 from tick 41), the orc comes at the soldier from below the fence and strikes it, the first
+// blow on tick 84. The budget B = 90. The classic row's pin turns the setting on for the whole row,
+// so its orc is routed round the fence and strikes the soldier; the setting-on row's pin solves the
+// planned route on the terrain alone (the classic answer), so its orc walks into the fence.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_route_door_fence_scen99[] = {
+    { FAMILY_ORC, 1, kOrderLiving, 200, 160, 0, 0, 1, 15 },   // hostile level-1 melee bot; its foe is the soldier below the fence
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 256, 0, 0 },   // a fence of eight team-3 doors on row 16, x 144 to 256: no key opens one
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 240, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 256, 256, 0, 0 },
+    { FAMILY_SOLDIER, 0, kOrderLiving, 200, 360, 0, 0 },   // the idle player LAST, 200 px below the orc
+};
+inline constexpr FactPredicate kFacts_orc_bot_route_door_fence_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the fence of eight doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic route runs through the fence (a door costs ten, as any body does), so the orc stays pressed at the fence and never strikes the soldier"),
+};
+inline constexpr Mutation kMut_orc_bot_route_door_fence_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: its route goes round the fence and the orc strikes the soldier on tick 84, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 96 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_route_door_fence_fixes_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the fence of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 0, 300,
+        "consequence: with the setting on the fence is a wall to the orc's route, which goes round its end: the orc ends below the fence (row 16), beside the soldier"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: the orc round the fence strikes the soldier by tick 90 (on this seed first on tick 84); the soldier is alive"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit 708b27b91
+};
+inline constexpr Mutation kMut_orc_bot_route_door_fence_fixes_scen99 = {
+    "src/gameplay/walker_pathing.cpp", 78,
+    "                               &plan.cells);",
+    "                               nullptr);",
+    "The bot's planned route is solved on the terrain alone, the classic route finder's answer: it runs through the fence, the orc stays at the doors and the soldier keeps its 120 hp, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) and WalkerPositionMoved(FAMILY_ORC, 0, 300) fail."
+};
+
+// --- orc_bots_shove_at_door_fence (fix BI: a door a bot cannot open is a wall to it, the shove) ---
+// Two hostile level-1 bots of one side below a fence of five closed team-3 doors on row 16 (y 256,
+// x 160 to 224): an orc (16x16) at (192, 272), its box against the fence, and an orc captain
+// (16x16, FAMILY_BIG_ORC) behind it at (192, 290); their foe, the idle player soldier, stands above
+// the fence at (192, 216), within 100 px of both, so each hunts it with the near branch's ATTACK
+// order and steps at it, into the fence (the ATTACK order's step is no site of the wall rule). A
+// refused step shoves a living ally in the way (Gameplay Fixes X: one the step met): the shove
+// replaces the ally's orders with a walk of four rounds along the shover's step, unless that walk's
+// first step is refused. The two bots trade places at the fence by tick 22, the captain in front.
+// Classic, the shove asks the terrain alone, so the ally keeps being sent along the fence, and on
+// this seed the orc gets round the fence's left end and strikes the soldier (97 hp at tick 150).
+// With the setting on (Gameplay Fixes BI) the shove also asks whether a door the pushed bot cannot
+// open meets its step: at the fence it does, the shove is refused and each bot keeps its own ATTACK
+// order; the captain stays at the fence, and neither bot reaches the soldier by tick 150. The budget
+// B = 150. The classic row's pin turns the setting on for the whole row (no shove at the fence, the
+// soldier untouched); the setting-on row's pin lets the shove ask the terrain alone (the captain is
+// shoved along the fence and round it and the soldier is struck, 94 hp).
+inline constexpr SpawnSpec kFamilySpawns_orc_bots_shove_at_door_fence_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 256, 0, 0 },   // a fence of five team-3 doors on row 16, x 160 to 224
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 256, 0, 0 },
+    { FAMILY_BIG_ORC, 1, kOrderLiving, 192, 290, 0, 0, 1, 15 },   // hostile level-1 orc captain behind the orc
+    { FAMILY_ORC, 1, kOrderLiving, 192, 272, 0, 0, 1, 15 },   // hostile level-1 orc, its box against the fence
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 216, 0, 0 },   // the idle player LAST, above the fence, within 100 px of both bots
+};
+inline constexpr FactPredicate kFacts_orc_bots_shove_at_door_fence_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_BIG_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 5, 5,
+        "anchor: the fence of five doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: the classic shove asks the terrain alone, so the ally at the fence is sent along it again and again, and on this seed the orc gets round the fence's end and strikes the soldier by tick 150"),
+    // rng_drift: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit 708b27b91
+};
+inline constexpr Mutation kMut_orc_bots_shove_at_door_fence_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the shove at the fence is refused, each bot keeps its own order, and neither reaches the soldier, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bots_shove_at_door_fence_fixes_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_BIG_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 5, 5,
+        "anchor: the fence of five doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: with the setting on the shove of a bot ally at the fence is refused (a door it cannot open meets its step), so each bot keeps its own ATTACK order at the fence and neither reaches the soldier by tick 150"),
+};
+inline constexpr Mutation kMut_orc_bots_shove_at_door_fence_fixes_scen99 = {
+    "src/gameplay/living.cpp", 707,
+    "if (current_game->world->step_refused(",
+    "if (!current_game->world->query_grid_passable(",
+    "The shove asks the terrain alone again, as before Gameplay Fixes BI: the captain at the fence is shoved along it with its orders replaced, gets round the fence's end and strikes the soldier, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 94 hp."
+};
+
+// --- orc_bot_foe_in_door_ring (fix BJ: an enemy only a locked door keeps a bot from is not there, the foe search) ---
+// A hostile level-1 orc bot (team 1) at (200, 192); 72 px to its left a level-1 orc of a third side
+// (team 2) at (128, 192), shut in a ring of eight closed team-3 doors on the cells round cell (8, 12)
+// (no key opens one, and the ring closes only its own eight cells); 120 px to its right, in the open,
+// the idle player soldier at (320, 192). Classic, the orc's foe search takes the nearer foe, the
+// ringed orc, and the orc walks to the ring and stays at it; the soldier is never struck. With the
+// setting on (Gameplay Fixes BJ) a foe only a locked door keeps the bot from (it walks to no cell
+// beside it with the doors shut, it would with them open, and an orc has no shot) is passed over by
+// the foe searches, so the orc takes the soldier, walks to it and strikes it (32 hp at tick 80). The
+// ringed orc is shut out too: it is handed a ring door (Gameplay Fixes BL) and strikes it from
+// inside; its blows on the door are the row's sounds, and no door falls in the budget. The budget
+// B = 80. The classic row's pin turns the setting on for the whole row; the setting-on row's pin has
+// the door question answer no (the classic searches).
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_foe_in_door_ring_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 176, 0, 0 },   // a ring of eight team-3 doors round cell (8, 12)
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 208, 0, 0 },
+    { FAMILY_ORC, 2, kOrderLiving, 128, 192, 0, 0, 1, 15 },   // the ringed foe, a level-1 orc of a third side, in the ring's middle cell
+    { FAMILY_ORC, 1, kOrderLiving, 200, 192, 0, 0, 1, 15 },   // the hostile level-1 bot: the ringed orc 72 px to its left, the soldier 120 px to its right
+    { FAMILY_SOLDIER, 0, kOrderLiving, 320, 192, 0, 0 },   // the idle player LAST, in the open
+};
+inline constexpr FactPredicate kFacts_orc_bot_foe_in_door_ring_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic search takes the nearer ringed orc, so the orc stays at the ring and the soldier is never struck"),
+};
+inline constexpr Mutation kMut_orc_bot_foe_in_door_ring_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc passes the ringed orc over and strikes the soldier, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 32 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_foe_in_door_ring_fixes_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 280, 0,
+        "consequence: with the setting on the ringed orc is passed over and the orc goes to the soldier, 120 px to its right"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: the orc strikes the soldier by tick 80; the soldier is alive"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit f97bc3ec7
+};
+inline constexpr Mutation kMut_orc_bot_foe_in_door_ring_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1260,
+    "return door_shut_exit(b) == Exit::DoorShut;",
+    "return door_shut_exit(b) == Exit::DoorShut && false;",
+    "The door question answers no (no foe is door-shut) for every site that asks it: the searches keep the ringed orc for the orc, which never goes to the soldier, so WalkerPositionMoved(FAMILY_ORC, 280, 0) fails and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
+};
+
+// --- orc_bot_handed_foe_let_go (fix BJ: an enemy only a locked door keeps a bot from is not there, the keep) ---
+// The player soldier sits in a ring of eight closed doors of its own side (team 0) round cell (8, 14),
+// at (128, 224); a hostile level-1 orc bot stands just above the ring at (128, 190); a TOWER1 of the
+// player's side stands in the open at (400, 190), 272 px from the orc and beyond its arrows' reach
+// (154 px). The ring's doors are the soldier's own, so its knife flies through them, and they bar
+// the orc. The seat presses UP on tick 0 (it faces up, the way it throws) and FIRE from tick 1 to 5:
+// its knife leaves on tick 5 and strikes the orc on tick 6 (on this seed, the first from 0 at which
+// it does: on seeds 1 and 2 it misses), which makes the soldier the orc's foe (hit_response).
+// Classic, the orc already holds the ringed soldier (the nearer foe), keeps it and stays at the ring.
+// With the setting on (Gameplay Fixes BJ) the soldier is passed over by the searches, so the orc
+// holds the tower and walks to it; the knife hands it the soldier, and at the top of its next round
+// the keep lets that foe go (no foe, orders and route cleared); its next search takes the tower
+// again, and the orc strikes the tower (109 hp at tick 100: blows on ticks 86 and 90). The budget
+// B = 100. The classic row's pin turns the setting on for the whole row; the setting-on row's pin has
+// the keep keep a foe only a door keeps the bot from.
+inline constexpr InputEvent kInputs_orc_bot_handed_foe_let_go[] = {
+    {  0, 0, K_UP },   // the seat turns to face up
+    {  1, 0, K_FIRE },   // the seat throws a knife up, at the orc
+    {  6, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_handed_foe_let_go_scen99[] = {
+    { FAMILY_DOOR,    0, kOrderWeapon, 112, 208, 0, 0 },   // a ring of eight doors of the player's side round cell (8, 14): the knife passes them, the orc does not
+    { FAMILY_DOOR,    0, kOrderWeapon, 128, 208, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 144, 208, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 112, 224, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 144, 224, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 112, 240, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 128, 240, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 144, 240, 0, 0 },
+    { FAMILY_TOWER1, 0, kOrderLiving, 400, 190, 0, 0 },   // a tower of the player's side in the open, 272 px from the orc
+    { FAMILY_ORC, 1, kOrderLiving, 128, 190, 0, 0, 1, 15 },   // hostile level-1 melee bot just above the ring
+    { FAMILY_SOLDIER, 0, kOrderLiving, 128, 224, 0, 0 },   // the player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_handed_foe_let_go_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the classic orc holds the ringed soldier, the nearer foe, and stays at the ring: the tower is never struck"),
+};
+inline constexpr Mutation kMut_orc_bot_handed_foe_let_go_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc lets the ringed soldier go and strikes the tower, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) reads 109 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_handed_foe_let_go_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 300, 0,
+        "consequence: with the setting on the soldier the knife handed the orc is let go at the top of its next round, and the orc walks to the tower"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 100, 12999,
+        "consequence: the orc strikes the tower by tick 100 (on this seed on ticks 86 and 90)"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit f97bc3ec7
+};
+inline constexpr Mutation kMut_orc_bot_handed_foe_let_go_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2746,
+    "if (why == og::reach::Exit::DoorShut)",
+    "if (false)",
+    "The keep keeps a foe only a locked door keeps the bot from: the orc holds the soldier the knife handed it and stays at the ring, so WalkerPositionMoved(FAMILY_ORC, 300, 0) fails and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 100, 12999) reads 130 hp."
+};
+
+// --- orc_bot_near_ring_crowded (fix BJ: an enemy only a locked door keeps a bot from is not there, the near branch) ---
+// A map of more than 200 bodies (200 drumsticks far below, y 640 to 784), on which every re-plan of
+// a hunt takes the near branch (no route is planned). A hostile level-1 orc bot at (200, 200), its
+// foe the idle player soldier 160 px below at (200, 360); between them a fence of four closed
+// team-3 doors on row 15 (y 240, x 176 to 224); 72 px to the orc's right a small slime of a third
+// side (team 2) at (272, 208), shut in a ring of eight team-3 doors round cell (17, 13). Classic,
+// the orc's search takes the nearer foe, the ringed slime, and the orc stays at the ring (x 241 at
+// tick 100). With the setting on (Gameplay Fixes BJ) the orc holds the soldier; the near branch
+// counts only the foes within 100 px that are not door-shut, so the ringed slime counts for nothing:
+// the branch ends the order and falls to the straight walk, which (Gameplay Fixes BI) takes no step
+// into the fence, and the right-hand walk takes the orc round the fence again and again: it has not
+// reached the soldier by tick 100. The budget B = 100. The classic row's pin turns the setting on for
+// the whole row; the setting-on row's pin has the near branch count every foe it finds, so the
+// ringed slime opens an ATTACK order at the soldier whose steps are no site of the wall rule: the orc
+// gets past the fence and strikes the soldier.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_near_ring_crowded_scen99[] = {
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 640, 0, 0 },   // 200 drumsticks of team 3 on cells x 0..19, y 40..49: far from the scene, they make the body map hold more than 200 bodies
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 640, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 656, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 672, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 688, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 704, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 720, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 736, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 752, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 768, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,   0, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  16, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  32, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  48, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  64, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  80, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure,  96, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 112, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 128, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 144, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 160, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 176, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 192, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 208, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 224, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 240, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 256, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 272, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 288, 784, 0, 0 },
+    { FAMILY_DRUMSTICK, 3, kOrderTreasure, 304, 784, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 240, 0, 0 },   // a fence of four team-3 doors on row 15, x 176 to 224
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 256, 192, 0, 0 },   // a ring of eight team-3 doors round cell (17, 13)
+    { FAMILY_DOOR,    3, kOrderWeapon, 272, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 288, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 256, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 288, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 256, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 272, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 288, 224, 0, 0 },
+    { FAMILY_SMALL_SLIME, 2, kOrderLiving, 272, 208, 0, 0, 1, 15 },   // the ringed foe of a third side, 72 px right of the orc
+    { FAMILY_ORC, 1, kOrderLiving, 200, 200, 0, 0, 1, 15 },   // the hostile level-1 bot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 200, 360, 0, 0 },   // the idle player LAST, 160 px below the orc
+};
+inline constexpr FactPredicate kFacts_orc_bot_near_ring_crowded_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 12, 12,
+        "anchor: the fence and the ring stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 235, 0,
+        "consequence: the classic search takes the ringed slime, the nearer foe, and the orc stands against the ring's left side (x 241 at tick 100)"),
+};
+inline constexpr Mutation kMut_orc_bot_near_ring_crowded_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc holds the soldier and circles the fence, never right of x 235, so WalkerPositionMoved(FAMILY_ORC, 235, 0) fails (161, 231)."
+};
+inline constexpr FactPredicate kFacts_orc_bot_near_ring_crowded_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 12, 12,
+        "anchor: the fence and the ring stand"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: with the setting on the ringed slime counts for nothing in the near branch, which ends the order at each re-plan: the straight walk refuses the fence and the right-hand walk circles it, so the soldier is not struck by tick 100"),
+};
+inline constexpr Mutation kMut_orc_bot_near_ring_crowded_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2044,
+    "if (foes_not_door_shut(foelist) > 0)",
+    "if (howmany > 0)",
+    "The near branch counts every foe it finds again, the ringed slime among them: each re-plan opens an ATTACK order at the soldier, whose steps get past the fence, and the orc strikes the soldier, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 75 hp."
+};
+
+// --- archer_bot_shot_past_door_fence (fix BJ: an enemy only a locked door keeps a bot from is not there, the shot term) ---
+// A hostile level-1 archer bot (16x16) at (192, 208), on cell (12, 13), shut in a pen of eleven
+// closed team-3 doors: the pen's inside is cells (12, 13) and (13, 13); in its top row two doors at
+// x 180 and 203 leave a gap of 7 px, x 196 to 202, straight above the archer's pad (an arrow is 7x7,
+// put on the pad at x 196 when the archer faces up), too narrow for the archer's 16 px box. Its foe,
+// the idle player soldier, stands 80 px above at (192, 128). With every door open the archer could
+// walk to the soldier; with them shut it cannot, and its arrow flies through the gap: the shot term
+// lands, so the soldier is kept only by the archer's shot. Classic, the archer hunts the soldier: its
+// classic line check passes on the doors beside the gap, its arrows strike them (and it shuffles a
+// pixel), and the soldier is never hit. With the setting on (Gameplay Fixes BJ) a foe kept only by the
+// shot is faced and shot at, and the archer takes no step: it shoots through the gap from its spawn
+// spot and hits the soldier (98 hp at tick 60). The budget B = 60. The classic row's pin turns the
+// setting on for the whole row; the setting-on row's pin drops the shot term, so the soldier is
+// door-shut, is let go, and the archer is handed a door of its pen (Gameplay Fixes BL) and shoots at
+// it.
+inline constexpr SpawnSpec kFamilySpawns_archer_bot_shot_past_door_fence_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 180, 192, 0, 0 },   // the pen's top row: a gap of 7 px, x 196 to 202, between this door and the next
+    { FAMILY_DOOR,    3, kOrderWeapon, 203, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 219, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 208, 0, 0 },   // the pen's sides
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 224, 0, 0 },   // the pen's bottom row
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 224, 0, 0 },   // the corners
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 192, 0, 0 },
+    { FAMILY_ARCHER, 1, kOrderLiving, 192, 208, 0, 0, 1, 15 },   // hostile level-1 shooter in the pen, facing up its pad is (196, 200)
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 128, 0, 0 },   // the idle player LAST, 80 px above the archer, straight above the gap
+};
+inline constexpr FactPredicate kFacts_archer_bot_shot_past_door_fence_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 11, 11,
+        "anchor: the pen of eleven doors stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic archer's line check passes on the doors beside the gap, so its arrows strike the doors and the soldier is never hit"),
+};
+inline constexpr Mutation kMut_archer_bot_shot_past_door_fence_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the archer holds the soldier by its shot and shoots through the gap, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 98 hp."
+};
+inline constexpr FactPredicate kFacts_archer_bot_shot_past_door_fence_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 11, 11,
+        "anchor: the pen of eleven doors stands"),
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 192, 208,
+        "consequence: with the setting on a foe kept only by the shot is shot at with no step: the archer ends on its spawn spot"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: its arrows fly through the gap and hit the soldier by tick 60"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit f97bc3ec7
+};
+inline constexpr Mutation kMut_archer_bot_shot_past_door_fence_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1253,
+    "if (shoots_at(*w_, b))",
+    "if (false)",
+    "The shot term is dropped: the soldier is door-shut for the archer and let go, and the archer is handed a door of its pen and shoots at it, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
+};
+
+// --- soldier_bot_outside_ring (fix BJ: an enemy only a locked door keeps a bot from is not there, the shot term's reach) ---
+// A hostile level-1 soldier bot (team 1) at (200, 200); 40 px below it a level-1 orc of a third side
+// (team 2) at (192, 240), shut in a ring of eight closed team-3 doors round cell (12, 15), inside the
+// soldier's firing box; the player's fighter, an idle orc of team 0, stands in the open 300 px to the
+// right at (500, 200). A soldier's weapon is shaped by its family's hook (the blade limit), so the
+// reach read through the hook mask (walker::prospective_weapon_reach) answers no reach for it; the
+// shot term reads the weapon without the hook (walker::unhooked_weapon) and asks the judging flight,
+// which stops at the ring's doors. Classic, the soldier takes the nearer foe, the ringed orc, and
+// stands pressed against the ring's top row (y 209). With the setting on (Gameplay Fixes BJ) its shot
+// does not land on the ringed orc, which is door-shut and passed over, and the soldier walks to the
+// orc in the open (x 348 at tick 40). The budget B = 40. The classic row's pin turns the setting on
+// for the whole row; the setting-on row's pin asks the hook mask first, so a soldier's shot is not
+// judged and counts as landing: the ringed orc is kept by the shot, and the soldier stands facing it
+// on its spawn spot.
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_outside_ring_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 224, 0, 0 },   // a ring of eight team-3 doors round cell (12, 15)
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 256, 0, 0 },
+    { FAMILY_ORC, 2, kOrderLiving, 192, 240, 0, 0, 1, 15 },   // the ringed foe of a third side, 40 px below the soldier
+    { FAMILY_SOLDIER, 1, kOrderLiving, 200, 200, 0, 0, 1, 15 },   // hostile level-1 shooting bot
+    { FAMILY_ORC, 0, kOrderLiving, 500, 200, 0, 0 },   // the player's fighter LAST, an idle orc in the open
+};
+inline constexpr FactPredicate kFacts_soldier_bot_outside_ring_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 0, 205,
+        "consequence: the classic soldier takes the nearer ringed orc and stands pressed against the ring's top row, its box from y 209"),
+};
+inline constexpr Mutation kMut_soldier_bot_outside_ring_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the soldier passes the ringed orc over and walks right along y 200, so WalkerPositionMoved(FAMILY_SOLDIER, 0, 205) fails (348, 200)."
+};
+inline constexpr FactPredicate kFacts_soldier_bot_outside_ring_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 300, 0,
+        "consequence: with the setting on the soldier's shot, its reach read without the family's hook, does not land through the ring, so the ringed orc is passed over and the soldier walks to the orc in the open"),
+};
+inline constexpr Mutation kMut_soldier_bot_outside_ring_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1485,
+    "if (!w.unhooked_weapon(test_weapon, xd, yd))",
+    "if (w.prospective_weapon_reach(xdist, ydist) == 0 || !w.unhooked_weapon(test_weapon, xd, yd))",
+    "The shot term asks the hook mask first, which answers no reach for a soldier, and a weapon not judged counts as landing: the ringed orc is kept by the shot and the soldier stands facing it at (200, 200), so WalkerPositionMoved(FAMILY_SOLDIER, 300, 0) fails."
+};
+
+// --- archer_bot_ring_no_cast (fix BJ: an enemy only a locked door keeps a bot from is not there, the cast rules) ---
+// A hostile level-1 archer bot (team 1, 100 magic: FIRE ARROWS costs 20) at (192, 200), heading UP at
+// spawn; 56 px below it an orc of the player's side (team 0) at (192, 256), shut in a ring of eight
+// closed team-3 doors round cell (12, 16), inside the fire arrow's flight (step 8, range 12); the
+// player soldier stands idle 160 px above at (192, 40). The seed (2, the first from 0 at which the
+// classic archer rolls FIRE ARROWS in the budget: on seeds 0 and 1 it does not) makes the archer roll
+// the ring early. Classic, the gate wants a foe within 130 px: the ringed orc is one, and the archer
+// casts the ring of eight fire arrows, seven still in flight at tick 30. With the setting on (Gameplay
+// Fixes BJ) the archer holds the soldier (the ringed orc is passed over) and walks up toward it; its
+// ring rule wants two foes in its flight or one it does not face, and while the rule is asked the
+// range finder leaves out every foe only a door keeps the archer from: the ringed orc, behind the
+// archer, is not counted, and no ring is cast; the archer's ordinary arrows fly at the soldier. The
+// budget B = 30. The classic row's pin turns the setting on for the whole row; the setting-on row's
+// pin drops the cast rules' door filter, so the ringed orc counts as a foe the archer does not face
+// and the ring is cast.
+inline constexpr SpawnSpec kFamilySpawns_archer_bot_ring_no_cast_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 240, 0, 0 },   // a ring of eight team-3 doors round cell (12, 16)
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 272, 0, 0 },
+    { FAMILY_ORC, 0, kOrderLiving, 192, 256, 0, 0, 1, 15 },   // the ringed foe of the player's side, behind the archer
+    { FAMILY_ARCHER, 1, kOrderLiving, 192, 200, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn; 100 magic
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192,  40, 0, 0 },   // the idle player LAST, 160 px above the archer
+};
+inline constexpr FactPredicate kFacts_archer_bot_ring_no_cast_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 8,
+        "consequence: the classic gate (a foe within 130 px) casts the ring of eight at the ringed orc; on this seed seven of its fire arrows are still in flight at tick 30"),
+    // rng_drift: the classic ring is eight fire arrows; how many are still in flight at the budget follows what they meet, so the band runs from one to eight; commit f97bc3ec7
+};
+inline constexpr Mutation kMut_archer_bot_ring_no_cast_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the ringed orc is left out of the ring rule's count and no ring is cast, so WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 8) reads 0."
+};
+inline constexpr FactPredicate kFacts_archer_bot_ring_no_cast_fixes_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 0, 0,
+        "consequence: with the setting on the range finder leaves the ringed orc out while the archer's cast rule is asked, so its ring rule finds no foe in its flight and casts no ring"),
+    // negative_assertion: no fire arrow with the setting on; the pin lets the ringed orc count for the ring rule and the ring is cast (0 -> 7).
+};
+inline constexpr Mutation kMut_archer_bot_ring_no_cast_fixes_scen99 = {
+    "src/gameplay/game_world.cpp", 3946,
+    "return asker->door_shut(w);",
+    "return asker->door_shut(w) && false;",
+    "The cast rules' door filter is dropped: the ringed orc, behind the archer, counts as a foe it does not face, and the ring is cast, so WeaponFamilyCount(FAMILY_FIRE_ARROW, 0, 0) reads 7."
+};
+
+// --- orc_bot_keyed_at_wall (fix BK: a bot that holds the key to a door on its way walks its route into the door) ---
+// The idle player soldier at (192, 192) in a ring round cell (12, 12): seven closed team-3 doors of
+// key level 2 and, in the bottom row, one of level 1 at (192, 208), on the far side from the orc. A
+// hostile level-1 orc bot at (200, 120), 72 px above the soldier, stands on a level-1 key (team 3,
+// nobody's prop): its first step takes it (key bit 2), so it holds the key of the bottom door and of
+// no other. The soldier is within 100 px. Classic, the near branch's ATTACK order steps the orc
+// straight at the soldier, against the ring's top doors, which its key does not open; it never gets
+// in. With the setting on (Gameplay Fixes BK) the orc walks to the soldier only through the door its
+// key opens (with no key it would not): the near branch is not taken, its route runs round the ring
+// to the bottom door, its step meets the door and opens it, and it strikes the soldier inside (31 hp
+// at tick 120). The budget B = 120. The classic row's pin turns the setting on for the whole row; the
+// setting-on row's pin has the key question answer no (the near branch, as before).
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_keyed_at_wall_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 176, 0, 0, 2, 0 },   // a ring round cell (12, 12) of team-3 doors of key level 2
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 176, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 176, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 192, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 192, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 208, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 208, 0, 0, 2, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 208, 0, 0, 1, 0 },   // the ring's bottom door, key level 1: the far side from the orc
+    { FAMILY_KEY, 3, kOrderTreasure, 200, 120, 0, 0, 1, 0 },   // a level-1 key under the orc (team 3: nobody's prop); its first step takes it
+    { FAMILY_ORC, 1, kOrderLiving, 200, 120, 0, 0, 1, 15 },   // hostile level-1 melee bot on the key, 72 px above the soldier
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 192, 0, 0 },   // the idle player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_keyed_at_wall_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "consequence: the classic orc steps at the soldier against the ring's top doors, which its key does not open: every door stands"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the orc never gets into the ring, so the soldier is never struck"),
+};
+inline constexpr Mutation kMut_orc_bot_keyed_at_wall_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc walks round to the door its key opens, opens it and strikes the soldier, so WeaponFamilyCount(FAMILY_DOOR, 8, 8) reads 7 and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 31 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_keyed_at_wall_fixes_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 7, 7,
+        "consequence: with the setting on the orc's route runs round the ring to the door its key opens; its step meets the door and opens it: seven doors stand"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: the orc in the ring strikes the soldier by tick 120"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit 0b5647c36
+};
+inline constexpr Mutation kMut_orc_bot_keyed_at_wall_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1644,
+    "return !Asker(w, 0).walks_to(b, Mode::Shut);",
+    "return false;",
+    "The key question answers no: the near branch steps the orc at the top doors, which its key does not open, so WeaponFamilyCount(FAMILY_DOOR, 7, 7) reads 8 and the soldier keeps its 120 hp."
+};
+
+// --- orc_bot_breaks_ring_door (fix BL: the locked door in its way is a bot's last-resort foe) ---
+// The idle player soldier at (192, 192) in a ring of eight closed team-3 doors round cell (12, 12);
+// a hostile level-1 orc bot at (200, 120), 72 px above it; nobody else. Classic, the orc takes the
+// soldier, within 100 px: its near branch's ATTACK order faces the soldier and the orc stands 7 px
+// above the ring (y 153), facing it, its swings meeting nothing (the classic ATTACK order of a
+// melee-only bot, #447): nothing sounds by tick 40. With the setting on the soldier is door-shut and
+// the orc gets at no enemy, so it is handed the door in its way (Gameplay Fixes BL): the edge door
+// whose corner cell is nearest its start cell, the top door at (192, 176); a melee bot walks into
+// the door it holds, so it rests on the door (y 161) and its bump swings at it: on this seed its
+// blows land on ticks 17, 26 and 34, each a clang. The budget B = 40. The classic row's pin turns
+// the setting on for the whole row; the setting-on row's pin has the door walk hand no door, so the
+// orc stays where it stands (Gameplay Fixes BJ: a bot shut out with no door to break waits).
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_breaks_ring_door_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 176, 0, 0 },   // a ring of eight team-3 doors round cell (12, 12)
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 208, 0, 0 },
+    { FAMILY_ORC, 1, kOrderLiving, 200, 120, 0, 0, 1, 15 },   // hostile level-1 melee bot, 72 px above the soldier
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 192, 0, 0 },   // the idle player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_breaks_ring_door_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: the classic orc holds the soldier and stands in its ATTACK order 7 px above the ring, facing it (#447): no blow lands and nothing sounds by tick 40"),
+    // negative_assertion: no blow lands classic; the pin hands the orc its door and its blows on it clang (0 -> 3).
+};
+inline constexpr Mutation kMut_orc_bot_breaks_ring_door_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc is handed the top door, walks into it and its blows clang on ticks 17, 26 and 34, so EventKindExactly(play_sound, 0) reads 3."
+};
+inline constexpr FactPredicate kFacts_orc_bot_breaks_ring_door_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 0, 155,
+        "consequence: with the setting on the orc, which gets at no enemy, is handed the ring's top door and rests on it (y 161)"),
+    pred::EventKindAtLeast(/*play_sound*/1, 2,
+        "consequence: its bump swings at the door it holds, and on this seed its blows land and clang on ticks 17, 26 and 34"),
+};
+inline constexpr Mutation kMut_orc_bot_breaks_ring_door_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1854,
+    "if (door.floor != floor || !edge || c >= kNever)",
+    "if (door.floor != floor || !edge || c >= kNever || true)",
+    "The door walk hands no door: the orc, shut out, waits where it stands (200, 120), so WalkerPositionMoved(FAMILY_ORC, 0, 155) fails and EventKindAtLeast(play_sound, 2) reads 0."
+};
+
+// --- orc_bot_lets_door_go (fix BL: the locked door in its way is a bot's last-resort foe, the keep) ---
+// A level-1 orc of a third side (team 2) at (128, 192) in a ring of eight closed team-3 doors round
+// cell (8, 12); the player soldier at (320, 192) in a pen of eight doors of its own side (team 0)
+// round cell (20, 12), which bar the orc and let the soldier through; a hostile level-1 orc bot at
+// (180, 192), 52 px from the ring and 140 px from the pen. Both foes are door-shut for the bot, so
+// with the setting on (Gameplay Fixes BL) it is handed the door whose corner cell is nearest, the
+// ring's right door, and goes to break it. The seat walks right from tick 10 to tick 24, out of its
+// pen through its own door, and stands in the open at (372, 192): the bot can get at it now, so the
+// keep lets the ring's door go and the hand-out of the same tick gives it the soldier, which it
+// walks to and strikes (28 hp at tick 120). Classic, the bot holds the nearer foe, the ringed orc,
+// from the start and stays at the ring: the soldier is never struck. The budget B = 120. The classic
+// row's pin turns the setting on for the whole row; the setting-on row's pin has the keep keep the
+// door, so the bot stays at the ring.
+inline constexpr InputEvent kInputs_orc_bot_lets_door_go[] = {
+    { 10, 0, K_RIGHT },   // the seat walks out of its pen, through its own door
+    { 25, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_lets_door_go_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 176, 0, 0 },   // a ring of eight team-3 doors round cell (8, 12)
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 208, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 304, 176, 0, 0 },   // a pen of eight doors of the player's side round cell (20, 12)
+    { FAMILY_DOOR,    0, kOrderWeapon, 320, 176, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 336, 176, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 304, 192, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 336, 192, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 304, 208, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 320, 208, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 336, 208, 0, 0 },
+    { FAMILY_ORC, 2, kOrderLiving, 128, 192, 0, 0, 1, 15 },   // the ringed orc of a third side
+    { FAMILY_ORC, 1, kOrderLiving, 180, 192, 0, 0, 1, 15 },   // the hostile level-1 bot, 52 px right of the ringed orc
+    { FAMILY_SOLDIER, 0, kOrderLiving, 320, 192, 0, 0 },   // the player LAST, in its own pen; it walks out on ticks 10 to 24
+};
+inline constexpr FactPredicate kFacts_orc_bot_lets_door_go_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 16, 16,
+        "anchor: the ring and the pen stand"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic bot holds the nearer ringed orc and stays at the ring, so the soldier that walked out of its pen is never struck"),
+};
+inline constexpr Mutation kMut_orc_bot_lets_door_go_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the bot breaks the ring's door until the soldier walks out of its pen, lets the door go and strikes the soldier, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 28 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_lets_door_go_fixes_scen99[] = {
+    pred::TickReached(120),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 16, 16,
+        "anchor: the ring and the pen stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 330, 0,
+        "consequence: with the setting on the bot lets the ring's door go the moment the soldier stands where it can get at it, and walks to the soldier"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: the bot strikes the soldier by tick 120"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit cfe528040
+};
+inline constexpr Mutation kMut_orc_bot_lets_door_go_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2896,
+    "walker* const kept = og::reach::keeps_door(bot, *door);",
+    "walker* const kept = door;",
+    "The keep keeps the held door whatever the bot gets at: it stays at the ring, so WalkerPositionMoved(FAMILY_ORC, 330, 0) fails and the soldier keeps its 120 hp."
+};
+
+// --- orc_bot_two_rings (fix BL: the locked door in its way is a bot's last-resort foe, the fewest doors) ---
+// A level-1 orc of a third side (team 2) at (128, 240) behind two rings of closed team-3 doors that
+// touch (eight round cell (8, 15) and sixteen round those), 72 px left of a hostile level-1 orc bot
+// at (200, 240); the idle player soldier at (320, 240), behind one ring round cell (20, 15), 120 px
+// to the bot's right. Both are door-shut for the bot. Classic, the bot takes the nearer foe, the
+// twice-ringed orc, and stands against the outer ring (y 255). With the setting on (Gameplay Fixes
+// BL) it is handed the door from which an enemy is reached through the fewest doors (doors that
+// touch are walked through one by one, each counted): the single ring's doors count one, the double
+// ring's two, so it goes to the soldier's ring, its left side (x 289), though the other ring is
+// nearer. The budget B = 100. The classic row's pin turns the setting on for the whole row; the
+// setting-on row's pin has a step from door to door count nothing, so both rings count one and the
+// nearer wins.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_two_rings_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 224, 0, 0 },   // the inner ring round cell (8, 15)
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon,  96, 208, 0, 0 },   // the outer ring, touching the inner one
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon,  96, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon,  96, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon,  96, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon,  96, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 112, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 304, 224, 0, 0 },   // the single ring round cell (20, 15)
+    { FAMILY_DOOR,    3, kOrderWeapon, 320, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 336, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 304, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 336, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 304, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 320, 256, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 336, 256, 0, 0 },
+    { FAMILY_ORC, 2, kOrderLiving, 128, 240, 0, 0, 1, 15 },   // the twice-ringed orc of a third side, 72 px left of the bot
+    { FAMILY_ORC, 1, kOrderLiving, 200, 240, 0, 0, 1, 15 },   // the hostile level-1 bot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 320, 240, 0, 0 },   // the idle player LAST, behind one ring, 120 px right of the bot
+};
+inline constexpr FactPredicate kFacts_orc_bot_two_rings_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 32, 32,
+        "anchor: the three rings stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 0, 250,
+        "consequence: the classic bot takes the nearer twice-ringed orc and stands against the outer ring below its middle row (y 255)"),
+};
+inline constexpr Mutation kMut_orc_bot_two_rings_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the bot goes to the single ring's left side (289, 240), so WalkerPositionMoved(FAMILY_ORC, 0, 250) fails."
+};
+inline constexpr FactPredicate kFacts_orc_bot_two_rings_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 32, 32,
+        "anchor: the three rings stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 280, 0,
+        "consequence: with the setting on the bot is handed the door through which an enemy is reached through the fewest doors, the single ring's, and ends against its left side (x 289)"),
+};
+inline constexpr Mutation kMut_orc_bot_two_rings_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1833,
+    "relax(regions + e, cu + 1, false);",
+    "relax(regions + e, cu, false);",
+    "A step from door to door counts nothing: the double ring counts one as the single ring does, and the nearer door, the outer ring's, is handed, so WalkerPositionMoved(FAMILY_ORC, 280, 0) fails (175, 240)."
+};
+
+// --- orc_bot_keyed_door (the key opens a door on both settings (the door question Gameplay Fixes BI to BL share)) ---
+// The idle player soldier at (192, 192) in a ring of eight closed team-3 doors of key level 1 round
+// cell (12, 12); a hostile level-1 orc bot at (200, 120), 72 px above it, on a level-1 key (team 3):
+// its first step takes it, so it holds the key of every ring door. A door whose key the walker holds
+// opens when its step meets the door (the door dies), on both settings: og::reach::door_bars, the
+// one test of whether a door bars a walker, which the body map's door arm asks too, holds the key.
+// Classic, the orc steps at the soldier against the ring's top doors and opens two of them (six
+// stand at tick 80); with the setting on (Gameplay Fixes BK: no door bars it, so it walks to the
+// soldier) it opens three and strikes the soldier. Either way at least one door is gone, the fact of
+// this pair on both settings. The budget B = 80. Both rows' pin has the door test forget the keys,
+// so no door opens.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_keyed_door_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 176, 0, 0, 1, 0 },   // a ring round cell (12, 12) of team-3 doors of key level 1
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 176, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 176, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 192, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 192, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 208, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 208, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 208, 0, 0, 1, 0 },
+    { FAMILY_KEY, 3, kOrderTreasure, 200, 120, 0, 0, 1, 0 },   // a level-1 key under the orc (team 3: nobody's prop); its first step takes it
+    { FAMILY_ORC, 1, kOrderLiving, 200, 120, 0, 0, 1, 15 },   // hostile level-1 melee bot on the key
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 192, 0, 0 },   // the idle player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_keyed_door_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 0, 7,
+        "consequence: the orc holds the key of every ring door, and a door opens when its step meets it: at least one door is gone by tick 80 (on this seed two)"),
+    // rng_drift: the rule decides that the key opens a door the orc's step meets, not how many its steps meet by the budget, so the band runs from every door gone to one gone; commit 3d9dcdcd8
+};
+inline constexpr Mutation kMut_orc_bot_keyed_door_scen99 = {
+    "src/gameplay/obmap.cpp", 872,
+    "return !holds_key_of_level(keys, door->stats()->level());",
+    "return !holds_key_of_level(keys & 0u, door->stats()->level());",
+    "The door test forgets the keys the walker holds: no door opens, so WeaponFamilyCount(FAMILY_DOOR, 0, 7) reads 8."
+};
+inline constexpr FactPredicate kFacts_orc_bot_keyed_door_fixes_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 0, 7,
+        "consequence: the orc holds the key of every ring door, and a door opens when its step meets it: at least one door is gone by tick 80 (on this seed three)"),
+    // intended_diff: the rule decides that the key opens a door the orc's step meets, not how many its steps meet by the budget, so the band runs from every door gone to one gone; commit 3d9dcdcd8
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: with the setting on no door bars the key holder, which walks in and strikes the soldier by tick 80"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit 3d9dcdcd8
+};
+inline constexpr Mutation kMut_orc_bot_keyed_door_fixes_scen99 = {
+    "src/gameplay/obmap.cpp", 872,
+    "return !holds_key_of_level(keys, door->stats()->level());",
+    "return !holds_key_of_level(keys & 0u, door->stats()->level());",
+    "The door test forgets the keys the walker holds: no door opens and the orc stays outside, so WeaponFamilyCount(FAMILY_DOOR, 0, 7) reads 8 and the soldier keeps its 120 hp."
+};
+
+// --- orc_bot_routes_to_held_door (fix BL: a melee bot walks into the door it holds, the near test) ---
+// The idle player soldier at (192, 288) in a ring of eight closed team-3 doors round cell (12, 18);
+// a hostile level-1 orc bot at (200, 200), 80 px from the ring's top door (192, 272) by the
+// Manhattan measure; between them a fence of four team-3 doors on row 15 (y 240, x 176 to 224).
+// With the setting on the orc gets at no enemy and is handed the ring's top door (Gameplay Fixes
+// BL); it is melee-only, so it walks into the door it holds: the near branch, which a foe within
+// 100 px would take, is skipped, and the orc plans its route, round the fence's end and down onto
+// the door, where it rests (y 257). Classic, the orc takes the soldier and its near branch steps
+// it at the soldier round the fence to the ring's top right corner (x 223). The budget B = 100. The
+// classic row's pin turns the setting on for the whole row; the setting-on row's pin drops the near
+// test's door-holder term, so the orc's near branch ends its order and the straight walk, which
+// refuses the fence's doors (Gameplay Fixes BI), leaves it to the right-hand walk along the fence.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_routes_to_held_door_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 240, 0, 0 },   // a fence of four team-3 doors on row 15, x 176 to 224
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 240, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 272, 0, 0 },   // a ring of eight team-3 doors round cell (12, 18)
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 272, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 288, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 288, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 304, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 304, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 304, 0, 0 },
+    { FAMILY_ORC, 1, kOrderLiving, 200, 200, 0, 0, 1, 15 },   // hostile level-1 melee bot, above the fence
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 288, 0, 0 },   // the idle player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_routes_to_held_door_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 12, 12,
+        "anchor: the fence and the ring stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 210, 0,
+        "consequence: the classic orc holds the soldier and its near branch steps it round the fence to the ring's top right corner (x 223)"),
+};
+inline constexpr Mutation kMut_orc_bot_routes_to_held_door_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc rests on the ring's top door (192, 257), so WalkerPositionMoved(FAMILY_ORC, 210, 0) fails."
+};
+inline constexpr FactPredicate kFacts_orc_bot_routes_to_held_door_fixes_scen99[] = {
+    pred::TickReached(100),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 12, 12,
+        "anchor: the fence and the ring stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 0, 250,
+        "consequence: with the setting on the melee orc holding the ring's top door plans its route round the fence and rests on the door (y 257)"),
+};
+inline constexpr Mutation kMut_orc_bot_routes_to_held_door_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2034,
+    "&& !og::reach::opens_way(*controller_, *foe) && !walks_into_door(*controller_, foe))",
+    "&& !og::reach::opens_way(*controller_, *foe))",
+    "The near test loses its door-holder term: the orc within 100 px of its door takes the near branch, which ends its order, and the right-hand walk leads it along the fence (242, 243), so WalkerPositionMoved(FAMILY_ORC, 0, 250) fails."
+};
+
+// --- orc_bot_handed_door_replans (fix BL: a melee bot walks into the door it holds, the re-plan at the hand-over) ---
+// The player soldier at (192, 216) above a pen of eight doors of its own side (team 0) round cell
+// (12, 16); a hostile level-1 orc bot at (192, 120); between them a fence of six team-3 doors on
+// row 12 (y 200, x 128 to 208). The seat walks down from tick 0 to tick 9, 4 px a tick, through its
+// own door into the pen's middle cell (y 256), where the doors bar the orc. The orc hunts it with a
+// route, re-planned every 5 to 14 ticks. With the setting on (Gameplay Fixes BJ and BL) the soldier
+// in the pen is door-shut, the orc lets it go and is handed a door of the pen (tick 9); a melee bot
+// handed a door has its re-plan counter set to 0, so its next chase plans its route into the door at
+// once, round the fence's right end: at tick 40 it stands at the pen (y 225). Classic, the orc keeps
+// the soldier and pushes at the fence (x 216, y 185), where its blows on the doors clang. The budget
+// B = 40. The classic row's pin turns the setting on for the whole row; the setting-on row's pin
+// leaves the counter as it was, so on this seed (the first from 0 at which the counter is left above
+// 0 at the hand-over) the orc walks without a route for some ticks first and is 15 px short at tick
+// 40.
+inline constexpr InputEvent kInputs_orc_bot_handed_door_replans[] = {
+    {  0, 0, K_DOWN },   // the seat walks down into its pen, through its own door
+    { 10, 0, K_NONE },   // it stands in the pen's middle cell
+};
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_handed_door_replans_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 128, 200, 0, 0 },   // a fence of six team-3 doors on row 12, x 128 to 208
+    { FAMILY_DOOR,    3, kOrderWeapon, 144, 200, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 200, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 200, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 200, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 200, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 176, 240, 0, 0 },   // a pen of eight doors of the player's side round cell (12, 16)
+    { FAMILY_DOOR,    0, kOrderWeapon, 192, 240, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 208, 240, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 176, 256, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 208, 256, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 176, 272, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 192, 272, 0, 0 },
+    { FAMILY_DOOR,    0, kOrderWeapon, 208, 272, 0, 0 },
+    { FAMILY_ORC, 1, kOrderLiving, 192, 120, 0, 0, 1, 15 },   // hostile level-1 melee bot above the fence
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 216, 0, 0 },   // the player LAST, below the fence; it walks down into its pen
+};
+inline constexpr FactPredicate kFacts_orc_bot_handed_door_replans_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 14, 14,
+        "anchor: the fence and the pen stand"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: the classic orc keeps the soldier in its pen as its foe and pushes at the fence, where its bump's blows land on the doors and clang (on this seed on ticks 24 and 32)"),
+};
+inline constexpr Mutation kMut_orc_bot_handed_door_replans_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc leaves the fence for the pen's door and nothing clangs by tick 40, so EventKindAtLeast(play_sound, 1) reads 0."
+};
+inline constexpr FactPredicate kFacts_orc_bot_handed_door_replans_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 14, 14,
+        "anchor: the fence and the pen stand"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 0, 220,
+        "consequence: with the setting on the orc handed the pen's door re-plans at once and walks its route round the fence to the pen: it stands at the pen by tick 40 (y 225)"),
+};
+inline constexpr Mutation kMut_orc_bot_handed_door_replans_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 3003,
+    "bot.set_path_check_counter(0);",
+    "(void)0;",
+    "The hand-over leaves the re-plan counter as it was: the orc walks without a route until its next re-plan and stands 15 px short of the pen at tick 40 (225, 210), so WalkerPositionMoved(FAMILY_ORC, 0, 220) fails."
+};
+
+// --- orc_bot_held_door_start_cell (fix BL: a melee bot walks into the door it holds, the route's start cell) ---
+// The idle player soldier at (192, 192) in a ring of eight closed team-3 doors round cell (12, 12);
+// a hostile level-1 orc bot at (223, 192), right of the ring's right door (208, 192): its box rests
+// against the door with its corner one pixel inside the door's cell (13, 12) (the body map's box
+// test shrinks each box by a pixel), so its start cell is (14, 12). With the setting on the orc gets
+// at no enemy and is handed that door (Gameplay Fixes BL); its route is its start cell, then the
+// door's cell. The follower counts the node on its start cell as reached (its corner's cell is the
+// door's), and from a corner inside the door's cell it takes the hop from its start cell into the
+// door, so its step meets the door and its bump swings: on this seed its blows clang on ticks 21,
+// 30, 39 and 48. Classic, the orc holds the soldier and stands in its ATTACK order (#447): nothing
+// sounds by tick 50. The budget B = 50. The classic row's pin turns the setting on for the whole row;
+// the setting-on row's pin drops the start-cell node's rule, so the orc first walks back to its start
+// cell, away from the door, and lands one blow by tick 50.
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_held_door_start_cell_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 176, 0, 0 },   // a ring of eight team-3 doors round cell (12, 12)
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 208, 0, 0 },
+    { FAMILY_ORC, 1, kOrderLiving, 223, 192, 0, 0, 1, 15 },   // hostile level-1 melee bot right of the right door, its corner 1 px inside the door's cell
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 192, 0, 0 },   // the idle player LAST, in the ring's middle cell
+};
+inline constexpr FactPredicate kFacts_orc_bot_held_door_start_cell_scen99[] = {
+    pred::TickReached(50),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: the classic orc holds the soldier and stands in its ATTACK order beside the ring (#447): no blow lands and nothing sounds by tick 50"),
+    // negative_assertion: nothing sounds classic; the pin hands the orc its door and its blows clang (0 -> 4).
+};
+inline constexpr Mutation kMut_orc_bot_held_door_start_cell_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc is handed the right door and its blows clang on ticks 21, 30, 39 and 48, so EventKindExactly(play_sound, 0) reads 4."
+};
+inline constexpr FactPredicate kFacts_orc_bot_held_door_start_cell_fixes_scen99[] = {
+    pred::TickReached(50),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3,
+        "consequence: with the setting on the orc right of its door takes the hop from its start cell into the door each time, and on this seed its blows clang on ticks 21, 30, 39 and 48"),
+};
+inline constexpr Mutation kMut_orc_bot_held_door_start_cell_fixes_scen99 = {
+    "src/gameplay/walker_pathing.cpp", 159,
+    "if ((dx != 0 || dy != 0) && on_from)",
+    "if (false && on_from)",
+    "A node on the start cell is no longer reached from a corner in the door's cell: the orc first walks back to its start cell and its blows clang once by tick 50, so EventKindAtLeast(play_sound, 3) reads 1."
+};
+
+// --- orc_bot_hops_into_held_door (fix BL: a melee bot walks into the door it holds, the hop into the door) ---
+// orc_bot_held_door_start_cell's ring, soldier and orc, with a budget of 30: the orc right of the
+// ring's right door, its corner one pixel inside the door's cell. With the setting on it is handed
+// the door (Gameplay Fixes BL), and the door's own cell, the last node of its route, is not reached
+// while the door stands: from a corner inside it the step is the hop from the start cell into the
+// door's cell, which meets the door, and its bump swings; on this seed its first blow clangs on tick
+// 21. Classic, the orc stands in its ATTACK order (#447): nothing sounds by tick 30. The budget
+// B = 30. The classic row's pin turns the setting on for the whole row; the setting-on row's pin has
+// the door's node count as reached when the orc's corner stands in it: no node is left, the orc
+// takes no step into the door, and nothing clangs.
+inline constexpr FactPredicate kFacts_orc_bot_hops_into_held_door_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: the classic orc holds the soldier and stands in its ATTACK order beside the ring (#447): nothing sounds by tick 30"),
+    // negative_assertion: nothing sounds classic; the pin hands the orc its door and its first blow clangs on tick 21 (0 -> 1).
+};
+inline constexpr Mutation kMut_orc_bot_hops_into_held_door_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc is handed the right door and its first blow clangs on tick 21, so EventKindExactly(play_sound, 0) reads 1."
+};
+inline constexpr FactPredicate kFacts_orc_bot_hops_into_held_door_fixes_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
+        "anchor: the ring of eight doors stands"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: with the setting on the orc takes the hop from its start cell into the door it holds, its bump swings at it, and on this seed the first blow clangs on tick 21"),
+};
+inline constexpr Mutation kMut_orc_bot_hops_into_held_door_fixes_scen99 = {
+    "src/gameplay/walker_pathing.cpp", 168,
+    "if (dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&",
+    "if (false && dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&",
+    "The door's node counts as reached when the orc's corner stands in it: no node is left, no step meets the door and nothing clangs by tick 30, so EventKindAtLeast(play_sound, 1) reads 0."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -16452,6 +17663,244 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_archer_bot_bolt_door_pad_fixes_scen99, std::size(kFacts_archer_bot_bolt_door_pad_fixes_scen99),
       kMut_archer_bot_bolt_door_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_route_door_fence_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_route_door_fence_scen99, std::size(kFamilySpawns_orc_bot_route_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_route_door_fence_scen99, std::size(kFacts_orc_bot_route_door_fence_scen99),
+      kMut_orc_bot_route_door_fence_scen99 },
+    { "orc_bot_route_door_fence_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_route_door_fence_scen99, std::size(kFamilySpawns_orc_bot_route_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_route_door_fence_fixes_scen99, std::size(kFacts_orc_bot_route_door_fence_fixes_scen99),
+      kMut_orc_bot_route_door_fence_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bots_shove_at_door_fence_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bots_shove_at_door_fence_scen99, std::size(kFamilySpawns_orc_bots_shove_at_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bots_shove_at_door_fence_scen99, std::size(kFacts_orc_bots_shove_at_door_fence_scen99),
+      kMut_orc_bots_shove_at_door_fence_scen99 },
+    { "orc_bots_shove_at_door_fence_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bots_shove_at_door_fence_scen99, std::size(kFamilySpawns_orc_bots_shove_at_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bots_shove_at_door_fence_fixes_scen99, std::size(kFacts_orc_bots_shove_at_door_fence_fixes_scen99),
+      kMut_orc_bots_shove_at_door_fence_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_foe_in_door_ring_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_foe_in_door_ring_scen99, std::size(kFamilySpawns_orc_bot_foe_in_door_ring_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_foe_in_door_ring_scen99, std::size(kFacts_orc_bot_foe_in_door_ring_scen99),
+      kMut_orc_bot_foe_in_door_ring_scen99 },
+    { "orc_bot_foe_in_door_ring_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_foe_in_door_ring_scen99, std::size(kFamilySpawns_orc_bot_foe_in_door_ring_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_foe_in_door_ring_fixes_scen99, std::size(kFacts_orc_bot_foe_in_door_ring_fixes_scen99),
+      kMut_orc_bot_foe_in_door_ring_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_handed_foe_let_go_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_handed_foe_let_go, std::size(kInputs_orc_bot_handed_foe_let_go), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_handed_foe_let_go_scen99, std::size(kFamilySpawns_orc_bot_handed_foe_let_go_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_handed_foe_let_go_scen99, std::size(kFacts_orc_bot_handed_foe_let_go_scen99),
+      kMut_orc_bot_handed_foe_let_go_scen99 },
+    { "orc_bot_handed_foe_let_go_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_handed_foe_let_go, std::size(kInputs_orc_bot_handed_foe_let_go), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_handed_foe_let_go_scen99, std::size(kFamilySpawns_orc_bot_handed_foe_let_go_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_handed_foe_let_go_fixes_scen99, std::size(kFacts_orc_bot_handed_foe_let_go_fixes_scen99),
+      kMut_orc_bot_handed_foe_let_go_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_near_ring_crowded_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_near_ring_crowded_scen99, std::size(kFamilySpawns_orc_bot_near_ring_crowded_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_near_ring_crowded_scen99, std::size(kFacts_orc_bot_near_ring_crowded_scen99),
+      kMut_orc_bot_near_ring_crowded_scen99 },
+    { "orc_bot_near_ring_crowded_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_near_ring_crowded_scen99, std::size(kFamilySpawns_orc_bot_near_ring_crowded_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_near_ring_crowded_fixes_scen99, std::size(kFacts_orc_bot_near_ring_crowded_fixes_scen99),
+      kMut_orc_bot_near_ring_crowded_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bot_shot_past_door_fence_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_shot_past_door_fence_scen99, std::size(kFamilySpawns_archer_bot_shot_past_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_shot_past_door_fence_scen99, std::size(kFacts_archer_bot_shot_past_door_fence_scen99),
+      kMut_archer_bot_shot_past_door_fence_scen99 },
+    { "archer_bot_shot_past_door_fence_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_shot_past_door_fence_scen99, std::size(kFamilySpawns_archer_bot_shot_past_door_fence_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_shot_past_door_fence_fixes_scen99, std::size(kFacts_archer_bot_shot_past_door_fence_fixes_scen99),
+      kMut_archer_bot_shot_past_door_fence_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "soldier_bot_outside_ring_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_outside_ring_scen99, std::size(kFamilySpawns_soldier_bot_outside_ring_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_outside_ring_scen99, std::size(kFacts_soldier_bot_outside_ring_scen99),
+      kMut_soldier_bot_outside_ring_scen99 },
+    { "soldier_bot_outside_ring_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_outside_ring_scen99, std::size(kFamilySpawns_soldier_bot_outside_ring_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_outside_ring_fixes_scen99, std::size(kFacts_soldier_bot_outside_ring_fixes_scen99),
+      kMut_soldier_bot_outside_ring_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bot_ring_no_cast_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_ring_no_cast_scen99, std::size(kFamilySpawns_archer_bot_ring_no_cast_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_ring_no_cast_scen99, std::size(kFacts_archer_bot_ring_no_cast_scen99),
+      kMut_archer_bot_ring_no_cast_scen99 },
+    { "archer_bot_ring_no_cast_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_ring_no_cast_scen99, std::size(kFamilySpawns_archer_bot_ring_no_cast_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_ring_no_cast_fixes_scen99, std::size(kFacts_archer_bot_ring_no_cast_fixes_scen99),
+      kMut_archer_bot_ring_no_cast_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_keyed_at_wall_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_keyed_at_wall_scen99, std::size(kFamilySpawns_orc_bot_keyed_at_wall_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_keyed_at_wall_scen99, std::size(kFacts_orc_bot_keyed_at_wall_scen99),
+      kMut_orc_bot_keyed_at_wall_scen99 },
+    { "orc_bot_keyed_at_wall_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_keyed_at_wall_scen99, std::size(kFamilySpawns_orc_bot_keyed_at_wall_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_keyed_at_wall_fixes_scen99, std::size(kFacts_orc_bot_keyed_at_wall_fixes_scen99),
+      kMut_orc_bot_keyed_at_wall_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_breaks_ring_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_breaks_ring_door_scen99, std::size(kFamilySpawns_orc_bot_breaks_ring_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_breaks_ring_door_scen99, std::size(kFacts_orc_bot_breaks_ring_door_scen99),
+      kMut_orc_bot_breaks_ring_door_scen99 },
+    { "orc_bot_breaks_ring_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_breaks_ring_door_scen99, std::size(kFamilySpawns_orc_bot_breaks_ring_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_breaks_ring_door_fixes_scen99, std::size(kFacts_orc_bot_breaks_ring_door_fixes_scen99),
+      kMut_orc_bot_breaks_ring_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_lets_door_go_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_lets_door_go, std::size(kInputs_orc_bot_lets_door_go), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_lets_door_go_scen99, std::size(kFamilySpawns_orc_bot_lets_door_go_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_lets_door_go_scen99, std::size(kFacts_orc_bot_lets_door_go_scen99),
+      kMut_orc_bot_lets_door_go_scen99 },
+    { "orc_bot_lets_door_go_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_lets_door_go, std::size(kInputs_orc_bot_lets_door_go), 120,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_lets_door_go_scen99, std::size(kFamilySpawns_orc_bot_lets_door_go_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_lets_door_go_fixes_scen99, std::size(kFacts_orc_bot_lets_door_go_fixes_scen99),
+      kMut_orc_bot_lets_door_go_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_two_rings_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_two_rings_scen99, std::size(kFamilySpawns_orc_bot_two_rings_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_two_rings_scen99, std::size(kFacts_orc_bot_two_rings_scen99),
+      kMut_orc_bot_two_rings_scen99 },
+    { "orc_bot_two_rings_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_two_rings_scen99, std::size(kFamilySpawns_orc_bot_two_rings_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_two_rings_fixes_scen99, std::size(kFacts_orc_bot_two_rings_fixes_scen99),
+      kMut_orc_bot_two_rings_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_keyed_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_keyed_door_scen99, std::size(kFamilySpawns_orc_bot_keyed_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_keyed_door_scen99, std::size(kFacts_orc_bot_keyed_door_scen99),
+      kMut_orc_bot_keyed_door_scen99 },
+    { "orc_bot_keyed_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_keyed_door_scen99, std::size(kFamilySpawns_orc_bot_keyed_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_keyed_door_fixes_scen99, std::size(kFacts_orc_bot_keyed_door_fixes_scen99),
+      kMut_orc_bot_keyed_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_routes_to_held_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_routes_to_held_door_scen99, std::size(kFamilySpawns_orc_bot_routes_to_held_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_routes_to_held_door_scen99, std::size(kFacts_orc_bot_routes_to_held_door_scen99),
+      kMut_orc_bot_routes_to_held_door_scen99 },
+    { "orc_bot_routes_to_held_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 100,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_routes_to_held_door_scen99, std::size(kFamilySpawns_orc_bot_routes_to_held_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_routes_to_held_door_fixes_scen99, std::size(kFacts_orc_bot_routes_to_held_door_fixes_scen99),
+      kMut_orc_bot_routes_to_held_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_handed_door_replans_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_handed_door_replans, std::size(kInputs_orc_bot_handed_door_replans), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_handed_door_replans_scen99, std::size(kFamilySpawns_orc_bot_handed_door_replans_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_handed_door_replans_scen99, std::size(kFacts_orc_bot_handed_door_replans_scen99),
+      kMut_orc_bot_handed_door_replans_scen99 },
+    { "orc_bot_handed_door_replans_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_handed_door_replans, std::size(kInputs_orc_bot_handed_door_replans), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_handed_door_replans_scen99, std::size(kFamilySpawns_orc_bot_handed_door_replans_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_handed_door_replans_fixes_scen99, std::size(kFacts_orc_bot_handed_door_replans_fixes_scen99),
+      kMut_orc_bot_handed_door_replans_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_held_door_start_cell_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 50,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_held_door_start_cell_scen99, std::size(kFamilySpawns_orc_bot_held_door_start_cell_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_held_door_start_cell_scen99, std::size(kFacts_orc_bot_held_door_start_cell_scen99),
+      kMut_orc_bot_held_door_start_cell_scen99 },
+    { "orc_bot_held_door_start_cell_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 50,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_held_door_start_cell_scen99, std::size(kFamilySpawns_orc_bot_held_door_start_cell_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_held_door_start_cell_fixes_scen99, std::size(kFacts_orc_bot_held_door_start_cell_fixes_scen99),
+      kMut_orc_bot_held_door_start_cell_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_hops_into_held_door_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_held_door_start_cell_scen99, std::size(kFamilySpawns_orc_bot_held_door_start_cell_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_hops_into_held_door_scen99, std::size(kFacts_orc_bot_hops_into_held_door_scen99),
+      kMut_orc_bot_hops_into_held_door_scen99 },
+    { "orc_bot_hops_into_held_door_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_held_door_start_cell_scen99, std::size(kFamilySpawns_orc_bot_held_door_start_cell_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_hops_into_held_door_fixes_scen99, std::size(kFacts_orc_bot_hops_into_held_door_fixes_scen99),
+      kMut_orc_bot_hops_into_held_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

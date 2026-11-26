@@ -860,7 +860,7 @@ bool og::reach::door_bars(const walker* mover, const walker* door, std::uint32_t
 	//   number is a door's, is not), is not of the walker's side and the keys held (the walker's
 	//   own, or the keys a question names) hold no key of its level (key bit 2^level); there is no
 	//   exception for a door that is the walker's own foe.
-	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
+	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row, parity:orc_bot_keyed_door_scen99, parity:orc_bot_keyed_door_fixes_scen99
 	// tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
 	// tests: SemReach.a_walker_holding_no_key_is_asked_as_a_kind_of_its_own
 	if (mover == nullptr || door == nullptr || door->dead() || !door->is_door())
