@@ -25,7 +25,9 @@
 class weap : public walker
 {
 	public:
-		weap(const PixieData& data);
+		// detached_probe: see walker's constructor (walker::unhooked_weapon
+		// builds its test weapon so; port of the current game's 3d9dcdcd8)
+		weap(const PixieData& data, bool detached_probe = false);
 		virtual ~weap();
 
 		short act();

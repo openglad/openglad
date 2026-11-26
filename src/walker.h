@@ -33,6 +33,7 @@ class walker : public pixieN
 		// for the path cadence, since random() reads the same rand() stream
 		// and one extra call would move every later draw. (port of the
 		// current game's 15053f4a, its WeaponProfileProbeTag constructor)
+		// It is kept in `detached` (below).
 		walker(const PixieData& data, bool detached_probe = false);
 		virtual ~walker();
 		short reset(void);
@@ -50,13 +51,24 @@ class walker : public pixieN
 		void follow_path_to_foe();
 		short init_fire();
 		short init_fire(short xdir, short ydir);
+		// fire_check's test weapon: placed and headed by the heading table
+		// below for the way this walker faces (facing(lastx, lasty)), its
+		// waver drawn as fire() draws a shot's.
 		void set_weapon_heading(walker *weapon);
+		// The heading table, the facing and the waver given: the weapon set
+		// on the pad for that facing (weapon_pad) and headed along it, the
+		// waver across the heading. Draws nothing. (port of the current
+		// game's 3d9dcdcd8, set_weapon_heading(weapon, dir, waver))
+		void set_weapon_heading(walker *weapon, short dir, signed char waver);
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
 		// facing(lastx, lasty) names. The one table fire() and
 		// set_weapon_heading() read.
 		void weapon_pad(walker *weapon, short *px, short *py);
+		// The same table for the facing `dir` (port of the current game's
+		// 3d9dcdcd8, weapon_pad with a facing).
+		void weapon_pad(walker *weapon, short *px, short *py, short dir);
 		// What the pad fire() would place a weapon on holds, probed quietly
 		// with a detached weapon: 0 clear (the weapon would fly); 1 terrain
 		// (the grid refuses it: a wall, the map edge, a tree's crown or trunk
@@ -120,6 +132,23 @@ class walker : public pixieN
 			return family;
 		}
 		walker  *create_weapon();
+		// The profile create_weapon gives the shot it makes, for a heading
+		// (heading_x, heading_y): this walker's team and owner, the
+		// difficulty and damage of its level, a guy's strength and dexterity,
+		// the level's line of sight and the circular range of a cardinal
+		// heading. The family's own part (the cleric's glow) is not in it.
+		// (port of the current game's configure_weapon_profile_base)
+		void configure_weapon_profile(walker *weapon, float heading_x, float heading_y);
+		// The detached test weapon of this walker's current weapon: the
+		// weapon as the loader makes it, profiled by
+		// configure_weapon_profile alone for the heading given, built as a
+		// detached probe (filed in no obmap, no rand() for the path cadence;
+		// flown, it is offered no clash roll at an enemy weapon-order body
+		// that is not a door, obmap.cpp). NULL for a walker that is no
+		// living, or a weapon the loader cannot make. Draws nothing. The
+		// caller deletes it. (port of the current game's
+		// walker::unhooked_weapon)
+		walker *unhooked_weapon(float heading_x, float heading_y);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
 		// Facing, and NoRanged at bump range ("the foe is in weapon reach
@@ -156,8 +185,11 @@ class walker : public pixieN
 		// else 1 the shot lands, 0 it does not, with the test weapon set dead
 		// and *denial written. Gameplay Fixes BF (port of the current game's
 		// e205957c6): an enemy door that is not the foe refuses it
-		// (WallBlocked).
-		short line_check_flight(walker* weapon, FireCheckDenial* denial);
+		// (WallBlocked). With every_door_stops every live enemy door refuses
+		// it, the shooter's foe included (port of the current game's
+		// 3d9dcdcd8: the judgment of whether a shot lands from where a bot
+		// stands asks it so; the line check itself does not).
+		short line_check_flight(walker* weapon, FireCheckDenial* denial, bool every_door_stops = false);
 		// A door: weapon order and the door's family (a golem's family number
 		// is a door's). Gameplay Fixes BF asks it (port of the current game's
 		// 3fe15190e). Defined after line_check_flight.
@@ -268,6 +300,12 @@ class walker : public pixieN
 		// Zardus: ADD: in_act should be set while in an action
 		bool in_act;
 		obmap* myobmap;
+		// Built as a detached probe (the constructor's detached_probe): it has
+		// no obmap, so setxy files it nowhere, and a loud flight of it is
+		// offered no clash roll at an enemy weapon-order body that is not a
+		// door (ob_pass_check). (port of the current game's 3d9dcdcd8, its
+		// dormant test weapon)
+		bool detached;
 		int path_check_counter;
 		std::vector<void*> path_to_foe;  // Result from pathfinding
 		

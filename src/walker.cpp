@@ -107,6 +107,7 @@ walker::walker(const PixieData& data, bool detached_probe)
 	myobmap = NULL;
 	if(myscreen != NULL && !detached_probe)
         myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
+	detached = detached_probe;
     
 	// a detached probe draws nothing (port of the current game's 15053f4a)
 	path_check_counter = detached_probe ? 0 : 5 + rand()%10;
@@ -229,7 +230,11 @@ short walker::setxy(short x, short y)
     worldx = x;
     worldy = y;
     
-	if (!ignore)
+	// a detached probe has no obmap and is filed in none (port of the
+	// current game's 3d9dcdcd8)
+	if (detached)
+		;
+	else if (!ignore)
 		myobmap->move(this, x, y);
 	else // just remove us, in case :)
 		myobmap->remove(this);
@@ -242,7 +247,11 @@ void walker::setworldxy(float x, float y)
     worldx = x;
     worldy = y;
     
-	if (!ignore)
+	// a detached probe has no obmap and is filed in none (port of the
+	// current game's 3d9dcdcd8)
+	if (detached)
+		;
+	else if (!ignore)
 		myobmap->move(this, x, y);
 	else // just remove us, in case :)
 		myobmap->remove(this);
@@ -912,10 +921,18 @@ void walker::set_weapon_heading(walker *weapon)
 	waver = (signed char) ((weapon->stepsize)/2); // Absolute amount ..
 	waver = (signed char) (random(waver+1) - waver/2);
 
+	set_weapon_heading(weapon, facing(lastx, lasty), waver);  // these are from the 'owner'
+}
+
+// The heading table (walker.h), the facing and the waver given: the one table
+// fire_check's test weapon and a detached test weapon read (port of the
+// current game's 3d9dcdcd8).
+void walker::set_weapon_heading(walker *weapon, short dir, signed char waver)
+{
 	short pad_x = 0, pad_y = 0;
-	weapon_pad(weapon, &pad_x, &pad_y);  // fire()'s pad: one table (port of the current game's 55138099)
+	weapon_pad(weapon, &pad_x, &pad_y, dir);  // fire()'s pad: one table (port of the current game's 55138099)
 	weapon->setxy(pad_x, pad_y);
-	switch(facing(lastx, lasty))  // these are from the 'owner'
+	switch(dir)
 	{
 		case FACE_RIGHT:
 			weapon->lastx = weapon->stepsize;
@@ -2501,6 +2518,24 @@ walker  *walker::create_weapon()
 	weapon_type = current_weapon;
 
 	weapon = myscreen->level_data.add_ob(ORDER_WEAPON, (char) weapon_type);
+	configure_weapon_profile(weapon, lastx, lasty);
+
+	if (query_family() == FAMILY_CLERIC)
+	{
+		weapon->ani_type = ANI_GLOWGROW;
+		weapon->lifetime += (stats->level * 110);
+	}
+	//  if (query_family() == FAMILY_DRUID)
+	//       weapon->ani_type = ANI_GROW;
+	//duhhhh he's not using this as his normal weapon
+	return weapon;
+}
+
+// The profile create_weapon gives a shot (walker.h; port of the current
+// game's configure_weapon_profile_base): moved out of create_weapon, the
+// same statements in the same order.
+void walker::configure_weapon_profile(walker *weapon, float heading_x, float heading_y)
+{
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(stats->level);
@@ -2515,7 +2550,7 @@ walker  *walker::create_weapon()
 		weapon->damage *= stats->level;
 	}
 	weapon->lineofsight += (stats->level / 3);
-	switch ( facing(lastx, lasty) ) // make 'circular' ranges
+	switch ( facing(heading_x, heading_y) ) // make 'circular' ranges
 	{
 		case FACE_UP:
 		case FACE_RIGHT:
@@ -2531,15 +2566,30 @@ walker  *walker::create_weapon()
 		default :
 			break;
 	}
+}
 
-	if (query_family() == FAMILY_CLERIC)
-	{
-		weapon->ani_type = ANI_GLOWGROW;
-		weapon->lifetime += (stats->level * 110);
-	}
-	//  if (query_family() == FAMILY_DRUID)
-	//       weapon->ani_type = ANI_GROW;
-	//duhhhh he's not using this as his normal weapon
+// The detached test weapon of this walker's current weapon (walker.h; port of
+// the current game's walker::unhooked_weapon): built as fire_pad_answer
+// builds its detached weapon, from the loader's picture and set_walker, but as
+// the weapon class add_ob makes, so that it walks as a shot walks; then the
+// profile alone, never the family's own part. Nothing is drawn: a detached
+// walker rolls no path cadence and set_difficulty draws nothing.
+walker *walker::unhooked_weapon(float heading_x, float heading_y)
+{
+	if (query_order() != ORDER_LIVING || !myscreen)
+		return NULL;
+	loader *ld = myscreen->level_data.myloader;
+	const char fam = (char) current_weapon;  // the family add_ob is given
+	if (!ld || !ld->graphics[PIX(ORDER_WEAPON, fam)].valid())
+		return NULL;
+	// loader::create_walker's statements, the probe built detached
+	walker *weapon = new weap(ld->graphics[PIX(ORDER_WEAPON, fam)], true);
+	weapon->stats->hitpoints = ld->hitpoints[PIX(ORDER_WEAPON, fam)];
+	weapon->stats->max_hitpoints = ld->hitpoints[PIX(ORDER_WEAPON, fam)];
+	weapon->stats->special_cost[0] = 0; // shouldn't be used
+	weapon->stats->weapon_cost = 1; // default value
+	ld->set_walker(weapon, ORDER_WEAPON, fam);
+	configure_weapon_profile(weapon, heading_x, heading_y);
 	return weapon;
 }
 
@@ -5600,9 +5650,15 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 // current game's 15053f4a and 55138099)
 void walker::weapon_pad(walker *weapon, short *px, short *py)
 {
+	weapon_pad(weapon, px, py, facing(lastx, lasty));
+}
+
+// The pad table for the facing `dir` (port of the current game's 3d9dcdcd8).
+void walker::weapon_pad(walker *weapon, short *px, short *py, short dir)
+{
 	Sint32 x = weapon->xpos;
 	Sint32 y = weapon->ypos;
-	switch(facing(lastx, lasty))
+	switch(dir)
 	{
 		case FACE_RIGHT:
 			x = xpos+sizex+1;
@@ -5790,7 +5846,9 @@ short walker::flight_step()
 // Gameplay Fixes BF (port of the current game's e205957c6): an enemy door on
 // the shot's path refuses the check, as a wall does, unless it is the
 // shooter's foe. The test weapon meets that door without the clash roll.
-short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
+// With every_door_stops (port of the current game's 3d9dcdcd8) every live
+// enemy door refuses it, the shooter's foe included.
+short walker::line_check_flight(walker* weapon, FireCheckDenial* denial, bool every_door_stops)
 {
 	if (!myscreen->gameplay_fixes)
 		return -1;
@@ -5801,14 +5859,14 @@ short walker::line_check_flight(walker* weapon, FireCheckDenial* denial)
 	myscreen->slit_open_for = weapon;
 	// Gameplay Fixes BF: what stopped the test weapon (its collide_ob, which
 	// the door arm of ob_pass_check records) is a live enemy door that is not
-	// the shooter's own foe. A door of the shooter's side never stops it:
-	// ob_pass_check lets a weapon pass its own side. A door is
-	// walker::is_door, which asks the order too, since a golem's family
-	// number is a door's.
+	// the shooter's own foe, or with every_door_stops any live enemy door. A
+	// door of the shooter's side never stops it: ob_pass_check lets a weapon
+	// pass its own side. A door is walker::is_door, which asks the order too,
+	// since a golem's family number is a door's.
 	const auto stopped_by_a_door = [&]() {
 		walker* met = weapon->collide_ob;
 		return met != NULL && !met->dead && met->is_door() &&
-		       met != foe;
+		       (every_door_stops || met != foe);
 	};
 	if (!myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon))
 		why = FireCheckDenial::WallBlocked;

@@ -21,8 +21,8 @@
 #include "graph.h"
 #include "smooth.h"
 
-weap::weap(const PixieData& data)
-    : walker(data)
+weap::weap(const PixieData& data, bool detached_probe)
+    : walker(data, detached_probe)
 {
 	do_bounce = 0; // don't normally bounce :)
 }
