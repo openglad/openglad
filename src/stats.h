@@ -129,11 +129,48 @@ class statistics
 		// The wander of a bot with no foe (living.cpp: the seek's coin and
 		// act_random's): `bot` is the living that is deciding. A bot shut out
 		// by a locked door (shut_out) queues no wander and makes neither of
-		// its two direction draws; every other walker wanders as before.
+		// its two direction draws: it is handed the locked door in its way
+		// (breaks, by hand_door; Gameplay Fixes BL), and only when there is
+		// none it stays where it is. Every other walker wanders as before.
 		short idle_walk(walker *bot, short rounds);
 		// walk_to_foe's near branch: how many of `foes` are not door-shut for
 		// the bot (one door_asker).
 		short foes_not_door_shut(std::list<walker*>& foes);
+		// Gameplay Fixes BJ and BL: the let-go of a held foe: no foe, the
+		// orders cleared (clear_command, which clears the leader too), the
+		// route cleared. Draws nothing.
+		void let_go();
+		// Gameplay Fixes BL, a bot with no enemy it can get at breaks down
+		// the locked door in its way (port of the current game's cfe528040,
+		// 8a8061876, 4b1ad8ef9, e36c6ccf1, 3f843abcc and e3be286c2).
+		// keeps_door: the keep of a held door, asked at the top of a SEARCH
+		// and an ATTACK round (keeps_foe) and after every act (screen::act),
+		// of a door holder only (holds_door); a door the keep no longer
+		// allows (::keeps_door answers NULL: the bot gets at an enemy, is
+		// shut out no more, or no door leads to a hostile) is let go
+		// (LetGo); while the conditions hold and only another door
+		// qualifies, that door is handed (hand_door). Every other walker
+		// keeps its foe (Kept). Draws nothing.
+		FoeKeep keeps_door();
+		// holds_door: is `bot` a bot asks names whose foe `foe` is a live
+		// door, barring it or not (a door holder)? Written once for its
+		// askers: the keep, living::act_random (a door holder keeps its door
+		// through the one-in-80 retarget) and walks_into_door. This game's
+		// statistics always name their walker, so the current game's owner
+		// test (statistics::keep_asked_of) has nothing to ask here.
+		static bool holds_door(walker *bot, walker *foe);
+		// walks_into_door: is `bot` a door holder (holds_door) that is
+		// melee-only (BIT_NO_RANGED)? Such a bot walks into its door: the
+		// chase's near branch never takes it (it plans its route into the
+		// door at any distance), it re-plans on its next chase after it is
+		// handed a door (hand_door), and its route's last hop meets the door
+		// from every side (walker::follow_path_to_foe).
+		static bool walks_into_door(walker *bot, walker *foe);
+		// hand_door: the one hand-over of a door (idle_walk, keeps_door's
+		// swap and the hand-out in screen::act): the door is set as the
+		// bot's foe, and a bot walks_into_door names has its re-plan counter
+		// set to 0.
+		static void hand_door(walker *bot, walker *door);
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;

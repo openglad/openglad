@@ -1429,7 +1429,10 @@ short living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!random(80) || (!foe))
+	// Gameplay Fixes BL (port of the current game's e36c6ccf1): a door
+	// holder (statistics::holds_door) keeps its door through the one-in-80
+	// retarget; its 80 is drawn as before, and no fresh search is made for it
+	if ((!random(80) && !statistics::holds_door(this, foe)) || (!foe))
 		foe = myscreen->find_near_foe(this);
 	// Gameplay Fixes BJ (port of the current game's f97bc3ec7): a bot shut
 	// out by a locked door stays where it is (statistics::idle_walk)

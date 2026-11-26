@@ -1331,8 +1331,11 @@ bool statistics::walk_to_foe()
 		// Gameplay Fixes BK (port of the current game's 0b5647c36): not a
 		// bot whose way to its foe only a key it holds opens (opens_way): it
 		// plans its route by the far arm below and walks into the door.
+		// Gameplay Fixes BL (port of the current game's 4b1ad8ef9): nor a
+		// melee-only bot holding a door (walks_into_door): it plans its
+		// route into the door the same way, at any distance.
 		if ((tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) &&
-		    !opens_way(controller, foe))
+		    !opens_way(controller, foe) && !walks_into_door(controller, foe))
 		{
 			std::list<walker*> foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
@@ -1486,12 +1489,15 @@ bool statistics::turn_to_foe(short aim)
 statistics::FoeKeep statistics::keeps_foe()
 {
 	walker *foe = controller->foe;
+	// Gameplay Fixes BL (port of the current game's cfe528040): a held door
+	// (a door is no fighter, so the question below would keep it) is asked
+	// the last-resort rule's keep instead (keeps_door)
+	if (foe->is_door())
+		return keeps_door();
 	const door_asker::Exit why = door_shut_exit(controller, foe);
 	if (why == door_asker::Exit::DoorShut)
 	{
-		controller->foe = NULL;
-		clear_command();  // which clears the leader too
-		controller->path_to_foe.clear();
+		let_go();
 		return FoeKeep::LetGo;
 	}
 	return why == door_asker::Exit::Shot ? FoeKeep::ByShot : FoeKeep::Kept;
@@ -1551,8 +1557,19 @@ bool statistics::shot_attacks(float xdelta, float ydelta)
 // a bot that stays makes neither.
 short statistics::idle_walk(walker *bot, short rounds)
 {
-	if (shut_out(bot))
+	// one question: whether the bot is shut out (shut_out's answer) and the
+	// door breaks would hand it, read from one walk over its hostiles
+	door_asker asker(bot);
+	const door_asker::LastResort last = asker.last_resort(NULL);
+	if (last.shut)
+	{
+		// Gameplay Fixes BL (port of the current game's cfe528040): the
+		// shut-out bot is handed the locked door in its way (hand_door);
+		// only when there is none does it stay where it is
+		if (last.door)
+			hand_door(bot, last.door);
 		return 0;
+	}
 	return try_command(COMMAND_RANDOM_WALK, rounds);
 }
 
@@ -1567,4 +1584,54 @@ short statistics::foes_not_door_shut(std::list<walker*>& foes)
 			count++;
 	}
 	return count;
+}
+
+// Gameplay Fixes BJ and BL: the let-go of a held foe (stats.h).
+void statistics::let_go()
+{
+	controller->foe = NULL;
+	clear_command();  // which clears the leader too
+	controller->path_to_foe.clear();
+}
+
+// Gameplay Fixes BL: the keep of a held door (stats.h; port of the current
+// game's cfe528040 and 8a8061876).
+statistics::FoeKeep statistics::keeps_door()
+{
+	walker *door = controller->foe;
+	if (!holds_door(controller, door))
+		return FoeKeep::Kept;
+	walker *kept = ::keeps_door(controller, door);
+	if (kept == NULL)
+	{
+		let_go();
+		return FoeKeep::LetGo;
+	}
+	if (kept != door)
+		hand_door(controller, kept);
+	return FoeKeep::Kept;
+}
+
+// Gameplay Fixes BL: a door holder (stats.h; port of the current game's
+// e36c6ccf1 and 3f843abcc).
+bool statistics::holds_door(walker *bot, walker *foe)
+{
+	return foe != NULL && !foe->dead && foe->is_door() && asks(bot);
+}
+
+// Gameplay Fixes BL: a melee-only door holder walks into its door (stats.h;
+// port of the current game's 4b1ad8ef9).
+bool statistics::walks_into_door(walker *bot, walker *foe)
+{
+	return holds_door(bot, foe) && bot->stats != NULL && bot->stats->query_bit_flags(BIT_NO_RANGED);
+}
+
+// Gameplay Fixes BL: the one hand-over of a door (stats.h; port of the
+// current game's 4b1ad8ef9). Draws nothing; the next chase draws its re-plan
+// cadence, as every re-plan does.
+void statistics::hand_door(walker *bot, walker *door)
+{
+	bot->foe = door;
+	if (walks_into_door(bot, door))
+		bot->path_check_counter = 0;
 }

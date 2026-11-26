@@ -22,6 +22,7 @@
 
 #include "graph.h"
 #include "smooth.h"
+#include <algorithm>
 
 // ************************************************************
 //  WALKER -- graphics routines
@@ -1754,6 +1755,33 @@ void walker::follow_path_to_foe()
         void* state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos);
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos);
+        // Gameplay Fixes BL (port of the current game's 4b1ad8ef9): a
+        // melee-only bot whose foe is a live door
+        // (statistics::walks_into_door) follows its route from its start
+        // cell (start_cell, asked anew at every node): a node on that cell
+        // is reached when its corner's cell is another cell (else the
+        // route's first hop, back to the start cell, would walk a bot below
+        // or right of its door away from it), and the door's own cell, the
+        // route's last node, is not reached while its corner stands in it:
+        // the step is the hop from its start cell into the door's cell,
+        // which meets the door. Every other walker follows as before.
+        if (statistics::walks_into_door(this, foe))
+        {
+            short fx = 0, fy = 0;
+            start_cell(&fx, &fy, keys);
+            if ((dx != 0 || dy != 0) && GET_STATE_X(state) == fx*GRID_SIZE && GET_STATE_Y(state) == fy*GRID_SIZE)
+            {
+                path_to_foe.erase(node);
+                continue;
+            }
+            if (dx == 0 && dy == 0 && node + 1 == path_to_foe.end() &&
+                GET_STATE_X(state)/GRID_SIZE == foe->xpos/GRID_SIZE &&
+                GET_STATE_Y(state)/GRID_SIZE == foe->ypos/GRID_SIZE)
+            {
+                dx = (GET_STATE_X(state)/GRID_SIZE - fx)*GRID_SIZE;
+                dy = (GET_STATE_Y(state)/GRID_SIZE - fy)*GRID_SIZE;
+            }
+        }
         
         if(dx != 0 || dy != 0)
         {
@@ -6390,4 +6418,307 @@ bool opens_way(walker *w, walker *b)
 	// cell, would not walk to b
 	door_asker keyless(w, 0);
 	return !keyless.walks_to(b, true);
+}
+
+// Gameplay Fixes BL: the last-resort walk (walker.h; port of the current
+// game's cfe528040 and 8a8061876, og::reach Asker::last_resort). This game
+// keeps no maps: the regions are numbered by fills made while the question
+// lasts.
+door_asker::LastResort door_asker::last_resort(walker *held)
+{
+	LastResort out;
+	out.door = NULL;
+	out.held_leads = false;
+	out.shut = false;
+	// not asked, or no door bars the walker: shut out by nothing
+	if (!asks(w) || !barred())
+		return out;
+	bool gets_at = false;
+	std::vector<walker*> hostiles;
+	std::vector<walker*> no_way_open;
+	// the hostiles shut_out judges, in the object list's order, until both
+	// answers are settled
+	for (auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+	{
+		walker *b = *e;
+		if (b == NULL || b == w || !screen::foe_candidate(w, b))
+			continue;
+		const Exit why = door_shut_exit(b);
+		// it gets at b: it walks to b with the doors that bar it shut, or
+		// its shot lands on b from where it stands
+		if (why == Exit::WalksShut || why == Exit::Shot)
+			gets_at = true;
+		// no way to b even with every door open: got at only by a shot,
+		// asked below once the walk shows that it decides the answer
+		if (why == Exit::NoWayOpen)
+			no_way_open.push_back(b);
+		if (why == Exit::DoorShut)
+			out.shut = true;
+		hostiles.push_back(b);
+		if (gets_at && out.shut)
+			break;
+	}
+	// not shut out, or it gets at a hostile: no door
+	if (!out.shut || gets_at)
+		return out;
+	for (size_t i = 0; i < no_way_open.size(); i++)
+	{
+		// a shot across water gets at a hostile: no door
+		if (shoots_at(w, no_way_open[i]))
+			return out;
+	}
+	if (!start())
+		return out;
+	const int gw = myscreen->level_data.grid.w;
+	const int gh = myscreen->level_data.grid.h;
+	if (gw <= 0 || gh <= 0)
+		return out;
+	// the barring doors, in barred()'s order (the lists' order)
+	std::vector<walker*> doors;
+	{
+		obmap *map = myscreen->level_data.myobmap;
+		std::list<walker*> *lists[3] = { &myscreen->level_data.weaplist,
+		                                 &myscreen->level_data.oblist,
+		                                 &myscreen->level_data.fxlist };
+		for (int k = 0; k < 3; k++)
+		{
+			for (auto e = lists[k]->begin(); e != lists[k]->end(); e++)
+			{
+				walker *d = *e;
+				if (d != NULL && map != NULL && map->walker_to_pos.find(d) != map->walker_to_pos.end() &&
+				    door_bars(w, d, keys))
+					doors.push_back(d);
+			}
+		}
+	}
+	const size_t n = doors.size();
+	// the cells standing with the doors shut, each asked once, and their
+	// regions, numbered on need by a fill over the route finder's steps
+	std::vector<signed char> stands((size_t) (gw*gh), -1);
+	std::vector<int> region((size_t) (gw*gh), -1);
+	int regions = 0;
+	const auto stands_at = [&](int cx, int cy) {
+		if (cx < 0 || cy < 0 || cx >= gw || cy >= gh)
+			return false;
+		signed char& s = stands[(size_t) (cy*gw + cx)];
+		if (s < 0)
+			s = w->cell_stands((short) cx, (short) cy, true, keys) ? 1 : 0;
+		return s != 0;
+	};
+	const auto region_at = [&](int cx, int cy) {
+		if (!stands_at(cx, cy))
+			return -1;
+		const int i = cy*gw + cx;
+		if (region[(size_t) i] < 0)
+		{
+			const int r = regions++;
+			std::vector<int> queue;
+			queue.push_back(i);
+			region[(size_t) i] = r;
+			for (size_t head = 0; head < queue.size(); head++)
+			{
+				const int c = queue[head];
+				for_each_path_step((c % gw)*GRID_SIZE, (c / gw)*GRID_SIZE,
+				    [&](int x, int y) { return x >= 0 && y >= 0 && stands_at(x/GRID_SIZE, y/GRID_SIZE); },
+				    [&](int adj_x, int adj_y, int, int) {
+					const int a = (adj_y/GRID_SIZE)*gw + adj_x/GRID_SIZE;
+					if (region[(size_t) a] < 0)
+					{
+						region[(size_t) a] = r;
+						queue.push_back(a);
+					}
+				});
+			}
+		}
+		return region[(size_t) i];
+	};
+	const int own = region_at(sx, sy);
+	// each barring door's closed cells: the cells standing with the doors
+	// open on which the walker's box, its corner on the cell's corner, meets
+	// the door's box
+	std::vector<std::vector<int> > closed(n);
+	std::vector<std::pair<int, int> > closers;  // (cell, door), sorted
+	for (size_t k = 0; k < n; k++)
+	{
+		walker *d = doors[k];
+		int x0 = (d->xpos - w->sizex)/GRID_SIZE - 1;
+		int x1 = (d->xpos + d->sizex)/GRID_SIZE + 1;
+		int y0 = (d->ypos - w->sizey)/GRID_SIZE - 1;
+		int y1 = (d->ypos + d->sizey)/GRID_SIZE + 1;
+		if (x0 < 0)
+			x0 = 0;
+		if (y0 < 0)
+			y0 = 0;
+		if (x1 > gw - 1)
+			x1 = gw - 1;
+		if (y1 > gh - 1)
+			y1 = gh - 1;
+		for (int y = y0; y <= y1; y++)
+		{
+			for (int x = x0; x <= x1; x++)
+			{
+				if (!w->cell_stands((short) x, (short) y, false, keys) ||
+				    !::collide((short) (x*GRID_SIZE), (short) (y*GRID_SIZE), w->sizex, w->sizey,
+				               d->xpos, d->ypos, d->sizex, d->sizey))
+					continue;
+				closed[k].push_back(y*gw + x);
+				closers.push_back(std::make_pair(y*gw + x, (int) k));
+			}
+		}
+	}
+	std::sort(closers.begin(), closers.end());
+	// the touches: a door touches a region when one of its closed cells has
+	// a 4-neighbour standing (shut) in it, and a door when one of its closed
+	// cells is, or is a 4-neighbour of, one of the other's closed cells
+	std::vector<std::vector<int> > door_regions(n);
+	std::vector<std::vector<int> > door_doors(n);
+	const int around[5][2] = { {0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1} };
+	for (size_t k = 0; k < n; k++)
+	{
+		for (size_t i = 0; i < closed[k].size(); i++)
+		{
+			const int c = closed[k][i];
+			for (int a = 0; a < 5; a++)
+			{
+				const int nx = c % gw + around[a][0];
+				const int ny = c / gw + around[a][1];
+				if (nx < 0 || ny < 0 || nx >= gw || ny >= gh)
+					continue;
+				const int r = region_at(nx, ny);
+				if (r >= 0)
+					door_regions[k].push_back(r);
+				const int ni = ny*gw + nx;
+				for (auto at = std::lower_bound(closers.begin(), closers.end(), std::make_pair(ni, 0));
+				     at != closers.end() && at->first == ni; ++at)
+				{
+					if (at->second != (int) k)
+						door_doors[k].push_back(at->second);
+				}
+			}
+		}
+		std::sort(door_regions[k].begin(), door_regions[k].end());
+		door_regions[k].erase(std::unique(door_regions[k].begin(), door_regions[k].end()), door_regions[k].end());
+		std::sort(door_doors[k].begin(), door_doors[k].end());
+		door_doors[k].erase(std::unique(door_doors[k].begin(), door_doors[k].end()), door_doors[k].end());
+	}
+	// the ends: the regions holding an approach cell of a hostile
+	std::vector<int> ends;
+	for (size_t i = 0; i < hostiles.size(); i++)
+	{
+		std::vector<std::pair<short, short> > cells;
+		w->approach_cells(hostiles[i], true, keys, cells);
+		for (size_t j = 0; j < cells.size(); j++)
+		{
+			const int r = region_at(cells[j].first, cells[j].second);
+			if (r >= 0)
+				ends.push_back(r);
+		}
+	}
+	// the barring doors beside each region, in the barring order
+	std::vector<std::vector<int> > region_doors((size_t) regions);
+	for (size_t k = 0; k < n; k++)
+	{
+		for (size_t i = 0; i < door_regions[k].size(); i++)
+			region_doors[(size_t) door_regions[k][i]].push_back((int) k);
+	}
+	// The cost from each node to an end: the doors entered after it (nodes
+	// 0..regions-1 are regions, regions.. the barring doors), walked
+	// backwards from the ends, a door entered costing one (a 0-1 walk).
+	const int never = 1 << 29;
+	std::vector<int> cost((size_t) regions + n, never);
+	std::vector<int> queue_front;
+	std::vector<int> queue_back;
+	for (size_t i = 0; i < ends.size(); i++)
+	{
+		if (cost[(size_t) ends[i]] != 0)
+		{
+			cost[(size_t) ends[i]] = 0;
+			queue_front.push_back(ends[i]);
+		}
+	}
+	while (!queue_front.empty() || !queue_back.empty())
+	{
+		if (queue_front.empty())
+		{
+			queue_front.swap(queue_back);
+			continue;
+		}
+		const int u = queue_front.back();
+		queue_front.pop_back();
+		const int cu = cost[(size_t) u];
+		const auto relax = [&](int v, int c, bool free_step) {
+			// a door leads outward: the walk never steps back into the
+			// walker's own region
+			if (v < regions && v == own)
+				return;
+			if (c >= cost[(size_t) v])
+				return;
+			cost[(size_t) v] = c;
+			if (free_step)
+				queue_front.push_back(v);
+			else
+				queue_back.push_back(v);
+		};
+		if (u < regions)
+		{
+			// from a region to a door it touches, at no cost
+			for (size_t i = 0; i < region_doors[(size_t) u].size(); i++)
+				relax(regions + region_doors[(size_t) u][i], cu, true);
+			continue;
+		}
+		const size_t k = (size_t) (u - regions);
+		// entering this door costs one, from a region or a door it touches
+		for (size_t i = 0; i < door_regions[k].size(); i++)
+			relax(door_regions[k][i], cu + 1, false);
+		for (size_t i = 0; i < door_doors[k].size(); i++)
+			relax(regions + door_doors[k][i], cu + 1, false);
+	}
+	int best_cost = never;
+	int best_md = 0;
+	int best_y = 0;
+	int best_x = 0;
+	for (size_t k = 0; k < n; k++)
+	{
+		bool edge = false;
+		for (size_t i = 0; i < door_regions[k].size(); i++)
+			edge = edge || door_regions[k][i] == own;
+		const int c = cost[(size_t) regions + k];
+		// an edge door that leads to a hostile (it has a count)
+		if (!edge || c >= never)
+			continue;
+		if (doors[k] == held)
+			out.held_leads = true;
+		const int cx = doors[k]->xpos / GRID_SIZE;
+		const int cy = doors[k]->ypos / GRID_SIZE;
+		const int md = abs(cx - sx) + abs(cy - sy);
+		// the least cost, then the Manhattan cells from the start cell to
+		// the door's corner cell, then the row, then the column
+		if (out.door == NULL || c < best_cost ||
+		    (c == best_cost && (md < best_md || (md == best_md && (cy < best_y || (cy == best_y && cx < best_x))))))
+		{
+			out.door = doors[k];
+			best_cost = c;
+			best_md = md;
+			best_y = cy;
+			best_x = cx;
+		}
+	}
+	return out;
+}
+
+// Gameplay Fixes BL (walker.h).
+walker *breaks(walker *w)
+{
+	door_asker asker(w);
+	return asker.last_resort(NULL).door;
+}
+
+// Gameplay Fixes BL (walker.h).
+walker *keeps_door(walker *w, walker *held)
+{
+	door_asker asker(w);
+	const door_asker::LastResort lr = asker.last_resort(held);
+	if (lr.door == NULL)
+		return NULL;
+	return lr.held_leads ? held : lr.door;
 }

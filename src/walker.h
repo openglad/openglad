@@ -448,6 +448,20 @@ class door_asker
 		Exit door_shut_exit(walker *b);
 		bool door_shut(walker *b);
 		bool shut_out();
+		// Gameplay Fixes BL, a bot with no enemy it can get at breaks down
+		// the locked door in its way (port of the current game's cfe528040
+		// and 8a8061876, og::reach Asker::last_resort): one walk over the
+		// hostiles shut_out judges, answering whether the walker is shut out
+		// (shut_out's answer), the door it is handed (see breaks below) and
+		// whether `held` is a door that qualifies (the keep's "no flip
+		// between doors").
+		struct LastResort
+		{
+			walker *door;
+			bool held_leads;
+			bool shut;
+		};
+		LastResort last_resort(walker *held);
 		// Does the start cell (walker::start_cell, worked out once with
 		// these keys) stand with the doors shut (it lies in a region)?
 		bool start();
@@ -482,5 +496,37 @@ bool shut_out(walker *w);
 // side holding no key (door_asker with keys 0, from that walker's own start
 // cell) would walk to b too. Otherwise yes. Draws nothing.
 bool opens_way(walker *w, walker *b);
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked
+// door in its way, and lets it go the moment it can get at one (port of the
+// current game's cfe528040 and 8a8061876, og::reach::breaks and
+// og::reach::keeps_door). breaks: the door w is handed as its foe, or NULL.
+// NULL unless w is asked (asks), it is shut out (shut_out), it gets at none
+// of the hostiles shut_out judges (it walks to none with the doors that bar
+// it shut, and its shot lands on none from where it stands), and its start
+// cell stands with those doors shut. The door walk: for w's box and keys a
+// barring door closes the cells that stand with the doors open and on which
+// w's box, its corner on the cell's corner, meets the door's box; it touches
+// a region of the cells standing with the doors shut when one of its closed
+// cells has a 4-neighbour in that region, and touches another barring door
+// when a closed cell of one is, or is a 4-neighbour of, a closed cell of the
+// other. The walk goes region to door, door to door and door to region along
+// the touches, every door entered costing one, and never steps back into
+// the walker's own region (a door leads outward). The door: among the
+// barring doors that touch the walker's own region (the edge doors), the
+// one from which a region holding an approach cell of such a hostile is
+// reached at the least cost, that door counted; ties by the Manhattan cells
+// from the start cell to the door's corner cell, then the row, then the
+// column. An edge door that leads to no such region is never answered. This
+// game has one floor and no stairs, so the region a walker gets to is its
+// start cell's. A key the walker holds changes nothing: a door it can open
+// bars it not. keeps_door: the keep of a bot whose foe is the live door
+// `held`, barring it or not: `held` while breaks' conditions hold and `held`
+// is an edge door that leads to a hostile (it need not be the best one); while
+// they hold and only another door qualifies, the door breaks answers;
+// otherwise NULL (the bot lets it go). A door that does not bar w is no edge
+// door. Draws nothing.
+walker *breaks(walker *w);
+walker *keeps_door(walker *w, walker *held);
 
 #endif

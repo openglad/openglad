@@ -732,9 +732,29 @@ short screen::act()
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
 					        ob->query_order() == ORDER_LIVING)
 						level_done = 0;
+					// Gameplay Fixes BL (port of the current game's
+					// cfe528040): after acting, a bot whose foe is a live door
+					// is asked the last-resort rule's keep
+					// (statistics::keeps_door; a bot in a swing never reaches
+					// the top of its round); on a let-go the hand-out below
+					// acts in the same tick
+					if (ob->stats)
+						ob->stats->keeps_door();
 					// Testing .. trying to FORCE foes :)
 					if (ob->foe == NULL && ob->leader == NULL)
+					{
 						ob->foe = myscreen->find_far_foe(ob);
+						// Gameplay Fixes BL: a bot the hand-out left with no
+						// foe is handed the locked door in its way when it
+						// has no enemy it can get at (breaks; NULL for every
+						// other walker), by the one hand-over
+						if (ob->foe == NULL)
+						{
+							walker *door = breaks(ob);
+							if (door)
+								statistics::hand_door(ob, door);
+						}
+					}
 				}
 			}
 		}
