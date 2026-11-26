@@ -13783,14 +13783,16 @@ inline constexpr Mutation kMut_soldier_bot_outside_ring_fixes_scen99 = {
 // player soldier stands idle 160 px above at (192, 40). The seed (2, the first from 0 at which the
 // classic archer rolls FIRE ARROWS in the budget: on seeds 0 and 1 it does not) makes the archer roll
 // the ring early. Classic, the gate wants a foe within 130 px: the ringed orc is one, and the archer
-// casts the ring of eight fire arrows, seven still in flight at tick 30. With the setting on (Gameplay
-// Fixes BJ) the archer holds the soldier (the ringed orc is passed over) and walks up toward it; its
-// ring rule wants two foes in its flight or one it does not face, and while the rule is asked the
-// range finder leaves out every foe only a door keeps the archer from: the ringed orc, behind the
-// archer, is not counted, and no ring is cast; the archer's ordinary arrows fly at the soldier. The
-// budget B = 30. The classic row's pin turns the setting on for the whole row; the setting-on row's
-// pin drops the cast rules' door filter, so the ringed orc counts as a foe the archer does not face
-// and the ring is cast.
+// casts the ring of eight fire arrows (they sound on tick 5 and on ticks 9 to 15), seven still in
+// flight at the end of tick 15. With the setting on (Gameplay Fixes BJ) the archer holds the soldier
+// (the ringed orc is passed over) and walks up toward it; its ring rule wants two foes in its flight
+// or one it does not face, and while the rule is asked the range finder leaves out every foe only a
+// door keeps the archer from: the ringed orc, behind the archer, is not counted, and no ring is cast
+// (its first arrow at the soldier leaves on tick 18, after the budget). The budget B = 16: the
+// classic ring's last arrow leaves on tick 15, so the twin's fact asks for no fire arrow in flight
+// while a ring cast on this seed would still fly. The classic row's pin turns the setting on for the
+// whole row; the setting-on row's pin drops the cast rules' door filter, so the ringed orc counts as a
+// foe the archer does not face and the ring is cast on tick 5, as in the classic row.
 inline constexpr SpawnSpec kFamilySpawns_archer_bot_ring_no_cast_scen99[] = {
     { FAMILY_DOOR,    3, kOrderWeapon, 176, 240, 0, 0 },   // a ring of eight team-3 doors round cell (12, 16)
     { FAMILY_DOOR,    3, kOrderWeapon, 192, 240, 0, 0 },
@@ -13805,12 +13807,12 @@ inline constexpr SpawnSpec kFamilySpawns_archer_bot_ring_no_cast_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 192,  40, 0, 0 },   // the idle player LAST, 160 px above the archer
 };
 inline constexpr FactPredicate kFacts_archer_bot_ring_no_cast_scen99[] = {
-    pred::TickReached(30),
+    pred::TickReached(16),
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
         "anchor: the ring of eight doors stands"),
     pred::WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 8,
-        "consequence: the classic gate (a foe within 130 px) casts the ring of eight at the ringed orc; on this seed seven of its fire arrows are still in flight at tick 30"),
+        "consequence: the classic gate (a foe within 130 px) casts the ring of eight at the ringed orc; on this seed seven of its fire arrows are still in flight at the end of tick 15"),
     // rng_drift: the classic ring is eight fire arrows; how many are still in flight at the budget follows what they meet, so the band runs from one to eight; commit f97bc3ec7
 };
 inline constexpr Mutation kMut_archer_bot_ring_no_cast_scen99 = {
@@ -13820,7 +13822,7 @@ inline constexpr Mutation kMut_archer_bot_ring_no_cast_scen99 = {
     "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the ringed orc is left out of the ring rule's count and no ring is cast, so WeaponFamilyCount(FAMILY_FIRE_ARROW, 1, 8) reads 0."
 };
 inline constexpr FactPredicate kFacts_archer_bot_ring_no_cast_fixes_scen99[] = {
-    pred::TickReached(30),
+    pred::TickReached(16),
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::WeaponFamilyCount(FAMILY_DOOR, 8, 8,
         "anchor: the ring of eight doors stands"),
@@ -14381,14 +14383,19 @@ inline constexpr Mutation kMut_orc_bot_hops_into_held_door_fixes_scen99 = {
 // hand-out of the same tick gives it the seat; from where it stands it walks to the seat (172, 145 on
 // tick 20) and strikes it on tick 22. Classic, the orc holds the seat from tick 0 and its walk stands
 // it against the ring's top-left corner door (145, 148), where its ATTACK order faces the seat and
-// neither steps nor swings (#447): the seat is not struck by tick 25. The budget B = 26.
-// The maps the door rules read learn of a door's death from two writers, the door's dead setter and
-// the body map's removal of the door, so no one-line break of the current game stops the refresh: a
-// break of either writer leaves the other, and a break of the maps' own compare leaves them stale,
-// where the test build stops at once ("a door changed and no writer bumped a door count"; so does
-// this row with the dead setter's note left out). The refresh therefore has no pin of its own: this
-// pair proves it by its setting-on recording, byte for byte, once the old game has the rules (the orc
-// acts after the seat, so a late refresh shows as a late reaction). The classic row's pin turns the
+// neither steps nor swings (#447): the seat is not struck by tick 22. The budget B = 23: the twin's
+// blow lands on the last tick, so a blow one tick later would leave the seat unstruck.
+// The maps the door rules read hear of a door's death on the tick it dies from the door's dead setter;
+// the other writer, the body map's removal of the door, comes only when the dead door is destroyed,
+// after the acts of that tick. With the dead setter's note left out the maps are stale for the rest of
+// that tick, and the test build stops at the stale map ("a door changed and no writer bumped a door
+// count"): this row stops so on tick 12, at the orc's first question after the door died. A break of
+// the maps' own compare stops it the same way. The canary reads such a stop as an abort, not as a
+// flipped fact, so the refresh on a door's death has no pin of its own. The old game keeps no maps (it
+// fills afresh for each question), so it has no refresh to leave out: this pair's setting-on
+// recording, byte for byte once the old game has the rules, proves that the current game's kept maps
+// answer as the old game's fresh fill does on the tick a door dies (the orc acts after the seat, so a
+// late refresh would show as a late reaction). The classic row's pin turns the
 // setting on for the whole row; the setting-on row's pin is the door question's, shared with
 // orc_bot_foe_in_door_ring: with no foe door-shut the orc holds the seat from tick 0 and stands on its
 // spawn spot until the door dies (130, 130 to tick 13; with every door a wall to its route no route
@@ -14419,12 +14426,12 @@ inline constexpr SpawnSpec kFamilySpawns_orc_bot_room_opens_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 192, 208, 0, 0 },   // the player LAST, in the room's bottom middle; it acts first
 };
 inline constexpr FactPredicate kFacts_orc_bot_room_opens_scen99[] = {
-    pred::TickReached(26),
+    pred::TickReached(23),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::WeaponFamilyCount(FAMILY_DOOR, 15, 15,
         "anchor: the seat's key opened the ring's top-middle door on tick 12"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
-        "consequence: the classic orc holds the seat from tick 0 and stands in its ATTACK order against the ring's top-left corner door (#447): it has not struck the seat by tick 25"),
+        "consequence: the classic orc holds the seat from tick 0 and stands in its ATTACK order against the ring's top-left corner door (#447): it has not struck the seat by tick 22"),
 };
 inline constexpr Mutation kMut_orc_bot_room_opens_scen99 = {
     "src/gameplay/specials_view.cpp", 165,
@@ -14433,7 +14440,7 @@ inline constexpr Mutation kMut_orc_bot_room_opens_scen99 = {
     "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc, handed its door, stands at it when the seat's key opens the top door and strikes the seat on tick 22, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 96 hp."
 };
 inline constexpr FactPredicate kFacts_orc_bot_room_opens_fixes_scen99[] = {
-    pred::TickReached(26),
+    pred::TickReached(23),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::WeaponFamilyCount(FAMILY_DOOR, 15, 15,
         "anchor: the seat's key opened the ring's top-middle door on tick 12"),
@@ -17935,14 +17942,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_soldier_bot_outside_ring_fixes_scen99, std::size(kFacts_soldier_bot_outside_ring_fixes_scen99),
       kMut_soldier_bot_outside_ring_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "archer_bot_ring_no_cast_scen99", "scen/scen1.fss", 0x00000002u,
-      kInputsEmpty, std::size(kInputsEmpty), 30,
+      kInputsEmpty, std::size(kInputsEmpty), 16,
       CompareMode::SemanticParity, false,
       kFamilySpawns_archer_bot_ring_no_cast_scen99, std::size(kFamilySpawns_archer_bot_ring_no_cast_scen99),
       0, false, true, Exercises::None,
       kFacts_archer_bot_ring_no_cast_scen99, std::size(kFacts_archer_bot_ring_no_cast_scen99),
       kMut_archer_bot_ring_no_cast_scen99 },
     { "archer_bot_ring_no_cast_fixes_scen99", "scen/scen1.fss", 0x00000002u,
-      kInputsEmpty, std::size(kInputsEmpty), 30,
+      kInputsEmpty, std::size(kInputsEmpty), 16,
       CompareMode::SemanticParity, false,
       kFamilySpawns_archer_bot_ring_no_cast_scen99, std::size(kFamilySpawns_archer_bot_ring_no_cast_scen99),
       0, false, true, Exercises::None,
@@ -18075,14 +18082,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_orc_bot_hops_into_held_door_fixes_scen99, std::size(kFacts_orc_bot_hops_into_held_door_fixes_scen99),
       kMut_orc_bot_hops_into_held_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "orc_bot_room_opens_scen99", "scen/scen1.fss", 0x00000000u,
-      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 26,
+      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 23,
       CompareMode::SemanticParity, false,
       kFamilySpawns_orc_bot_room_opens_scen99, std::size(kFamilySpawns_orc_bot_room_opens_scen99),
       0, false, true, Exercises::None,
       kFacts_orc_bot_room_opens_scen99, std::size(kFacts_orc_bot_room_opens_scen99),
       kMut_orc_bot_room_opens_scen99 },
     { "orc_bot_room_opens_fixes_scen99", "scen/scen1.fss", 0x00000000u,
-      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 26,
+      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 23,
       CompareMode::SemanticParity, false,
       kFamilySpawns_orc_bot_room_opens_scen99, std::size(kFamilySpawns_orc_bot_room_opens_scen99),
       0, false, true, Exercises::None,
