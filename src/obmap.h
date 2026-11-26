@@ -47,6 +47,15 @@ class obmap
 		// never creates a node (the body probe's sweep; port of the current
 		// game's 15053f4a)
 		const std::list<walker*>* find_list(short x, short y);
+		// Does a door that bars w (door_bars with `keys`) meet w's box set at
+		// (x, y), `passes` left out (w's own foe, or NULL)? The doors-only
+		// box question: the piles query_list asks for that box, each read
+		// with find (no pile is made), w itself and dead bodies skipped, the
+		// box test collide(). Nothing is eaten, opened, collided or announced,
+		// nothing is drawn. (port of the current game's
+		// GameWorld::door_bars_at and the doors-only arm of its
+		// ob_pass_check, 3d9dcdcd8)
+		bool door_bars_at(walker *w, short x, short y, walker *passes, Uint32 keys);
 		short obmapres;
 		size_t size() const;
 		void draw();
@@ -72,5 +81,18 @@ short collide(short x, short y, short xsize, short ysize, short x2, short y2, sh
 // stale collide_ob a grid-stopped step or a side probe left behind. (port of
 // the current game's 94a4ae95)
 bool step_meets(walker *mover, float dx, float dy, walker *body);
+
+// The key test, written once: do `keys` hold the key of a door of this level
+// (key bit 2 to the power of the level)? (port of the current game's
+// holds_key_of_level, d61656373)
+bool holds_key_of_level(Uint32 keys, int level);
+
+// The door rule, written once beside the door arm of ob_pass_check, whose two
+// key tests ask it with the mover's own keys: a door bars a walker when the
+// door is alive, is a door (walker::is_door: a golem, whose family number is
+// a door's, is not), is not of the walker's side and `keys` hold no key of
+// its level. No exception for a door that is the walker's own foe. Draws
+// nothing. (port of the current game's og::reach::door_bars, 3d9dcdcd8)
+bool door_bars(walker *mover, walker *door, Uint32 keys);
 
 #endif

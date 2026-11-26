@@ -49,6 +49,19 @@ class walker : public pixieN
 		void draw_path(viewscreen* view_buf);
 		void find_path_to_foe();
 		void follow_path_to_foe();
+		// What this walker gets to, asked afresh for each question (port of
+		// the current game's og::reach maps, 3d9dcdcd8; this game keeps no
+		// map). A cell is a 16 px cell of the level's grid, (cx, cy).
+		// cell_stands: this walker's box, its corner on the cell's corner,
+		// passes the route finder's cell test; with `shut`, also no door
+		// that bars it (door_bars with `keys`, its own foe not left out)
+		// meets the box. reach_fill: the cells a breadth-first fill from
+		// (cx, cy) reaches over the route finder's steps (the neighbour rule
+		// of Map::AdjacentCost) on the cells that stand in that mode, the
+		// start cell included; one char a cell, row by row (cy * grid.w +
+		// cx), 1 reached. Nothing is kept and nothing is drawn.
+		bool cell_stands(short cx, short cy, bool shut, Uint32 keys);
+		std::vector<char> reach_fill(short cx, short cy, bool shut, Uint32 keys);
 		short init_fire();
 		short init_fire(short xdir, short ydir);
 		// fire_check's test weapon: placed and headed by the heading table

@@ -1544,6 +1544,53 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
     });
 }
 
+// A cell stands for this walker in a mode (walker.h).
+bool walker::cell_stands(short cx, short cy, bool shut, Uint32 keys)
+{
+    const int x = cx*GRID_SIZE;
+    const int y = cy*GRID_SIZE;
+    if(!path_cell_passes(x, y, this))
+        return false;
+    return !shut || !myscreen->level_data.myobmap->door_bars_at(this, (short) x, (short) y, NULL, keys);
+}
+
+// The fill of the cells this walker gets to from a cell (walker.h): the
+// route finder's steps (for_each_path_step) over the cells that stand.
+std::vector<char> walker::reach_fill(short cx, short cy, bool shut, Uint32 keys)
+{
+    const int w = myscreen->level_data.grid.w;
+    const int h = myscreen->level_data.grid.h;
+    std::vector<char> reached((size_t) ((w > 0 && h > 0) ? w*h : 0), 0);
+    if(cx < 0 || cy < 0 || cx >= w || cy >= h)
+        return reached;
+    // each cell is asked once in a fill: -1 not asked yet
+    std::vector<signed char> stands(reached.size(), -1);
+    const auto passes = [&](int x, int y) {
+        if(x < 0 || y < 0 || x/GRID_SIZE >= w || y/GRID_SIZE >= h)
+            return false;
+        signed char& s = stands[(size_t) ((y/GRID_SIZE)*w + x/GRID_SIZE)];
+        if(s < 0)
+            s = cell_stands((short) (x/GRID_SIZE), (short) (y/GRID_SIZE), shut, keys) ? 1 : 0;
+        return s != 0;
+    };
+    std::vector<int> queue;
+    queue.push_back(cy*w + cx);
+    reached[(size_t) (cy*w + cx)] = 1;
+    for(size_t head = 0; head < queue.size(); head++)
+    {
+        const int c = queue[head];
+        for_each_path_step((c % w)*GRID_SIZE, (c / w)*GRID_SIZE, passes, [&](int adj_x, int adj_y, int, int) {
+            const int n = (adj_y/GRID_SIZE)*w + adj_x/GRID_SIZE;
+            if(!reached[(size_t) n])
+            {
+                reached[(size_t) n] = 1;
+                queue.push_back(n);
+            }
+        });
+    }
+    return reached;
+}
+
 void Map::PrintStateInfo( void* state )
 {
     int x1 = GET_STATE_X(state);

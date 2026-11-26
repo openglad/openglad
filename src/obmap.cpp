@@ -313,11 +313,11 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                         // the prober is BIT_NO_COLLIDE; a locked one blocks.
                         if (quiet)
                         {
-                            const bool keyed = (ob->keys & (Sint32) (pow((double) 2, w->stats->level))) != 0;
+                            const bool keyed = !door_bars(ob, w, ob->keys);  // the arm sees only live enemy doors
                             return (keyed && ob->stats->query_bit_flags(BIT_NO_COLLIDE)) ? 1 : 0;
                         }
                         // Can we unlock this door?
-                        if (ob->keys & (Sint32) (pow((double) 2, w->stats->level)))
+                        if (!door_bars(ob, w, ob->keys))
                         {
                             // Open the door ..
                             w->dead = 1;
@@ -388,6 +388,56 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
 	}
 	
 	return 1;
+}
+
+// The key test (obmap.h).
+bool holds_key_of_level(Uint32 keys, int level)
+{
+	return (keys & (Sint32) (pow((double) 2, level))) != 0;
+}
+
+// The door rule (obmap.h), beside the door arm above: the arm is reached only
+// by a live enemy door (the friendly pass and the dead skip come first), so
+// there it reads exactly as the key test it replaced.
+bool door_bars(walker *mover, walker *door, Uint32 keys)
+{
+	if (mover == NULL || door == NULL || door->dead || !door->is_door())
+		return false;
+	// a door of the walker's own side never bars it (the arm's friendly pass)
+	if (mover->is_friendly(door))
+		return false;
+	return !holds_key_of_level(keys, door->stats->level);
+}
+
+// The doors-only box question (obmap.h): the buckets query_list walks for
+// w's box at (x, y), in its order.
+bool obmap::door_bars_at(walker *w, short x, short y, walker *passes, Uint32 keys)
+{
+	if (!w)
+		return false;
+	short startnumx = hash(x);
+	short endnumx   = hash( (short) (x+w->sizex) );
+	short startnumy = hash(y);
+	short endnumy   = hash( (short) (y+w->sizey) );
+	for (short numx = startnumx; numx <= endnumx; numx++)
+	{
+		for (short numy = startnumy; numy <= endnumy; numy++)
+		{
+			auto e = pos_to_walker.find(std::make_pair(numx, numy));
+			if (e == pos_to_walker.end())
+				continue;
+			for (auto f = e->second.begin(); f != e->second.end(); f++)
+			{
+				walker *b = *f;
+				if (b == w || b == passes || b->dead)
+					continue;
+				if (door_bars(w, b, keys) &&
+				    collide(x, y, w->sizex, w->sizey, b->xpos, b->ypos, b->sizex, b->sizey))
+					return true;
+			}
+		}
+	}
+	return false;
 }
 
 short collide(short x,  short y,  short xsize,  short ysize,
