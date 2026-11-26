@@ -693,6 +693,10 @@ OG_PARITY_TEST(orc_bot_held_door_start_cell_scen99)
 OG_PARITY_TEST(orc_bot_held_door_start_cell_fixes_scen99)
 OG_PARITY_TEST(orc_bot_hops_into_held_door_scen99)
 OG_PARITY_TEST(orc_bot_hops_into_held_door_fixes_scen99)
+OG_PARITY_TEST(orc_bot_room_opens_scen99)
+OG_PARITY_TEST(orc_bot_room_opens_fixes_scen99)
+OG_PARITY_TEST(archer_bot_random_act_keeps_door_scen99)
+OG_PARITY_TEST(archer_bot_random_act_keeps_door_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

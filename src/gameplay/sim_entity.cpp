@@ -22,7 +22,7 @@ void SimEntity::door_state_written() noexcept
     // rule: og::reach: a door's dead, team and level setters tell its world's maps (the door
     //   count goes up), so a map built before the change is not read after it; any other entity's,
     //   or a door in no world's lists, tells nothing.
-    // tests: SemReach.every_writer_of_the_doors_and_the_terrain_bumps_its_count
+    // tests: SemReach.every_writer_of_the_doors_and_the_terrain_bumps_its_count, parity:orc_bot_room_opens_scen99, parity:orc_bot_room_opens_fixes_scen99
     if (owning_world_ != nullptr && order_ == Order::Weapon && family_ == FAMILY_DOOR)
         owning_world_->reach_maps.note_doors();
 }

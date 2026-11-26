@@ -2884,7 +2884,7 @@ void GameWorld::tick()
                     //   the last-resort rule's keep (statistics::keeps_door; a bot in a swing never
                     //   reaches the top of its round); on a let-go the hand-out below acts in the
                     //   same tick. Every other walker is not asked (keeps_door answers Kept).
-                    // tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+                    // tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door, parity:orc_bot_room_opens_scen99, parity:orc_bot_room_opens_fixes_scen99
                     if (ob->stats() != nullptr)
                         (void)ob->stats()->keeps_door(*ob);
                     // Testing .. trying to FORCE foes :)
