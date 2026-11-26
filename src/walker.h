@@ -62,6 +62,24 @@ class walker : public pixieN
 		// cx), 1 reached. Nothing is kept and nothing is drawn.
 		bool cell_stands(short cx, short cy, bool shut, Uint32 keys);
 		std::vector<char> reach_fill(short cx, short cy, bool shut, Uint32 keys);
+		// Gameplay Fixes BI (port of the current game's 708b27b91,
+		// og::reach::start_cell): the cell a walker holding `keys` starts
+		// from, the cell of its corner; but when that cell stands with the
+		// doors open and not with them shut (only a door that bars it
+		// closes it), the cell standing with the doors shut that its box
+		// overlaps most (the cells its box meets row by row, left to right;
+		// a tie keeps the first); with none, the corner's cell.
+		void start_cell(short *cx, short *cy, Uint32 keys);
+		// The approach cells of body b in a mode (port of the current game's
+		// og::reach approach cells): every cell standing in that mode on
+		// which this walker's box, grown by one cell on every side, meets
+		// b's box (collide), row by row, left to right.
+		void approach_cells(walker *b, bool shut, Uint32 keys, std::vector<std::pair<short, short> > &out);
+		// The nearest approach cell of b that a fill from the cell
+		// (scx, scy) in the mode reaches: fewest cells from it (Manhattan),
+		// the first of equal distance in the scan's order. False when none.
+		// (port of the current game's og::reach nearest_approach)
+		bool nearest_approach(walker *b, short scx, short scy, bool shut, Uint32 keys, short *ocx, short *ocy);
 		short init_fire();
 		short init_fire(short xdir, short ydir);
 		// fire_check's test weapon: placed and headed by the heading table
@@ -365,5 +383,12 @@ class walker : public pixieN
 
 
 };
+
+// Gameplay Fixes BI, a door a bot cannot open is a wall to it (port of the
+// current game's 708b27b91, og::reach::door_is_a_wall_to): who plans its
+// route, takes its straight walk and is pushed by an ally with such a door
+// as a wall: only with the setting on, and only a bot (walker::is_bot), a
+// tower and a guard at its post included.
+bool door_is_a_wall_to(walker *w);
 
 #endif

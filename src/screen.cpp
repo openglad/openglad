@@ -627,6 +627,15 @@ bool screen::query_passable(float x, float y, walker  *ob, bool quiet)
 	return query_grid_passable(x, y, ob, quiet) && query_object_passable(x, y, ob, quiet);
 }
 
+// Gameplay Fixes BI (screen.h; port of the current game's 708b27b91).
+bool screen::step_refused(float x, float y, walker *ob)
+{
+	if (!query_grid_passable(x, y, ob))
+		return true;
+	return door_is_a_wall_to(ob) &&
+	       level_data.myobmap->door_bars_at(ob, (short) x, (short) y, ob->foe, ob->keys);
+}
+
 void screen::clear()
 {
 	unsigned short i;

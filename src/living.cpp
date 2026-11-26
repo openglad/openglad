@@ -439,8 +439,11 @@ short living::shove(walker  *target, short x, short y)
 			// baby step against the GRID only before stealing the queue: if
 			// it is terrain-blocked, leave the target's queue alone. The
 			// random(3) draw above stays unconditional.
-			if (!myscreen->query_grid_passable(target->xpos + (float) x,
-			                                   target->ypos + (float) y, target))
+			// Gameplay Fixes BI (port of the current game's 708b27b91): for a
+			// bot ally with the setting on a door it cannot open refuses the
+			// step too, so it keeps its own orders (screen::step_refused).
+			if (myscreen->step_refused(target->xpos + (float) x,
+			                           target->ypos + (float) y, target))
 				return 0;
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing

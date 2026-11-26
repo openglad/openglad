@@ -56,6 +56,13 @@ class screen : public video
 		// weapons_block: see obmap::query_list (port of the current game's b5e29f3c, Gameplay Fixes AV, #451)
 		bool query_object_passable(float x, float y, walker  *ob, bool quiet = false, bool weapons_block = false);
 		bool query_grid_passable(float x, float y, walker  *ob, bool quiet = false);
+		// Gameplay Fixes BI (port of the current game's 708b27b91,
+		// GameWorld::step_refused): the straight walk's and the shove's step
+		// test. The terrain refuses (the classic test), or, for a bot with
+		// the setting on (door_is_a_wall_to), a door that bars it meets its
+		// box there (obmap::door_bars_at, its own foe left out). Draws
+		// nothing; no other body is asked.
+		bool step_refused(float x, float y, walker *ob);
 		short redraw();
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,

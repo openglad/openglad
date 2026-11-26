@@ -1514,8 +1514,17 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
     
     // The passability half (for_each_path_step, above); this half prices
     // each step it answers.
-    const auto passes = [](int x, int y) {
-        return path_cell_passes(x, y, path_walker);
+    // Gameplay Fixes BI (port of the current game's 708b27b91): for a bot
+    // with the setting on (door_is_a_wall_to) a cell on which a door that
+    // bars it meets its box does not stand, its own foe left out (so the
+    // route of a bot whose foe is such a door ends in it); the cost below is
+    // the same, so a door it can open still costs ten.
+    const bool walls = door_is_a_wall_to(path_walker);
+    const auto passes = [walls](int x, int y) {
+        if (!path_cell_passes(x, y, path_walker))
+            return false;
+        return !walls || !myscreen->level_data.myobmap->door_bars_at(path_walker, (short) x, (short) y,
+                                                                    path_walker->foe, path_walker->keys);
     };
     for_each_path_step(x1, y1, passes, [&](int adj_x, int adj_y, int i, int j) {
             StateCost cost;
@@ -1591,6 +1600,103 @@ std::vector<char> walker::reach_fill(short cx, short cy, bool shut, Uint32 keys)
     return reached;
 }
 
+// Gameplay Fixes BI: the start cell (walker.h; port of the current game's
+// 708b27b91, og::reach Asker::start).
+void walker::start_cell(short *cx, short *cy, Uint32 keys)
+{
+    const short ccx = xpos / GRID_SIZE;
+    const short ccy = ypos / GRID_SIZE;
+    *cx = ccx;
+    *cy = ccy;
+    if(cell_stands(ccx, ccy, true, keys) || !cell_stands(ccx, ccy, false, keys))
+        return;
+    const int x0 = xpos;
+    const int y0 = ypos;
+    const int x1 = x0 + sizex;
+    const int y1 = y0 + sizey;
+    int best = 0;
+    for(int y = y0/GRID_SIZE; y*GRID_SIZE < y1; y++)
+    {
+        for(int x = x0/GRID_SIZE; x*GRID_SIZE < x1; x++)
+        {
+            const int right = (x1 < (x+1)*GRID_SIZE) ? x1 : (x+1)*GRID_SIZE;
+            const int left = (x0 > x*GRID_SIZE) ? x0 : x*GRID_SIZE;
+            const int bottom = (y1 < (y+1)*GRID_SIZE) ? y1 : (y+1)*GRID_SIZE;
+            const int top = (y0 > y*GRID_SIZE) ? y0 : y*GRID_SIZE;
+            const int overlap = (right - left)*(bottom - top);
+            if(overlap > best && cell_stands((short) x, (short) y, true, keys))
+            {
+                best = overlap;
+                *cx = (short) x;
+                *cy = (short) y;
+            }
+        }
+    }
+}
+
+// The approach cells of b (walker.h; port of the current game's 708b27b91,
+// og::reach for_each_approach): the cells whose grown box could meet b's,
+// row by row, left to right.
+void walker::approach_cells(walker *b, bool shut, Uint32 keys, std::vector<std::pair<short, short> > &out)
+{
+    out.clear();
+    const int gw = myscreen->level_data.grid.w;
+    const int gh = myscreen->level_data.grid.h;
+    int x0 = (b->xpos - sizex - 2*GRID_SIZE)/GRID_SIZE - 1;
+    int x1 = (b->xpos + b->sizex + 2*GRID_SIZE)/GRID_SIZE + 1;
+    int y0 = (b->ypos - sizey - 2*GRID_SIZE)/GRID_SIZE - 1;
+    int y1 = (b->ypos + b->sizey + 2*GRID_SIZE)/GRID_SIZE + 1;
+    if(x0 < 0)
+        x0 = 0;
+    if(y0 < 0)
+        y0 = 0;
+    if(x1 > gw - 1)
+        x1 = gw - 1;
+    if(y1 > gh - 1)
+        y1 = gh - 1;
+    for(int y = y0; y <= y1; y++)
+    {
+        for(int x = x0; x <= x1; x++)
+        {
+            if(::collide((short) (x*GRID_SIZE - GRID_SIZE), (short) (y*GRID_SIZE - GRID_SIZE),
+                       (short) (sizex + 2*GRID_SIZE), (short) (sizey + 2*GRID_SIZE),
+                       b->xpos, b->ypos, b->sizex, b->sizey) &&
+               cell_stands((short) x, (short) y, shut, keys))
+                out.push_back(std::make_pair((short) x, (short) y));
+        }
+    }
+}
+
+// The nearest approach cell reached (walker.h; port of the current game's
+// 708b27b91, og::reach Asker::nearest_approach).
+bool walker::nearest_approach(walker *b, short scx, short scy, bool shut, Uint32 keys, short *ocx, short *ocy)
+{
+    std::vector<std::pair<short, short> > cells;
+    approach_cells(b, shut, keys, cells);
+    if(cells.empty())
+        return false;
+    const std::vector<char> reached = reach_fill(scx, scy, shut, keys);
+    const int gw = myscreen->level_data.grid.w;
+    bool found = false;
+    int best = 0;
+    for(size_t k = 0; k < cells.size(); k++)
+    {
+        const short cx = cells[k].first;
+        const short cy = cells[k].second;
+        if(reached.empty() || !reached[(size_t) (cy*gw + cx)])
+            continue;
+        const int dist = abs(cx - scx) + abs(cy - scy);
+        if(!found || dist < best)
+        {
+            found = true;
+            best = dist;
+            *ocx = cx;
+            *ocy = cy;
+        }
+    }
+    return found;
+}
+
 void Map::PrintStateInfo( void* state )
 {
     int x1 = GET_STATE_X(state);
@@ -1610,6 +1716,29 @@ void walker::find_path_to_foe()
 
     void* startState = MAKE_STATE(xpos, ypos);
     void* endState = MAKE_STATE(foe->xpos, foe->ypos);
+    // Gameplay Fixes BI, a door a bot cannot open is a wall to it (port of the
+    // current game's 708b27b91, og::reach::plan_route): a bot's route (the
+    // setting on) runs from its start cell; its goal is the foe's corner
+    // cell, but when the foe is not a door that bars it, the start cell
+    // stands with the doors shut, and the foe's cell stands with the doors
+    // open and not with them shut (only a barring door closes it), the goal
+    // is the nearest approach cell of the foe the bot gets to (none: the goal
+    // stays). The route finder's steps are the ones AdjacentCost answers for
+    // it. The current game does not run a search that must fail; here it is
+    // run and its failed flood leaves the same empty route.
+    if (door_is_a_wall_to(this))
+    {
+        short sx = 0, sy = 0;
+        start_cell(&sx, &sy, keys);
+        startState = MAKE_STATE(sx*GRID_SIZE, sy*GRID_SIZE);
+        const short gx = foe->xpos / GRID_SIZE;
+        const short gy = foe->ypos / GRID_SIZE;
+        short ax = 0, ay = 0;
+        if (!door_bars(this, foe, keys) && cell_stands(sx, sy, true, keys) &&
+            !cell_stands(gx, gy, true, keys) && cell_stands(gx, gy, false, keys) &&
+            nearest_approach(foe, sx, sy, true, keys, &ax, &ay))
+            endState = MAKE_STATE(ax*GRID_SIZE, ay*GRID_SIZE);
+    }
     
     path_to_foe.clear();
     pather.Reset();  // Assume that the old paths are invalid
@@ -6021,4 +6150,10 @@ bool walker::is_door()
 bool walker::is_bot()
 {
 	return query_order() == ORDER_LIVING && user == -1;
+}
+
+// Gameplay Fixes BI (walker.h; port of the current game's 708b27b91).
+bool door_is_a_wall_to(walker *w)
+{
+	return w != NULL && myscreen->gameplay_fixes && w->is_bot();
 }

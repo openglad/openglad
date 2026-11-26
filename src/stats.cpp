@@ -1224,11 +1224,14 @@ bool statistics::direct_walk()
 	// replaced by some sort of single "if forward_blocked()"
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
-	if (!myscreen->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
+	// Gameplay Fixes BI (port of the current game's 708b27b91): each of the
+	// three steps is refused by the terrain, or for a bot with the setting on
+	// by a door it cannot open (screen::step_refused); of bodies, no other.
+	if (myscreen->step_refused(controlx+xdeltastep, controly+ydeltastep, controller) )
 	{
-		if (!myscreen->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
+		if (myscreen->step_refused(controlx+xdeltastep,controly+0,controller) )
 		{
-			if (!myscreen->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
+			if (myscreen->step_refused(controlx+0,controly+ydeltastep,controller) )
 			{
 				walkrounds = 0;
 				return 0;
