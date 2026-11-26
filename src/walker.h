@@ -194,6 +194,10 @@ class walker : public pixieN
 		// is a door's). Gameplay Fixes BF asks it (port of the current game's
 		// 3fe15190e). Defined after line_check_flight.
 		bool is_door();
+		// A bot: a living no player drives (user -1). The door rules ask it
+		// (port of the current game's 3d9dcdcd8, walker::is_bot), and so does
+		// Gameplay Fixes BF's bump (living::leaves_a_door_alone).
+		bool is_bot();
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).

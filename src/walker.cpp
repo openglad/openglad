@@ -1444,11 +1444,27 @@ float Map::LeastCostEstimate( void* stateStart, void* stateEnd )
     return sqrtf((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
 }
 
-void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
+// The route finder's cell test: may walker w stand with its corner on the
+// corner (x, y) of a 16 px cell? The terrain's answer, the map's edge
+// included. This game has no air and no stairs, so the test of a step's cell
+// and the test of a diagonal's flank are the same question. (port of the
+// current game's og::reach::terrain_passes, one floor)
+static bool path_cell_passes(int x, int y, walker *w)
 {
-    int x1 = GET_STATE_X(state);
-    int y1 = GET_STATE_Y(state);
-    
+    // Any terrain in the way?  This checks boundaries too.
+    return myscreen->query_grid_passable(x, y, w);
+}
+
+// The route finder's neighbour rule, its passability half, written once
+// (port of the current game's og::reach::for_each_step, one floor): each of
+// the eight neighbours of the cell whose corner is at (x1, y1), in the route
+// finder's order, whose cell passes `passes`, a diagonal only when both its
+// flanking cells pass it too; `emit(adj_x, adj_y, i, j)` for each. The route
+// finder prices what it emits (Map::AdjacentCost); a fill of the cells a
+// walker gets to walks the same steps. Draws nothing.
+template <class Passes, class Emit>
+static void for_each_path_step(int x1, int y1, Passes&& passes, Emit&& emit)
+{
     for(int i = -1; i <= 1; i++)
     {
         for(int j = -1; j <= 1; j++)
@@ -1459,15 +1475,7 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
             int adj_x = x1+i*GRID_SIZE;
             int adj_y = y1+j*GRID_SIZE;
             
-            StateCost cost;
-            cost.state = MAKE_STATE(adj_x, adj_y);
-            cost.cost = 0;
-            
-            // TODO: Make doors impassable without a key.
-            // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
-            
-            // Any terrain in the way?  This checks boundaries too.
-            if(!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
+            if(!passes(adj_x, adj_y))
                 continue;
             // No corner cutting (ported from the current game's #132,
             // c409e7c8; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md "Single-floor
@@ -1485,7 +1493,7 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
                                          {x1, y1 + j*GRID_SIZE}};
                 for(int k = 0; k < 2; k++)
                 {
-                    if(!myscreen->query_grid_passable(flank[k][0], flank[k][1], path_walker))
+                    if(!passes(flank[k][0], flank[k][1]))
                     {
                         flanks_open = false;
                         break;
@@ -1494,6 +1502,29 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
                 if(!flanks_open)
                     continue;
             }
+            emit(adj_x, adj_y, i, j);
+        }
+    }
+}
+
+void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
+{
+    int x1 = GET_STATE_X(state);
+    int y1 = GET_STATE_Y(state);
+    
+    // The passability half (for_each_path_step, above); this half prices
+    // each step it answers.
+    const auto passes = [](int x, int y) {
+        return path_cell_passes(x, y, path_walker);
+    };
+    for_each_path_step(x1, y1, passes, [&](int adj_x, int adj_y, int i, int j) {
+            StateCost cost;
+            cost.state = MAKE_STATE(adj_x, adj_y);
+            cost.cost = 0;
+            
+            // TODO: Make doors impassable without a key.
+            // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
+            
             // Any moving objects in the way?
             if(myscreen->level_data.myobmap->obmap_get_list(adj_x,adj_y).size() > 0)
                 cost.cost = 10;
@@ -1510,8 +1541,7 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
             cost.cost += fabs(cross)*0.01f;
             
             adjacent->push_back(cost);
-        }
-    }
+    });
 }
 
 void Map::PrintStateInfo( void* state )
@@ -5937,4 +5967,11 @@ short walker::line_check_flight(walker* weapon, FireCheckDenial* denial, bool ev
 bool walker::is_door()
 {
 	return query_order() == ORDER_WEAPON && query_family() == FAMILY_DOOR;
+}
+
+// A bot (walker.h): a living no player drives. (port of the current game's
+// 3d9dcdcd8)
+bool walker::is_bot()
+{
+	return query_order() == ORDER_LIVING && user == -1;
 }

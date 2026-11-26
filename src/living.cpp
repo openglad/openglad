@@ -566,15 +566,16 @@ short living::collide(walker  *ob)
 }
 
 // Gameplay Fixes BF (port of the current game's 3fe15190e): with the setting
-// on a bot (a walker no player drives, user -1) that walks into an enemy door
+// on a bot (a walker no player drives, walker::is_bot) that walks into an enemy door
 // starts no swing at it, unless the door already is its foe (a level script
 // or a mod named it). A player's own fighter, a door that is the bot's foe, a
 // grown tree, a fighter and a golem (a door's family number, but a living)
 // are swung at as before; with the setting off every bump on a live enemy
-// door swings (classic).
+// door swings (classic). "A bot" is walker::is_bot, as the door rules ask it
+// (port of the current game's 29df96bbd: for a living it is user -1).
 bool living::leaves_a_door_alone(walker *body)
 {
-	return myscreen->gameplay_fixes && user == -1 && body->is_door() &&
+	return myscreen->gameplay_fixes && is_bot() && body->is_door() &&
 	       body != foe;
 }
 
