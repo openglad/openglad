@@ -13278,8 +13278,9 @@ inline constexpr Mutation kMut_orc_bots_shove_at_door_fence_fixes_scen99 = {
 // setting on (Gameplay Fixes BJ) a foe only a locked door keeps the bot from (it walks to no cell
 // beside it with the doors shut, it would with them open, and an orc has no shot) is passed over by
 // the foe searches, so the orc takes the soldier, walks to it and strikes it (32 hp at tick 80). The
-// ringed orc is shut out too: it is handed a ring door (Gameplay Fixes BL) and strikes it from
-// inside; its blows on the door are the row's sounds, and no door falls in the budget. The budget
+// ringed orc is shut out too: it is handed the ring's top door (Gameplay Fixes BL) and strikes it
+// from inside, its blows landing on ticks 8, 53 and 71 (three of the row's sounds; the other four,
+// from tick 39, are the orc's blows on the soldier), and no door falls in the budget. The budget
 // B = 80. The classic row's pin turns the setting on for the whole row; the setting-on row's pin has
 // the door question answer no (the classic searches).
 inline constexpr SpawnSpec kFamilySpawns_orc_bot_foe_in_door_ring_scen99[] = {
@@ -13333,8 +13334,9 @@ inline constexpr Mutation kMut_orc_bot_foe_in_door_ring_fixes_scen99 = {
 // player's side stands in the open at (400, 190), 272 px from the orc and beyond its arrows' reach
 // (154 px). The ring's doors are the soldier's own, so its knife flies through them, and they bar
 // the orc. The seat presses UP on tick 0 (it faces up, the way it throws) and FIRE from tick 1 to 5:
-// its knife leaves on tick 5 and strikes the orc on tick 6 (on this seed, the first from 0 at which
-// it does: on seeds 1 and 2 it misses), which makes the soldier the orc's foe (hit_response).
+// its knife leaves on tick 5 and strikes the orc on tick 6 (on this seed, the first from 0; of seeds
+// 0 to 5 it strikes the orc on seeds 0 and 1 on tick 6 and on seed 4 on tick 7, and misses it on
+// seeds 2, 3 and 5), which makes the soldier the orc's foe (hit_response).
 // Classic, the orc already holds the ringed soldier (the nearer foe), keeps it and stays at the ring.
 // With the setting on (Gameplay Fixes BJ) the soldier is passed over by the searches, so the orc
 // holds the tower and walks to it; the knife hands it the soldier, and at the top of its next round
@@ -13668,8 +13670,9 @@ inline constexpr Mutation kMut_orc_bot_near_ring_crowded_fixes_scen99 = {
 // shot is faced and shot at, and the archer takes no step: it shoots through the gap from its spawn
 // spot and hits the soldier (98 hp at tick 60). The budget B = 60. The classic row's pin turns the
 // setting on for the whole row; the setting-on row's pin drops the shot term, so the soldier is
-// door-shut, is let go, and the archer is handed a door of its pen (Gameplay Fixes BL) and shoots at
-// it.
+// door-shut and the archer, which gets at no enemy, is handed its pen's top door at (203, 192) on
+// tick 0 (Gameplay Fixes BL) and shoots at it: its arrows strike that door and the one beside it,
+// and the soldier keeps its 120 hp.
 inline constexpr SpawnSpec kFamilySpawns_archer_bot_shot_past_door_fence_scen99[] = {
     { FAMILY_DOOR,    3, kOrderWeapon, 180, 192, 0, 0 },   // the pen's top row: a gap of 7 px, x 196 to 202, between this door and the next
     { FAMILY_DOOR,    3, kOrderWeapon, 203, 192, 0, 0 },
@@ -13714,7 +13717,7 @@ inline constexpr Mutation kMut_archer_bot_shot_past_door_fence_fixes_scen99 = {
     "src/gameplay/reach.cpp", 1253,
     "if (shoots_at(*w_, b))",
     "if (false)",
-    "The shot term is dropped: the soldier is door-shut for the archer and let go, and the archer is handed a door of its pen and shoots at it, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
+    "The shot term is dropped: the soldier is door-shut for the archer, which is handed its pen's top door at (203, 192) on tick 0 and shoots at it, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
 };
 
 // --- soldier_bot_outside_ring (fix BJ: an enemy only a locked door keeps a bot from is not there, the shot term's reach) ---
@@ -13891,8 +13894,8 @@ inline constexpr Mutation kMut_orc_bot_keyed_at_wall_fixes_scen99 = {
 // The idle player soldier at (192, 192) in a ring of eight closed team-3 doors round cell (12, 12);
 // a hostile level-1 orc bot at (200, 120), 72 px above it; nobody else. Classic, the orc takes the
 // soldier, within 100 px: its near branch's ATTACK order faces the soldier and the orc stands 7 px
-// above the ring (y 153), facing it, its swings meeting nothing (the classic ATTACK order of a
-// melee-only bot, #447): nothing sounds by tick 40. With the setting on the soldier is door-shut and
+// above the ring (y 153), facing it, and starts no swing (the classic ATTACK order of a melee-only
+// bot neither steps nor swings, #447): nothing sounds by tick 40. With the setting on the soldier is door-shut and
 // the orc gets at no enemy, so it is handed the door in its way (Gameplay Fixes BL): the edge door
 // whose corner cell is nearest its start cell, the top door at (192, 176); a melee bot walks into
 // the door it holds, so it rests on the door (y 161) and its bump swings at it: on this seed its
@@ -14360,6 +14363,176 @@ inline constexpr Mutation kMut_orc_bot_hops_into_held_door_fixes_scen99 = {
     "if (dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&",
     "if (false && dx == 0 && dy == 0 && std::next(node) == path_to_foe.end() &&",
     "The door's node counts as reached when the orc's corner stands in it: no node is left, no step meets the door and nothing clangs by tick 30, so EventKindAtLeast(play_sound, 1) reads 0."
+};
+
+// --- orc_bot_room_opens (fix BJ: an enemy only a locked door keeps a bot from is not there, the door that opens) ---
+// The player soldier at (192, 208), in the bottom middle of a room of three cells by three shut in a
+// ring of sixteen closed team-3 doors of key level 1 round the cells (11..13, 11..13), stands on a
+// level-1 key (team 3, nobody's prop); a hostile level-1 orc bot stands outside at (130, 130), up and
+// left of the ring. The seat presses UP from tick 0 to tick 19: it turns from facing down to facing up
+// on ticks 0 to 3, walks 4 px an act from tick 4 (its first step takes the key), and on tick 12 its
+// step meets the ring's top-middle door at (192, 160), which its key opens: the door dies inside the
+// act phase of tick 12, and the seat, last in the spawn list, acts before the orc. It walks on out of
+// the ring and stands at (192, 147) from tick 20. With the setting on (Gameplay Fixes BJ) the seat is
+// an enemy only a locked door keeps the orc from until then, so the orc, which gets at no enemy, is
+// handed the edge door in its way (Gameplay Fixes BL: one door to enter, the nearest corner cell, the
+// top row first: the door at (176, 160)) and walks to it (157, 145 on tick 11). On tick 12, acting
+// after the seat, it sees the door gone: the keep lets its door go (it gets at the seat now) and the
+// hand-out of the same tick gives it the seat; from where it stands it walks to the seat (172, 145 on
+// tick 20) and strikes it on tick 22. Classic, the orc holds the seat from tick 0 and its walk stands
+// it against the ring's top-left corner door (145, 148), where its ATTACK order faces the seat and
+// neither steps nor swings (#447): the seat is not struck by tick 25. The budget B = 26.
+// The maps the door rules read learn of a door's death from two writers, the door's dead setter and
+// the body map's removal of the door, so no one-line break of the current game stops the refresh: a
+// break of either writer leaves the other, and a break of the maps' own compare leaves them stale,
+// where the test build stops at once ("a door changed and no writer bumped a door count"; so does
+// this row with the dead setter's note left out). The refresh therefore has no pin of its own: this
+// pair proves it by its setting-on recording, byte for byte, once the old game has the rules (the orc
+// acts after the seat, so a late refresh shows as a late reaction). The classic row's pin turns the
+// setting on for the whole row; the setting-on row's pin is the door question's, shared with
+// orc_bot_foe_in_door_ring: with no foe door-shut the orc holds the seat from tick 0 and stands on its
+// spawn spot until the door dies (130, 130 to tick 13; with every door a wall to its route no route
+// reaches the seat), so its first blow lands on tick 34.
+inline constexpr InputEvent kInputs_orc_bot_room_opens[] = {
+    {  0, 0, K_UP },   // the seat walks up, takes the key under it and opens the ring's top-middle door on tick 12
+    { 20, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_room_opens_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 160, 0, 0, 1, 0 },   // a ring of sixteen team-3 doors of key level 1 round the cells (11..13, 11..13)
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 160, 0, 0, 1, 0 },   // the door the orc is handed
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 160, 0, 0, 1, 0 },   // the door the seat's key opens on tick 12
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 160, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 160, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 176, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 176, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 192, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 192, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 208, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 208, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 224, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 224, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 224, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 224, 0, 0, 1, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 224, 0, 0, 1, 0 },
+    { FAMILY_KEY, 3, kOrderTreasure, 192, 208, 0, 0, 1, 0 },   // a level-1 key under the seat (team 3: nobody's prop); the seat's first step takes it
+    { FAMILY_ORC, 1, kOrderLiving, 130, 130, 0, 0, 1, 15 },   // hostile level-1 melee bot outside, up and left of the ring
+    { FAMILY_SOLDIER, 0, kOrderLiving, 192, 208, 0, 0 },   // the player LAST, in the room's bottom middle; it acts first
+};
+inline constexpr FactPredicate kFacts_orc_bot_room_opens_scen99[] = {
+    pred::TickReached(26),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 15, 15,
+        "anchor: the seat's key opened the ring's top-middle door on tick 12"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic orc holds the seat from tick 0 and stands in its ATTACK order against the ring's top-left corner door (#447): it has not struck the seat by tick 25"),
+};
+inline constexpr Mutation kMut_orc_bot_room_opens_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the classic row plays as its setting-on twin: the orc, handed its door, stands at it when the seat's key opens the top door and strikes the seat on tick 22, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) reads 96 hp."
+};
+inline constexpr FactPredicate kFacts_orc_bot_room_opens_fixes_scen99[] = {
+    pred::TickReached(26),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 15, 15,
+        "anchor: the seat's key opened the ring's top-middle door on tick 12"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999,
+        "consequence: with the setting on the orc holds the door in its way, not the seat, until the seat's key opens the top door on tick 12; acting after the seat in that tick it lets its door go, is handed the seat and strikes it on tick 22; the seat is alive"),
+    // intended_diff: the rule decides that a blow lands by the budget, not how many land or what each takes, so the band runs from alive to one hit point short of full; commit f97bc3ec7
+};
+inline constexpr Mutation kMut_orc_bot_room_opens_fixes_scen99 = {
+    "src/gameplay/reach.cpp", 1260,
+    "return door_shut_exit(b) == Exit::DoorShut;",
+    "return door_shut_exit(b) == Exit::DoorShut && false;",
+    "The door question answers no (no foe is door-shut) for every site that asks it, the pin of orc_bot_foe_in_door_ring_fixes_scen99: the orc holds the seat from tick 0 and stands on its spawn spot until the door dies, so its first blow lands on tick 34 and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 11999) reads 120 hp."
+};
+
+// --- archer_bot_random_act_keeps_door (fix BL: a bot keeps the door it holds through its random act) ---
+// The player soldier at (176, 176), in the top-left cell of a room of three cells by three shut in a
+// ring of sixteen closed team-3 doors round the cells (11..13, 11..13), stands on a level-10 potion of
+// invisibility (team 3, nobody's prop); the seat presses DOWN on ticks 0 and 1 (to 176, 184), its
+// tick-0 step takes the potion, and it is cloaked from tick 0. A hostile level-1 archer bot (a bot that
+// shoots) stands at (192, 90), 70 px above the ring's top row. With the setting on the seat is an
+// enemy only a locked door keeps the archer from (no cell beside it with the doors shut, one with them
+// open, and the judging flight stops at every door), and the archer gets at no enemy: on tick 0 it is
+// handed the ring's top-middle door at (192, 160) (Gameplay Fixes BL: one door to enter, the nearest
+// corner cell) and shoots at it from where its line check passes (the real line check passes on the
+// door that is the shooter's foe), walking down to (192, 110) by tick 21. On tick 43 the FIRE order it
+// had queued is dropped (its line check, its waver drawn 0, refuses the shot) and the act goes on to
+// its coins, which send it to its random act, whose draw of 80 is 0. On this seed (272, the first from
+// 0 on which that draw is 0 on the act of a door holder whose pause is over: on seeds 74, 78 and 150 it
+// comes earlier, while the archer's pause still runs, so the act queues its FIRE but starts no shot)
+// the act, with the rule, goes on with its door as its foe: the door is in its firing box and its line
+// check passes, so it starts its shot at once and queues a FIRE; the arrow leaves two ticks later, on
+// tick 45 (the archer's attack animation), and is the only arrow in flight at the end of tick 45. With
+// the random act's keep term dropped (the pin), the act of tick 43 searches afresh for a foe near it
+// (six cloak rolls for the seat), finds none it can get at, and the idle decision hands it the same
+// door again: no shot starts on tick 43, and its next, started on tick 44, leaves on tick 46. Classic,
+// no rule hands a bot a door: the archer's foe is the seat, which it drops on ticks 1 and 4 (the seat
+// is cloaked), so it wanders (on this seed straight down), meets the ring's top row on tick 19, where
+// its bump strikes the top door (4 hit points off on tick 21) and the classic blow makes the door its
+// foe, and walks right along the row (x 196 on tick 23, 240 on tick 40): at the end of tick 45 it
+// stands at (236, 145), right of the ring's middle. The budget B = 46. The classic row's pin turns on
+// the session test the door rules ask: they then play in the classic row, the archer is handed doors
+// of the ring and does not walk along the row; the setting-on row's pin drops the random act's keep
+// term.
+inline constexpr InputEvent kInputs_archer_bot_random_act_keeps_door[] = {
+    {  0, 0, K_DOWN },   // the seat steps down twice; its tick-0 step takes the potion under it
+    {  2, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_archer_bot_random_act_keeps_door_scen99[] = {
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 160, 0, 0 },   // a ring of sixteen team-3 doors round the cells (11..13, 11..13)
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 160, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 160, 0, 0 },   // the door the archer is handed on tick 0
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 160, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 160, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 176, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 192, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 208, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 160, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 176, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 192, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 208, 224, 0, 0 },
+    { FAMILY_DOOR,    3, kOrderWeapon, 224, 224, 0, 0 },
+    { FAMILY_INVIS_POTION, 3, kOrderTreasure, 176, 176, 0, 0, 10, 0 },   // a level-10 potion of invisibility under the seat (team 3: nobody's prop)
+    { FAMILY_ARCHER, 1, kOrderLiving, 192, 90, 0, 0, 1, 0 },   // hostile level-1 shooting bot, 70 px above the ring
+    { FAMILY_SOLDIER, 0, kOrderLiving, 176, 176, 0, 0 },   // the player LAST, in the room's top-left cell
+};
+inline constexpr FactPredicate kFacts_archer_bot_random_act_keeps_door_scen99[] = {
+    pred::TickReached(46),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 16, 16,
+        "anchor: the ring of sixteen doors stands"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the seat takes the potion on its tick-0 step and is cloaked; an untouched potion is alive.
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 230, 140,
+        "consequence: classic, no rule hands the archer a door: it drops the cloaked seat, wanders down to the ring's top row, its bump makes the top door its foe, and it walks right along the row: at the end of tick 45 it stands at (236, 145), right of the ring's middle"),
+};
+inline constexpr Mutation kMut_archer_bot_random_act_keeps_door_scen99 = {
+    "src/gameplay/specials_view.cpp", 165,
+    "return current_game->world->gameplay_fixes;",
+    "return 1;",
+    "The setting's one session test (og::sim::session_gameplay_fixes, which every gate of Gameplay Fixes BI, BJ, BK and BL asks) answers on with the setting off, so the door rules play in the classic row: the archer is handed doors of the ring and does not walk along its top row, ending at (192, 145), so WalkerPositionMoved(FAMILY_ARCHER, 230, 140) fails."
+};
+inline constexpr FactPredicate kFacts_archer_bot_random_act_keeps_door_fixes_scen99[] = {
+    pred::TickReached(46),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyCount(FAMILY_DOOR, 16, 16,
+        "anchor: the ring of sixteen doors stands"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the seat takes the potion on its tick-0 step and is cloaked; an untouched potion is alive.
+    pred::WeaponFamilyCount(FAMILY_ARROW, 1, 1,
+        "consequence: with the setting on the archer keeps the door it holds through its random act's one-in-80 on tick 43: the act goes on with the door as its foe and starts its shot, whose arrow leaves on tick 45 and is the one arrow in flight"),
+};
+inline constexpr Mutation kMut_archer_bot_random_act_keeps_door_fixes_scen99 = {
+    "src/gameplay/living.cpp", 1069,
+    "if ((!current_game->world->rng_.next(80) && !stats_->keep_asked_of(*this)) || (!foe()))",
+    "if ((!current_game->world->rng_.next(80)) || (!foe()))",
+    "The random act no longer keeps a held door: on tick 43 its one-in-80 searches afresh (the seat's cloak rolls), finds no foe and the idle decision hands the archer the same door; no shot starts that tick and its next leaves on tick 46, so WeaponFamilyCount(FAMILY_ARROW, 1, 1) reads 0."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -17901,6 +18074,34 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_bot_hops_into_held_door_fixes_scen99, std::size(kFacts_orc_bot_hops_into_held_door_fixes_scen99),
       kMut_orc_bot_hops_into_held_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_room_opens_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 26,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_room_opens_scen99, std::size(kFamilySpawns_orc_bot_room_opens_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_room_opens_scen99, std::size(kFacts_orc_bot_room_opens_scen99),
+      kMut_orc_bot_room_opens_scen99 },
+    { "orc_bot_room_opens_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_orc_bot_room_opens, std::size(kInputs_orc_bot_room_opens), 26,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_room_opens_scen99, std::size(kFamilySpawns_orc_bot_room_opens_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_room_opens_fixes_scen99, std::size(kFacts_orc_bot_room_opens_fixes_scen99),
+      kMut_orc_bot_room_opens_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bot_random_act_keeps_door_scen99", "scen/scen1.fss", 0x00000110u,
+      kInputs_archer_bot_random_act_keeps_door, std::size(kInputs_archer_bot_random_act_keeps_door), 46,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_random_act_keeps_door_scen99, std::size(kFamilySpawns_archer_bot_random_act_keeps_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_random_act_keeps_door_scen99, std::size(kFacts_archer_bot_random_act_keeps_door_scen99),
+      kMut_archer_bot_random_act_keeps_door_scen99 },
+    { "archer_bot_random_act_keeps_door_fixes_scen99", "scen/scen1.fss", 0x00000110u,
+      kInputs_archer_bot_random_act_keeps_door, std::size(kInputs_archer_bot_random_act_keeps_door), 46,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_random_act_keeps_door_scen99, std::size(kFamilySpawns_archer_bot_random_act_keeps_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_random_act_keeps_door_fixes_scen99, std::size(kFacts_archer_bot_random_act_keeps_door_fixes_scen99),
+      kMut_archer_bot_random_act_keeps_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
