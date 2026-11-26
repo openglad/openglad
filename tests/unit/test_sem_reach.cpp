@@ -4701,9 +4701,9 @@ TEST_F(SemBotBreak, a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_bett
 // nobody: Kept, the door kept; then a world tick asks the keep after the orc's act and reads no
 // missing owner. (3) The orc is a seat's fighter (seat 0), its statistics its own: Kept, the door
 // stays its foe. (4) The setting off, its statistics its own: Kept, the door stays its foe.
-// Fails when broken: statistics::keeps_door without its owner test (in (1) the let-go clears the
-// other orc's leader and resets its weapon); statistics::keeps_door without its asks test (in (3)
-// and (4) the door is let go).
+// Fails when broken: statistics::keeps_door without its owner test (asking holds_door alone, not
+// keep_asked_of: in (1) the let-go clears the other orc's leader and resets its weapon);
+// statistics::keeps_door without its asks test (in (3) and (4) the door is let go).
 TEST_F(SemBotBreak, the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody)
 {
     enum class Case { Control, Another, Nobody, Seat, Off };
@@ -5074,7 +5074,7 @@ TEST_F(SemBotBreak, a_door_that_falls_to_blows_sets_the_two_sides_on_each_other_
 // the start cell into the door (an orc below or right of its door is walked off the door it met:
 // the bound breaks); the door walk's tie by distance left out (every orc is handed the top door,
 // the smallest row); the tick's hand-out handing no door (an orc whose own act handed it nothing
-// holds no door after tick 1); the random act's line without its holds_door term (in the ring an
+// holds no door after tick 1); the random act's line without its keep_asked_of term (in the ring an
 // orc is handed another door).
 TEST_F(SemBotBreak, door_bots_on_all_four_sides_strike_their_door_from_their_own_side)
 {
@@ -5863,7 +5863,8 @@ TEST_F(SemBotBreak, a_bot_wider_than_a_cell_made_melee_only_at_a_one_cell_and_a_
 
 // ---------------------------------------------------------------------------------------------
 // Gameplay Fixes BL: a bot keeps the door it holds through its random act (living::act_random):
-// a door holder (statistics::holds_door) does not retarget on the act's one-in-80 draw, so among the
+// a bot the keep is asked of (statistics::keep_asked_of: a door holder, statistics::holds_door, whose
+// statistics name it as their owner) does not retarget on the act's one-in-80 draw, so among the
 // door rules only the keep lets a door go. The ring of random_act_ring unless a test says otherwise.
 // ---------------------------------------------------------------------------------------------
 
@@ -5883,17 +5884,14 @@ TEST_F(SemBotBreak, a_bot_wider_than_a_cell_made_melee_only_at_a_one_cell_and_a_
 // afresh, and the quick search's first candidate, the soldier in the ring (its pile the spiral's
 // second, the bot's own never asked; its cloak roll drawn 0), is taken: it holds the soldier, the
 // stream holds the three draws and the cloak roll, its last distance is 4321 (the spiral answered
-// before the full scan), and its order is the same search of 200. Last, the setting on, the 80
-// drawing 0: an orc whose statistics name another orc of its side, as only a restored snapshot
-// leaves them (its owner's id resolving to another walker). holds_door has no owner test, so it is
-// a door holder and its random act keeps the left door as the others' does (exactly the three
-// draws, its last distance 4321, its one order the search of 200), while the keep, whose owner test
-// it fails, leaves it alone (statistics::keeps_door answers Kept): nothing lets that door go until
-// the door falls or opens.
-// Fails when broken: the random act's line without its holds_door term (with the setting on the
+// before the full scan), and its order is the same search of 200. With the setting on each bot is
+// one the keep is asked of (statistics::keep_asked_of: a door holder whose statistics name it as
+// their owner); with it off none is. A door holder whose statistics name nobody or another walker is
+// the case (8) and (9) of everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before.
+// Fails when broken: the random act's line without its keep_asked_of term (with the setting on the
 // orc and the archer drop the left door on the 80's 0, find_near_foe rolls the soldier's cloak in the
 // spiral and in the full scan, the last distance reads 10000, and the idle decision hands them the
-// top door; the orc whose statistics name another drops it too).
+// top door).
 TEST_F(SemBotBreak, a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act)
 {
     for (int archer = 0; archer < 2; ++archer) {
@@ -5913,6 +5911,7 @@ TEST_F(SemBotBreak, a_door_holder_keeps_its_door_through_the_one_in_eighty_of_it
                 }
                 r.bot->set_foe(r.left);
                 EXPECT_EQ(fixes != 0, statistics::holds_door(*r.bot, r.left));
+                EXPECT_EQ(fixes != 0, r.bot->stats()->keep_asked_of(*r.bot)) << "the keep is asked of it with the setting on";
                 r.bot->find_path_to_foe();
                 const std::vector<Cell> route = route_of(r.bot);
                 ASSERT_FALSE(route.empty()) << "the staging: a route";
@@ -5939,39 +5938,15 @@ TEST_F(SemBotBreak, a_door_holder_keeps_its_door_through_the_one_in_eighty_of_it
             }
         }
     }
-    {
-        SCOPED_TRACE("an orc whose statistics name another orc, Gameplay Fixes on, the 80 draws 0");
-        fresh_world(1);
-        const RandomActRing r = random_act_ring(FAMILY_ORC);
-        ASSERT_TRUE(r.bot && r.top && r.left && r.soldier);
-        walker* other = living_at(FAMILY_ORC, 1, 2 * GRID_SIZE, 2 * GRID_SIZE, 16, 16);
-        ASSERT_NE(nullptr, other);
-        other->set_act_type(ACT_SIT);
-        r.bot->set_foe(r.left);
-        r.bot->find_path_to_foe();
-        r.bot->stats()->clear_command();  // before the owner is changed: it resets the owner's weapon
-        r.bot->stats()->set_last_distance(4321);
-        r.bot->stats()->set_controller(other);
-        EXPECT_TRUE(statistics::holds_door(*r.bot, r.left)) << "the one condition has no owner test";
-        EXPECT_EQ(statistics::FoeKeep::Kept, r.bot->stats()->keeps_door(*r.bot)) << "the keep is not asked of it";
-        const std::uint32_t s0 = state_for({{5, kNotZero}, {5, 0}, {80, 0}});
-        world().rng_.state_ = s0;
-        (void)r.bot->act();
-        EXPECT_EQ(r.left, r.bot->foe()) << "it keeps its door through the one-in-80";
-        EXPECT_EQ(after(s0, {5, 5, 80}), world().rng_.state_) << "exactly the two coins and the 80";
-        EXPECT_EQ(4321u, r.bot->stats()->last_distance()) << "the full scan is not run";
-        EXPECT_TRUE(one_order(r.bot, COMMAND_SEARCH, 200));
-        r.bot->stats()->set_controller(r.bot);
-    }
 }
 
 // Everyone else retargets on the random act's one-in-80 as before (living::act_random,
-// statistics::holds_door). The ring of random_act_ring, the setting on, the bot acting once
-// (living::act) from a state whose draws are act's two coins (not 0, then 0) and the 80's 0, then
-// the cloak rolls a case names. (1) An orc whose foe is the soldier in the ring (a fighter, not a
-// door; its act first rolls its lock on the cloaked soldier, rng(20), drawn 0, so it still holds the
-// soldier when its random act runs): it retargets: the quick search rolls the soldier's cloak in the
-// spiral and passes it over
+// statistics::holds_door, statistics::keep_asked_of). The ring of random_act_ring, the setting on,
+// the bot acting once (living::act) from a state whose draws are act's two coins (not 0, then 0)
+// and the 80's 0, then the cloak rolls a case names. (1) An orc whose foe is the soldier in the
+// ring (a fighter, not a door; its act first rolls its lock on the cloaked soldier, rng(20), drawn
+// 0, so it still holds the soldier when its random act runs): it retargets: the quick search rolls
+// the soldier's cloak in the spiral and passes it over
 // (door-shut, Gameplay Fixes BJ), the full scan rolls it again and passes it over too and resets the
 // last distance to 10000, so it has no foe and its idle decision hands it the door og::reach::breaks
 // answers, the top door; the stream holds the lock roll, the three draws and the two cloak rolls;
@@ -5994,14 +5969,23 @@ TEST_F(SemBotBreak, a_door_holder_keeps_its_door_through_the_one_in_eighty_of_it
 // asked and leaves it holding the dead door (statistics::keeps_door answers Kept: its next act
 // forgets a dead foe, living::act), and on that act the random act retargets as the tower's does
 // (the three draws and the cloak roll 0, the soldier taken, the last distance 4321, a search of 200).
+// Its foe the left door and its statistics, after its orders are cleared, naming (8) another orc of
+// its side, sitting at cell (2,2), or (9) nobody, as only a restored snapshot leaves them (the
+// owner's id resolving to another walker or to none): holds_door answers yes (the one condition has
+// no owner test), keep_asked_of answers no, the keep leaves it its door (Kept), and its random act
+// retargets as the orc with no foe's does in (2): the soldier passed over twice, no foe, the top door
+// handed by its idle decision, the stream the three draws and the two cloak rolls, the last distance
+// 10000, no order. In every case keep_asked_of answers no.
 // Fails when broken: holds_door answering yes for a bot whose foe is a fighter (in (1) the orc keeps
 // the soldier, its stream holds the lock roll and three draws; in (3) it keeps F); holds_door without its
 // og::reach::asks test (the tower and the seat's fighter keep the door, and holds_door answers yes
 // for the guard); holds_door without its test of a dead door (in (7) holds_door answers yes and the
-// keep, asked of the dead door, lets it go: no foe before the act).
+// keep, asked of the dead door, lets it go: no foe before the act); the random act's line asking
+// holds_door alone, without keep_asked_of's owner test (in (8) and (9) the orc keeps the left door:
+// the stream holds the three draws only, the last distance 4321, a search of 200 queued).
 TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before)
 {
-    enum class Who { FoeShut, NoFoe, FoeNear, Guard, Tower, Seat, DeadDoor };
+    enum class Who { FoeShut, NoFoe, FoeNear, Guard, Tower, Seat, DeadDoor, Another, Nobody };
     const struct
     {
         const char* name;
@@ -6014,6 +5998,8 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
         {"(5) a tower, its foe the left door", Who::Tower},
         {"(6) a seat's fighter, its foe the left door", Who::Seat},
         {"(7) an orc whose foe is the left door, dead", Who::DeadDoor},
+        {"(8) an orc whose statistics name another orc, its foe the left door", Who::Another},
+        {"(9) an orc whose statistics name nobody, its foe the left door", Who::Nobody},
     };
     for (const auto& c : cases) {
         SCOPED_TRACE(c.name);
@@ -6059,12 +6045,17 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
                 bot->set_foe(r.left);
                 ASSERT_TRUE(og::reach::walks_to(*bot, *r.soldier, Mode::Shut)) << "the staging: the ring is open at the dead door";
                 break;
+            case Who::Another:
+            case Who::Nobody: bot->set_foe(r.left); break;
         }
-        if (c.who == Who::FoeShut || c.who == Who::NoFoe) {
+        const bool owner_not_bot = c.who == Who::Another || c.who == Who::Nobody;
+        if (c.who == Who::FoeShut || c.who == Who::NoFoe || owner_not_bot) {
             ASSERT_EQ(Exit::DoorShut, og::reach::door_shut_exit(*bot, *r.soldier)) << "the staging";
             ASSERT_EQ(r.top, og::reach::breaks(*bot)) << "the staging";
         }
-        EXPECT_FALSE(statistics::holds_door(*bot, bot->foe())) << "not a door holder";
+        if (!owner_not_bot) {
+            EXPECT_FALSE(statistics::holds_door(*bot, bot->foe())) << "not a door holder";
+        }
         if (c.who == Who::DeadDoor) {
             EXPECT_EQ(statistics::FoeKeep::Kept, bot->stats()->keeps_door(*bot)) << "the keep is not asked";
             EXPECT_EQ(r.left, bot->foe()) << "the dead door is left for its next act to forget";
@@ -6076,6 +6067,19 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
         }
         bot->stats()->clear_command();
         bot->stats()->set_last_distance(4321);
+        walker* other = nullptr;
+        if (owner_not_bot) {
+            if (c.who == Who::Another) {
+                other = living_at(FAMILY_ORC, 1, 2 * GRID_SIZE, 2 * GRID_SIZE, 16, 16);
+                ASSERT_NE(nullptr, other);
+                other->set_act_type(ACT_SIT);
+            }
+            bot->stats()->set_controller(other);  // after clear_command, which resets the owner's weapon
+            EXPECT_TRUE(statistics::holds_door(*bot, r.left)) << "a door holder: the one condition has no owner test";
+            EXPECT_EQ(statistics::FoeKeep::Kept, bot->stats()->keeps_door(*bot)) << "the keep is not asked of it";
+            EXPECT_EQ(r.left, bot->foe()) << "and leaves it its door";
+        }
+        EXPECT_FALSE(bot->stats()->keep_asked_of(*bot)) << "the keep is not asked of it";
         std::uint32_t s0 = 0;
         std::uint32_t want = 0;
         switch (c.who) {
@@ -6084,6 +6088,8 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
                 want = after(s0, {20, 5, 5, 80, 20, 20});
                 break;
             case Who::NoFoe:
+            case Who::Another:
+            case Who::Nobody:
                 s0 = state_for({{5, kNotZero}, {5, 0}, {80, 0}});
                 want = after(s0, {5, 5, 80, 20, 20});
                 break;
@@ -6108,6 +6114,8 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
         switch (c.who) {
             case Who::FoeShut:
             case Who::NoFoe:
+            case Who::Another:
+            case Who::Nobody:
                 EXPECT_EQ(r.top, bot->foe()) << "searched afresh, it finds no foe and is handed the door breaks answers";
                 EXPECT_EQ(10000u, bot->stats()->last_distance()) << "the full scan ran";
                 EXPECT_TRUE(bot->stats()->commands.empty()) << "no order";
@@ -6129,6 +6137,8 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
                 EXPECT_TRUE(one_order(bot, COMMAND_SEARCH, 200));
                 break;
         }
+        if (owner_not_bot)
+            bot->stats()->set_controller(bot);
     }
 }
 
@@ -6142,7 +6152,7 @@ TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_a
 // its route are empty: its act kept the door (it queued its search of 200), the keep after its act
 // let the door go (no foe, orders and route cleared, as Gameplay Fixes BJ lets a foe go), and the
 // tick's hand-out gave it E (find_nearest_foe: the soldier in the ring is door-shut and passed over).
-// Fails when broken: the random act's line without its holds_door term (its act takes E by the fresh
+// Fails when broken: the random act's line without its keep_asked_of term (its act takes E by the fresh
 // search on the 80's 0, the keep is not asked of a fighter, and after the tick it still has the
 // act's search of 200 queued and its route into the left door).
 TEST_F(SemBotBreak, the_keep_still_lets_the_door_go_on_the_tick_its_random_act_drew_the_one_in_eighty)

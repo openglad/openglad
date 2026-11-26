@@ -1062,11 +1062,11 @@ bool living::act_random()
 
 	// Find our foe
 	// rule: act_random retargets to a near foe one time in 80 (or whenever it has none); with Gameplay
-	//   Fixes BL a door holder (statistics::holds_door) keeps its door, its 80 drawn as before. With no
-	//   foe near it wanders 40 steps (idle_walk: with BJ and BL a shut-out bot is handed its door or stays).
+	//   Fixes BL a bot the keep is asked of (statistics::keep_asked_of) keeps its door, its 80 drawn as
+	//   before. No foe near: it wanders 40 steps (idle_walk: BJ and BL hand a shut-out bot its door or it stays).
 	// tests: WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue, LivingCombat.living_round7_act_random_and_do_action_targeted_branches, SemBotBreak.a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act
 	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none, SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door, SemBotBreak.everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before
-	if ((!current_game->world->rng_.next(80) && !statistics::holds_door(*this, foe())) || (!foe()))
+	if ((!current_game->world->rng_.next(80) && !stats_->keep_asked_of(*this)) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
 	if (!foe())
 		return stats_->idle_walk(*this, 40);

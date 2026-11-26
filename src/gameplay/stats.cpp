@@ -2881,17 +2881,17 @@ void statistics::let_go(walker& bot)
 statistics::FoeKeep statistics::keeps_door(walker& bot)
 {
 	walker* const door = bot.foe();
-	// rule: Gameplay Fixes BL: the keep is asked only of a door holder (holds_door: a bot
-	//   og::reach::asks names, the setting on, not a tower, not a guard at its post, not a player's
-	//   fighter, whose foe is a live door, whether that door bars it or not) whose statistics name it
-	//   as their owner; every other walker keeps its foe as before, and a bot whose statistics name
-	//   nobody or another walker keeps its door untouched (no owner's orders, leader or weapon is
-	//   written).
+	// rule: Gameplay Fixes BL: the keep is asked only of a bot keep_asked_of names: a door holder
+	//   (holds_door: a bot og::reach::asks names, the setting on, not a tower, not a guard at its
+	//   post, not a player's fighter, whose foe is a live door, whether that door bars it or not)
+	//   whose statistics name it as their owner; every other walker keeps its foe as before, and a
+	//   bot whose statistics name nobody or another walker keeps its door untouched (no owner's
+	//   orders, leader or weapon is written).
 	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
 	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
 	// tests: SemBotBreak.guards_far_off_are_handed_nothing_and_the_orcs_inside_are
 	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
-	if (!holds_door(bot, door) || controller_ != &bot)
+	if (!keep_asked_of(bot))
 		return FoeKeep::Kept;
 	walker* const kept = og::reach::keeps_door(bot, *door);
 	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut
@@ -2934,11 +2934,9 @@ std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
 
 // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
 // one test of a door holder, a bot og::reach::asks names whose foe is a live door (whether that door
-// bars it or not), written once for its three askers: the keep (keeps_door, which adds its owner
-// test), walks_into_door (which adds the melee-only flag) and living::act_random, where a door holder
-// keeps its door through the one-in-80 retarget (the draw of 80 is made as before; the fresh search
-// is not asked), so that among the door rules only the keep lets a door go. Draws nothing. Appended
-// at the end of the file so the parity pins above never shift.
+// bars it or not), written once for its askers: keep_asked_of (which adds the owner test, and which
+// the keep and living::act_random ask) and walks_into_door (which adds the melee-only flag). Draws
+// nothing. Appended at the end of the file so the parity pins above never shift.
 bool statistics::holds_door(const walker& bot, const walker* foe)
 {
 	// rule: Gameplay Fixes BL: a door holder is a bot og::reach::asks names (the setting on, a bot,
@@ -2950,6 +2948,26 @@ bool statistics::holds_door(const walker& bot, const walker* foe)
 	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
 	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
 	return foe != nullptr && !foe->dead() && foe->is_door() && og::reach::asks(&bot);
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// bots the keep (keeps_door) is asked of, written once for its two askers: the keep, whose let-go
+// writes to the statistics' owner through clear_command, and living::act_random, where a bot the keep
+// is asked of keeps its door through the one-in-80 retarget (the draw of 80 is made as before; the
+// fresh search is not asked), so that among the door rules only the keep lets a door go. A door holder
+// whose statistics name nobody or another walker (only a restored snapshot makes one: the owner is
+// resolved by id) is not asked the keep and retargets as before. Draws nothing. Appended at the end of
+// the file so the parity pins above never shift.
+bool statistics::keep_asked_of(const walker& bot) const
+{
+	// rule: Gameplay Fixes BL: the keep is asked of a door holder (holds_door, asked of its own
+	//   foe) whose statistics these are and name it as their owner; a door holder whose statistics
+	//   name nobody or another walker is not asked: the keep leaves it its foe, and its random act's
+	//   one-in-80 retargets it as it retargets a walker that holds no door.
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	// tests: SemBotBreak.everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before
+	// tests: SemBotBreak.a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act
+	return holds_door(bot, bot.foe()) && controller_ == &bot;
 }
 
 // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: a

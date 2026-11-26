@@ -185,10 +185,14 @@ class statistics
 		// bot these statistics do not name as their owner.
 		FoeKeep keeps_door(walker& bot);
 		// holds_door: Gameplay Fixes BL: is `bot` a bot og::reach::asks names whose foe `foe` is a
-		// live door (a door holder)? Written once for its three askers: the keep (keeps_door, which
-		// adds its owner test), walks_into_door (which adds the melee-only flag) and
-		// living::act_random (a door holder keeps its door through the one-in-80 retarget).
+		// live door (a door holder)? Written once for its askers: keep_asked_of (which adds the
+		// owner test) and walks_into_door (which adds the melee-only flag).
 		static bool holds_door(const walker& bot, const walker* foe);
+		// keep_asked_of: Gameplay Fixes BL: is the keep (keeps_door) asked of `bot`, a door holder
+		// (holds_door, asked of `bot`'s own foe) that these statistics name as their owner? The one
+		// owner test, asked by the keep and by living::act_random (a bot the keep is asked of keeps
+		// its door through the one-in-80 retarget; every other walker retargets as before).
+		bool keep_asked_of(const walker& bot) const;
 		// walks_into_door: Gameplay Fixes BL: is `bot` a melee-only bot (BIT_NO_RANGED) that
 		// og::reach::asks names, whose foe `foe` is a live door? Such a bot breaks its door by
 		// walking into it: its route at any distance (never walk_to_foe's near branch), a re-plan
