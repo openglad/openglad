@@ -1562,15 +1562,18 @@ The parity goldens are captures from the old game (branch
   moved) and the table mirror `b822bb83` (the words of three of them;
   nothing moved). Eight new goldens; no setting-off golden moved. Then
   the door rules (BI, BJ, BK, BL), whose rows came before their ports:
-  the table mirrors `39235067` (their seventeen pairs, below) and
+  the table mirrors `39235067` (their seventeen pairs, below),
   `8f0a3513` (two more pairs, `orc_bot_room_opens` and
   `archer_bot_random_act_keeps_door`, and the words of four rows;
-  nothing else moved). 38 new goldens; no existing golden moved. Their
-  nineteen setting-on twins were captured before the old game has the
-  four door rules, so they record the old game's play with the setting
-  on (its earlier ported fixes) without the door rules, and they differ
-  from this game's run of the same row until the rules are ported.
-  `8f0a3513` is the commit the goldens are captured from: 446 of 446
+  nothing else moved) and `2e277c44` (shorter budgets for two of those
+  pairs, `orc_bot_room_opens` and `archer_bot_ring_no_cast`, whose four
+  recordings were captured again there; nothing else moved). 38 new
+  goldens; no golden of an earlier row moved. Their nineteen setting-on
+  twins were captured before the old game has the four door rules, so
+  they record the old game's play with the setting on (its earlier
+  ported fixes) without the door rules, and they differ from this game's
+  run of the same row until the rules are ported.
+  `2e277c44` is the commit the goldens are captured from: 446 of 446
   goldens `cmp` equal to a full capture there, and every other capture
   there `cmp`s equal to this game's run of the same row.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
