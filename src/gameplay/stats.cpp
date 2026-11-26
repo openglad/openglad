@@ -2937,8 +2937,8 @@ std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
 // bars it or not), written once for its three askers: the keep (keeps_door, which adds its owner
 // test), walks_into_door (which adds the melee-only flag) and living::act_random, where a door holder
 // keeps its door through the one-in-80 retarget (the draw of 80 is made as before; the fresh search
-// is not asked), so that only the keep lets a door go. Draws nothing. Appended at the end of the
-// file so the parity pins above never shift.
+// is not asked), so that among the door rules only the keep lets a door go. Draws nothing. Appended
+// at the end of the file so the parity pins above never shift.
 bool statistics::holds_door(const walker& bot, const walker* foe)
 {
 	// rule: Gameplay Fixes BL: a door holder is a bot og::reach::asks names (the setting on, a bot,

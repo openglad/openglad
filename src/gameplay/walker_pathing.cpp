@@ -137,7 +137,7 @@ void walker::follow_path_to_foe()
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos());
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos());
         // Gameplay Fixes BL: a melee-only bot walking into the door it holds reads where it stands
-        // from its route's start cell (og::reach::start_cell, the cell its route was planned from).
+        // from og::reach::start_cell, asked anew on every call (where a route planned now starts).
         // That cell differs from its corner's cell only where a door closes the corner's cell, as
         // for a bot below or right of its door, which rests one pixel inside the door's cell (the
         // body map's box test shrinks each box by a pixel).
