@@ -2881,16 +2881,17 @@ void statistics::let_go(walker& bot)
 statistics::FoeKeep statistics::keeps_door(walker& bot)
 {
 	walker* const door = bot.foe();
-	// rule: Gameplay Fixes BL: the keep is asked only of a bot og::reach::asks names (the setting on,
-	//   not a tower, not a guard at its post, not a player's fighter) whose foe is a live door,
-	//   whether that door bars it or not, and whose statistics name it as their owner; every other
-	//   walker keeps its foe as before, and a bot whose statistics name nobody or another walker
-	//   keeps its door untouched (no owner's orders, leader or weapon is written).
+	// rule: Gameplay Fixes BL: the keep is asked only of a door holder (holds_door: a bot
+	//   og::reach::asks names, the setting on, not a tower, not a guard at its post, not a player's
+	//   fighter, whose foe is a live door, whether that door bars it or not) whose statistics name it
+	//   as their owner; every other walker keeps its foe as before, and a bot whose statistics name
+	//   nobody or another walker keeps its door untouched (no owner's orders, leader or weapon is
+	//   written).
 	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
 	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
 	// tests: SemBotBreak.guards_far_off_are_handed_nothing_and_the_orcs_inside_are
 	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
-	if (!og::reach::asks(&bot) || controller_ != &bot || door == nullptr || door->dead() || !door->is_door())
+	if (!holds_door(bot, door) || controller_ != &bot)
 		return FoeKeep::Kept;
 	walker* const kept = og::reach::keeps_door(bot, *door);
 	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut
@@ -2931,6 +2932,26 @@ std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
 	return count;
 }
 
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// one test of a door holder, a bot og::reach::asks names whose foe is a live door (whether that door
+// bars it or not), written once for its three askers: the keep (keeps_door, which adds its owner
+// test), walks_into_door (which adds the melee-only flag) and living::act_random, where a door holder
+// keeps its door through the one-in-80 retarget (the draw of 80 is made as before; the fresh search
+// is not asked), so that only the keep lets a door go. Draws nothing. Appended at the end of the
+// file so the parity pins above never shift.
+bool statistics::holds_door(const walker& bot, const walker* foe)
+{
+	// rule: Gameplay Fixes BL: a door holder is a bot og::reach::asks names (the setting on, a bot,
+	//   not a tower, not a guard at its post) whose foe is a live door; a walker whose foe is a
+	//   fighter or a dead door or who holds none, and every walker og::reach::asks does not name (a
+	//   seat's fighter, a tower, a guard at its post, every walker with the setting off), is none.
+	// tests: SemBotBreak.a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act
+	// tests: SemBotBreak.everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
+	return foe != nullptr && !foe->dead() && foe->is_door() && og::reach::asks(&bot);
+}
+
 // Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: a
 // melee-only bot breaks its door by walking into it. Asked by walk_to_foe's near test (such a bot is
 // never taken by the near branch: it plans its route into the door at any distance and on a crowded
@@ -2940,13 +2961,12 @@ std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
 // Appended at the end of the file so the parity pins above never shift.
 bool statistics::walks_into_door(const walker& bot, const walker* foe)
 {
-	// rule: Gameplay Fixes BL: a melee-only bot (BIT_NO_RANGED) that og::reach::asks names (the
-	//   setting on, a bot, not a tower, not a guard at its post) whose foe is a live door walks into
-	//   that door; every other walker (a bot that shoots, a seat's fighter, a bot whose foe is a
-	//   fighter), and every walker with the setting off, walks as before.
+	// rule: Gameplay Fixes BL: a door holder (holds_door: a bot og::reach::asks names, the setting
+	//   on, not a tower, not a guard at its post, whose foe is a live door) that is melee-only
+	//   (BIT_NO_RANGED) walks into that door; every other walker (a bot that shoots, a seat's
+	//   fighter, a bot whose foe is a fighter), and every walker with the setting off, walks as before.
 	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
-	return foe != nullptr && !foe->dead() && foe->is_door() && og::reach::asks(&bot) && bot.stats() != nullptr &&
-	       bot.stats()->query_bit_flags(BIT_NO_RANGED);
+	return holds_door(bot, foe) && bot.stats() != nullptr && bot.stats()->query_bit_flags(BIT_NO_RANGED);
 }
 
 // Gameplay Fixes BL: the hand-over of a door, written once for the three places that hand a bot

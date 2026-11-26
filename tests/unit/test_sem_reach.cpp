@@ -3996,6 +3996,76 @@ protected:
         m.sy = (dy > 0) - (dy < 0);
         return m;
     }
+    // A draw of the world stream and what a chosen state must answer to it (kAnyDraw: anything,
+    // kNotZero: anything but 0, else exactly that value).
+    static constexpr std::int64_t kAnyDraw = -1;
+    static constexpr std::int64_t kNotZero = -2;
+    struct Draw
+    {
+        std::uint32_t bound;
+        std::int64_t want;
+    };
+    // The first state of the world stream whose draws under the bounds of `draws`, in order, answer
+    // as asked.
+    static std::uint32_t state_for(std::initializer_list<Draw> draws)
+    {
+        for (std::uint32_t st = 1;; ++st) {
+            og::sim::SimRandom r(st);
+            bool ok = true;
+            for (const Draw& d : draws) {
+                const std::uint32_t v = r.next(d.bound);
+                ok = ok && (d.want == kAnyDraw || (d.want == kNotZero ? v != 0 : v == static_cast<std::uint32_t>(d.want)));
+            }
+            if (ok)
+                return st;
+        }
+    }
+    // The world stream after the draws `bounds`, in order, from the state `s`.
+    static std::uint32_t after(std::uint32_t s, std::initializer_list<std::uint32_t> bounds)
+    {
+        og::sim::SimRandom r(s);
+        for (std::uint32_t b : bounds)
+            (void)r.next(b);
+        return r.state_;
+    }
+    // The staging of the random act's tests (living::act_random). Made in this order, so that the bot
+    // is the first walker of the object list and acts first in a tick: a bot of `family` (team 1, its
+    // own box, 16 x 16 asserted) at pixel (288,304), its start cell (18,19), diagonal to the ring's
+    // corner door (19,19), its sight one cell (no door and no body of the staging is inside its firing
+    // box, so the random act's tail is the 200-step search, which draws nothing); the ring of doors round
+    // cell (20,20) (ring_of_doors); a soldier of team 2 sitting in the ring, cloaked (invisibility 400:
+    // every search that judges it draws its cloak roll, rng(20)). From (18,19) the doors of the ring
+    // that lead to the soldier through one door and lie nearest are the left door (19,20) and the top
+    // door (20,19), two cells each: afresh og::reach::breaks hands the top one (the smaller row).
+    struct RandomActRing
+    {
+        walker* bot = nullptr;
+        std::vector<walker*> ring;
+        walker* top = nullptr;   // (20,19)
+        walker* left = nullptr;  // (19,20)
+        walker* soldier = nullptr;
+    };
+    // Does `w` have exactly one order, of `type` and (unless `count` is -1) of `count` rounds?
+    static bool one_order(walker* w, int type, int count)
+    {
+        const auto& q = w->stats()->commands;
+        return q.size() == 1 && q.front().commandtype == type && (count < 0 || q.front().commandcount == count);
+    }
+    RandomActRing random_act_ring(int family)
+    {
+        RandomActRing r;
+        r.bot = scene_bot(family, 1, 288, 304);
+        if (r.bot == nullptr)
+            return r;
+        r.bot->set_lineofsight(1);
+        r.ring = ring_of_doors(20, 20);
+        r.top = r.ring[1];
+        r.left = r.ring[3];
+        r.soldier = sitter_at(20, 20);
+        if (r.soldier != nullptr)
+            r.soldier->set_invisibility_left(400);
+        return r;
+    }
 };
 
 }  // namespace
@@ -4969,24 +5039,19 @@ TEST_F(SemBotBreak, a_door_that_falls_to_blows_sets_the_two_sides_on_each_other_
 // of team 1, one outside each of those doors: (a) routed in, each 112 px from its door, so that it
 // plans its route into the door; (b) resting against it, its box on the door's outer edge, within
 // 100 px. Each orc is handed the door on its side (og::reach::breaks, asserted). Setting on, both
-// places, both stagings, three seeds, 600 ticks: after every tick each orc holds its own door in
-// the pen and a door of the ring in the ring (there an orc can be handed another ring door: one act
-// in five runs act_random, which one time in 80 asks the quick foe search afresh; finding no enemy
-// that is not door-shut it drops the door, and the idle decision hands it the door og::reach::breaks
-// answers from where it then stands, which after a sidestep toward a corner door can be the next door
-// round, a tie of door count and distance broken by the row; the bound below is then asserted of
-// the door it holds, from the tick it first meets that one); on
-// every tick an orc's collision body is a door it stands outside on that door's side, and in the
-// pen every blow it lands is on its own door and on its side (in the ring a swing can strike the
-// door beside the one it aimed at, the pile's order, an older fault: nothing is asserted of the
-// neighbour's door there); from the tick it first meets the door it holds (at the tick's end its
-// box, grown by a pixel, touches the door's and the door's cell is the only node left on its route,
-// its last hop: the collision body is no oracle in open ground, where the sidestep after a refused
-// step passes and clears it, and a route round the ring may brush another door's corner on its
-// way), on every later tick while it holds it, and no other orc holds it, its box grown by its step
-// (rounded up) on every side meets that door's box (a second orc handed the same ring door walks
-// into the same doorway and shoves the first aside, living::walk's shove of an ally in the way, so
-// the bound restarts when it is alone at its door again). That bound is worked out from the rules, not read off a run: the
+// places, both stagings, three seeds, 600 ticks: after every tick each orc holds its own door, in the
+// ring as in the pen (the keep keeps the door it holds while it leads to the soldier, and its random
+// act's one-in-80 no longer drops it for a fresh search: before that rule an orc that had stepped
+// aside toward a corner door could drop its door there and be handed the next door round, a tie of
+// door count and distance broken by the row); on every tick an orc's collision body is a door it
+// stands outside on that door's side, and in the pen every blow it lands is on its own door and on
+// its side (in the ring a swing can strike the door beside the one it aimed at, the pile's order, an
+// older fault: nothing is asserted of the neighbour's door there); from the tick it first meets its
+// door (at the tick's end its box, grown by a pixel, touches the door's and the door's cell is the
+// only node left on its route, its last hop: the collision body is no oracle in open ground, where
+// the sidestep after a refused step passes and clears it, and a route round the ring may brush
+// another door's corner on its way), on every later tick its box grown by its step (rounded up) on
+// every side meets its door's box. That bound is worked out from the rules, not read off a run: the
 // follower keeps the door as its last node (it is never reached while the door stands), so each act
 // the orc steps toward the door along the axis it meets it on (its step refused once it meets it,
 // the one-pixel baby step closing the last pixels), only turns, or takes walkstep's sidestep, which
@@ -5005,7 +5070,8 @@ TEST_F(SemBotBreak, a_door_that_falls_to_blows_sets_the_two_sides_on_each_other_
 // above and below their doors in the pen walk away along the wall: the top door loses no hit point,
 // and the bound breaks); the door walk's tie by distance left out (every orc is handed the top door,
 // the smallest row); the tick's hand-out handing no door (an orc whose own act handed it nothing
-// holds no door after tick 1).
+// holds no door after tick 1); the random act's line without its holds_door term (in the ring an
+// orc is handed another door).
 TEST_F(SemBotBreak, door_bots_on_all_four_sides_strike_their_door_from_their_own_side)
 {
     struct Side
@@ -5099,8 +5165,7 @@ TEST_F(SemBotBreak, door_bots_on_all_four_sides_strike_their_door_from_their_own
                     }
                 }
                 std::vector<std::vector<int>> seen(4, std::vector<int>(4, 0));
-                std::vector<const walker*> held(4, nullptr);  // the door it held after the tick before
-                std::vector<int> first_met(4, -1);            // of the door it holds
+                std::vector<int> first_met(4, -1);
                 std::vector<int> met_own(4, 0);
                 std::vector<int> swings(4, 0);
                 std::vector<float> busy(4, 0.0f);
@@ -5112,19 +5177,7 @@ TEST_F(SemBotBreak, door_bots_on_all_four_sides_strike_their_door_from_their_own
                     for (std::size_t i = 0; i < 4; ++i) {
                         const walker* o = orcs[i];
                         const walker* now = o->foe();
-                        if (!ring) {
-                            ASSERT_EQ(doors[i], now) << "the orc " << sides[i].name << " holds its door, tick " << tick;
-                        } else {
-                            ASSERT_NE(all_doors.end(), std::find(all_doors.begin(), all_doors.end(), now))
-                                << "the orc " << sides[i].name << " holds a door of the ring, tick " << tick;
-                        }
-                        int holders = 0;
-                        for (const walker* other : orcs)
-                            holders += other->foe() == now ? 1 : 0;
-                        if (now != held[i] || holders > 1) {
-                            held[i] = now;
-                            first_met[i] = -1;
-                        }
+                        ASSERT_EQ(doors[i], now) << "the orc " << sides[i].name << " holds its own door, tick " << tick;
                         const bool rose = o->busy() > busy[i];
                         busy[i] = o->busy();
                         const std::vector<Cell> last_hop{Cell{now->xpos() / GRID_SIZE, now->ypos() / GRID_SIZE, 0}};
@@ -5792,4 +5845,263 @@ TEST_F(SemBotBreak, a_bot_wider_than_a_cell_made_melee_only_at_a_one_cell_and_a_
             EXPECT_TRUE(met) << "its step meets the door and the bump starts a swing, at (" << big->xpos() << "," << big->ypos() << ")";
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Gameplay Fixes BL: a bot keeps the door it holds through its random act (living::act_random):
+// a door holder (statistics::holds_door) does not retarget on the act's one-in-80 draw, so only the
+// keep lets a door go. The ring of random_act_ring unless a test says otherwise.
+// ---------------------------------------------------------------------------------------------
+
+// The random act's one-in-80 (living::act_random, the line that retargets). The ring of
+// random_act_ring, the bot holding the left door (19,20); asserted first: afresh og::reach::breaks
+// would hand it the OTHER door, the top one, and the keep (og::reach::keeps_door) keeps the one it
+// holds. Its route into the left door is planned, its last distance set to 4321, no order queued; the
+// world stream set to a state whose draws are act's two coins (rng(5) not 0, then rng(5) 0: the
+// random act) and then the act's rng(80), and the bot acts once (living::act). An orc (melee-only)
+// and an archer (it shoots), the setting on, the 80 drawing 0 (the one-in-80) and, as the twin,
+// not 0: on both draws alike it still holds its left door, the stream holds exactly those three
+// draws (the fresh search, find_near_foe, is not asked: it would roll the soldier's cloak, a fourth
+// draw), its last distance is 4321 (the full scan, which resets it to 10000, is not run), its route
+// is the one it had, it stands where it stood, and its one order is the act's own for a held foe
+// outside its firing box, a search of 200 rounds. Setting off, the same staging, the door named its
+// foe as a level script would: the classic act on the 80's 0: the door is dropped and searched
+// afresh, and the quick search's first candidate, the soldier in the ring (its pile the spiral's
+// second, the bot's own never asked; its cloak roll drawn 0), is taken: it holds the soldier, the
+// stream holds the three draws and the cloak roll, its last distance is 4321 (the spiral answered
+// before the full scan), and its order is the same search of 200.
+// Fails when broken: the random act's line without its holds_door term (with the setting on the
+// orc and the archer drop the left door on the 80's 0, find_near_foe rolls the soldier's cloak in the
+// spiral and in the full scan, the last distance reads 10000, and the idle decision hands them the
+// top door).
+TEST_F(SemBotBreak, a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act)
+{
+    for (int archer = 0; archer < 2; ++archer) {
+        for (short fixes : {short{1}, short{0}}) {
+            for (int zero = 1; zero >= (fixes ? 0 : 1); --zero) {
+                SCOPED_TRACE(std::string(archer ? "an archer, " : "an orc, ") + (fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                             (zero ? "the 80 draws 0" : "the 80 draws not 0"));
+                fresh_world(fixes);
+                const RandomActRing r = random_act_ring(archer ? FAMILY_ARCHER : FAMILY_ORC);
+                ASSERT_TRUE(r.bot && r.top && r.left && r.soldier);
+                ASSERT_EQ(16, r.bot->sizex()) << "the staging: a 16 px bot";
+                ASSERT_EQ(16, r.bot->sizey()) << "the staging: a 16 px bot";
+                ASSERT_EQ((Cell{18, 19, 0}), og::reach::start_cell(*r.bot)) << "the staging";
+                if (fixes) {
+                    ASSERT_EQ(r.top, og::reach::breaks(*r.bot)) << "the staging: afresh it would be handed the other door, the top one";
+                    ASSERT_EQ(r.left, og::reach::keeps_door(*r.bot, *r.left)) << "the staging: the keep keeps the door it holds";
+                }
+                r.bot->set_foe(r.left);
+                EXPECT_EQ(fixes != 0, statistics::holds_door(*r.bot, r.left));
+                r.bot->find_path_to_foe();
+                const std::vector<Cell> route = route_of(r.bot);
+                ASSERT_FALSE(route.empty()) << "the staging: a route";
+                r.bot->stats()->clear_command();
+                r.bot->stats()->set_last_distance(4321);
+                const signed char dir = r.bot->curdir();
+                ASSERT_EQ(dir, static_cast<signed char>(r.bot->enddir())) << "the staging: no turn is owed";
+                const std::uint32_t s0 = fixes ? state_for({{5, kNotZero}, {5, 0}, {80, zero ? 0 : kNotZero}})
+                                               : state_for({{5, kNotZero}, {5, 0}, {80, 0}, {20, 0}});
+                world().rng_.state_ = s0;
+                (void)r.bot->act();
+                EXPECT_EQ(fixes ? r.left : r.soldier, r.bot->foe()) << (fixes ? "it still holds its own door" : "classic: the soldier in the ring");
+                if (fixes) {
+                    EXPECT_EQ(after(s0, {5, 5, 80}), world().rng_.state_) << "exactly the two coins and the 80: the fresh search is not asked";
+                    EXPECT_EQ(route, route_of(r.bot)) << "its route is the one it had: " << text(route_of(r.bot));
+                } else {
+                    EXPECT_EQ(after(s0, {5, 5, 80, 20}), world().rng_.state_) << "classic: the two coins, the 80 and the soldier's cloak roll";
+                }
+                EXPECT_EQ(4321u, r.bot->stats()->last_distance()) << "the full scan is not run";
+                EXPECT_EQ(288, r.bot->xpos());
+                EXPECT_EQ(304, r.bot->ypos());
+                EXPECT_EQ(dir, r.bot->curdir());
+                EXPECT_TRUE(one_order(r.bot, COMMAND_SEARCH, 200)) << "the act's own order for a held foe outside its firing box";
+            }
+        }
+    }
+}
+
+// Everyone else retargets on the random act's one-in-80 as before (living::act_random,
+// statistics::holds_door). The ring of random_act_ring, the setting on, the bot acting once
+// (living::act) from a state whose draws are act's two coins (not 0, then 0) and the 80's 0, then
+// the cloak rolls a case names. (1) An orc whose foe is the soldier in the ring (a fighter, not a
+// door; its act first rolls its lock on the cloaked soldier, rng(20), drawn 0, so it still holds the
+// soldier when its random act runs): it retargets: the quick search rolls the soldier's cloak in the
+// spiral and passes it over
+// (door-shut, Gameplay Fixes BJ), the full scan rolls it again and passes it over too and resets the
+// last distance to 10000, so it has no foe and its idle decision hands it the door og::reach::breaks
+// answers, the top door; the stream holds the lock roll, the three draws and the two cloak rolls;
+// no order is queued. (2) An orc with no foe: the same, without the lock roll (the 80 is drawn
+// although it holds none). (3) An orc whose
+// foe is a soldier F far off at cell (2,36), which it walks to, with a soldier N of team 2 at cell
+// (21,18), beside the ring, in the spiral's first pile: it takes N, the near foe find_near_foe answers
+// (asserted before the act; not cloaked, so it is judged without a draw), the stream holds the three
+// draws, the last distance is 4321, its order the search of 200. Its foe a door as a level script
+// would name it, the left door: (4) a guard at its post: holds_door answers no; its random act never
+// runs (its act is the guard's, walker::act_guard, which asks find_near_foe on every act): from a
+// state whose draws are the soldier's cloak roll 0 and the fire order's rng(30) it holds the soldier,
+// with a fire order queued and exactly those two draws; (5) a tower (16 x 16): holds_door answers no;
+// the three draws and the cloak roll 0: the classic retarget takes the soldier (nothing asks it about
+// doors); (6) a seat's fighter (the orc given seat 0, its act type left ACT_RANDOM, as only a test or
+// a restored snapshot makes it: every place that seats a fighter sets ACT_CONTROL, whose act never
+// reaches the random act): the same as the tower.
+// Fails when broken: holds_door answering yes for a bot whose foe is a fighter (in (1) the orc keeps
+// the soldier, its stream holds the lock roll and three draws; in (3) it keeps F); holds_door without its
+// og::reach::asks test (the tower and the seat's fighter keep the door, and holds_door answers yes
+// for the guard).
+TEST_F(SemBotBreak, everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before)
+{
+    enum class Who { FoeShut, NoFoe, FoeNear, Guard, Tower, Seat };
+    const struct
+    {
+        const char* name;
+        Who who;
+    } cases[] = {
+        {"(1) an orc whose foe is the soldier in the ring", Who::FoeShut},
+        {"(2) an orc with no foe", Who::NoFoe},
+        {"(3) an orc whose foe is a soldier far off, a soldier near", Who::FoeNear},
+        {"(4) a guard at its post, its foe the left door", Who::Guard},
+        {"(5) a tower, its foe the left door", Who::Tower},
+        {"(6) a seat's fighter, its foe the left door", Who::Seat},
+    };
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world(1);
+        const RandomActRing r = random_act_ring(c.who == Who::Tower ? FAMILY_TOWER1 : FAMILY_ORC);
+        ASSERT_TRUE(r.bot && r.top && r.left && r.soldier);
+        walker* const bot = r.bot;
+        if (c.who == Who::Tower) {
+            bot->set_sizex(16);
+            bot->set_sizey(16);
+            bot->setxy(289, 304);
+            bot->setxy(288, 304);
+            ASSERT_TRUE(bot->stationary()) << "the staging: a tower";
+        }
+        ASSERT_EQ(16, bot->sizex()) << "the staging: a 16 px bot";
+        ASSERT_EQ(16, bot->sizey()) << "the staging: a 16 px bot";
+        walker* near_foe = nullptr;
+        walker* far_foe = nullptr;
+        switch (c.who) {
+            case Who::FoeShut: bot->set_foe(r.soldier); break;
+            case Who::NoFoe: bot->set_foe(nullptr); break;
+            case Who::FoeNear:
+                near_foe = living_at(FAMILY_SOLDIER, 2, 21 * GRID_SIZE, 18 * GRID_SIZE, 16, 16);
+                far_foe = living_at(FAMILY_SOLDIER, 2, 2 * GRID_SIZE, 36 * GRID_SIZE, 16, 16);
+                ASSERT_TRUE(near_foe && far_foe);
+                near_foe->set_act_type(ACT_SIT);
+                far_foe->set_act_type(ACT_SIT);
+                ASSERT_TRUE(og::reach::walks_to(*bot, *far_foe, Mode::Shut)) << "the staging: it walks to F";
+                bot->set_foe(far_foe);
+                break;
+            case Who::Guard:
+                bot->set_act_type(ACT_GUARD);
+                bot->set_guard_hold_post(true);
+                bot->set_foe(r.left);
+                break;
+            case Who::Tower: bot->set_foe(r.left); break;
+            case Who::Seat:
+                bot->set_user(0);
+                bot->set_foe(r.left);
+                break;
+        }
+        if (c.who == Who::FoeShut || c.who == Who::NoFoe) {
+            ASSERT_EQ(Exit::DoorShut, og::reach::door_shut_exit(*bot, *r.soldier)) << "the staging";
+            ASSERT_EQ(r.top, og::reach::breaks(*bot)) << "the staging";
+        }
+        EXPECT_FALSE(statistics::holds_door(*bot, bot->foe())) << "not a door holder";
+        if (c.who == Who::FoeNear) {
+            const std::uint32_t before = world().rng_.state_;
+            ASSERT_EQ(near_foe, world().find_near_foe(bot)) << "the staging: find_near_foe answers N";
+            ASSERT_EQ(before, world().rng_.state_) << "the staging: and judges it without a draw";
+        }
+        bot->stats()->clear_command();
+        bot->stats()->set_last_distance(4321);
+        std::uint32_t s0 = 0;
+        std::uint32_t want = 0;
+        switch (c.who) {
+            case Who::FoeShut:
+                s0 = state_for({{20, 0}, {5, kNotZero}, {5, 0}, {80, 0}});
+                want = after(s0, {20, 5, 5, 80, 20, 20});
+                break;
+            case Who::NoFoe:
+                s0 = state_for({{5, kNotZero}, {5, 0}, {80, 0}});
+                want = after(s0, {5, 5, 80, 20, 20});
+                break;
+            case Who::FoeNear:
+                s0 = state_for({{5, kNotZero}, {5, 0}, {80, 0}});
+                want = after(s0, {5, 5, 80});
+                break;
+            case Who::Guard:
+                s0 = state_for({{20, 0}});
+                want = after(s0, {20, 30});
+                break;
+            case Who::Tower:
+            case Who::Seat:
+                s0 = state_for({{5, kNotZero}, {5, 0}, {80, 0}, {20, 0}});
+                want = after(s0, {5, 5, 80, 20});
+                break;
+        }
+        world().rng_.state_ = s0;
+        (void)bot->act();
+        EXPECT_EQ(want, world().rng_.state_) << "the draws of the classic act";
+        switch (c.who) {
+            case Who::FoeShut:
+            case Who::NoFoe:
+                EXPECT_EQ(r.top, bot->foe()) << "searched afresh, it finds no foe and is handed the door breaks answers";
+                EXPECT_EQ(10000u, bot->stats()->last_distance()) << "the full scan ran";
+                EXPECT_TRUE(bot->stats()->commands.empty()) << "no order";
+                break;
+            case Who::FoeNear:
+                EXPECT_EQ(near_foe, bot->foe()) << "it takes the near foe";
+                EXPECT_EQ(4321u, bot->stats()->last_distance());
+                EXPECT_TRUE(one_order(bot, COMMAND_SEARCH, 200));
+                break;
+            case Who::Guard:
+                EXPECT_EQ(r.soldier, bot->foe()) << "the guard's act retargets on every act";
+                EXPECT_TRUE(one_order(bot, COMMAND_FIRE, -1));
+                break;
+            case Who::Tower:
+            case Who::Seat:
+                EXPECT_EQ(r.soldier, bot->foe()) << "the classic retarget takes the soldier";
+                EXPECT_EQ(4321u, bot->stats()->last_distance());
+                EXPECT_TRUE(one_order(bot, COMMAND_SEARCH, 200));
+                break;
+        }
+    }
+}
+
+// The keep still lets the door go (statistics::keeps_door after every act, then the tick's
+// hand-out in GameWorld::tick). The ring of random_act_ring, the setting on, an orc holding the left
+// door; a soldier E of team 2 sitting in the open at cell (20,12), which the orc walks to (asserted),
+// placed before the tick, so the keep no longer keeps the left door (og::reach::keeps_door answers
+// none, asserted). The orc is the first walker of the object list, so the tick's first draws are its
+// act's: the world stream set to a state whose draws are act's two coins (not 0, then 0) and the
+// 80's 0: on that tick its random act drew the one-in-80. After the tick it holds E, its orders and
+// its route are empty: its act kept the door (it queued its search of 200), the keep after its act
+// let the door go (no foe, orders and route cleared, as Gameplay Fixes BJ lets a foe go), and the
+// tick's hand-out gave it E (find_nearest_foe: the soldier in the ring is door-shut and passed over).
+// Fails when broken: the random act's line without its holds_door term (its act takes E by the fresh
+// search on the 80's 0, the keep is not asked of a fighter, and after the tick it still has the
+// act's search of 200 queued and its route into the left door).
+TEST_F(SemBotBreak, the_keep_still_lets_the_door_go_on_the_tick_its_random_act_drew_the_one_in_eighty)
+{
+    fresh_world(1);
+    const RandomActRing r = random_act_ring(FAMILY_ORC);
+    ASSERT_TRUE(r.bot && r.top && r.left && r.soldier);
+    walker* const orc = r.bot;
+    ASSERT_EQ(orc, world().oblist.begin()->get()) << "the staging: the orc acts first in the tick";
+    walker* e = sitter_at(20, 12);
+    ASSERT_NE(nullptr, e);
+    ASSERT_TRUE(og::reach::walks_to(*orc, *e, Mode::Shut)) << "the staging: the orc walks to E";
+    orc->set_foe(r.left);
+    ASSERT_TRUE(statistics::holds_door(*orc, r.left));
+    ASSERT_EQ(nullptr, og::reach::keeps_door(*orc, *r.left)) << "the staging: the keep lets the door go";
+    orc->find_path_to_foe();
+    ASSERT_FALSE(orc->path_to_foe.empty()) << "the staging: its route into the left door";
+    orc->stats()->clear_command();
+    world().rng_.state_ = state_for({{5, kNotZero}, {5, 0}, {80, 0}});
+    world().tick();
+    EXPECT_EQ(e, orc->foe()) << "after the tick it holds E, not its door";
+    EXPECT_TRUE(orc->stats()->commands.empty()) << "the keep after its act cleared its orders";
+    EXPECT_TRUE(orc->path_to_foe.empty()) << "and its route: " << text(route_of(orc));
 }
