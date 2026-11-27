@@ -786,10 +786,10 @@ TEST_F(SemReach, every_writer_of_the_doors_and_the_terrain_bumps_its_count)
                 before.push_back(og::reach::cell_answer(*w, {x, 4, 0}, Mode::Open));
         }
     }
-    terrain = maps.terrain_count();
+    terrain = world().reach_maps.terrain_count();  // the fresh world's maps: `maps` names the world fresh_world dropped
     for (int x = 4; x <= 6; ++x)
         ASSERT_EQ(PIX_GRASS1_DAMAGED, static_cast<unsigned char>(world().damage_tile(static_cast<short>(x * GRID_SIZE + 3), 4 * GRID_SIZE + 3)));
-    EXPECT_EQ(terrain, maps.terrain_count()) << "the blast's charred grass bumps no terrain count";
+    EXPECT_EQ(terrain, world().reach_maps.terrain_count()) << "the blast's charred grass bumps no terrain count";
     std::vector<CellAnswer> after;
     for (const std::int32_t f : flags) {
         w->stats()->set_bit_flags(BIT_FLYING | BIT_FORESTWALK | BIT_SWIMMING | BIT_ETHEREAL, 0);
