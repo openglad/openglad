@@ -8,6 +8,8 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
+#include "test_click_ladder.h"
+#include "test_escape_tail.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/gameplay/guy.h>
@@ -23,11 +25,22 @@ extern int g_picker_max_mainmenu_calls;
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 namespace {
-constexpr Uint32 kUiSettleMs = 150;
-constexpr Uint32 kTraceSettleMs = 100;
+// Leg ceilings, not settles: each bounds how long one screen may take to
+// answer. Every wait in this file is on a condition (a published id, a
+// completed menu frame, a trace), every click is proven consumed by the edge
+// it opens (tests/test_click_ladder.h), and the last BACK is the escape
+// tail's (tests/test_escape_tail.h), so a press that evaporates on a starved
+// frame is sent again instead of leaving the main thread in the menu until
+// the group's ceiling (#397).
+constexpr int kMainMenuWaitMs = 5000;
+// CONTINUE loads the company and its campaign level on the menu thread.
+constexpr int kTeamDoorWaitMs = 10000;
+// GO with no team answers with its popup on the frame that reads the click.
+constexpr int kPopupWaitMs = 5000;
+constexpr Uint32 kTracePollMs = 50;
 
 template <typename Predicate>
-bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = 50)
+bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kTracePollMs)
 {
     int elapsed = 0;
     while (elapsed < timeout_ms) {
@@ -36,7 +49,7 @@ bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = 50)
         SDL_Delay(static_cast<Uint32>(poll_ms));
         elapsed += poll_ms;
     }
-    return false;
+    return predicate();
 }
 }
 
@@ -65,9 +78,11 @@ static void cleanup_picker_state()
 //   3. Can continue navigating after the error
 
 struct GoNoTeamState {
-    bool started;
-    bool finished;
-    bool saw_popup;
+    bool started = false;
+    bool finished = false;
+    bool saw_popup = false;
+    // Set by the MAIN thread after picker_main returns, never by the injector.
+    std::atomic<bool> test_finished{false};
 };
 
 static int go_no_team_injector(void* data)
@@ -76,36 +91,48 @@ static int go_no_team_injector(void* data)
     GoNoTeamState* state = static_cast<GoNoTeamState*>(data);
     state->started = true;
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(kUiSettleMs);
+    // A leg that gives up hands the flow to the escape tail, which keeps
+    // closing whatever screen is up until picker_main has returned.
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why);
+    };
 
+    // -- Leg 1: the main menu is up --
+    if (!wait_for_interactable("continue_game", kMainMenuWaitMs) ||
+        !wait_for_menu_frames(2))
+        return escape(1, "the main menu never published continue_game");
+
+    // -- Leg 2: CONTINUE opens base camp --
     fprintf(stderr, "  [test] clicking continue_game\n");
-    interact("continue_game");
+    if (!click_until_edge("continue_game",
+                          [](int wait_ms) { return wait_for_interactable("go", wait_ms); },
+                          /*landed_trace=*/nullptr, /*attempts=*/3,
+                          /*wait_ms=*/kTeamDoorWaitMs) ||
+        !wait_for_menu_frames(2))
+        return escape(2, "CONTINUE never opened base camp");
 
-    SDL_Delay(kUiSettleMs);
-    wait_for_interactable("go", 10000);
-    SDL_Delay(kUiSettleMs);
-
-    // Click GO with no team
+    // -- Leg 3: GO with no team (THE RULE UNDER TEST) --
+    // popup_dialog returns at once under TESTING and leaves its trace: the
+    // trace is the edge. A press that left no trace did not land, so pressing
+    // it again cannot start anything twice.
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
-    interact("go");
+    state->saw_popup = click_until_edge(
+        "go",
+        [](int wait_ms) {
+            return wait_until([] { return trace_contains("popup", "NEED A TEAM"); }, wait_ms);
+        },
+        /*landed_trace=*/nullptr, /*attempts=*/3, /*wait_ms=*/kPopupWaitMs);
+    if (!state->saw_popup)
+        return escape(3, "GO with no team never showed NEED A TEAM");
 
-    // popup_dialog returns immediately under TESTING, but coverage builds can
-    // process the click a few frames later. Poll the trace instead of assuming
-    // a fixed delay is enough.
-    state->saw_popup = wait_until(
-        [] { return trace_contains("popup", "NEED A TEAM"); },
-        2000,
-        kTraceSettleMs);
-
-    // Should be back in team menu (popup already dismissed)
-    wait_for_interactable("back", 10000);
-    SDL_Delay(kUiSettleMs);
-    fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
+    // -- Leg 4: base camp is still there to navigate (the popup is gone) --
+    if (!wait_for_interactable("back", kTeamDoorWaitMs) || !wait_for_menu_frames(2))
+        return escape(4, "base camp did not come back after the popup");
 
     state->finished = true;
-    return 0;
+    // BACK is the tail's: picker_main returns under it.
+    fprintf(stderr, "  [test] leaving base camp through the escape tail\n");
+    return escape(0, "");
 }
 
 TEST(GoNoTeam, go_without_team) {
@@ -119,7 +146,7 @@ TEST(GoNoTeam, go_without_team) {
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    GoNoTeamState state = { false, false, false };
+    GoNoTeamState state;
     SDL_Thread* thread = SDL_CreateThread(go_no_team_injector, "go_no_team", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -128,12 +155,16 @@ TEST(GoNoTeam, go_without_team) {
 
     picker_main(0, nullptr);
 
-    int thread_result;
+    state.test_finished.store(true);
+    int thread_result = -1;
     SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
 
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    EXPECT_TRUE(state.started) << "the injector thread never ran";
+    EXPECT_EQ(0, thread_result) << "the leg that gave up, by number (0: none)";
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }

@@ -55,7 +55,7 @@
 # commit that leaves these ungated by either tier:
 # test_campaign_zone_ui.cpp,
 # test_canvas_scale.cpp,
-# test_fairy_death.cpp, test_go_no_team.cpp, test_help.cpp,
+# test_fairy_death.cpp, test_help.cpp,
 # test_level_editor_issue12_wall_crash.cpp, test_lineup_ui.cpp,
 # test_menu_engine.cpp, test_menu_pins.cpp, test_networking_menu.cpp,
 # test_networking_uxshots.cpp, test_picker_funcs.cpp,
@@ -118,6 +118,8 @@ CONVERTED_FILES=(
     tests/integration/test_keymap_screen.cpp
     # The new-game campaign flow (#490), the same.
     tests/integration/test_new_game_campaign.cpp
+    # The GO-without-a-team flow (#397): ladders, edges and the escape tail.
+    tests/integration/test_go_no_team.cpp
 )
 
 status=0
