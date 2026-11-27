@@ -117,10 +117,10 @@ usual pause.
 | BF | A bot leaves a door alone | A door is a weapon-order body of 5,000 hit points that no foe search picks, and three rules written for an enemy thing reach it. A tower's or a shooting bot's line check passes on any body its test weapon meets, a door included: the test weapon meets an enemy door, as it meets every enemy weapon-order body, on the clash roll, and a door that stops it passes the check as a body does, so a bot whose foe stands behind a door shoots into the door and the shot is spent on it. A walker that walks into an enemy door swings at it, as at every body a bump attacks. And a blow makes whatever it lands on its owner's foe, a door included, after which the bot shoots at the door as at any foe until it takes another foe or the door falls. With the setting on before this fix, on Gladiator and The Tryxian Chronicles (twenty seeds of each level), 98,695 of the 104,342 checks that passed although no fighter or tent stood in the flight ended on an enemy door. | A bot attacks a door only when it is its foe, and Gameplay Fixes BL makes a door its foe only as a last resort: three rules no longer make a bot attack a door, so its line check is refused at a door, it starts no swing at a door it walks into, and a blow on a door names no foe. An enemy door on the shot's path refuses the line check, always, as a wall does: the test weapon meets the door without the clash roll and draws nothing for it, on the pad and on every step, and the check answers no. A bot (a walker no player drives) that walks into an enemy door starts no swing at it; the door stops its step as before. A blow that lands on a door, anyone's shot, blast or spell, does not make the door its owner's foe; the door still takes the blow. One exception, in the line check and the bump: a door that already is the bot's foe (a level script or a mod can name one, and Gameplay Fixes BL hands one to a bot that has no enemy it can get at) passes the check and is swung at when the bot walks into it; a blow on it names no foe either, and it stays the foe because nothing names another, so it is fought like any foe. A player's own fighter still swings at a door the player walks it into. A bot is a walker that carries no seat number: a walker with one is a player's fighter to the rule, so the measuring crews of the tests, which seat their first four fighters while nobody drives them, still swing at a door with those four (#593). A grown tree, an enemy shot in flight and every other body are as before: a tree and a shot pass the check on their clash roll, a bot that walks into a tree or a fighter swings at it, and a blow on either makes it the foe. The shot itself is unchanged: it still takes the clash roll at a door. What still strikes a door for a bot, each counted below: a special cast from a distance at a foe behind the door (no special's rule asks the path to its foe, #591), a CHARGE whose last step meets a door, a shot or a swing started at a foe that meets a door on its way, a pad that holds both the foe and a door, and a tent whose spawn pad lies on another side's door. What follows: a bot that holds the door's key walks into the door and opens it, where it stood and shot at it before; a bot with no key whose foe stands behind the door lets that foe go (Gameplay Fixes BJ) and, with no enemy it can get at, is handed the door as its foe (Gameplay Fixes BL), which it then breaks down, the door's own rule here; and a door still loses hit points to a shot that strays into it, to a player's blows and to whoever fights a door that is its foe, and still dies at 0 and opens. With the setting off every walker's bump on an enemy door swings and every blow names its foe, as in the classic game. Measured with the setting on, on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks), on one game with the door rules switched off and on, before any door rule, with the line check's part alone and with all three parts and Gameplay Fixes BG and BH: checks that passed on an enemy door 117,386, 80,470 (every one on a door that already was the shooter's foe) and 0; a door made a bot's foe by the bot's own shot 9,238, 5,107 and 0 times; bots' swings at a door they walked into 20,616, 22,585 and 0 (7,341 and 6,488 of them at a door that already was the bot's foe); blows that landed on a door 38,922, 31,648 and 1,204; the doors' hit points lost 1,801,741, 1,405,275 and 46,309; doors gone by tick 600 178, 181 and 2 of 6,680 (erased by a guard 144, 161 and 0, broken under blows 26, 14 and 0, opened with a key 8, 6 and 2). Of the 1,204 blows left, 553 are the measuring crews' seated fighters' (#593) and 651 the bots': the archer's FIRE ARROWS, whose eight fire arrows fly every way at once, 381; other specials 114, of them 101 cast from a distance at a foe; a shot or a swing started at a foe that met a door on its way 140; a pad that held both the foe and a door 16; a CHARGE and a tent's spawn none. On The Tryxian Chronicles' first level played to tick 2,400 (six seeds) the doors lost 117,396, 124,911 and 832 hit points, and 38, 51 and 0 of its 180 doors were gone at the end. With these three rules alone, before Gameplay Fixes BI to BL, a bot with no key stood at a door more: the ticks in which a locked door refused a step of one of the levels' bots on the classic campaigns went 101,179, 109,216 and 233,215, and of them the ticks in which the bot's live foe, not a door, stood farther off than the door 35,520, 42,638 and 210,419 (at the first two points that count leaves out a bot whose foe was the door itself, and both leave out the acts a bot spent finishing a swing or a shot at the door, so both rise more than the time bots stand at doors); with every rule they and the crew's make 10,422 stays, of which 9,237 ended within 60 ticks, 593 within 600, 547 lasted to tick 600 and in 45 the bot died, and the 840 stays longer than 60 ticks span 182,542 of the 264,369 ticks that all the stays span, 69 in 100 (see [Balance](#balance) and [Rulings (2026-11-16)](#rulings-2026-11-16), entry 6). |
 | BG | A guard passes a door or a grown tree by | The guard of a cleric's MAGIC SHIELD, a soldier's BOOMERANG and an orc captain's HOOK BLADE destroys every enemy weapon-order body inside its ring, each costing it that body's damage in hit points, and passes by only the solid scenery a pack declares, a bone wall or a war banner (#472). The rule is meant for shots in flight, but a door (5,000 hit points) and a grown tree are weapon-order bodies too, so a guard that passes an enemy door or tree erases it at once, with no key and no blow (#588). On Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on, with the line check's part of Gameplay Fixes BF) 161 of the 181 doors that were gone at tick 600 went that way. | The guard passes an enemy door and an enemy grown tree by, as it passes a bone wall or a war banner by: neither is destroyed and the guard pays nothing for it. A door then needs its key or blows, and a tree has to be cut down. Every other body the guard meets is destroyed as before: a shot in flight, a cleric's glow, a boulder, a blood stain, an enemy's circle of protection (#592). A door or a tree is weapon order and that family, because a golem's family number is a door's. The three guards ask one question for it, so the hook blade passes them by too. The grown tree was added in this work, for the maintainer to overrule (the alternative: the door alone, as he asked). Measured with the setting on, on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks), on one game before any door rule, with the line check's part of Gameplay Fixes BF alone and with every door rule: doors a guard erased 144, 161 and 0, grown trees a guard erased 20, 15 and 0, and on The Tryxian Chronicles' first level played to tick 2,400 doors a guard erased 33, 39 and 0; a guard erased no circle of protection in any measured battle, where no bot cast one and the only circles were the 260 placed on Tryxian 107 (see [Balance](#balance)). |
 | BH | A bot's cast wants its pad clear of a door, a grown tree and a shot in flight | No rule (fix Q). With the setting on before this fix the rules of the druid's GROW TREE and SUMMON FAERIE, the barbarian's HURL BOULDER and EXPLODING BOULDER, the mage's ENERGY WAVE and the archer's EXPLODING BOLT (fix AA) asked their weapon's pad the plain way: a wall, the map's edge, a foe's body or a tent on it said no, but an enemy door, an enemy grown tree or an enemy shot in flight passed, because a quiet weapon probe passes every enemy weapon-order body; `fire()` meets such a body on 4 rolls in 10, so the cast was then refused `COULD NOT FIRE` and the bot had paid its swing for nothing (#590). With Gameplay Fixes BG more doors stand, and on The Tryxian Chronicles' first level (six seeds of 2,400 ticks) the druid's GROW TREE met that refusal 11 times. | The five rules ask the strict question of fix AV, as the elf's volleys and BARRAGE do: an enemy door, grown tree or shot in flight on the pad is a no, the clash roll taken as lost and nothing drawn; a body of the caster's own side still passes. SUMMON FAERIE already said no to such a body through the faerie's room (fix AR: its faerie stands on the bolt's spot in a box of the bolt's size), so for it the strict question changes no answer in stock play. The rule asks the pad, the first step of the flight, not the path: a cast from a few steps back at a foe behind a door or a wall is still made (#591). A player's cast is not asked about. Measured with the setting on, on one game with this rule switched off and on: on that level and those seeds the refusals read 0 before any door rule, 0 with the line check's part of Gameplay Fixes BF alone, 11 with every door rule but this one and 0 with it; on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks) the druid's, barbarian's, mage's and archer's casts refused `COULD NOT FIRE` after their rule's yes read 47 without it and 0 with it, and the rule said no on 1,312 pads the plain question passed: the barbarian's throws 1,115 (an enemy shot in flight on the pad 1,111 times, a door 4), GROW TREE 149 (a shot 130, a door 19), SUMMON FAERIE 47 (the faerie's room said no to each of them too), ENERGY WAVE 1 and EXPLODING BOLT none. Westlands, The Long Season and the Tower place no door, no grown tree and no druid, but the rule holds a barbarian's throw while an enemy shot in flight is on its pad (on the forty seeds 1,451 times on Westlands, 1,123 on The Long Season and 86 on the Tower), so their runs change: none of their levels fell by the measure's three errors and none rose by two, and The Long Season 4 reads two errors under, 1.38 to 1.20; on Imaginations, which places doors, it alone moved the survivors: level 3 rose by two errors, 7.28 to 7.45 (see [Balance](#balance)). |
-| BI | A door a bot cannot open is a wall to it | No rule. The route finder prices a door like any body, ten a cell, and asks the terrain alone whether a cell can be stood on, so a bot's route to its foe or to a point runs through a locked door whenever going round costs more, and a bot standing just under a door, its corner a pixel inside the door's cell, is routed from that cell straight into the door. The straight walk toward a foe or a point asks the terrain alone and steps into the door. The push an ally gives (fix X) asks the terrain alone too, so a bot standing at a door is sent into it again and again and loses its own orders each time. | For a bot (a walker no player drives), a door it cannot open, an enemy door whose key it does not hold, is a wall to its route, its straight walk and the push an ally gives it. The route is planned on a map of where the bot's kind of fighter can stand with such doors shut: it goes round such a door as round a wall, takes no diagonal past one, starts from the cell the bot's body overlaps most when its corner sits in a door's cell, and ends beside a foe whose own cell such a door closes. A route that could only fail is not searched; the route stays empty, as a failed search leaves it. A stair whose landing such a door closes is no way up or down. The straight walk takes no step whose box meets such a door, and an ally pushed toward one keeps its orders. A door the bot can open (its own side's, or one it holds the key to) is walked through and costs ten a cell, as before; a bot whose foe is a door that bars it (a level script or a mod can name one) is routed into that door and no other. A player's own fighter routes, walks and is pushed as before. A tower and a guard at its post are bots here too: a tower never moves, so its route and straight walk only turn it (along the way round such a door rather than toward the door), and a guard or a tower standing at such a door is not pushed into it. Limits: the ATTACK order's step, a FOLLOW order's step, a hurt bot's flight and the wall-following walk still step toward a door, so a bot whose foe is near (within 100 px, or anywhere on a map of more than 200 bodies, where no route is planned) can still be seen pushing at a door, as at a wall (#582); a teleporter is not a way round; a replay recorded with the setting on before this fix parts from its recording at the first route, step or push a door changes. Measured on a measuring build of 2026-11-20 on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), the levels' bots' stays at a locked door longer than 60 ticks went from 826 to 152. |
-| BJ | A bot treats an enemy that only a locked door keeps it from as if it were not there | No rule. A bot takes, holds and walks at an enemy it could reach only through a door it cannot open: the foe searches answer the nearest enemy whatever stands between, a foe handed over by a blow, by the bot's own shot or by a script is held, the near branch of the chase counts every enemy within 100 px, an ally following the player's fighter takes its leader's foe, and a cast rule counts every enemy in its range, so an archer behind a locked door fires rings of arrows at a room it cannot get into. With Gameplay Fixes BI such a door is a wall to the bot's route, so it pushes at the door or stands beside it for the enemy behind. | For a bot (a walker no player drives, not a tower and not a guard at its post), an enemy that only a door it cannot open keeps it from is not there: with every such door open the bot could walk to the enemy, with them shut it cannot, and its own shot does not land on the enemy from where it stands. The quick foe search passes such a candidate after its cloak roll and goes on; the full scan passes it for both its picks, and with it the world's hand-out of a foe after each act; a held foe of that kind is let go at the top of the bot's next SEARCH or ATTACK round, its orders, its leader and its route cleared, which catches a foe handed over by a blow, by the bot's own shot landing, by a yell or by a script; the near branch counts no such foe; an ally following the player's fighter does not take its leader's foe of that kind and follows instead; and while a bot's cast rule is asked, the range finder leaves such enemies out. A bot with no foe that has such an enemy on its floor wanders no more: it is handed the door in its way as its foe when it has no enemy it can get at (Gameplay Fixes BL), and stays where it is when there is none to hand. An enemy the bot's shot lands on from where it stands (through an arrow slit, across water) is kept only by the shot: the bot faces it, shoots, and takes no step for it. When a door opens, the enemy is an enemy again on the next tick. A foe behind a wall or across water with no door in the way, a foe with a way round, a foe on another floor, a player's fighter, a tower and a guard at its post are as before. Limits: a struck bot still takes its striker at the blow and lets it go on its next round; a cast rule that wants no enemy near (the mage's TELEPORT, the skeleton's TUNNEL) says yes more often, which is an idle bot's cast and stays; a teleporter is not a way round; a bot can still be seen pushing at a door when its enemy is near and has a way round (the ATTACK order's step, as at a wall, #582); two sides a locked door keeps apart no longer stand and wait, each bot breaks the door in its way down (Gameplay Fixes BL); a replay recorded with the setting on before this fix parts from its recording at the first enemy let go or passed over. Measured on a measuring build of 2026-11-20 on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on): the levels' bots' stays at a locked door longer than 60 ticks went from 826 before any door rule (152 with Gameplay Fixes BI) to 66 with this rule too, and the ticks a locked door refused a bot a step from 233,215 to 44,392; with Gameplay Fixes BI and every part of this rule but its cast rules' part, archers waiting behind a locked door cast a special at nobody 5,525 times, and with that part never. |
-| BK | A bot that holds the key to a door on its way walks its route into the door | No rule. Once its enemy is within 100 px, or anywhere on a map of more than 200 bodies, a bot's chase skips the route finder and steps straight at the enemy (the near branch), whatever stands between. A bot that holds the key of the door between it and its enemy therefore steps at the wall beside the door instead of walking into the door, which its key would open. With Gameplay Fixes BI and BJ such a bot walks its route while its enemy is farther off, then pushes along the wall beside the door once it comes near. | For a bot (a walker no player drives, not a tower and not a guard at its post) whose way to its foe on its own floor only its key opens (it holds the key of a door on its floor, walks to the foe with the doors it cannot open shut, and holding no key would have no way), the near branch is not taken: its route is planned as for a far foe, it follows it, and its step into the door's cell opens the door with its key. The question is asked only where the near branch would be taken, and it draws nothing; when it acts, the near branch's draws (its foe search's cloak rolls, the ATTACK length, the swing) are not made. Nobody goes to fetch a key: this is the use of a key a bot already holds, by a monster as by a teammate. A bot with no key, a foe with a way that needs no key, a foe on another floor, a player's fighter, a tower and a guard at its post are as before. Limits: nothing changes in the ATTACK order, so a bot already in it when its enemy came near keeps its steps (as at a wall, #582); a replay recorded with the setting on before this fix parts from its recording at the first chase that plans a route instead. Measured on a measuring build of 2026-11-20 (a staged room, twenty seeds, 600 ticks, the setting on): a bot handed the key of the room's door at tick 200 opened it in 20 runs of 20, 48 or 49 ticks after the key, against 1 run of 20 with Gameplay Fixes BI and BJ alone; on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks) the rule changed the branch on 35 re-plans of the levels' monsters and moved no survivor or damage figure. |
-| BL | A bot with no enemy it can get at breaks down the locked door in its way | No rule. A door no bot can open stands until a key opens it or it falls to blows. With Gameplay Fixes BI and BJ a bot whose only enemies stand behind a locked door holds no foe and stays where it is, so two sides a locked door keeps apart stand and wait for as long as the level lasts. | For a bot (a walker no player drives, not a tower and not a guard at its post) that has no enemy it can get at (one it walks to with the doors it cannot open shut, or one its shot lands on from where it stands) while an enemy on its floor is one only a locked door keeps it from, the door in its way becomes its foe: the world's hand-out of a foe after each act, when it finds none, and the bot's own decision of what to do with no foe hand it the door. The door in its way is found by a walk over the bot's map, from the regions the bot gets to (its own, and those its stairs lead to, one way, at no cost) through the doors that bar it to a region from which an enemy living or tent can be reached; each door entered counts one, so two doors in a row count two, with floor between them or none. Of the doors on the bot's floor beside its regions, the one through which the fewest doors are entered is handed, then the nearest (in cells from the bot), then the topmost, then the leftmost; a door that leads to no enemy (a closet's) is handed to nobody. A bot that fights only hand to hand (the orc and the small slime; the ghost has the same flag but walks through walls, so no door shuts it out) walks into the door: on its first chase after the door is handed it plans its route into the door (fix BI's route ends in the door that is its foe), at any distance and on a map of more than 200 bodies, never by the chase's near branch, and it follows that route from the cell it now stands in, read anew on every step as a route planned there would read it, so its last step meets the door from every side, from below and from the right too, where it rests one pixel inside the door's cell; its bump swings at the door (fix BF lets a bot swing at a door that is its foe), and an enemy near it that it could not get at even with every door open (across water, walled in) no longer pulls it off its door into an attack. A bot that shoots keeps its walk and shoots at the door from where its line check passes (the line check passes on the door that is the shooter's foe). It keeps the door while it still has no enemy it can get at and the door still leads to an enemy, even when a better door appears; when only another door does, it takes that one; the moment it can get at an enemy (a key it is given included: a door it can open is no door in its way) it lets the door go, its orders, its leader and its route cleared, and the hand-out of the same tick gives it that enemy. This keep is asked at the top of its rounds and after every act, so a bot in the middle of a swing lets go too, and of the door rules it alone lets a door go: one act in five a bot with no orders runs its random act, which one time in 80 throws its foe away for a fresh search of the foes near it; a bot holding a door does not (its draw of 80 is made as before, but the fresh search and its cloak rolls are not), so it never drops its door there and is never handed another door for having stepped aside. What gives any bot a new foe still gives a bot holding a door one: a swing or a shot at the door that passes through it onto a fighter makes that fighter its striker's foe, a bot struck by a new attacker takes the attacker, a yell gives the yeller's friends near it the yeller's attacker, and a bot that shoots, within 100 px of its door (or on a map of more than 200 bodies), takes an enemy within 100 px of it, nearer than the door, that it cannot get at even with every door open (walled in), by the chase's near branch, which a melee bot holding a door no longer takes. Every judgment still sees the held door as shut, so the enemy behind it stays out of reach until the door falls or opens. Monsters shut in a room break their door as the player's teammates outside do: no rule asks whose side a bot is on. A door keeps its 5,000 hit points, so under blows it holds for a minute or two; the key stays the fast way. Nothing is stored for the rule: the door a bot holds is its foe, which a snapshot carries. A player's fighter, a tower and a guard at its post are never handed a door. Limits: a swing or a shot at the door still takes the clash roll and passes through it 6 times in 10, a shot striking the room behind (the struck fighter is its striker's foe for a round, fix BJ lets it go, and the door is handed again); a crowd at a one-cell doorway strikes the door one bot at a time; a swing can strike the door beside the one it aimed at (a door next to a door); a fighter whose weapon is wider than the doorway lands nothing on a door set in a wall (the cleric: the wall cells beside a one-cell door refuse its 20 px glow, as they refuse a player's cleric's); a fighter wider than the doorway is handed no such door, since it could not pass it even open (the medium slime, the two beasts); a melee bot with no route to its door (a body wider than a cell at one door of a two-door doorway) takes the old walk and strikes the door seldom; a bot that holds the key of a door behind a crowd of its own side pressed against that door is held off it (the crowd breaks the door instead); a door a level script or a mod named a bot's foe is let go like any other when the bot can get at an enemy or the door leads to none; a replay recorded with the setting on before this fix parts from its recording at the first door handed. Measured on a measuring build of 2026-11-24 (a staged room of twelve orcs behind a door of a third side, four crew bots outside, twenty seeds, 1,800 ticks, the setting on): every bot of both sides was handed the door on the first tick; a closet's door beside the crew took no blow; while an enemy the crew could walk to lived, the crew landed no blow on any door, and when one appeared every crew bot let its door go one tick later. Measured on 2026-11-26 with melee bots walking into their door and every bot keeping its door through its random act, in the same room in the unit tests' world, where every damage draw answers its least (the least a blow can do): the door fell in 6 runs of 20 (ticks 1,141 to 1,771), to the barbarian alone in 13 of 20 (ticks 1,359 to 1,587) and to the twelve orcs alone in none (on average 1,713 of its 5,000 hit points off by tick 1,800: one orc at a time strikes it from the doorway); over those 60 runs a bot holding a door drew its random act's one-in-80 97 times, each a time it kept its door; with one fighter of each family alone outside and the orcs inside at their posts (six seeds of 1,800 ticks) the door fell to the soldier in 5 runs of 6 and to the fire elemental, the thief, the orc captain and the barbarian in 6 of 6, an orc took 1,498 of its hit points on average, a small slime 145 and a faerie 370 (their blows are light), the cleric none, and the medium slime, the two beasts and the ghost were never handed it. |
+| BI | A door a bot cannot open is a wall to it | No rule. The route finder prices a door like any body, ten a cell, and asks the terrain alone whether a cell can be stood on, so a bot's route to its foe or to a point runs through a locked door whenever going round costs more, and a bot standing just under a door, its corner a pixel inside the door's cell, is routed from that cell straight into the door. The straight walk toward a foe or a point asks the terrain alone and steps into the door. The push an ally gives (fix X) asks the terrain alone too, so a bot standing at a door is sent into it again and again and loses its own orders each time. | For a bot (a walker no player drives), a door it cannot open, an enemy door whose key it does not hold, is a wall to its route, its straight walk and the push an ally gives it. The route is planned on a map of where the bot's kind of fighter can stand with such doors shut: it goes round such a door as round a wall, takes no diagonal past one, starts from the cell the bot's body overlaps most when its corner sits in a door's cell, and ends beside a foe whose own cell such a door closes. A route that could only fail is not searched; the route stays empty, as a failed search leaves it. A stair whose landing such a door closes is no way up or down. The straight walk takes no step whose box meets such a door, and an ally pushed toward one keeps its orders. A door the bot can open (its own side's, or one it holds the key to) is walked through and costs ten a cell, as before; a bot whose foe is a door that bars it (a level script or a mod can name one) is routed into that door and no other. A player's own fighter routes, walks and is pushed as before. A tower and a guard at its post are bots here too: a tower never moves, so its route and straight walk only turn it (along the way round such a door rather than toward the door), and a guard or a tower standing at such a door is not pushed into it. Limits: the ATTACK order's step, a FOLLOW order's step, a hurt bot's flight and the wall-following walk still step toward a door, so a bot whose foe is near (within 100 px, or anywhere on a map of more than 200 bodies, where no route is planned) can still be seen pushing at a door, as at a wall (#582); a teleporter is not a way round; a replay recorded with the setting on before this fix parts from its recording at the first route, step or push a door changes. Measured on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), in a measuring build of the finished game that switches the door rules off one by one: with this rule the levels' bots' stays at a locked door longer than 60 ticks went from 826 to 152 (a stay is a locked door refusing the bot a step while its foe stands beyond the door, from the first such tick to the last with gaps of up to 20 ticks), the ticks in which a locked door refused one of them a step from 233,215 to 66,753, and the walks an ally's push queued into a door the pushed bot cannot open from 127,611 to 0. |
+| BJ | A bot treats an enemy that only a locked door keeps it from as if it were not there | No rule. A bot takes, holds and walks at an enemy it could reach only through a door it cannot open: the foe searches answer the nearest enemy whatever stands between, a foe handed over by a blow, by the bot's own shot or by a script is held, the near branch of the chase counts every enemy within 100 px, an ally following the player's fighter takes its leader's foe, and a cast rule counts every enemy in its range, so an archer behind a locked door fires rings of arrows at a room it cannot get into. With Gameplay Fixes BI such a door is a wall to the bot's route, so it pushes at the door or stands beside it for the enemy behind. | For a bot (a walker no player drives, not a tower and not a guard at its post), an enemy that only a door it cannot open keeps it from is not there: with every such door open the bot could walk to the enemy, with them shut it cannot, and its own shot does not land on the enemy from where it stands. The quick foe search passes such a candidate after its cloak roll and goes on; the full scan passes it for both its picks, and with it the world's hand-out of a foe after each act; a held foe of that kind is let go at the top of the bot's next SEARCH or ATTACK round, its orders, its leader and its route cleared, which catches a foe handed over by a blow, by the bot's own shot landing, by a yell or by a script; the near branch counts no such foe; an ally following the player's fighter does not take its leader's foe of that kind and follows instead; and while a bot's cast rule is asked, the range finder leaves such enemies out. A bot with no foe that has such an enemy on its floor wanders no more: it is handed the door in its way as its foe when it has no enemy it can get at (Gameplay Fixes BL), and stays where it is when there is none to hand. An enemy the bot's shot lands on from where it stands (through an arrow slit, across water) is kept only by the shot: the bot faces it, shoots, and takes no step for it. When a door opens, the enemy is an enemy again on the next tick. A foe behind a wall or across water with no door in the way, a foe with a way round, a foe on another floor, a player's fighter, a tower and a guard at its post are as before. Limits: a struck bot still takes its striker at the blow and lets it go on its next round; a cast rule that wants no enemy near (the mage's TELEPORT, the skeleton's TUNNEL) says yes more often, which is an idle bot's cast and stays; a teleporter is not a way round; a bot can still be seen pushing at a door when its enemy is near and has a way round (the ATTACK order's step, as at a wall, #582); two sides a locked door keeps apart no longer stand and wait, each bot breaks the door in its way down (Gameplay Fixes BL); a replay recorded with the setting on before this fix parts from its recording at the first enemy let go or passed over. Measured on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), in a measuring build of the finished game that switches the door rules off one by one: with this rule as well the levels' bots' stays at a locked door longer than 60 ticks went from 152 to 66 (826 before any door rule), and the ticks a locked door refused one of them a step from 66,753 to 44,392; bots let go 3,303 times of an enemy only a locked door kept them from; the archers' FIRE ARROWS, whose arrows fly every way at once, was cast 524 times by a bot whose every enemy within the 400 pixels its rule scans was one only a locked door kept it from, and never with this rule, whose cast rules' part left such an enemy out of 34,541 questions of a cast rule (33,949 of them answered no). On a trial build of 2026-11-20, with Gameplay Fixes BI and every part of this rule but the cast rules' part, archers waiting behind a locked door cast a special at nobody 5,525 times, and with that part never; the finished game cannot switch that part off alone, so that figure was not measured again. |
+| BK | A bot that holds the key to a door on its way walks its route into the door | No rule. Once its enemy is within 100 px, or anywhere on a map of more than 200 bodies, a bot's chase skips the route finder and steps straight at the enemy (the near branch), whatever stands between. A bot that holds the key of the door between it and its enemy therefore steps at the wall beside the door instead of walking into the door, which its key would open. With Gameplay Fixes BI and BJ such a bot walks its route while its enemy is farther off, then pushes along the wall beside the door once it comes near. | For a bot (a walker no player drives, not a tower and not a guard at its post) whose way to its foe on its own floor only its key opens (it holds the key of a door on its floor, walks to the foe with the doors it cannot open shut, and holding no key would have no way), the near branch is not taken: its route is planned as for a far foe, it follows it, and its step into the door's cell opens the door with its key. The question is asked only where the near branch would be taken, and it draws nothing; when it acts, the near branch's draws (its foe search's cloak rolls, the ATTACK length, the swing) are not made. Nobody goes to fetch a key: this is the use of a key a bot already holds, by a monster as by a teammate. A bot with no key, a foe with a way that needs no key, a foe on another floor, a player's fighter, a tower and a guard at its post are as before. Limits: nothing changes in the ATTACK order, so a bot already in it when its enemy came near keeps its steps (as at a wall, #582); a replay recorded with the setting on before this fix parts from its recording at the first chase that plans a route instead. Measured on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), in a measuring build of the finished game that switches the door rules off one by one: the rule changed the chase's branch on 35 re-plans of the levels' bots (57 with Gameplay Fixes BL as well) and moved no survivor or damage figure of any level, on the twenty seeds or on 200 further seeds of the four levels read again. On a trial build of 2026-11-20 a bot handed the key of a staged room's door at tick 200 opened it in 20 runs of 20, 48 or 49 ticks after the key, against 1 run of 20 with Gameplay Fixes BI and BJ alone; that room was not played again, since the unit tests stage a crew bot handed a key and assert that it walks its route into the door and opens it. |
+| BL | A bot with no enemy it can get at breaks down the locked door in its way | No rule. A door no bot can open stands until a key opens it or it falls to blows. With Gameplay Fixes BI and BJ a bot whose only enemies stand behind a locked door holds no foe and stays where it is, so two sides a locked door keeps apart stand and wait for as long as the level lasts. | For a bot (a walker no player drives, not a tower and not a guard at its post) that has no enemy it can get at (one it walks to with the doors it cannot open shut, or one its shot lands on from where it stands) while an enemy on its floor is one only a locked door keeps it from, the door in its way becomes its foe: the world's hand-out of a foe after each act, when it finds none, and the bot's own decision of what to do with no foe hand it the door. The door in its way is found by a walk over the bot's map, from the regions the bot gets to (its own, and those its stairs lead to, one way, at no cost) through the doors that bar it to a region from which an enemy living or tent can be reached; each door entered counts one, so two doors in a row count two, with floor between them or none. Of the doors on the bot's floor beside its regions, the one through which the fewest doors are entered is handed, then the nearest (in cells from the bot), then the topmost, then the leftmost; a door that leads to no enemy (a closet's) is handed to nobody. A bot that fights only hand to hand (the orc and the small slime; the ghost has the same flag but walks through walls, so no door shuts it out) walks into the door: on its first chase after the door is handed it plans its route into the door (Gameplay Fixes BI's route ends in the door that is its foe), at any distance and on a map of more than 200 bodies, never by the chase's near branch, and it follows that route from the cell it now stands in, read anew on every step as a route planned there would read it, so its last step meets the door from every side, from below and from the right too, where it rests one pixel inside the door's cell; its bump swings at the door (Gameplay Fixes BF lets a bot swing at a door that is its foe), and an enemy near it that it could not get at even with every door open (across water, walled in) no longer pulls it off its door into an attack. A bot that shoots keeps its walk and shoots at the door from where its line check passes (the line check passes on the door that is the shooter's foe). It keeps the door while it still has no enemy it can get at and the door still leads to an enemy, even when a better door appears; when only another door does, it takes that one; the moment it can get at an enemy (a key it is given included: a door it can open is no door in its way) it lets the door go, its orders, its leader and its route cleared, and the hand-out of the same tick gives it that enemy. This keep is asked at the top of its rounds and after every act, so a bot in the middle of a swing lets go too, and of the door rules it alone lets a door go: one act in five a bot with no orders runs its random act, which one time in 80 throws its foe away for a fresh search of the foes near it; a bot holding a door does not (its draw of 80 is made as before, but the fresh search and its cloak rolls are not), so it never drops its door there and is never handed another door for having stepped aside. What gives any bot a new foe still gives a bot holding a door one: a swing or a shot at the door that passes through it onto a fighter makes that fighter its striker's foe, a bot struck by a new attacker takes the attacker, a yell gives the yeller's friends near it the yeller's attacker, and a bot that shoots, within 100 px of its door (or on a map of more than 200 bodies), takes an enemy within 100 px of it, nearer than the door, that it cannot get at even with every door open (walled in), by the chase's near branch, which a melee bot holding a door no longer takes. Every judgment still sees the held door as shut, so the enemy behind it stays out of reach until the door falls or opens. Monsters shut in a room break their door as the player's teammates outside do: no rule asks whose side a bot is on. A door keeps its 5,000 hit points, so under blows it mostly holds for longer than two minutes; the key stays the fast way. Nothing is stored for the rule: the door a bot holds is its foe, which a snapshot carries. A player's fighter, a tower and a guard at its post are never handed a door. Limits: a swing or a shot at the door still takes the clash roll and passes through it 6 times in 10, a shot striking the room behind (the struck fighter is its striker's foe for a round, Gameplay Fixes BJ lets it go, and the door is handed again): on the classic campaigns 50,596 of the 53,813 shots bots fired at the door they held met it, 21,019 flew through it and 796 of those then struck a fighter, 229 of the 422 swings met it and 133 passed it, and the same door was handed again within 10 ticks of such a fighter foe 1,190 times; an archer holding a door whose shot reaches, from where it stands, an enemy that only a locked door keeps it from on foot lets its door go while that enemy is in the shot's line and is handed the door again when the enemy steps out of it, 57 times within 10 ticks on the classic campaigns, all on Gladiator 7 and 11; a crowd at a one-cell doorway strikes the door one bot at a time; a swing can strike the door beside the one it aimed at (a door next to a door); a fighter whose weapon is wider than the doorway lands nothing on a door set in a wall (the cleric: the wall cells beside a one-cell door refuse its 20 px glow, as they refuse a player's cleric's); a fighter wider than the doorway is handed no such door, since it could not pass it even open (the medium slime, the two beasts); a melee bot with no route to its door (a body wider than a cell at one door of a two-door doorway) takes the old walk and strikes the door seldom; a bot that holds the key of a door behind a crowd of its own side pressed against that door is held off it (the crowd breaks the door instead); a door a level script or a mod named a bot's foe is let go like any other when the bot can get at an enemy or the door leads to none; a replay recorded with the setting on before this fix parts from its recording at the first door handed. Measured on Gladiator and The Tryxian Chronicles (twenty seeds of each level, 600 ticks, the setting on), in a measuring build of the finished game that switches the door rules off one by one: 2,854 of the levels' bots and 34 of the crew's were handed a door, 1,134 doors in all, and bots held a door for 1,302,984 bot-ticks (one tick of one bot); the doors they held took 29,981 blows and lost 1,435,547 hit points, doors beside the ones they held 10,723 blows and 468,977 hit points; 24 of the 6,680 doors fell to blows by tick 600 (none without this rule) and 3 were opened with a key (10 without it); no blow fell on a held door that led to no enemy; a bot holding a door that could get at an enemy let the door go on the same tick 249 times and on the next 240 times, never later; and its random act's one-in-80 came 170 times while it held a door, each a time it kept the door. On Gladiator 13, 36 and 37 played to tick 1,800 (twenty seeds), 648 doors were handed and 125 of them fell to blows by tick 1,800, a median of 848 ticks after the door was first handed, so a door mostly holds for longer than two minutes (see [Balance](#balance)). On a trial build of 2026-11-24, before the rule was finished, a staged room of twelve orcs behind a door of a third side, four crew bots outside (twenty seeds, 1,800 ticks), showed every bot of both sides handed the door on the first tick, a closet's door beside the crew taking no blow, and every crew bot letting its door go one tick after an enemy it could walk to appeared; that room was measured again with the finished rules on 2026-11-26, below. Measured on 2026-11-26 with melee bots walking into their door and every bot keeping its door through its random act, in the same room in the unit tests' world, where every damage draw answers its least (the least a blow can do): the door fell in 6 runs of 20 (ticks 1,141 to 1,771), to the barbarian alone in 13 of 20 (ticks 1,359 to 1,587) and to the twelve orcs alone in none (on average 1,713 of its 5,000 hit points off by tick 1,800: one orc at a time strikes it from the doorway); over those 60 runs a bot holding a door drew its random act's one-in-80 97 times, each a time it kept its door; with one fighter of each family alone outside and the orcs inside at their posts (six seeds of 1,800 ticks) the door fell to the soldier in 5 runs of 6 and to the fire elemental, the thief, the orc captain and the barbarian in 6 of 6, an orc took 1,498 of its hit points on average, a small slime 145 and a faerie 370 (their blows are light), the cleric none, and the medium slime, the two beasts and the ghost were never handed it. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -850,7 +850,10 @@ Fixes X to BL, in play:
   step, the flight and the wall-following walk are not changed, so a bot
   whose foe is near can still push at a door as at a wall (#582). With
   the setting off every walker routes, walks and is pushed as in the
-  classic game, so no setting-off golden moves.
+  classic game, so no setting-off golden moves. Measured with the setting
+  on (Gladiator and The Tryxian Chronicles, twenty seeds of each level):
+  the levels' bots' stays at a locked door longer than 60 ticks went from
+  826 to 152 with this rule (see [Balance](#balance)).
 - **BJ.** A bot took, held and walked at an enemy it could reach only
   through a door it cannot open: the foe searches answered the nearest
   enemy whatever stood between, a foe handed over by a blow or a script
@@ -870,6 +873,9 @@ Fixes X to BL, in play:
   behind a wall with no door in the way, a foe with a way round, a
   player's fighter, a tower and a guard at its post are as before. With
   the setting off no question is asked, so no setting-off golden moves.
+  Measured the same way: the stays longer than 60 ticks went from 152 to
+  66 with this rule as well, and the ring of FIRE ARROWS cast at enemies
+  only a locked door kept the archer from went from 524 to none.
 - **BK.** Once its enemy was within 100 px (or anywhere on a map of more
   than 200 bodies) a bot's chase stepped straight at it, so a bot holding
   the key of the door between them pushed along the wall beside the door
@@ -882,7 +888,8 @@ Fixes X to BL, in play:
   branch would be taken and draws nothing. Nobody fetches a key: a
   monster handed its room's key walks out as a teammate walks in. Nothing
   changes in the ATTACK order. With the setting off no question is asked,
-  so no setting-off golden moves.
+  so no setting-off golden moves. Measured the same way: it changed the
+  chase's branch on 35 re-plans and moved no survivor or damage figure.
 - **BL.** With Gameplay Fixes BI and BJ a bot whose only enemies stood
   behind a locked door held no foe and stood where it was, so two sides a
   door kept apart stood and waited. The maintainer ruled on 2026-11-24:
@@ -913,17 +920,22 @@ Fixes X to BL, in play:
   new attacker's blow, a friend's yell and a shooter's chase near its door
   still give it a new foe, as they give any bot one. Monsters shut in a
   room do this as much as the crew outside. A door keeps its 5,000 hit
-  points, so it holds for a minute or two under blows. Nothing is stored:
-  the held door is the bot's foe, which a snapshot carries. A player's
-  fighter, a tower and a guard at its post are never handed a door. A
-  swing or a shot at the door still passes through it on six rolls in ten,
-  a crowd at a one-cell doorway strikes it one bot at a time, a swing can
-  strike the door beside it, a fighter whose weapon is wider than the
-  doorway (the cleric) lands nothing on a door set in a wall, a melee bot
-  with no route to its door takes the old walk, a bot holding the key of a
-  door behind a crowd of its own side pressed against that door is held
-  off it, and a door a script named a bot's foe is let go like any other.
-  With the setting off nothing is asked, so no setting-off golden moves.
+  points, so under blows it mostly holds for longer than two minutes.
+  Nothing is stored: the held door is the bot's foe, which a snapshot
+  carries. A player's fighter, a tower and a guard at its post are never
+  handed a door. A swing or a shot at the door still passes through it on
+  six rolls in ten, a crowd at a one-cell doorway strikes it one bot at a
+  time, a swing can strike the door beside it, a fighter whose weapon is
+  wider than the doorway (the cleric) lands nothing on a door set in a
+  wall, a melee bot with no route to its door takes the old walk, a bot
+  holding the key of a door behind a crowd of its own side pressed against
+  that door is held off it, and a door a script named a bot's foe is let
+  go like any other. With the setting off nothing is asked, so no
+  setting-off golden moves. Measured the same way: 2,888 bots were handed
+  1,134 doors, 24 doors fell to blows by tick 600, a bot that could get at
+  an enemy let its door go on that tick or the next, and archers whose
+  shot now and then reached an enemy they could not walk to let their door
+  go and took it again 57 times (see [Balance](#balance)).
 
 ## Refusals at a glance
 
@@ -4198,6 +4210,199 @@ enemy it can get at, is handed the door in its way as its foe; and a door
 a script names a bot's foe is let go like any other once the bot can get
 at an enemy or the door leads to none.
 
+**The door rules BI, BJ, BK and BL (2026-11-27).** Four more door rules
+answer the maintainer's ruling of 2026-11-24 ([Rulings
+(2026-11-16)](#rulings-2026-11-16), entry 8): Gameplay Fixes BI, a door a
+bot cannot open is a wall to it; BJ, a bot treats an enemy that only a
+locked door keeps it from as if it were not there; BK, a bot that holds
+the key to a door on its way walks its route into the door; and BL, a bot
+with no enemy it can get at breaks down the locked door in its way. They
+were measured on the finished game with the setting on and off, and with
+the setting on in a measuring build of it, never committed, that switches
+the four rules off one by one, the last first. With all four switched off
+it plays seed for seed as the game before them (the game of the paragraph
+above, with Gameplay Fixes BF, BG and BH); with BI alone, with BI and BJ,
+and with BI, BJ and BK it plays seed for seed as the game read when each
+rule was added; and counting changes nothing (with every rule the counted
+runs read the finished game's rows seed for seed). A sixth point keeps all
+four rules but a bot that fights only hand to hand no longer walks into
+the door it holds.
+
+With the calibration suites: Westlands, The Long Season and the Tower
+read, with either setting, what they read before the four rules, seed for
+seed, survivors and damage taken, and so does Imaginations on all its
+forty seeds (in its counted battles no bot is handed a door at any point);
+with the setting off Gladiator and The Tryxian Chronicles read as before,
+seed for seed. The twelve mode bot games read their lines as before with
+the setting on and unset, each game's own test passing. The playtest
+sweeps of Westlands and The Long Season read as before run for run; the
+Imaginations sweep differs on The Castle of Gold alone (the campaign
+cleared 3 of its 9 runs where it cleared 2, the crew alive 9 against 6).
+The Castle of Gold with the campaign's own crew (twenty seeds, 6,000
+ticks) is done in 4 runs of 20 where it was done in 5 before the four
+rules; no walker holds a door of its gate as its foe on any tick, before
+the rules or after, and the gate falls in no run (stray blows took 1 to 30
+hit points off a gate door in 5 runs, and in 14 before). Level play's
+casters with two or more specials pool 213 against 232 before the four
+rules (the floor is 180), BK and BL changing nothing there; its crew alive
+at tick 2400 reads 12, 5, 9, 11, 7, 9 by seed (53) against 9, 11, 7, 8, 9,
+7 (51), and no bot there is handed a door at any point.
+
+On Gladiator and The Tryxian Chronicles, twenty seeds of each level, 600
+ticks, the setting on, at the points (a bot-tick is one tick of one bot; a
+stay is a locked door refusing the bot a step while its foe stands beyond
+the door, from the first such tick to the last with gaps of up to 20
+ticks; the levels' bots are every bot but the crew's):
+
+| count | before any door rule | BI | BI and BJ | BI, BJ and BK | all four | all four, no walk into a held door |
+|---|---|---|---|---|---|---|
+| the levels' bots' stays at a locked door longer than 60 ticks | 826 | 152 | 66 | 66 | 65 | 65 |
+| ... the ticks those stays span | 180,723 | 13,617 | 6,060 | 6,061 | 5,943 | 5,943 |
+| bot-ticks a locked door refused one of the levels' bots a step | 233,215 | 66,753 | 44,392 | 44,376 | 52,927 | 53,275 |
+| walks an ally's push queued into a door the pushed bot cannot open | 127,611 | 0 | 0 | 0 | 0 | 0 |
+| enemies let go that only a locked door kept the bot from | 0 | 0 | 3,303 | 3,303 | 3,474 | 3,436 |
+| FIRE ARROWS cast with only such enemies in its scan | 504 | 524 | 0 | 0 | 0 | 0 |
+| re-plans the key holder's rule changed | 0 | 0 | 0 | 35 | 57 | 40 |
+| bots handed a door | 0 | 0 | 0 | 0 | 2,888 | 2,891 |
+| bot-ticks holding a door | 0 | 0 | 0 | 0 | 1,302,984 | 1,312,234 |
+| blows on the door a bot held | 0 | 0 | 0 | 0 | 29,981 | 29,931 |
+| doors broken by blows by tick 600 (of 6,680) | 0 | 0 | 0 | 0 | 24 | 23 |
+| doors opened with a key by tick 600 | 2 | 23 | 10 | 10 | 3 | 3 |
+| Gladiator, crew survivors per run of the campaign | 116.65 | 117.50 | 115.00 | 115.00 | 116.90 | 114.70 |
+| The Tryxian Chronicles, the same | 38.65 | 39.00 | 39.60 | 39.60 | 39.85 | 39.85 |
+
+The levels. On the twenty seeds, against the game before the four rules,
+Gladiator reads 116.65 survivors per run of the campaign and now 116.90 (m
+0.25, se 1.95), The Tryxian Chronicles 38.65 and 39.85 (1.20, 0.39). Two
+levels moved by two errors or more: Gladiator 37 5.60 to 2.75 (-2.85,
+0.76, fell at two errors on twenty seeds) and Tryxian 103 6.70 to 7.40
+(0.70, 0.27, rose by two errors); between the points Gladiator 24 rose
+with BI and fell with BJ, Tryxian 103 rose with BJ and Gladiator 13 rose
+with BL, each by two errors on twenty seeds, and BK moved no row. Twenty
+seeds move by more than a survivor from a change of the shared random
+draws alone, so those four levels were read again on 200 further seeds
+(1000 to 1199), at every point: Gladiator 37 reads 5.62, 4.73, 3.65, 3.65
+and 3.70 (BI -0.90 (0.16), BJ -1.08 (0.23), BL 0.05 (0.25); all four -1.93
+(0.21)): as a trace of the level found, eleven fighters of another side in
+the crew's own room let go of an enemy two locked doors away and come at
+the crew, which is the rule working; Gladiator 13 3.13, 3.17, 1.59, 1.59
+and 3.38 (BJ -1.57 (0.23), BL 1.79 (0.25); all four 0.26 (0.26), back; why
+was not traced: on the twenty seeds its hostiles standing at tick 600 read
+1,076 with BI, 1,359 with BJ as well and 1,043 with every rule, summed
+over the battles, and with BL its locked-in bots are handed their doors);
+Gladiator 24 6.12, 6.32, 5.43, 5.43 and 5.53 (BI 0.20 (0.15), which twenty
+seeds called a rise, BJ -0.89 (0.22); all four -0.60 (0.21), two errors
+under, less than the measure can prove); and Tryxian 103 6.78, 6.83, 6.71,
+6.71 and 6.71 (all four -0.07 (0.11), back: its twenty-seed rise is the
+seeds' draw). The walk into a held door changes none of the four on the
+200 seeds (Gladiator 13 -0.04 (0.25)). Against the game before these
+fixes, with every rule, Gladiator reads 116.90 against 127.40 (m -10.50,
+se 4.23) and The Tryxian Chronicles 39.85 against 44.45 (-4.60, 1.44); on
+the twenty seeds these fell at two errors: Gladiator 14 (4.45 to 2.95), 18
+(6.25 to 4.30), 37 (4.45 to 2.75) and 45 (6.60 to 5.35), Tryxian 105 (2.10
+to 0.55) and 111 (3.95 to 0.15); these rose by two errors: Gladiator 8
+(3.15 to 4.30), 22 (3.15 to 4.70) and 40 (2.70 to 4.15). Gladiator 7 and
+13 are no longer in the first list and Gladiator 37 and 45 are new in it,
+Gladiator 22 new in the second. Nothing is eased.
+
+Gladiator 13, 36 and 37 played to tick 1,800 (twenty seeds; crew survivors
+at ticks 600, 1,200 and 1,800): Gladiator 13 reads 2.15, 1.00 and 0.80
+before the four rules and 3.45, 1.90 and 1.15 with them, its doors broken
+by blows 1 by tick 600 and 66 by tick 1,800 (none before the rules; the
+first at tick 543) and opened with a key 52 against 77; Gladiator 36 2.00,
+1.55 and 1.55 against 3.60, 2.45 and 2.45, none of its 60 doors broken at
+any point; Gladiator 37 5.60, 5.05 and 5.05 against 2.75, 1.90 and 0.80,
+its doors broken 7 by tick 600 and 59 by tick 1,800 (the first at tick
+432; 10 by tick 1,800 before the rules, the first at 1,342) and its
+hostiles standing at tick 1,800 39 of the twenty battles' against 191.
+Over the three levels 648 doors were handed, 125 of them fell to blows by
+tick 1,800, a median of 848 ticks after the door was first handed (80 to
+1,792), and the rest still stood: a door mostly holds for longer than two
+minutes.
+
+- Doors as foes, with every rule: 2,854 of the levels' bots and 34 of the
+  crew's bots were handed a door (1,377 hand-outs by the bot's own
+  decision with no foe, 3,438 by the world's hand-out after an act, 124
+  swaps by the keep, for the levels' bots), 1,134 doors in all, at 213
+  pixels from the bot on average (2,998 hand-outs within 100 pixels, 584
+  over 600, the farthest 1,632: fewest doors before the nearest door).
+  Bots held a door for 1,302,984 bot-ticks; the doors they held took
+  29,981 blows and lost 1,435,547 hit points, and doors beside a held door
+  10,723 blows and 468,977 hit points (a door next to the held one); a bot
+  that held no door struck one 521 times (651 before the four rules), the
+  measuring crews' seated fighters 455 times. 24 doors fell to blows by
+  tick 600 (Gladiator 13, 23, 37 and 39, Tryxian 109; the first at tick
+  217) and 3 were opened with a key; 6,653 of 6,680 stood at tick 600. No
+  blow fell on a held door that led to no enemy.
+- Letting go: a bot that held a door and could get at an enemy let the
+  door go on the same tick 249 times and on the next 240 times (an enemy
+  that came into reach after the bot's act), never later; the keep let a
+  door go 489 times because the bot could get at an enemy, 851 because no
+  enemy was shut away from it any more, and once because the door no
+  longer barred it (a key: that bot let it go at its next keep; no other
+  bot held a door while it held that door's key). The random act's
+  one-in-80 came 170 times while a bot held a door, and it kept the door
+  each time. The same door was handed again within 10 ticks of the keep
+  letting it go 57 times, all archers on Gladiator 7 and 11 whose shot
+  reached, from where they stood, an enemy that only a locked door kept
+  them from on foot, while that enemy walked into and out of the shot's
+  line (traced on two of them); and within 10 ticks of a fighter foe 1,190
+  times (769 after the bot's own shot passed the door and struck a
+  fighter, 369 after a fighter struck it through the door).
+- Key holders: the key holder's rule changed the chase's branch on 35
+  re-plans (57 with every rule); bots opened 10 doors with a key with
+  Gameplay Fixes BI and BJ, 10 with BK too, 3 with every rule (2 before
+  the four rules, 23 with BI alone; why they fall was not traced); a key
+  holder was kept off its door by bots of its own side pressed against it
+  on 175 bot-ticks at 4 doors, all on Gladiator 37, each door still
+  standing at tick 600.
+- The casts: FIRE ARROWS was cast 504 times before the four rules and 524
+  with BI alone by an archer whose every enemy within its 400-pixel scan
+  was one only a locked door kept it from, and never with BJ; the cast
+  rules left a door-shut enemy out of 34,541 questions with BJ (33,949
+  answered no) and 4,486 with every rule (3,937 no).
+- Shots and swings at the door a bot holds, for the question whether a
+  locked door should always stop a hit: of the 53,813 shots bots fired
+  while they held a door, 50,596 met that door, 21,019 flew through it on
+  the clash roll and 796 of those then struck a fighter; of the 422
+  swings, 229 met it, 133 passed it and none struck a fighter. Measured on
+  a trial build, 2026-11-25, in a staged room of sixteen bots: with no
+  clash roll at the door a bot holds the room's door fell on 20 seeds of
+  20, between ticks 455 and 1,773, against 9 of 20 with the clash roll.
+- The walk into a held door (the sixth point against all four): it is for
+  the bots that fight only hand to hand, on these campaigns the small
+  slimes (28 handed a door); with it their own steps into the door started
+  321 swings against 121, they touched it on 13,707 bot-ticks against
+  8,912, and their blows on it took 1,878 hit points off against 1,103.
+  Without it Gladiator reads 114.70 survivors per run against 116.90 (m
+  -2.20, se 1.00), no level of it by two errors, and Gladiator 13, the one
+  of the four levels read again that it reaches, reads the same on the 200
+  seeds.
+- Limits, each with its number: a bot can still be seen pressed at a
+  locked door when its enemy is near and has a way round (the ATTACK
+  order's step, as at a wall, #582): what is left is 65 stays longer than
+  60 ticks and 52,927 bot-ticks a locked door refused a step of one of the
+  levels' bots, against 826 and 233,215 before the rules; a shot or a
+  swing at a door passes through it on the clash roll (above); a crowd at
+  a one-cell doorway strikes the door one bot at a time (the staged room
+  of twelve orcs in the BL row, not counted here); a key holder behind its
+  own side pressed against the door is held off it (above); a fighter
+  whose weapon is wider than the doorway lands nothing on a door set in a
+  wall (the 92 clerics handed a door landed 12 blows on it, 285 hit
+  points); a swing or a shot can strike the door beside the one aimed at
+  (172 swings and 10,400 shots); a teleporter is not a way round; a door a
+  script names a bot's foe is let go like any other (no stock level names
+  one); a key holder whose foe stands on a cell its kind of fighter cannot
+  stand on walks as for a far foe; and a replay recorded with the setting
+  on before these fixes parts from its recording at the first enemy let go
+  or door handed.
+- The cost: the classic campaigns' measure run (twenty seeds, uncounted)
+  with every rule took 213.0, 207.6 and 207.0 seconds against 274.4, 270.8
+  and 271.5 with the four rules switched off in the same build, run in
+  turn on a box whose load read 10.87 to 50.51: 0.769 of the time, so the
+  rules make it faster (Gameplay Fixes BI runs no route search that could
+  only fail).
+
 ## The scene tests
 
 Fixes A to M, S and U each have a scene that plays them in the real game,
@@ -4690,15 +4895,17 @@ where an entry was only told to him, or is still open, it says so.
 
 ## Rulings (2026-11-16)
 
-The line check, the kept turn and the ATTACK order (Gameplay Fixes BD,
-BE, BC; #538, #513, #447), the flyer's own-floor foe (#512), and the door
+The line check, the kept turn and the ATTACK order (Gameplay Fixes BD, BE,
+BC; #538, #513, #447), the flyer's own-floor foe (#512), and the door
 rules his answers of 2026-11-18 and 2026-11-19 asked for (Gameplay Fixes
-BF and BG, and BH, built when BG turned a test red). Each entry below is
-what the maintainer said, or what was only told to him, and what the game
-or its tests do because of it. He answered the re-balance on 2026-11-16,
-how a level is eased on 2026-11-17, how the easing ends, the arrow slit
-and what a shooter may fire at on 2026-11-18, and why bots attack doors
-and guards erase them on 2026-11-19.
+BF and BG, and BH, built when BG turned a test red), and those his answers
+of 2026-11-24 asked for (Gameplay Fixes BI, BJ, BK and BL). Each entry
+below is what the maintainer said, or what was only told to him, and what
+the game or its tests do because of it. He answered the re-balance on
+2026-11-16, how a level is eased on 2026-11-17, how the easing ends, the
+arrow slit and what a shooter may fire at on 2026-11-18, why bots attack
+doors and guards erase them on 2026-11-19, and what bots do at a locked
+door on 2026-11-24.
 
 1. **Sixteen setting-on rows were given a fact of their own rule again
    after the three fixes were ported: of the fifteen the ports left with
@@ -5083,6 +5290,102 @@ and guards erase them on 2026-11-19.
    - #593: the measuring crews of the tests seat their first four fighters
      while nobody drives them, so to Gameplay Fixes BF those four are a
      player's fighters.
+8. **What bots do at a locked door: Gameplay Fixes BI, BJ, BK and BL.**
+   Shown on 2026-11-19 that a bot with no key stood pressed against a
+   locked door (entry 6, its last numbers), the maintainer asked why a
+   door is treated differently from a wall: getting the key makes sense,
+   standing next to the door makes none. He was asked what a bot should do
+   about an enemy it cannot reach, and was shown trials of the answers; on
+   2026-11-24 he wrote: "okay, give me a proposal to make this door
+   situation make sense. Maybe bots only try to knock down doors if
+   there's no other way to get to an enemy? Maybe they have to wander
+   randomly for the key but then book it right to the door after that?
+   There's gotta be something more reasonable than either having bots be
+   unable to get through doors vs doors being somewhat useless cause bots
+   just unlock them". Proposed a bot that breaks the door in its way down
+   only as a last resort, a key it holds staying the quick way and no bot
+   wandering for a key, he answered "let's actually not treat the player's
+   side special here." and then "like, everyone should try to break down
+   the door when there is no alternative (and stop when the alternative is
+   pathable)". Built for it, behind the setting and in both games, one
+   rule a letter: a door a bot cannot open is a wall to its route, its
+   straight walk and the push an ally gives it (Gameplay Fixes BI); a bot
+   treats an enemy that only a locked door keeps it from as if it were not
+   there (BJ); a bot that holds the key to a door on its way walks its
+   route into the door (BK); and a bot with no enemy it can get at breaks
+   down the locked door in its way, and lets it go the moment it can get
+   at one (BL). No rule asks whose side a bot is on. Choices made in this
+   work on the way, for him to overrule, each with its alternative:
+   - a tower and a guard at its post treat a locked door as a wall (BI)
+     but are asked none of the other three rules, so neither is ever
+     handed a door (the alternative: leave them out of BI as well, so that
+     a tower's route and straight walk turn it toward the door again and a
+     guard at a door is pushed into it);
+   - no bot goes to fetch a key: a key a bot holds opens its door (BK),
+     and a key lying in a room stays there (the alternative, measured on a
+     trial build, 2026-11-21: the crew's bots fetching keys moved no
+     classic level, and every bot fetching them moved Gladiator 13 alone);
+   - a bot that gets the key of the door it holds lets the door go at its
+     next keep and takes the enemy behind it, which BK then walks it to
+     (the alternative: it keeps striking a door it could open; in the
+     measured classic battles a bot got the key of the door it held once,
+     and let the door go at its next keep);
+   - of the doors in a bot's way the one through which the fewest doors
+     lead to an enemy is handed, the nearest only among equals, because a
+     door costs more than a thousand ticks of blows and a walk of 600
+     pixels a hundred or two (the alternative: the nearest door first; the
+     handed doors lay 213 pixels from their bot on average, 584 of the
+     4,993 hand-outs over 600 pixels);
+   - a tent counts as an enemy a bot breaks a door for (the alternative:
+     only a living enemy, and a bot shut out from a tent alone would stand
+     where it is);
+   - a bot keeps the door it holds through its random act, whose one-in-80
+     search for a near foe it no longer makes, so that among the door
+     rules the keep alone lets a door go (a blow that passes through the
+     door onto a fighter, a new attacker's blow, a yell and a shooter's
+     chase near its door still give a door holder a new foe); the
+     alternative: the random act retargets a door holder as it retargets
+     any bot (the one-in-80 came 170 times while a bot held a door);
+   - a bot that fights only hand to hand walks into the door it holds, and
+     a bot that shoots shoots at it from where its line check passes:
+     handed a door, a melee bot first drifted along the wall beside it and
+     landed almost no blow (traced on 2026-11-25: 97 in 100 of an orc's
+     swings at its door came from the wall-following walk's side probe,
+     whose pad struck the wall beside the door), and the alternative
+     measured then, every bot routed into its door, cost the shooters
+     their shots (in a staged room an elf's shots at the door fell from
+     30.6 a seed to 2.5);
+   - nothing is stored for the rule: the door a bot holds is its foe,
+     which a snapshot carries, so a door a level script or a mod names a
+     bot's foe is let go like any other (the alternative: a table of
+     handed doors, which a snapshot would have to carry);
+   - "gets at" counts an enemy the bot's shot lands on from where it
+     stands, across water too (the alternative: only an enemy it walks to,
+     and an archer would be handed a door while it could shoot an enemy
+     across water);
+   - a bot keeps its door when a better door appears and takes another
+     only when its own no longer leads to an enemy (the alternative:
+     always the best door, which could send a bot back and forth between
+     two doors);
+   - a melee bot with no route into its door (a body wider than the
+     doorway, one door of a two-door doorway) takes its old walk (the
+     alternative: a stand-and-swing at the door once beside it, a rule of
+     its own).
+
+   Whether a locked door should always stop a shot or a swing is asked and
+   open; the default built is the clash roll, which lets 6 in 10 through:
+   with every rule 21,019 of the 50,596 shots that met the door their bot
+   held flew through it and 796 of them then struck a fighter, and on a
+   trial build, 2026-11-25, with no clash roll at the door a bot holds a
+   staged room's door fell on 20 seeds of 20, against 9 of 20 with it.
+   Measured on the finished game (see [Balance](#balance)): the levels'
+   bots' stays at a locked door longer than 60 ticks read 826 before the
+   four rules, 152 with BI, 66 with BJ as well, 66 with BK and 65 with
+   every rule; 2,888 bots were handed 1,134 doors, 24 doors fell to blows
+   by tick 600, a bot that could get at an enemy let its door go on that
+   tick or the next, and on Gladiator 7 and 11 archers whose shot now and
+   then reached an enemy they could not walk to let their door go and took
+   it again 57 times.
 
 ## Out of scope
 
