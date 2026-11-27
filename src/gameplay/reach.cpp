@@ -798,7 +798,7 @@ bool reaches_index(GameWorld& world, walker& w, Layer& layer, std::int32_t start
     const std::int32_t rs = layer.region[static_cast<std::size_t>(start)];
     const std::int32_t rg = layer.region[static_cast<std::size_t>(goal)];
     // rule: og::reach: on a layer with no stair, a standing start gets to its own region alone.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     // tests: SemReach.twelve_askers_of_one_kind_in_one_room_are_answered_once_a_tick
     if (rs >= 0 && !layer.any_link)
         return rg == rs;
@@ -1215,41 +1215,41 @@ std::vector<Cell> Asker::closed_cells(const walker& door)
 
 Exit Asker::door_shut_exit(const walker& b)
 {
-    // rule: og::reach: only a walker asks() names is judged; any other gets today's answer.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // rule: og::reach: only a walker asks() names is judged; any other is answered "no door keeps it".
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (!asks(w_) || !fresh())
         return Exit::NotAsked;
     // rule: og::reach: with no live door barring its kind nothing is door-shut for it, and no map is
     //   built for the question.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     // tests: SemReach.with_no_door_nothing_is_door_shut_and_every_route_is_the_classic_route
     if (r_.barring->doors.empty())
         return Exit::NoBarringDoor;
     // rule: og::reach: only a live living or generator is judged.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (b.dead() || (b.query_order() != Order::Living && b.query_order() != Order::Generator))
         return Exit::NotAFighter;
     // rule: og::reach: a body on another floor is not judged.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (b.floor() != w_->floor())
         return Exit::OtherFloor;
     index_start();
     // rule: og::reach: a walker whose start cell has no region (it stands inside terrain or on air)
     //   is not judged.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (r_.start_region[static_cast<std::size_t>(Mode::Shut)] < 0)
         return Exit::NoRegion;
     // rule: og::reach: a body the walker walks to with the doors that bar it shut is no door's.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (walks_to(b, Mode::Shut))
         return Exit::WalksShut;
     // rule: og::reach: a body the walker could not walk to even with every door open (a wall,
-    //   water) is no door's either: today's play.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer
+    //   water) is no door's either: it plays as it did before the door rules.
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it
     if (!walks_to(b, Mode::Open))
         return Exit::NoWayOpen;
     // rule: og::reach: a body the walker's shot lands on from where it stands is kept by the shot.
-    // tests: SemReach.each_exit_of_door_shut_gives_todays_answer, parity:archer_bot_shot_past_door_fence_scen99, parity:archer_bot_shot_past_door_fence_fixes_scen99
+    // tests: SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it, parity:archer_bot_shot_past_door_fence_scen99, parity:archer_bot_shot_past_door_fence_fixes_scen99
     if (shoots_at(*w_, b))
         return Exit::Shot;
     return Exit::DoorShut;
@@ -1610,7 +1610,7 @@ bool holds_door_key(walker& w)
 bool opens_way(walker& w, const walker& b)
 {
     // rule: Gameplay Fixes BK: only a walker og::reach::asks names is asked (the setting on, a bot,
-    //   not a tower, not a guard at its post); every other walker takes today's branch.
+    //   not a tower, not a guard at its post); every other walker takes the branch it took before.
     // tests: SemBotReach.the_key_opens_the_way_only_for_a_bot_that_holds_it_and_has_no_keyless_way
     // tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch
     if (!asks(&w))

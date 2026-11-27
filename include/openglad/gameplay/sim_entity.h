@@ -225,9 +225,6 @@ public:
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     [[nodiscard]] short frame() const noexcept { return frame_; }
 
-    // The world whose lists hold this entity (null outside one).
-    [[nodiscard]] GameWorld* owning_world() const noexcept { return owning_world_; }
-
     // A door's dead, team and level setters change what a door question of og::reach reads
     // (reach.h): on a door of a world this tells that world's maps (Maps::note_doors). The
     // statistics' level setter calls it too. Defined in sim_entity.cpp.

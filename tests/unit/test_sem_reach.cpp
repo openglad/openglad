@@ -1029,7 +1029,7 @@ TEST_F(SemReach, a_door_off_the_grid_closes_exactly_the_cells_its_box_meets)
     }
 }
 
-// With the setting off nothing is asked and no map is built: every question answers today's
+// With the setting off nothing is asked and no map is built: every question answers as before
 // ("not judged"), the build counter stays 0, also through a 600-tick battle beside doors. With the
 // setting on the same first question builds a terrain half and a door half (2), and in the battle
 // the bots' routes ask the maps (Gameplay Fixes BI, a door a bot cannot open is a wall to it). An
@@ -1129,7 +1129,7 @@ TEST_F(SemReach, with_no_door_nothing_is_door_shut_and_every_route_is_the_classi
     EXPECT_EQ(routes[0], routes[1]);
 }
 
-// Each exit of door_shut gives today's answer ("no door keeps it") but the last. Setting on unless
+// Each exit of door_shut answers "no door keeps it" but the last. Setting on unless
 // said. An orc bot (melee-only) in a pen of walls whose one gap holds an enemy door; its foe
 // outside. Exits: not asked (the setting off; a seat; a tower; a guard), no barring door (the door
 // of its side; its key held), not a fighter (a dead foe; a door), another floor, no region (it
@@ -1137,7 +1137,7 @@ TEST_F(SemReach, with_no_door_nothing_is_door_shut_and_every_route_is_the_classi
 // box of walls), the shot (an archer on the pen's floor shooting across water at a foe on an island
 // whose one bridge holds the door), and door-shut.
 // Fails when broken: door_shut_exit with its NoWayOpen exit removed (the walled foe reads DoorShut).
-TEST_F(SemReach, each_exit_of_door_shut_gives_todays_answer)
+TEST_F(SemReach, each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it)
 {
     const auto scene = [&](short fixes, walker*& orc, walker*& foe, walker*& door) {
         fresh_world(fixes);
@@ -1656,7 +1656,7 @@ protected:
                 ++n;
         return n;
     }
-    // The pen of each_exit_of_door_shut_gives_todays_answer: walls round cells 10..14, the gap at the
+    // The pen of each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it: walls round cells 10..14, the gap at the
     // top (12,10) holding an enemy door (team 3); the door returned.
     walker* pen_with_a_door()
     {
@@ -4559,7 +4559,7 @@ TEST_F(SemBotBreak, a_bot_that_gets_at_an_enemy_is_handed_nothing_even_with_no_f
 // so the orc is shut out by nothing) and by the door walk's own guard against a start cell with no
 // region; (3) by the walk reading the orc shut out by nothing and by its having no hostile's region
 // to end at.
-// SemReach.each_exit_of_door_shut_gives_todays_answer holds door_shut_exit's exits.
+// SemReach.each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it holds door_shut_exit's exits.
 TEST_F(SemBotBreak, a_bot_standing_inside_a_wall_or_not_shut_out_is_handed_nothing)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -4690,7 +4690,7 @@ TEST_F(SemBotBreak, a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_bett
 }
 
 // The keep (statistics::keeps_door, which GameWorld::tick asks after every act) leaves alone a
-// walker it does not ask. The pen of each_exit_of_door_shut_gives_todays_answer (walls round cells
+// walker it does not ask. The pen of each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it (walls round cells
 // 10..14, an enemy door in its gap), an orc of team 1 inside at cell (12,12) holding the pen's door
 // (set_foe), its one enemy a soldier of team 2 outside at cell (12,5), killed before the keep is
 // asked: the orc is shut out no more, so a keep asked of it lets the door go (the control: its own
@@ -5287,7 +5287,7 @@ TEST_F(SemBotBreak, a_big_bot_whose_foe_is_one_door_of_a_two_door_doorway_runs_n
 // melee-only bot og::reach::asks names whose foe is a live door), its three sites (walk_to_foe's
 // near test, the one hand-over statistics::hand_door, and the route follower
 // walker::follow_path_to_foe), and played scenes of the walk. The pen of
-// each_exit_of_door_shut_gives_todays_answer (walls round cells 10..14, an enemy door, team 3, in
+// each_exit_of_door_shut_but_the_last_answers_no_door_keeps_it (walls round cells 10..14, an enemy door, team 3, in
 // its top gap at cell (12,10)) unless a test says otherwise.
 // ---------------------------------------------------------------------------------------------
 
