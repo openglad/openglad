@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <list>
 
 class walker;
@@ -46,7 +47,28 @@ class obmap
 		// lost, so an enemy weapon in flight, door or grown tree on the box
 		// blocks, as the loud probe's lost roll blocks (a bot gate's strict
 		// pad question, Gameplay Fixes AV). Still no draw; loud ignores it.
-		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false);
+		// The doors-only question of og::reach (GameWorld::door_bars_at): the box of `ob` at
+		// (x, y) is asked on `floor`'s piles, through this loop's own skips (self, stale, dead,
+		// friendly), its height test and its box test, and only a door that bars `ob`
+		// (og::reach::door_bars) and is not its own foe answers "blocked"; every other body is
+		// passed. Nothing is eaten, opened, collided or drawn. Asked with quiet and weapons_block.
+		struct DoorsOnly
+		{
+			int floor = 0;
+		};
+		short query_list(walker  *ob, short x, short y, bool quiet = false, bool weapons_block = false,
+		                 const DoorsOnly* doors_only = nullptr);
+		// The floor a body of floor `floor` is filed under: 0 to 120, a floor outside filed as floor
+		// 0 or floor 120. The one rule for a walker's own registration, a pile lookup by floor, the
+		// doors-only question and og::reach's maps, which close a door's cells on this floor.
+		static int filed_floor(int floor);
+		// How many times a door's body was filed in, moved in or taken out of this map (and once
+		// more when an external clear dropped the doors it filed): og::reach's maps compare it at
+		// every question, so a map built before such a change is not read after it.
+		std::uint64_t door_writes();
+		// Does this map file any door (walker::is_door)? A box question about doors asks nothing
+		// more when it does not.
+		bool files_a_door();
 		// Takes `ob` out of every pile walker_to_pos files it under and out of
 		// walker_to_pos: 1. A walker walker_to_pos does not know is a miss: 0,
 		// and nothing changes (#504). `ob` is only a key and is never read, so a
@@ -90,6 +112,12 @@ class obmap
 		// individual piles behind obmap's back.
 		std::unordered_map<std::uint32_t, std::list<walker*>*> cell_index_;
 		void sync_cell_index();
+		// The doors filed here (a door is walker::is_door): add() files one, remove() takes one
+		// out by its pointer alone (a caller may hold a freed pointer, which is never read), so
+		// that remove() knows a door left without reading the walker. Each change bumps
+		// door_writes_.
+		std::unordered_set<const walker*> filed_doors_;
+		std::uint64_t door_writes_ = 0;
 };
 
 // The obmap's box test (obmap.cpp): two boxes meet when they overlap by more

@@ -1,6 +1,7 @@
 -- core lib: effect_hook_blade — the orc captain's chained blade: it spirals out from the captain and back like the boomerang, eats incoming shots, and reels the first foe it touches to the captain's feet (cookbook: docs/lua-classpacks-design.md §3).
 
 local C = og.C
+local gf = og.use("gameplay_fixes")
 local kc = og.use("kit_captain")
 local hits = og.use("effect_common").hits
 
@@ -202,16 +203,20 @@ function M.on_act(self)
   -- While it spins it is a shield: foe shots that close in are cut down,
   -- each costing the blade its damage in hitpoints (the boomerang's guard).
   -- Solid scenery (a bone wall, a war banner) is neither a shot nor a
-  -- shield: the blade passes it by, and foes must chop it down.
+  -- shield: the blade passes it by, and foes must chop it down. With
+  -- Gameplay Fixes BG it passes a door and a grown tree by too; the blade
+  -- asks the boomerang's own question, gf.guard_passes_by.
   local weapons = og.find_foe_weapons_in_range("weap", self:sizex() * 2, self)
   -- plumbing: iterates foe weapons in range; rule below
   for i = 1, #weapons do
     local weapon = weapons[i]
     -- rule: While it spins, the hook blade cuts down foe shots within twice its size, each costing
-    --   it the shot's damage in hp; solid scenery weapons (bone wall, war banner: blocks_placement)
-    --   are passed by, never destroyed.
+    --   it the shot's damage in hp; what gf.guard_passes_by answers is passed by, never destroyed,
+    --   and costs nothing: solid scenery weapons (bone wall, war banner: blocks_placement), and
+    --   with Gameplay Fixes BG a door or a grown tree.
     -- tests: KitCaptain.hook_eats_incoming_projectiles, KitCaptain.hook_guard_passes_scenery_by
-    if not weapon:blocks_placement() then
+    -- tests: KitCaptain.hook_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on
+    if not gf.guard_passes_by(weapon) then
       -- hp is a C++ float: per-op rounding.
       self.hp = og.fsub(self.hp, weapon:damage())
       weapon.dead = 1

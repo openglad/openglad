@@ -126,25 +126,85 @@ class statistics
 		// along its heading). Everything else the probe met stays untouched.
 		// Off, the probe alone. See right_walk.
 		bool path_probe(Side side, bool quiet);
-		// Gameplay Fixes BB (#497): the turn and the swing of walk_to_foe's
-		// near branch (a foe within 100 px on a tick the bot re-plans).
-		// Both are defined at the end of stats.cpp.
-		// near_turn: one notch toward `aim`; answers whether the bot already
-		// faced it. With the setting on a bot that did not keeps `aim` as the
-		// facing it is turning to (enddir), so its next acts finish the turn.
-		bool near_turn(short aim);
+		// Gameplay Fixes BB (#497) and BE (#513): the turn toward a foe, and the
+		// swing of walk_to_foe's near branch (a foe within 100 px on a tick the
+		// bot re-plans). Both are defined at the end of stats.cpp.
+		// turn_to_foe: one notch toward `aim`; answers whether the bot already
+		// faced it. It serves the near branch and living::act_random's refused
+		// shot (a foe anywhere in the sight box). With the setting on a bot that
+		// did not face `aim` keeps it as the facing it is turning to (enddir),
+		// so its next acts finish the turn, and a tower (a stationary living) is
+		// snap-faced at once, its heading included.
+		bool turn_to_foe(short aim);
 		// near_swing: classic, init_fire() along the heading, unasked. With
 		// the setting on only a bot that already faced its foe swings or
 		// shoots, along that facing, and only when the blow can land: a
 		// shooter asks fire_check, a melee-only bot (which fire_check always
 		// refuses) asks whether a foe's body stands on its weapon's pad.
 		void near_swing(bool faced, short xdelta, short ydelta);
+		// A foe's body stands on this bot's weapon pad: the one place a melee-only bot's swing
+		// can land (walker::fire_pad_answer: quiet, no draw, nothing built). walk_to_foe's near
+		// branch (fix BB) and the ATTACK order (fix BC) ask it. Defined at the end of stats.cpp.
+		[[nodiscard]] bool foe_on_pad() const;
+		// The ATTACK order's round when the shot is refused for the bot's facing, or because the
+		// bot is melee-only with its foe inside its weapon's reach. Classic: it faces the foe (the
+		// guard-standoff fix). With Gameplay Fixes on a bot that already faced its foe on its own
+		// floor fights (fix BC); in this arm only a melee-only bot can already face its foe.
+		// Defined at the end of stats.cpp.
+		void attack_face_or_fight(short deltax, short deltay);
 		// walk_to_foe's near branch: does the chaser take the foe find_near_foe
 		// answered in place of the one it holds? A strictly nearer one (#320);
 		// and, for a flyer whose held foe is on another floor, one on its own
 		// floor (#447: a flyer never changes floors). Defined at the end of
 		// stats.cpp.
 		bool near_adopts(const walker* near_foe, std::uint32_t held_distance, bool flyer) const;
+		// Gameplay Fixes BJ: a bot treats an enemy that only a locked door keeps it from as if it
+		// were not there (og::reach::door_shut_exit). All defined at the end of stats.cpp.
+		// keeps_foe: asked of a live held foe at the top of a SEARCH and an ATTACK round; a foe
+		// only a door keeps the bot from is let go (no foe, orders and route cleared: LetGo); one
+		// it holds only by its shot is ByShot; every other foe is Kept.
+		enum class FoeKeep : std::uint8_t { Kept, ByShot, LetGo };
+		FoeKeep keeps_foe();
+		// search_round: the SEARCH order's round with a live foe: keeps_foe, then the hunt
+		// (walk_to_foe), or for a foe held only by the shot a turn to it and the shot test, no step.
+		void search_round();
+		// end_order: the front order's count to 0 (the round's tail pops it), if one is left.
+		void end_order();
+		// attack_step: the ATTACK order's step toward its foe; none for a foe held only by the shot.
+		void attack_step(short xdelta, short ydelta);
+		// shot_attacks: direct_walk's shot test (fire_check; on a pass the orders wiped, a turn to
+		// the foe and an ATTACK of 30+rng(25) rounds); true when it passed.
+		bool shot_attacks(float xdelta, float ydelta);
+		// idle_walk: the idle decision of `bot` (the living deciding, not the stats' owner) with no
+		// foe: a bot shut out by a door is handed the door in its way (Gameplay Fixes BL), or stays.
+		short idle_walk(walker& bot, std::int32_t rounds);
+		// let_go: a held foe let go (no foe, orders, leader and route cleared).
+		void let_go(walker& bot);
+		// keeps_door: Gameplay Fixes BL's keep of a live door `bot` holds (LetGo after letting it
+		// go, Kept otherwise, the door possibly replaced by the one breaks answers); Kept for a
+		// bot these statistics do not name as their owner.
+		FoeKeep keeps_door(walker& bot);
+		// holds_door: Gameplay Fixes BL: is `bot` a bot og::reach::asks names whose foe `foe` is a
+		// live door (a door holder)? Written once for its askers: keep_asked_of (which adds the
+		// owner test) and walks_into_door (which adds the melee-only flag).
+		static bool holds_door(const walker& bot, const walker* foe);
+		// keep_asked_of: Gameplay Fixes BL: is the keep (keeps_door) asked of `bot`, a door holder
+		// (holds_door, asked of `bot`'s own foe) that these statistics name as their owner? The one
+		// owner test, asked by the keep and by living::act_random (a bot the keep is asked of keeps
+		// its door through the one-in-80 retarget; every other walker retargets as before).
+		bool keep_asked_of(const walker& bot) const;
+		// walks_into_door: Gameplay Fixes BL: is `bot` a melee-only bot (BIT_NO_RANGED) that
+		// og::reach::asks names, whose foe `foe` is a live door? Such a bot breaks its door by
+		// walking into it: its route at any distance (never walk_to_foe's near branch), a re-plan
+		// on its next chase after it is handed the door (hand_door), and its route's last hop into
+		// the door (walker::follow_path_to_foe).
+		static bool walks_into_door(const walker& bot, const walker* foe);
+		// hand_door: Gameplay Fixes BL: the one hand-over of a door (idle_walk, keeps_door's swap
+		// and the tick's hand-out): `door` set as the bot's foe, and its re-plan counter set to 0
+		// when walks_into_door names it.
+		static void hand_door(walker& bot, walker* door);
+		// foes_not_door_shut: how many of `foes` are not door-shut for the bot (the near branch).
+		std::int32_t foes_not_door_shut(const std::list<walker*>& foes);
 		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
 		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
 		// first, and only a free half takes the classic loud step. Off, the loud step.
@@ -182,7 +242,14 @@ class statistics
         OG_STATS_DIRTY_FIELD(float, heal_per_round, og::dirty::BIT_HEAL_PER_ROUND);
         OG_STATS_DIRTY_FIELD(float, armor, og::dirty::BIT_ARMOR);
 
-        OG_STATS_DIRTY_FIELD(std::int32_t, level, og::dirty::BIT_LEVEL);
+        // A door's level is the key it wants: og::reach's maps read it (level_written).
+        [[nodiscard]] std::int32_t level() const noexcept { return level_; }
+        void set_level(std::int32_t value)
+        {
+            level_ = value;
+            mark_dirty(og::dirty::BIT_LEVEL);
+            level_written();
+        }
         // frozen_delay: freeze/paralysis timer. NEGATIVE = thaw-immunity phase
         // (runaway-specials §3.3), written ONLY by the player-side drain.
         // ALWAYS read via frozen_delay() (masked — never returns negatives, so
@@ -252,6 +319,10 @@ class statistics
 
 	private:
         void mark_dirty(std::uint8_t bit_index);
+        // The level of a door's statistics is a door question's (SimEntity::door_state_written).
+        void level_written() noexcept;
+        // Gameplay Fixes BE: turn_to_foe's kept turn (setting on, foe not faced); end of stats.cpp.
+        bool keep_turn(short aim);
 
         Order old_order_ = Order::Living;
         std::uint8_t old_family_ = FAMILY_SOLDIER;

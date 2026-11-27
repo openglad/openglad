@@ -1024,6 +1024,54 @@ TEST_F(BotGatesLib, pad_clear_and_the_front_probe_draw_nothing)
     EXPECT_EQ(0, rock->dead()) << "the rock is not touched";
 }
 
+// Gameplay Fixes BH: summon_pad_clear asks the weapon's pad with the strict
+// question (an enemy weapon-order body on it is a no) before the summoned
+// body's room. For the druid's SUMMON FAERIE the faerie's 8 px box stands on
+// the lightning's 8 px pad, so the faerie's room already says no to any
+// enemy body there; a weapon wider than the summoned body shows the pad's own
+// question. The soldier caster (16x16 at 192, 192) faces RIGHT; asked with
+// the fire arrow (9x9) its pad is (209, 195). An enemy arrow (7x7) at
+// (216, 195) meets the pad's last column (collide() shrinks each box by a
+// pixel) and not an 8 px faerie on the pad's corner: the plain pad question
+// passes it, the faerie has room, and the strict question is the summon's
+// no. With the arrow on the caster's own team it says yes; nothing draws.
+// RED (the rule broken: gates.lua summon_pad_clear asking
+// `self:fire_pad_clear(weapon)`): "summon" reads true with the enemy arrow.
+TEST_F(BotGatesLib, summon_pad_clear_asks_the_weapons_pad_the_strict_way)
+{
+    living* self = caster(192, 192);
+    ASSERT_NE(nullptr, self);
+    self->set_lastx(1.0f);
+    self->set_lasty(0.0f);
+    const int fire_arrow = og::families::resolve_family_string_id(Order::Weapon, "core:fire_arrow");
+    ASSERT_GE(fire_arrow, 0);
+    walker* arrow = world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(2);
+    body(arrow, 7, 7)->setxy(216, 195);
+    settle_body(arrow);
+    ASSERT_EQ(1, collide(216, 195, 7, 7, 209, 195, 9, 9)) << "the staging: the arrow meets the pad";
+    ASSERT_EQ(0, collide(216, 195, 7, 7, 209, 195, 8, 8))
+        << "the staging: the arrow is clear of a faerie standing on the pad's corner";
+    ASSERT_EQ(walker::PadAnswer::Clear, self->fire_pad_answer(fire_arrow))
+        << "precondition: the plain question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, self->fire_pad_answer(fire_arrow, true))
+        << "precondition: the strict question meets it";
+    ASSERT_TRUE(self->pad_room(Order::Living, FAMILY_FAERIE, fire_arrow))
+        << "precondition: the faerie has room on the pad";
+
+    const std::string lua =
+        "    og.log('summon', tostring(G.summon_pad_clear(self, 'living', " +
+        std::to_string(FAMILY_FAERIE) + ", " + std::to_string(fire_arrow) + ")))\n";
+    world().rng_.state_ = state_where_draws_are({10}, {0});
+    Answers a = probe(self, lua);
+    EXPECT_EQ("false", a.at("summon")) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+
+    arrow->set_team_num(1);
+    a = probe(self, lua);
+    EXPECT_EQ("true", a.at("summon")) << "an arrow of the caster's own team passes";
+}
+
 // can_pay: the alternate's own price when shifted, the slot's price when
 // the alternate has none (alternate_cost answers 0) or is not in play.
 // The fire elemental's REKINDLE (slot 4) costs 40 and its SUPERNOVA 10 with

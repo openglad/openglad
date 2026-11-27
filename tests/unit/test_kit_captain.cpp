@@ -1090,6 +1090,98 @@ TEST(KitCaptain, hook_guard_passes_scenery_by)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// Gameplay Fixes BG (#588). The blade asks the boomerang's own question
+// (gameplay_fixes.guard_passes_by), so with the setting on it passes an
+// enemy door and an enemy grown tree by, as it passes a bone wall or a war
+// banner by, and with it off it cuts them down like shots. New Specials on
+// (the blade is a New Specials kit), on both settings: the captain throws
+// HOOK BLADE; after its first act six weapon-order bodies of the enemy team
+// stand where it will be on tick 2: an arrow, a glow, a door (5,000 hp), a
+// grown tree (50 hp), a bone wall and a war banner, of damage 1, 2, 4, 8, 9
+// and 9. On tick 2 the arrow and the glow are cut down and the bone wall
+// and the war banner stand, on both settings; with the setting on the door
+// and the tree stand with their hit points whole and the blade has paid
+// 1 + 2 (27 of its 30 hp), with it off both are cut down and it has paid
+// 1 + 2 + 4 + 8 (15). The bone wall and the war banner make this the
+// setting-on half of hook_guard_passes_scenery_by.
+TEST(KitCaptain, hook_guard_passes_an_enemy_door_and_a_grown_tree_by_with_the_setting_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    struct Body {
+        const char* what;
+        int family;
+        float damage;
+        float hp;
+        bool passed_off;  // passed by with the setting off
+        bool passed_on;   // passed by with the setting on
+    };
+    const std::array<Body, 6> bodies = {{
+        {"an arrow", FAMILY_ARROW, 1.0f, 10.0f, false, false},
+        {"a glow", FAMILY_GLOW, 2.0f, 10.0f, false, false},
+        {"a door", FAMILY_DOOR, 4.0f, 5000.0f, false, true},
+        {"a grown tree", FAMILY_TREE, 8.0f, 50.0f, false, true},
+        {"a bone wall", weapon_family("core:bone_wall"), 9.0f, 120.0f, true, true},
+        {"a war banner", weapon_family("core:war_banner"), 9.0f, 120.0f, true, true},
+    }};
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        tw.world().gameplay_fixes = fixes;
+        walker* captain = add_captain(tw, 200, 200);
+        ASSERT_NE(nullptr, captain);
+        ASSERT_TRUE(cast(captain, 3, false).ok);
+        ASSERT_EQ(1u, blades(tw).size());
+        walker* blade = blades(tw).front();
+        blade->act();  // tick 1
+        ASSERT_FLOAT_EQ(static_cast<float>(kHookHp), blade->stats()->hitpoints());
+
+        const short base_x = static_cast<short>(
+            captain->xpos() + captain->sizex() / 2 - blade->sizex() / 2);
+        const short base_y = static_cast<short>(
+            captain->ypos() + captain->sizey() / 2 - blade->sizey() / 2);
+        const auto at2 = hook_offset_at(2);
+        const short spot_x = static_cast<short>(base_x + std::lround(at2.first));
+        const short spot_y = static_cast<short>(base_y + std::lround(at2.second));
+        std::vector<walker*> placed;
+        for (const Body& b : bodies) {
+            walker* piece = tw.world().add_weap_ob(Order::Weapon, b.family);
+            ASSERT_NE(nullptr, piece) << b.what;
+            ASSERT_EQ(Order::Weapon, piece->query_order()) << b.what;
+            piece->set_team_num(kThem);
+            piece->setxy(spot_x, spot_y);
+            piece->set_damage(b.damage);
+            piece->stats()->set_max_hitpoints(b.hp);
+            piece->stats()->set_hitpoints(b.hp);
+            piece->set_act_type(ACT_SIT);
+            placed.push_back(piece);
+        }
+
+        blade->act();  // tick 2: the blade sits on all six
+        for (std::size_t i = 0; i < bodies.size(); ++i)
+            ASSERT_LE(blade->distance_to_ob(placed[i]), blade->sizex() * 2)
+                << "the staging: " << bodies[i].what << " is inside the blade's reach on tick 2";
+        EXPECT_FALSE(blade->dead()) << "the blade survives: it paid 3 or 15 of its 30 hp";
+        const bool on = fixes != 0;
+        for (std::size_t i = 0; i < bodies.size(); ++i) {
+            const Body& b = bodies[i];
+            const bool passed = on ? b.passed_on : b.passed_off;
+            EXPECT_EQ(passed, placed[i]->dead() == 0)
+                << b.what << (passed ? ": passed by" : ": cut down");
+            if (passed) {
+                EXPECT_FLOAT_EQ(b.hp, placed[i]->stats()->hitpoints())
+                    << b.what << ": its hit points whole";
+            }
+        }
+        EXPECT_FLOAT_EQ(static_cast<float>(on ? kHookHp - 3 : kHookHp - 15),
+                        blade->stats()->hitpoints())
+            << (on ? "the blade paid the arrow's 1 and the glow's 2 only"
+                   : "classic: the blade paid the door's 4 and the tree's 8 too");
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // Shift + slot 3: three knives, at the facing and one point either side,
 // paid by the special (fire()'s per-knife charge is pre-paid), the aim
 // restored. A captain parked on the curdir -1 sentinel fans around its aim;

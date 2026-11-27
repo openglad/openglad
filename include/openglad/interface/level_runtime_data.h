@@ -246,7 +246,8 @@ public:
     // Entity search (moved from screen)
     // Return the first foe met by the obmap spiral, with a nearest-scan fallback.
     walker* find_near_foe(walker* ob);
-    // Return the nearest live foe from the floor-blind full-list scan.
+    // Return the nearest live foe from the full-list scan (floor-blind except
+    // for a flyer on a level with floors, #512).
     walker* find_nearest_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
     walker* find_nearest_player(walker* ob);

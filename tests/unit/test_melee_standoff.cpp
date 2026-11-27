@@ -10,8 +10,8 @@
  *
  * The fix (three cooperating deterministic rules, no RNG):
  *  - COMMAND_ATTACK snap-face: when the shot at an in-reach foe is denied
- *    only by orientation (Facing, or NoRanged at bump range), face the foe
- *    via walker::face_delta() instead of walking (stats.cpp);
+ *    only by orientation (Facing, or NoRanged with the foe inside the weapon's
+ *    reach), face the foe via walker::face_delta() instead of walking (stats.cpp);
  *  - interpenetration escape (obmap.cpp): a transient pass-through that
  *    leaves two livings overlapped was an ABSORBING trap (every exit step
  *    still "collided" with the body around the mover) that turned pairs into

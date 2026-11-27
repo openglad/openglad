@@ -78,6 +78,7 @@ public:
         short goal_x = 0;
         short goal_y = 0;
         bool has_goal = false;
+        const og::reach::RouteCells* cells = nullptr;  // a bot's route (Gameplay Fixes BI), else none
     };
 
     explicit PathingMap(Owner* owner)
@@ -139,202 +140,89 @@ public:
         const int y1 = GET_STATE_Y(state);
 
         walker* const aw = owner_->active_walker;
-        const bool multifloor = current_game->world->floor_count() > 1;
+        GameWorld& world = *current_game->world;
+        const bool multifloor = world.floor_count() > 1;
         // rule: Pathing on a single-floor level always plans on floor 0; on stacked levels it plans
         //   on the state's floor.
         // tests: SemPathing.pathing_plans_on_the_states_floor_when_stacked_and_on_floor_0_otherwise
         const int f = multifloor ? GET_STATE_FLOOR(state) : 0;
-        const bool nonflyer = !(aw->stats()->query_bit_flags(BIT_FLYING) ||
-                                aw->flight_left());
+        const bool nonflyer =
+            !aw->flies();
 
-        // plumbing: 8-neighbour expansion (skip self); rules below,
-        //   below
-        for (int i = -1; i <= 1; i++)
-        {
-            // plumbing: 8-neighbour expansion (skip self); rules below,
-            //   below
-            for (int j = -1; j <= 1; j++)
+        // The passability half of the neighbour rule is written once, in reach.h
+        // (og::reach::for_each_step: the eight directions, the flank rule, the air test and the
+        // stair hop), and the maps of og::reach number their regions with it; asked here with the
+        // terrain's answers. This half prices each step it answers.
+        const auto terrain = [&](int x, int y, int cf, og::reach::StepTest test) {
+            return og::reach::terrain_passes(world, *aw, x, y, cf, test, multifloor, nonflyer);
+        };
+        const auto price = [&](int adj_x, int adj_y, int af, og::reach::StepKind kind) {
+            // rule: A stair's hop costs 1 and pays no straightness penalty (its two cells are the
+            //   same 2D spot on two floors).
+            // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
+            if (kind == og::reach::StepKind::Stair)
             {
-                // plumbing: 8-neighbour expansion (skip self); rules below,
-                //   below
-                if (i == 0 && j == 0)
-                    continue;
+                og::pathfinding::StateCost up;
+                up.state = MAKE_STATE(adj_x, adj_y, af);
+                up.cost = 1.0f;
+                adjacent.push_back(up);
+                return;
+            }
 
-                const int adj_x = x1 + i * GRID_SIZE;
-                const int adj_y = y1 + j * GRID_SIZE;
+            og::pathfinding::StateCost cost;
+            cost.state = MAKE_STATE(adj_x, adj_y, af);
+            cost.cost = 0;
 
-                og::pathfinding::StateCost cost;
-                cost.state = MAKE_STATE(adj_x, adj_y, f);
-                cost.cost = 0;
-
-                // Any terrain in the way?  This checks boundaries too.
-                // rule: The AI never plans a step into terrain the walker cannot enter (walls,
-                //   trees for non-forestwalkers, water for non-swimmers, off-map).
-                // tests: Decor.grounder_routes_around_decor_boulder_strip_flyer_crosses
-                // tests: NewTiles.grounder_routes_around_lava_strip_flyer_crosses
-                if (!current_game->world->query_grid_passable(
-                        static_cast<float>(adj_x),
-                        static_cast<float>(adj_y),
-                                                              aw, f))
-                {
-                    continue;
-                }
-                // Non-flyers avoid "air" holes in pathing (they would fall), so
-                // AI routes around pits and only changes floors via Z-stairs.
-                // Gated on multifloor so single-floor expansion is unchanged.
-                // rule: On stacked levels a walker that cannot fly never plans a step onto air (it
-                //   would fall); flyers (permanent or potion) may.
-                // tests: SemPathing.a_non_flyer_never_plans_a_step_onto_air_on_stacked_levels
-                if (multifloor && nonflyer &&
-                    current_game->world->smoother_for_floor(f).query_genre_x_y(
-                        adj_x / GRID_SIZE, adj_y / GRID_SIZE) == TYPE_AIR)
-                {
-                    continue;
-                }
-                // No corner cutting (2026-07, deliberate fix; see
-                // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). A full-cell body can
-                // only make a diagonal cell transition when BOTH flanking
-                // orthogonal cells are open: its swept box necessarily
-                // overlaps them, so a diagonal past a blocked flank is
-                // pixel-impassable at EVERY offset. The classic graph emitted
-                // such hops anyway; when the map pinched (lava + scree
-                // boulder in an X around the hop) the follower seized on an
-                // edge it could never take — permanently (the L24 terrace
-                // wedge). Flanks impose the same rules as targets: grid
-                // passability plus the non-flyer air skip (a body swept over
-                // an air flank can clip its center into the hole and fall).
-                // 2026-07-10: the multifloor gate is REMOVED — single-floor
-                // corridor mazes (Westlands L2 "The Forest Road") exhibit the
-                // same permanent corner seizures the gate was preserving, so
-                // corner-cut edges are now pruned on every level. This is an
-                // audited single-floor parity rebaseline (see the doc row);
-                // the rule consumes no RNG, so drift is position/timing only.
-                // rule: The AI never plans a diagonal step past a blocked corner: a diagonal needs
-                //   both orthogonal neighbours open (and, for non-flyers, not air). Deliberate fix
-                //   on every level, ported to the old game.
-                // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
-                // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
-                // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
-                // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
-                // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
-                if (i != 0 && j != 0)
-                {
-                    bool flanks_open = true;
-                    const int flank[2][2] = {{x1 + i * GRID_SIZE, y1},
-                                             {x1, y1 + j * GRID_SIZE}};
-                    // rule: The AI never plans a diagonal step past a blocked corner: a diagonal
-                    //   needs both orthogonal neighbours open (and, for non-flyers, not air).
-                    // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
-                    // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
-                    // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
-                    // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
-                    // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
-                    for (const auto& fc : flank)
-                    {
-                        // rule: The AI never plans a diagonal step past a blocked corner: a
-                        //   diagonal needs both orthogonal neighbours open (and, for non-flyers,
-                        //   not air).
-                        // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
-                        // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
-                        // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
-                        // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
-                        // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
-                        if (!current_game->world->query_grid_passable(
-                                static_cast<float>(fc[0]),
-                                static_cast<float>(fc[1]), aw, f) ||
-                            (nonflyer &&
-                             current_game->world->smoother_for_floor(f)
-                                     .query_genre_x_y(fc[0] / GRID_SIZE,
-                                                      fc[1] / GRID_SIZE) ==
-                                 TYPE_AIR))
-                        {
-                            flanks_open = false;
-                            break;
-                        }
-                    }
-                    // rule: The AI never plans a diagonal step past a blocked corner: a diagonal
-                    //   needs both orthogonal neighbours open (and, for non-flyers, not air).
-                    // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
-                    // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
-                    // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
-                    // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
-                    // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
-                    if (!flanks_open)
-                        continue;
-                }
-                // Any moving objects in the way?
-                const std::list<walker*>* pile =
-                    current_game->world->myobmap->find_list(
-                        static_cast<short>(adj_x), static_cast<short>(adj_y), f);
+            // Any moving objects in the way?
+            const std::list<walker*>* pile =
+                world.myobmap->find_list(
+                    static_cast<short>(adj_x), static_cast<short>(adj_y), af);
+            // rule: A cell holding any body costs 10 to path through (the AI prefers going
+            //   around crowds but will push through); an empty cell costs 1 straight, 1.414
+            //   diagonal.
+            // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
+            // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
+            // tests: SemPathing.a_cell_holding_a_body_costs_ten_to_path_through
+            if (pile != nullptr && !pile->empty())
+            {
+                // TODO: Make doors impassable without a key.
+                // TODO: Add an adjacent edge to a teleporter's far side.
+                cost.cost = 10;
+            }
+            else
+            {
+                // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
                 // rule: A cell holding any body costs 10 to path through (the AI prefers going
                 //   around crowds but will push through); an empty cell costs 1 straight, 1.414
                 //   diagonal.
                 // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
                 // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
                 // tests: SemPathing.a_cell_holding_a_body_costs_ten_to_path_through
-                if (pile != nullptr && !pile->empty())
-                {
-                    // TODO: Make doors impassable without a key.
-                    // TODO: Add an adjacent edge to a teleporter's far side.
-                    cost.cost = 10;
-                }
+                if (kind == og::reach::StepKind::Straight)
+                    cost.cost = 1.0f;
                 else
-                {
-                    // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
-                    // rule: A cell holding any body costs 10 to path through (the AI prefers going
-                    //   around crowds but will push through); an empty cell costs 1 straight, 1.414
-                    //   diagonal.
-                    // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
-                    // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
-                    // tests: SemPathing.a_cell_holding_a_body_costs_ten_to_path_through
-                    cost.cost = (i == 0 || j == 0) ? 1.0f : kDiagonalStepCost;
-                }
-
-                const int dx1 = adj_x - ALIGN_TO_GRID(target_x);
-                const int dy1 = adj_y - ALIGN_TO_GRID(target_y);
-                const int dx2 = owner_->active_walker->xpos() - ALIGN_TO_GRID(target_x);
-                const int dy2 = owner_->active_walker->ypos() - ALIGN_TO_GRID(target_y);
-                const int cross = dx1 * dy2 - dx2 * dy1;
-                cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
-
-                adjacent.push_back(cost);
+                    cost.cost = kDiagonalStepCost;
             }
-        }
 
-        // Cross-floor Z-stair edge: if the current cell is a stair tile, add a
-        // vertical neighbor on the connected floor (positional: UP→f+1,
-        // DOWN→f-1). Non-flyers only; gated on multifloor so single-floor A*
-        // expansion is byte-identical.
-        // rule: On stacked levels a walker that cannot fly plans floor changes only through stairs:
-        //   an up-stair links to the floor above, a down-stair to the floor below, if that floor
-        //   exists and its cell is passable; flyers never change floors.
-        // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
-        if (multifloor && nonflyer)
-        {
-            const int tile = current_game->world->smoother_for_floor(f)
-                .query_x_y(x1 / GRID_SIZE, y1 / GRID_SIZE);
-            int tf = -1;
-            // rule: On stacked levels a walker that cannot fly plans floor changes only through
-            //   stairs.
-            // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
-            if (tile == PIX_ZSTAIR_UP &&
-                (f + 1) < current_game->world->floor_count())
-                tf = f + 1;
-            else if (tile == PIX_ZSTAIR_DOWN && f > 0)
-                tf = f - 1;
-            // rule: On stacked levels a walker that cannot fly plans floor changes only through
-            //   stairs.
-            // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
-            if (tf >= 0 &&
-                current_game->world->query_grid_passable(
-                    static_cast<float>(x1), static_cast<float>(y1), aw, tf))
-            {
-                og::pathfinding::StateCost up;
-                up.state = MAKE_STATE(x1, y1, tf);
-                up.cost = 1.0f;
-                adjacent.push_back(up);
-            }
-        }
+            const int dx1 = adj_x - ALIGN_TO_GRID(target_x);
+            const int dy1 = adj_y - ALIGN_TO_GRID(target_y);
+            const int dx2 = owner_->active_walker->xpos() - ALIGN_TO_GRID(target_x);
+            const int dy2 = owner_->active_walker->ypos() - ALIGN_TO_GRID(target_y);
+            const int cross = dx1 * dy2 - dx2 * dy1;
+            cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
+
+            adjacent.push_back(cost);
+        };
+        // rule: Gameplay Fixes BI, a door a bot cannot open is a wall to it: a bot's route (the
+        //   setting on) reads its steps from its kind's shut layer (og::reach::RouteCells), so a door
+        //   that bars it is a wall to the route; every other solve reads the terrain's answers. The
+        //   costs are the same: a door the walker can open still costs ten, as any body does.
+        // tests: SemBotReach.the_route_goes_round_a_door_fence_and_never_through_it
+        // tests: SemPathing.a_door_the_walker_can_open_costs_ten_and_is_walked
+        if (owner_->cells != nullptr)
+            og::reach::for_each_step(world, x1, y1, f, multifloor, nonflyer, *owner_->cells, price);
+        else
+            og::reach::for_each_step(world, x1, y1, f, multifloor, nonflyer, terrain, price);
     }
 
 private:
@@ -368,7 +256,8 @@ void GameplayPathfindingState::solve_for(walker* owner,
                                          void* start_state,
                                          void* end_state,
                                          std::vector<void*>& path_out,
-                                         float& total_cost)
+                                         float& total_cost,
+                                         const og::reach::RouteCells* cells)
 {
     path_out.clear();
     total_cost = 0.0f;
@@ -380,8 +269,10 @@ void GameplayPathfindingState::solve_for(walker* owner,
     // Set the walker that the path is being generated for
     impl_->owner.active_walker = owner;
     impl_->owner.has_goal = false;
+    impl_->owner.cells = cells;
     // solve() resets its own per-search state while retaining scratch capacity.
     (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
+    impl_->owner.cells = nullptr;
 }
 
 void GameplayPathfindingState::solve_for_point(walker* owner,
@@ -390,7 +281,8 @@ void GameplayPathfindingState::solve_for_point(walker* owner,
                                                void* start_state,
                                                void* end_state,
                                                std::vector<void*>& path_out,
-                                               float& total_cost)
+                                               float& total_cost,
+                                               const og::reach::RouteCells* cells)
 {
     path_out.clear();
     total_cost = 0.0f;
@@ -403,9 +295,11 @@ void GameplayPathfindingState::solve_for_point(walker* owner,
     impl_->owner.goal_x = goal_x;
     impl_->owner.goal_y = goal_y;
     impl_->owner.has_goal = true;
+    impl_->owner.cells = cells;
     // solve() resets its own per-search state while retaining scratch capacity.
     (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
     impl_->owner.has_goal = false;
+    impl_->owner.cells = nullptr;
 }
 
 GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context)

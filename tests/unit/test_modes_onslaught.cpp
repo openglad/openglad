@@ -2053,7 +2053,8 @@ TEST_F(ModesOnslaught, shipped_manifest_registers_the_onslaught_levels)
 
 namespace {
 
-std::string run_ons_match_digest(int point_family, int ticks)
+std::string run_ons_match_digest(int point_family, int ticks,
+                                 std::string* modegame = nullptr)
 {
     OnsWorld fx;
     fx.spawn_point(point_family, 320, 320);
@@ -2064,6 +2065,13 @@ std::string run_ons_match_digest(int point_family, int ticks)
     fx.spawn_living(FAMILY_SOLDIER, 1, 440, 340, ACT_GUARD);
     fx.tick(ticks);
     EXPECT_TRUE(fx.world().mode.active);
+    if (modegame != nullptr)
+        *modegame = modegame_line(
+            fx.world(),
+            modegame_slots(fx.world(), "generators", kOnsGenCount, 2) + " " +
+                modegame_slots(fx.world(), "eliminated", kOnsEliminated, 2) +
+                " " + modegame_slots(fx.world(), "point_holder_plus1",
+                                     kOnsWpOwner1, 1));
     return digest_world(fx.world());
 }
 
@@ -2071,8 +2079,11 @@ std::string run_ons_match_digest(int point_family, int ticks)
 
 TEST_F(ModesOnslaught, directed_generator_war_is_deterministic)
 {
-    const std::string first = run_ons_match_digest(point_family_, 400);
+    std::string modegame;
+    const std::string first =
+        run_ons_match_digest(point_family_, 400, &modegame);
     const std::string second = run_ons_match_digest(point_family_, 400);
+    print_modegame_line(modegame);
     ASSERT_EQ(first, second)
         << "same seed + same map must reproduce spawns, roles and flips";
 }

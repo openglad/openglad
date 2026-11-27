@@ -25,9 +25,12 @@
 #include <openglad/gameplay/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/kit_state.h>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -120,13 +123,18 @@ class walker : public og::sim::SimEntity
 		void follow_path_to_foe();
 		bool init_fire();
 		bool init_fire(short xdir, short ydir);
+		// fire_check's test weapon, placed and headed for the way this walker faces, its waver
+		// drawn as fire() draws a shot's; the heading table itself takes the facing `dir` and the
+		// waver (og::reach's shot term asks it with the facing toward its body and no waver).
 		void set_weapon_heading(walker *weapon);
+		void set_weapon_heading(walker *weapon, short dir, signed char waver);
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
-		// facing(lastx(), lasty()) names. The one table fire() and
-		// set_weapon_heading() read.
+		// facing(lastx(), lasty()) names (or `dir`). The one table fire(),
+		// set_weapon_heading() and og::reach's shot term read.
 		void weapon_pad(const walker& weapon, short& px, short& py);
+		void weapon_pad(const walker& weapon, short& px, short& py, short dir);
 		// What the pad fire() would place the weapon on holds, probed quietly
 		// with a detached weapon: Clear (the weapon would fly); Terrain (the
 		// grid refuses it: a wall, the map edge, a tree's crown or trunk for a
@@ -194,7 +202,7 @@ class walker : public og::sim::SimEntity
 		explicit walker(WeaponProfileProbeTag);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
-		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// Facing, and NoRanged with the foe inside the weapon's reach ("the foe is in reach
 		// but we are pointed the wrong way / can only hit by facing") —
 		// from every other denial, because the classic response to ANY
 		// denial (walk toward the foe, sliding perpendicular when blocked)
@@ -210,15 +218,79 @@ class walker : public og::sim::SimEntity
 			NoMagic,     // weapon costs more magic than we have
 			OutOfRange,  // foe beyond weapon stepsize*lineofsight
 			Facing,      // in reach, but curdir is not toward the foe
-			WallBlocked, // the shot ray hits terrain first
+			WallBlocked, // the shot ray hits terrain first, or with Gameplay Fixes on
+			             // an enemy door that is not the foe (fix BF)
 			RayMiss,     // the shot ray ran full range without a hit
 		};
 		bool fire_check(short xdelta, short ydelta,
 		                FireCheckDenial* denial = nullptr);
+		// What one step of a flying weapon met (flight_step).
+		enum class FlightStep : std::uint8_t { Flew, Struck, Stopped };
+		// One step of a weapon in flight: walk() along its heading, and what that met.
+		// act_fire takes it every act; with Gameplay Fixes on, fire_check's probe takes
+		// the same step (fix BD). Defined at the end of walker_movement.cpp.
+		[[nodiscard]] FlightStep flight_step();
+		// Gameplay Fixes BD (#538): fire_check's ray, flown the way the shot flies. No
+		// answer with the setting off (the classic loop asks). When it answers it sets
+		// the probe dead and writes *denial. Gameplay Fixes BF: an enemy door that is not
+		// the foe refuses it (WallBlocked). Defined at the end of walker_movement.cpp.
+		// With every_door_stops (og::reach's shot term) every live enemy door refuses it, the
+		// shooter's own foe included.
+		[[nodiscard]] std::optional<bool> line_check_flight(walker* weapon, const walker* ignored_foe,
+		                                                    FireCheckDenial* denial,
+		                                                    bool every_door_stops = false);
+		// fire_check's ray target besides the bodies it meets: `target` when it is a live, visible,
+		// hostile ignored body on the weapon's floor (a mode ball), else none. Defined at the end
+		// of walker.cpp.
+		[[nodiscard]] static const walker* ignored_target(const walker& target, const walker& weapon);
+		// The reach of a configured weapon: its step times its line of sight (the line check's
+		// reach gate, the prospective reach and og::reach's shot term read it).
+		[[nodiscard]] static std::int32_t weapon_reach(const walker& weapon);
+		// The detached test weapon (`weapon`, built with WeaponProfileProbeTag) of this walker's
+		// current weapon, profiled by configure_weapon_profile_base for the heading, without the
+		// family's weapon hook; false with no world or a weapon the loader cannot make. Defined at
+		// the end of walker.cpp.
+		bool unhooked_weapon(walker& weapon, float heading_x, float heading_y);
+		// The firing box: |xdelta| and |ydelta| both under lineofsight() * 16 (living::act_random
+		// fires only inside it; og::reach's shot term judges only inside it). Defined at the end of
+		// walker.cpp.
+		[[nodiscard]] bool in_firing_box(short xdelta, short ydelta) const;
+		// A bot: a living no player drives (user() == -1). Defined at the end of walker.cpp.
+		[[nodiscard]] bool is_bot() const;
+		// The 3:1 snap of a delta toward a target: a delta more than three times longer on one axis
+		// than on the other is taken as straight along that axis (the other is zeroed). The chase's
+		// straight walk and its shot test (statistics::direct_walk, statistics::shot_attacks) and the
+		// planned approach (can_approach_weapon_range) ask it: one rule.
+		template <class T>
+		static void snap_three_to_one(T& dx, T& dy)
+		{
+			// rule: A delta more than three times longer on x than on y is taken as straight along x;
+			//   then one more than three times longer on y than on x as straight along y.
+			// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
+			// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
+			// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+			if (std::abs(dx) > std::abs(3 * dy))
+				dy = 0;
+			// rule: (the same rule, the y axis, asked after the x axis)
+			// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
+			// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
+			if (std::abs(dy) > std::abs(3 * dx))
+				dx = 0;
+		}
 		// Snap-face a (foe) direction: sets curdir AND enddir (so the
 		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
 		// weapon heading that set_weapon_heading() reads).
 		void face_delta(short xdelta, short ydelta);
+		// A living of a family that never moves (a tower). Defined at the end
+		// of walker.cpp.
+		[[nodiscard]] bool stationary() const;
+		// A walker flies while it has the FLYING flag or flight ticks left (a flight potion; the
+		// one tick a walker stuck in a wall is given): the simulation's one test (the drawing code
+		// and two pack scripts still write their own, #586). Defined at the end of walker.cpp.
+		[[nodiscard]] bool flies() const;
+		// A door: weapon order and the door's family (a golem's family number is a door's).
+		// Gameplay Fixes BF asks it. Defined at the end of walker_movement.cpp.
+		[[nodiscard]] bool is_door() const;
 		bool query_next_to();
 		// Why a special() attempt produced nothing. Only the player-input
 		// path asks: a silent no-op there reads as a broken key, while the

@@ -765,7 +765,7 @@ TEST_F(GameplayFixesBots, druid_protection_wants_an_ally_under_blows_without_a_f
 // GROW TREE fires the lightning the tree grows from (living-13-druid.lua,
 // plant_tree): with a wall under the lightning's pad fire() makes nothing
 // and the cast refuses COULD NOT FIRE. With the setting on the gate asks
-// the pad (G.pad_clear) and says no; the classic gate says yes. The druid
+// the pad (G.pad_clear_of_weapons since fix BH) and says no; the classic gate says yes. The druid
 // faces RIGHT from (192, 192): the pad starts at x 209, inside grid cell
 // (13, 12); the foe stands 40 px east, past that cell, faced and not at
 // blows.
@@ -832,8 +832,8 @@ TEST_F(GameplayFixesBots, druid_faerie_refuses_a_pad_on_a_foe)
 // where a 16x16 box on the spot would meet it and the faerie's own box does
 // not, the rule says yes and the cast stands one faerie. A tree of the
 // druid's own team on the spot passes; an enemy tree or an enemy arrow in
-// flight there passes the bolt (the lenient pad is clear) but not the
-// faerie.
+// flight there passes the lenient pad but not the faerie (nor, since fix BH,
+// the rule's strict pad question).
 // RED (planted): living-13-druid.lua:305 `G.summon_pad_clear(self,
 // "living", LIVING_FAERIE)` -> `G.pad_clear(self)` (the ally arm reads
 // true); summon_room_at asking with the owner as the probe (the 8 px arm
@@ -931,4 +931,47 @@ TEST_F(GameplayFixesBots, druid_faerie_wants_room_where_the_bolt_stands)
         EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer";
         EXPECT_EQ(arm.room, gate(druid, 2, 1));
     }
+}
+
+// Gameplay Fixes BH (#590): GROW TREE's rule asks the lightning's pad with
+// the strict question (G.pad_clear_of_weapons), as the elf's volleys do (fix
+// AV). An enemy door, an enemy grown tree or an enemy arrow in flight on the
+// pad passes the plain question, and fire() meets it on 4 rolls in 10: the
+// cast then refused COULD NOT FIRE after the rule's yes. With the setting on
+// the rule says no to each, a door of the druid's own team passes, the
+// classic druid casts every roll and nothing draws (expect_a_strict_pad).
+// The staging is druid_tree_refuses_a_pad_on_a_wall's: the druid faces RIGHT
+// from (192, 192), its foe 40 px east, faced, closing and not at blows.
+// RED (the rule broken: living-13-druid.lua:278 asking `G.pad_clear(self)`):
+// the three enemy arms read true with the setting on.
+TEST_F(GameplayFixesBots, druid_tree_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 232, 192, 1), 16, 16));  // 40 px east
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+    expect_a_strict_pad(druid, 1);
+}
+
+// Gameplay Fixes BH (#590): SUMMON FAERIE's rule (G.summon_pad_clear) asks
+// the lightning's pad with the strict question too. The faerie stands on the
+// bolt's spot in a box of the bolt's size (8 px), and a faerie meets every
+// enemy body there, so the faerie's room (fix AR) says no to the three enemy
+// bodies as well: this test holds the rule's answers, and
+// BotGatesLib.summon_pad_clear_asks_the_weapons_pad_the_strict_way shows the
+// strict half alone. The staging is druid_faerie_refuses_a_pad_on_a_foe's:
+// the level-4 druid faces RIGHT from (200, 200), its foe 100 px east, no
+// faerie of its own out.
+// RED (the rule broken: the rule asking the plain pad and no room,
+// living-13-druid.lua:305 `G.summon_pad_clear(...)` -> `G.pad_clear(self)`):
+// the three enemy arms read true with the setting on.
+TEST_F(GameplayFixesBots, druid_faerie_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16));  // 100 px
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+    expect_a_strict_pad(druid, 2);
 }

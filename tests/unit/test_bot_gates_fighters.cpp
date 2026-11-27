@@ -777,8 +777,8 @@ TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_a_foe_past_its_own_blast_w
 // fire arrow's (195, 174) reaches into row 10 and is not. The foe is faced,
 // in flight and past the archer's own blast.
 //
-// RED (the gate asks G.pad_clear(self), the archer's own arrow): the arrow's
-// pad is clear and the gate says yes with the setting on; the cast then
+// RED (the gate asks the archer's own arrow's pad, G.pad_clear_of_weapons(self)):
+// the arrow's pad is clear and the gate says yes with the setting on; the cast then
 // refuses COULD NOT FIRE.
 TEST_F(GameplayFixesBots, archer_exploding_bolt_asks_the_fire_arrows_own_pad)
 {
@@ -822,6 +822,32 @@ TEST_F(GameplayFixesBots, archer_exploding_bolt_asks_the_fire_arrows_own_pad)
     const auto open = og::script::hooks::do_special(get_family_descriptor(FAMILY_ARCHER), archer);
     ASSERT_TRUE(open.has_value());
     EXPECT_TRUE(open->succeeded()) << open->reason();
+}
+
+// Gameplay Fixes BH (#590): EXPLODING BOLT's rule asks the fire arrow's pad
+// with the strict question (G.pad_clear_of_weapons with the fire arrow), as
+// BARRAGE's does (fix AS). An enemy door, an enemy grown tree or an enemy
+// arrow in flight on the pad passes the plain question, and fire() meets it
+// on 4 rolls in 10: the cast then refused COULD NOT FIRE after the rule's
+// yes. With the setting on the rule says no to each, a door of the archer's
+// own team passes, the classic gate (its foe within 130) is unchanged, and
+// nothing draws (expect_a_strict_pad). The staging is
+// archer_exploding_bolt_asks_the_fire_arrows_own_pad's on open grass: the
+// level-7 archer faces UP from (192, 184) and holds the tower 85 px above as
+// its foe, faced, in flight and past the archer's own blast.
+// RED (the rule broken: living-02-archer.lua:198 asking `G.pad_clear(self,
+// WEAPON_FIRE_ARROW)`): the three enemy arms read true with the setting on.
+TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_its_pad_clear_of_a_door_a_grown_tree_and_a_shot)
+{
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 184, 7, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 188, 70, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    archer->set_lastx(0.0f);
+    archer->set_lasty(-1.0f);
+    archer->set_foe(foe);
+    const int fire_arrow = og::families::resolve_family_string_id(Order::Weapon, "core:fire_arrow");
+    ASSERT_GE(fire_arrow, 0);
+    expect_a_strict_pad(archer, 3, fire_arrow);
 }
 
 // ---------------------------------------------------------------------------
@@ -921,5 +947,31 @@ TEST_F(GameplayFixesBots, barbarian_boulder_refuses_a_pad_on_a_wall)
     for (const int slot : {1, 2}) {
         EXPECT_TRUE(gate(barbarian, slot, 0)) << "the classic answer: always, slot " << slot;
         EXPECT_FALSE(gate(barbarian, slot, 1)) << "a wall under the hammer's pad, slot " << slot;
+    }
+}
+
+// Gameplay Fixes BH (#590): both throws' rule asks the hammer's pad with the
+// strict question (G.pad_clear_of_weapons). An enemy door, an enemy grown
+// tree or an enemy arrow in flight on the pad passes the plain question, and
+// fire() meets it on 4 rolls in 10: the throw then refused COULD NOT FIRE
+// after the rule's yes. With the setting on the rule says no to each for
+// HURL BOULDER and for EXPLODING BOULDER, a door of the barbarian's own team
+// passes, the classic barbarian throws every roll and nothing draws
+// (expect_a_strict_pad). The staging is barbarian_boulder_refuses_a_pad_on_a_wall's
+// on open grass: the level-4 barbarian faces RIGHT from (192, 192), its foe
+// 40 px past it and a second foe 20 px from that one.
+// RED (the rule broken: living-16-barbarian.lua:166 asking `G.pad_clear(self)`):
+// the three enemy arms read true with the setting on, for both slots.
+TEST_F(GameplayFixesBots, barbarian_throws_want_the_hammers_pad_clear_of_a_door_a_grown_tree_and_a_shot)
+{
+    living* barbarian = settle_body(body(add(FAMILY_BARBARIAN, 1, 192, 192, 4, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 248, 192, 1), 16, 16));  // a 40 px gap east
+    living* beside = settle_body(body(add(FAMILY_SOLDIER, 2, 248, 212, 1), 16, 16));  // 20 px from it
+    ASSERT_TRUE(barbarian && foe && beside);
+    barbarian->set_lastx(1.0f);
+    barbarian->set_lasty(0.0f);
+    for (const int slot : {1, 2}) {
+        SCOPED_TRACE(slot == 1 ? "HURL BOULDER" : "EXPLODING BOULDER");
+        expect_a_strict_pad(barbarian, slot);
     }
 }

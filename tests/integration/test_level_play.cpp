@@ -23,12 +23,13 @@
 // pooled floors in B at a quarter of it, or 1 where it was 2 to 5 casts, the
 // per-seed floors in A at a half to three quarters of the lowest seed; the
 // Gameplay Fixes batch moved the stream and left every floor where it was,
-// since a floor is never lowered to pass; the thinnest by margin today are
-// FAERIE HASTE SELF and TELEPORT MARKER, 6 casts against a floor of 1, and
-// ARCHMAGE HEARTBURST, 7 against a floor of 2):
+// since a floor is never lowered to pass; the thinnest by margin on 2026-11-18
+// are MAGE WARP SPACE, 2 casts against a floor of 1, GHOST WAIL, 4 against 1,
+// and ELEMENTAL IMMOLATE, 7 against 1):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
-//      casters, >= 30 casters with two or more specials, a crew member alive
-//      at the end;
+//      casters, a crew member alive at the end; pooled over the six seeds:
+//      >= 180 casters with two or more specials (six times the per-seed 30
+//      it replaces, #515);
 //   B  pooled: the families with two or more rollable specials show them,
 //      each special the level should see is cast, each Shift arm is cast on
 //      its own, and the crew's own bots cast (HEARTBURST) and save up for
@@ -125,7 +126,14 @@
 //   SUMMON FAERIE 23, every capped refusal 0 and 5371 rolls held.
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
-//   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
+//   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Bots").
+//   Measured 2026-11-18 with fixes BC, BD and BE (the ATTACK order, the line
+//   check, the kept turn) and the flyer's own-floor foe (#512) in, per seed
+//   42 / 1337 / 2025 / 1 / 2 / 3 [pooled]: total casts 464 / 418 / 525 / 445
+//   / 523 / 540 [2915]; distinct (family, special) 39 / 38 / 42 / 36 / 35 /
+//   37 [52]; distinct casters 98 / 92 / 99 / 100 / 99 / 90; casters with >= 2
+//   specials 41 / 41 / 34 / 33 / 29 / 33 [211, against the pooled floor of
+//   180]; crew alive at tick 2400 11 / 8 / 3 / 3 / 5 / 6.
 //
 // The classic bots (OG_CALIBRATION_GAMEPLAY_FIXES=0) cast MORE and show MORE
 // different specials, because they cast at nobody: A and B alone cannot tell
@@ -968,7 +976,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     ::testing::Test::RecordProperty("far_shoves", static_cast<int>(far_shoves.size()));
     ::testing::Test::RecordProperty("crew_freeze_rolls", crew_freeze_rolls);
 
-    // ---- A: the bots fire, per seed ---------------------------------------
+    // ---- A: the bots fire, per seed, and the versatile casters pooled ------
+    int versatile_pooled = 0;
     for (const Play& p : plays)
     {
         SCOPED_TRACE("seed " + std::to_string(p.seed));
@@ -983,12 +992,22 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         for (const auto& [id, k] : kinds)
             if (k.size() >= 2)
                 ++versatile;
-        EXPECT_GE(p.casts.size(), 250u) << "the bots should cast (measured 400-513)";
-        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 35-40)";
-        EXPECT_GE(kinds.size(), 50u) << "many bots should cast (measured 91-107)";
-        EXPECT_GE(versatile, 30) << "many bots should cast two specials or more (measured 38-51)";
-        EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level (measured 4-10)";
+        versatile_pooled += versatile;
+        EXPECT_GE(p.casts.size(), 250u) << "the bots should cast";
+        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials";
+        EXPECT_GE(kinds.size(), 50u) << "many bots should cast";
+        EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level";
     }
+    // The casters with two or more specials, summed over the six seeds (each
+    // seed's count is printed above): one seed's count sits inside its own
+    // noise, so it is pooled, as the header prescribes for a legitimate sim
+    // change (more seeds pooled, never a narrower test) and as #515 asks.
+    std::printf("casters with two or more specials, pooled over the six seeds: %d\n",
+                versatile_pooled);
+    std::fflush(stdout);
+    EXPECT_GE(versatile_pooled, 180)
+        << "many bots should cast two specials or more: at least 180 over the six seeds, "
+           "six times the per-seed floor of 30 this pool replaces";
 
     // ---- B1: the families show their specials -----------------------------
     std::map<std::string, std::set<std::string>> family_specials;
@@ -1105,6 +1124,20 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // in, AT included): the elf's COULD NOT FIRE 0, the druid's NO ROOM TO
     // SUMMON 0 and every other capped count 0, so each cap stays at 3 (the
     // rule's floor for a measured 0); the gates held 5371 rolls.
+    // Measured again 2026-11-19 with Gameplay Fixes BF (a bot leaves a door
+    // alone), BG and BH (#590): the four families' COULD NOT FIRE read 2 with
+    // BF (the mage's ENERGY WAVE, seeds 2025 and 1, one each) and 11 with BG,
+    // once a guard passed doors and grown trees by: all eleven the druid's
+    // GROW TREE (0 1 0 1 0 1 by seed with the Shift key up, 2 4 0 1 1 0 with
+    // it down; the druid has no Shift arm). The door half of BG brings them:
+    // with the door half only the count reads 9, all GROW TREE; with the tree
+    // half only it stays at the 2 of ENERGY WAVE. The doors a guard used to
+    // erase stand, and the rule asked the plain pad question, which passes an
+    // enemy door, grown tree or shot in flight that fire() meets on 4 rolls in
+    // 10. With BH the druid's, barbarian's, mage's and archer's rules ask the
+    // strict question of fix AV and the count reads 0, so no refusal is left to
+    // trace and the cap stays at 3; the gates held 5763 rolls, and 232 casters
+    // cast two specials or more.
     EXPECT_LE(busy, 3)
         << "SPECIAL BUSY refusals (measured 0 pooled; 4 on the three seeds before the "
            "mage's flee teleport asked the busy guard, #408; 157 before fix W)";
@@ -1120,9 +1153,12 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
            "pooled with fix AR; 2 before it, an ally standing where the faerie appears)";
     EXPECT_LE(pad_could_not_fire, 3)
         << "druid, barbarian, mage or archer cast refused COULD NOT FIRE after its gate "
-           "said yes (measured 0 pooled, BARRAGE included since fix AS; 2 before fix Y's amendment, both the druid's "
-           "SUMMON FAERIE: a door, a grown tree or a weapon in flight on the pad, which a "
-           "weapon probe passes; 25 on the three seeds before fix AA)";
+           "said yes (measured 0 pooled with fix BH, every such rule asking the strict pad "
+           "question, BARRAGE included since fix AS; 11 before BH once a guard passed doors by, "
+           "all the druid's GROW TREE, moved by the doors a guard no longer erases; "
+           "2 before fix Y's amendment, both the druid's SUMMON FAERIE: a door, a grown tree "
+           "or a weapon in flight on the pad, which a weapon probe passes; 25 on the three "
+           "seeds before fix AA)";
     EXPECT_LE(nomp, 3)
         << "NOT ENOUGH MP refusals after the roll (measured 0 pooled: a struck bot holds a "
            "slot it cannot pay, fix AB; 19 on the three seeds before it, 61 before fix W)";

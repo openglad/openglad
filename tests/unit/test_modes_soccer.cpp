@@ -3677,7 +3677,8 @@ TEST_F(ModesSoccer, shipped_manifest_registers_the_soccer_levels)
 
 namespace {
 
-std::string run_soccer_bot_match_digest(int ticks)
+std::string run_soccer_bot_match_digest(int ticks,
+                                        std::string* modegame = nullptr)
 {
     ModesCtfWorld fx(kSoccerLevelA);
     fx.spawn_anchor(0, 96, 432);
@@ -3688,6 +3689,9 @@ std::string run_soccer_bot_match_digest(int ticks)
     fx.world().ctf_requested_fill[1] = og::sim::kFillFair;
     fx.tick(ticks);  // bot squads for both teams play the ball
     EXPECT_TRUE(fx.world().mode.active);
+    if (modegame != nullptr)
+        *modegame = modegame_line(
+            fx.world(), modegame_slots(fx.world(), "goals", kSocGoals, 4));
     return digest_world(fx.world());
 }
 
@@ -3695,8 +3699,10 @@ std::string run_soccer_bot_match_digest(int ticks)
 
 TEST_F(ModesSoccer, directed_bot_match_is_deterministic)
 {
-    const std::string first = run_soccer_bot_match_digest(400);
+    std::string modegame;
+    const std::string first = run_soccer_bot_match_digest(400, &modegame);
     const std::string second = run_soccer_bot_match_digest(400);
+    print_modegame_line(modegame);
     ASSERT_EQ(first, second)
         << "same seed + same pitch must reproduce kicks, rolls and roles";
 }

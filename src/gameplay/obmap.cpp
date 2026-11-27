@@ -38,7 +38,8 @@
 // lost, so an enemy weapon-order body on the box (a weapon in flight, a door,
 // a grown tree) is met as the loud probe meets it on 4 rolls in 10. A bot
 // gate's strict pad question (Gameplay Fixes AV). A loud probe ignores it.
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false, bool weapons_block = false);
+// doors_only: og::reach's doors-only question (obmap::DoorsOnly).
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false, bool weapons_block = false, bool doors_only = false);
 
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
@@ -49,16 +50,29 @@ inline constexpr int OBRES = 32; //GRID_SIZE
 // different floors never share a collision pile. Floor 0 maps to [0,199],
 // byte-identical to pre-Z. Clamped to keep the pos_to_walker short key in range.
 inline constexpr int OB_FLOOR_STRIDE = 256;
-static short floor_numx_offset(const walker* ob)
+// The floor a body is filed under (obmap.h): one rule for a walker's own registration
+// (floor_numx_offset), a pile lookup by floor (floor_cell), og::reach's doors-only question
+// (query_list) and og::reach's maps (reach.cpp), which close a door's cells on this floor.
+int obmap::filed_floor(int f)
 {
 	// rule: Walkers on different floors never share a collision pile, so they never block, hit or
 	//   eat each other; floors outside 0..120 collide as floor 0 / floor 120.
 	// tests: ZAxis.collision_is_floor_separated
 	// tests: SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty
-	int f = ob ? static_cast<int>(ob->floor()) : 0;
+	// tests: SemReach.the_door_question_asks_the_floor_it_is_given_and_changes_nothing
 	if (f < 0) f = 0;
 	if (f > 120) f = 120;
-	return static_cast<short>(f * OB_FLOOR_STRIDE);
+	return f;
+}
+// The numx band of floor `f`: the band of the floor it is filed under.
+static short floor_band(int f)
+{
+	return static_cast<short>(obmap::filed_floor(f) * OB_FLOOR_STRIDE);
+}
+static short floor_numx_offset(const walker* ob)
+{
+	// plumbing: a missing walker is filed as floor 0
+	return floor_band(ob ? static_cast<int>(ob->floor()) : 0);
 }
 
 // Injective for every (short, short) pair: 16 bits per coordinate. Hash-derived
@@ -79,6 +93,27 @@ void obmap::sync_cell_index()
 	// plumbing: drop the cell-pointer cache after level teardown cleared pos_to_walker externally
 	if (!cell_index_.empty() && pos_to_walker.empty())
 		cell_index_.clear();
+	// rule: og::reach: the same external clear dropped every door this map filed: the doors it
+	//   files are forgotten and its door count goes up, so og::reach's maps built before are not
+	//   read after.
+	// tests: SemReach.every_writer_of_the_doors_and_the_terrain_bumps_its_count
+	if (!filed_doors_.empty() && walker_to_pos.empty())
+	{
+		filed_doors_.clear();
+		++door_writes_;
+	}
+}
+
+std::uint64_t obmap::door_writes()
+{
+	sync_cell_index();
+	return door_writes_;
+}
+
+bool obmap::files_a_door()
+{
+	sync_cell_index();
+	return !filed_doors_.empty();
 }
 
 // These are passed in as PIXEL coordinates now...
@@ -98,7 +133,8 @@ size_t obmap::size() const
     return walker_to_pos.size();
 }
 
-short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_block)
+short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_block,
+                        const DoorsOnly* doors_only)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
@@ -109,7 +145,12 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_
 		Log("Bad ob to query_list.\n");
 		return 1;
 	}
-	const short fo = floor_numx_offset(ob);
+	short fo = floor_numx_offset(ob);
+	// rule: og::reach: the doors-only question asks the piles of the floor it is given (filed as a
+	//   walker's own registration is, obmap::filed_floor), not the asker's own floor.
+	// tests: SemReach.the_door_question_asks_the_floor_it_is_given_and_changes_nothing
+	if (doors_only != nullptr)
+		fo = floor_band(doors_only->floor);
 	startnumx = static_cast<short>(hash(x) + fo);
 	endnumx   = static_cast<short>(hash( static_cast<short>(x+ob->sizex()) ) + fo);
 	startnumy = hash(y);
@@ -156,7 +197,7 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet, bool weapons_
 			//   blocked probe.
 			// tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
 			// tests: SemAi2.a_blocked_probe_stops_at_the_first_blocking_cell_and_eats_nothing_beyond_it
-			if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet, weapons_block))
+			if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet, weapons_block, doors_only != nullptr))
 				return 0;
 		}
 	}
@@ -189,6 +230,13 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
     // tests: LivingCombat.obmap_round10_add_remove_move_and_fallback_paths
     if (e == walker_to_pos.end())
         return 0;
+
+    // rule: og::reach: taking a door's body out (known by its pointer alone, never read) changes the
+    //   doors this map holds: the map's door count goes up, so og::reach's maps built before are
+    //   not read after.
+    // tests: SemReach.every_writer_of_the_doors_and_the_terrain_bumps_its_count
+    if (filed_doors_.erase(ob) != 0)
+        ++door_writes_;
 
     // For each occupied cell, remove all occurrences (defensive against
     // accidental duplicates) and drop empty piles.
@@ -278,7 +326,15 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 		
 	// Now record where he is
 	walker_to_pos[ob] = std::move(pos);
-			
+
+	// rule: og::reach: filing a door's body changes the doors this map holds: it is filed among
+	//   them and the map's door count goes up, so og::reach's maps built before are not read after.
+	// tests: SemReach.every_writer_of_the_doors_and_the_terrain_bumps_its_count
+	if (ob->is_door())
+	{
+		filed_doors_.insert(ob);
+		++door_writes_;
+	}
 	return 1;
 }
 
@@ -324,14 +380,11 @@ short obmap::unhash(short y)
 static std::pair<short, short> floor_cell(short x, short y, int floor)
 {
 	// rule: Pile lookups by (x,y,floor) clamp the floor exactly as a walker's own registration does
-	//   (same rule as above), so searches on an out-of-range floor see floor 0/120's
+	//   (floor_band, the same rule), so searches on an out-of-range floor see floor 0/120's
 	//   walkers.
 	// tests: ZAxis.find_near_foe_probes_the_searchers_floor
 	// tests: SemAi2.pile_lookups_clamp_the_floor_like_registration_does
-	if (floor < 0) floor = 0;
-	if (floor > 120) floor = 120;
-	const short fo = static_cast<short>(floor * OB_FLOOR_STRIDE);
-	return {static_cast<short>(obmap::hash(x) + fo), obmap::hash(y)};
+	return {static_cast<short>(obmap::hash(x) + floor_band(floor)), obmap::hash(y)};
 }
 
 std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
@@ -414,7 +467,41 @@ void obmap::forget_untracked(short x, short y, int floor, const GameWorld& world
 /***********************************************
 **  All pass checking from here down.
 ***********************************************/
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet, bool weapons_block)
+
+// Does the weapon `ob` pass the enemy weapon-order body `w` (a shot in flight, a door, a grown tree)
+// it meets, before any box test? The clash roll's rules, in one place.
+static bool passes_on_the_clash(const walker* ob, const walker* w, bool quiet, bool weapons_block)
+{
+    // rule: A quiet probe never rolls: it passes, or asked with weapons_block (a bot gate's strict
+    //   pad, Gameplay Fixes AV) it takes the roll as lost and goes on to the box test; no draw.
+    // tests: QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
+    // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+    if (quiet)
+        return !weapons_block;
+    // rule: Gameplay Fixes BF: the line check's test weapon (GameWorld::is_line_check_probe) is
+    //   offered no roll at a live enemy door and draws nothing for it: it goes on to the box test.
+    //   The test weapon of og::reach's shot term is one (line_check_flight names it).
+    // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
+    // tests: SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
+    if (w->family() == FAMILY_DOOR && current_game->world->is_line_check_probe(ob))
+        return false;
+    // rule: og::reach: any dormant weapon passes every other enemy weapon-order body (a grown
+    //   tree, a shot in flight) without a roll, as a quiet probe does, and draws nothing. The only
+    //   dormant weapon ever flown loudly is the shot term's detached test weapon (built with
+    //   WeaponProfileProbeTag: dormant from its construction, never in the body map, never acting):
+    //   the loader makes no weapon dormant, a dormant walker does not act (GameWorld::tick), no
+    //   script can set the flag, and the line check's own weapon is a body create_weapon adds.
+    // tests: SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
+    if (ob->dormant())
+        return true;
+    // rule: Two hostile projectiles meeting usually fly through each other: 6 in 10 times
+    //   (rng.next(10) > 3) they pass, 4 in 10 they collide.
+    // tests: SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine
+    // tests: SemLineCheck.the_shot_itself_still_takes_the_clash_roll_at_a_door
+    return current_game->world->rng_.next(10) > 3;
+}
+
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet, bool weapons_block, bool doors_only)
 {
 	short oxsize, oysize;
 	short x2, y2, xsize2, ysize2;
@@ -474,18 +561,31 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             // tests: GameplayFixesChain.an_arrow_in_flight_keeps_the_colour_it_was_shot_in_when_its_archer_is_charmed
             // tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
+            // tests: SemLineCheck.an_own_team_door_is_flown_through
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
             // (a quiet probe never rolls: an enemy weapon in flight passes it)
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet ? !weapons_block : current_game->world->rng_.next(10) > 3))  // rule: Two hostile projectiles
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && passes_on_the_clash(ob, w, quiet, weapons_block))  // rule: Two hostile projectiles
                 //   meeting usually fly through each other: 6 in 10 times (rng.next(10) > 3) they
                 //   pass, 4 in 10 they collide; a quiet probe never rolls and always passes; asked
                 //   with weapons_block (a bot gate's strict pad, Gameplay Fixes AV) the quiet probe
                 //   takes the roll as lost and goes on to the box test, still drawing nothing.
+                //   Gameplay Fixes BF: the line check's test weapon (GameWorld::is_line_check_probe,
+                //   named only while a check flies with the setting on) is offered no roll at a live
+                //   enemy door and draws nothing for it: it goes on to the box test, so a door its
+                //   box meets stops it. A grown tree or a shot in flight still rolls for it, and the
+                //   shot itself still rolls at a door. og::reach: a detached test weapon (the
+                //   reach judgment's) meets a door the same way and passes every other enemy
+                //   weapon-order body without a roll (passes_on_the_clash).
+                // tests: SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
                 // tests: QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw
                 // tests: SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine
                 // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+                // tests: SemLineCheck.a_door_on_the_shots_path_refuses_the_check_with_the_setting_on, parity:tower_foe_behind_door_fixes_scen99
+                // tests: SemLineCheck.a_door_on_the_pad_refuses_the_check_with_the_setting_on
+                // tests: SemLineCheck.an_enemy_weapon_on_the_line_is_met_on_its_clash_roll_with_the_setting_on
+                // tests: SemLineCheck.the_shot_itself_still_takes_the_clash_roll_at_a_door
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)  // rule: Projectiles never hit or pick
@@ -533,6 +633,20 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                 if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))
                 {
+                    // rule: og::reach: in the doors-only question (GameWorld::door_bars_at) a body
+                    //   the box meets answers "blocked" only when it is a door that bars the asker
+                    //   (og::reach::door_bars) and is not the asker's own foe; every other body is
+                    //   passed, and nothing is eaten, opened, collided or announced.
+                    // tests: SemReach.the_door_question_asks_the_floor_it_is_given_and_changes_nothing
+                    // tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
+                    if (doors_only)
+                    {
+                        // rule: og::reach: the doors-only question leaves the asker's own foe out.
+                        // tests: SemReach.the_door_question_leaves_the_walkers_own_foe_out
+                        if (og::reach::door_bars(ob, w) && w != ob->foe())
+                            return 0;
+                        continue;
+                    }
                     // rule: Stepping onto a treasure picks it up (eat_me) and the treasure never
                     //   blocks; a quiet probe picks nothing up.
                     // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
@@ -598,7 +712,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                         if (quiet)
                         {
-                            const bool keyed = (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level()))) != 0;
+                            const bool keyed = !og::reach::door_bars(ob, w);  // the arm sees only live enemy doors
                             // rule: A quiet probe answers a door like the loud one without touching
                             //   it: a door you hold the key to blocks this round unless you are
                             //   no-collide; a locked door blocks.
@@ -612,7 +726,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         //   are no-collide.
                         // tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
                         // tests: QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe
-                        if (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level())))
+                        if (!og::reach::door_bars(ob, w))
                         {
                             // Open the door ..
                             w->set_dead(1);
@@ -730,6 +844,32 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
 	}
 	
 	return 1;
+}
+
+// og::reach (reach.h): the door rule written once, beside the door arm above, whose two key tests
+// ask it with the mover's own keys. The maps of what a bot can get at ask it too, also with keys
+// given (none: a walker of the mover's box, flags and side holding no key).
+bool og::reach::door_bars(const walker* mover, const walker* door)
+{
+	return mover != nullptr && door_bars(mover, door, mover->keys());
+}
+
+bool og::reach::door_bars(const walker* mover, const walker* door, std::uint32_t keys)
+{
+	// rule: og::reach: a door bars a walker when the door is alive, is a door (a golem, whose family
+	//   number is a door's, is not), is not of the walker's side and the keys held (the walker's
+	//   own, or the keys a question names) hold no key of its level (key bit 2^level); there is no
+	//   exception for a door that is the walker's own foe.
+	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row, parity:orc_bot_keyed_door_scen99, parity:orc_bot_keyed_door_fixes_scen99
+	// tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
+	// tests: SemReach.a_walker_holding_no_key_is_asked_as_a_kind_of_its_own
+	if (mover == nullptr || door == nullptr || door->dead() || !door->is_door())
+		return false;
+	// rule: og::reach: a door of the walker's own side never bars it (the arm's friendly pass).
+	// tests: SemReach.a_door_bars_a_walker_as_the_loud_step_meets_it_row_by_row
+	if (mover->is_friendly(door))
+		return false;
+	return !holds_key_of_level(keys, door->stats()->level());
 }
 
 short collide(short x,  short y,  short xsize,  short ysize,

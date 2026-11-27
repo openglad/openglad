@@ -921,28 +921,28 @@ walker  * walker::fire()
 
 }
 
-void walker::set_weapon_heading(walker *weapon)
+void walker::set_weapon_heading(walker *weapon, short dir, signed char waver)
 {
-	signed char waver;
-
-	// Determine how much the thrown weapon can 'waver'
-	// Clamp before the signed-char narrowing: stepsize is replicated from
-	// network snapshots, so a hostile value > 254 would make the float->signed
-	// char conversion undefined. Normal stepsizes are well under 254, so this
-	// is byte-identical for legitimate game data.
-	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
-	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
+	// The heading table, one for the line check and for og::reach's shot term: the facing `dir`
+	// and the waver are the caller's. set_weapon_heading(weapon), at the end of this file, draws
+	// the waver and reads the facing from this walker's lastx/lasty, as fire() does (fire() still
+	// writes its own copy of the switch below); og::reach::shoots_at asks with the facing toward
+	// the body it judges and no waver, for a detached test weapon. The waver's draw and its notes
+	// moved with it. Changed in place, line for line, so the parity pins below stay put.
+	// The weapon is placed on fire()'s pad for `dir` (weapon_pad, one table), then headed along
+	// `dir` with the waver pattern of the switch: with a waver of 0 straight along the facing's
+	// step (cardinal) or its diagonal.
 
 	short pad_x = 0, pad_y = 0;
-	weapon_pad(*weapon, pad_x, pad_y);  // fire()'s pad: one table
+	weapon_pad(*weapon, pad_x, pad_y, dir);  // fire()'s pad: one table
 	weapon->setxy(pad_x, pad_y);
 	// rule: Same rule as above: the bot's fire-check probe weapon is placed on fire()'s
-	//   pad and headed along the OWNER's lastx/lasty facing with the same waver pattern, so the
-	//   probe predicts the real shot.
+	//   pad and headed along the facing it is given (the OWNER's lastx/lasty facing for the line
+	//   check) with the same waver pattern, so the probe predicts the real shot.
 	// tests: QuietProbe.set_weapon_heading_lands_on_fires_pad
-	// tests: WalkerUnit.walker_r11_fire_check_create_weapon_and_angles
+	// tests: WalkerUnit.walker_r11_fire_check_create_weapon_and_angles, SemReach.the_judging_flight_passes_a_tree_without_a_draw_and_stops_at_every_door
 	// tests: WalkerUnit.walker_r15_generator_fire_and_heading_branches
-	switch (facing(lastx(), lasty()))  // these are from the 'owner'
+	switch (dir)
 	{
 		case FACE_RIGHT:
 			weapon->set_lastx(weapon->stepsize());
@@ -1840,13 +1840,13 @@ void walker::finalize_weapon_profile(walker* weapon, float heading_x,
 	og::script::hooks::customize_weapon(fd, this, weapon);
 }
 
-namespace
-{
-std::int32_t finalized_weapon_reach(const walker& weapon)
+std::int32_t walker::weapon_reach(const walker& weapon)
 {
 	return static_cast<std::int32_t>(weapon.stepsize()) *
 	       static_cast<std::int32_t>(weapon.lineofsight());
 }
+namespace
+{
 
 bool weapon_profile_requires_hook(const walker& owner)
 {
@@ -1914,7 +1914,7 @@ bool water_blocks_mover(const walker& mover)
 	// tests: SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
-	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
+	if (mover.flies())
 		return false;
 	return !stats->query_bit_flags(BIT_SWIMMING);
 }
@@ -1945,21 +1945,21 @@ bool walker::query_prospective_weapon_reach(short xdelta, short ydelta,
 	}
 
 	weap probe(WeaponProfileProbeTag{});
-	const PixieData* data = current_game->world->configure_existing_entity(
-		probe, Order::Weapon,
-		static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon())));
-	// rule: Only a living's reach can be predicted. Here: `data == nullptr`.
+	// The detached test weapon of the current weapon, profiled as fire() profiles a shot before
+	// the family's hook (walker::unhooked_weapon, the one helper og::reach's shot term builds its
+	// test weapon with too). Changed in place, line for line, so the parity pins below stay put.
+	// rule: Only a living's reach can be predicted. Here: no weapon the loader can make.
 	// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
 	// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
 	// tests: ModesSoccer.recovery_range_matches_every_ranged_core_class_profile
 	// tests: ModesSoccer.recovery_range_probe_never_touches_the_world_obmap
 	// tests: SemWalker2.only_a_living_in_a_world_has_a_predictable_reach
-	if (data == nullptr)
+	if (!unhooked_weapon(probe, static_cast<float>(xdelta),
+	                     static_cast<float>(ydelta)))
 		return false;
-	probe.set_data(*data);
-	configure_weapon_profile_base(&probe, static_cast<float>(xdelta),
-	                              static_cast<float>(ydelta));
-	reach = finalized_weapon_reach(probe);
+	// The reach is the weapon's step times its line of sight (walker::weapon_reach, the one
+	// helper the line check's reach gate in fire_check reads too).
+	reach = weapon_reach(probe);
 	return true;
 }
 
@@ -2011,12 +2011,12 @@ bool walker::can_approach_weapon_range(const walker* objective)
 		std::int32_t dy = target_y - y;
 		// rule: The approach is predicted the way a bot actually walks at a target: a target mostly
 		//   along one axis (more than 3:1) is approached straight along that axis, otherwise
-		//   diagonally.
+		//   diagonally (walker::snap_three_to_one, the one 3:1 rule the chase's straight walk and
+		//   its shot test ask too).
 		// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
-		if (std::abs(dx) > std::abs(3 * dy))
-			dy = 0;
-		if (std::abs(dy) > std::abs(3 * dx))
-			dx = 0;
+		snap_three_to_one(dx, dy);
+		// (The snap's two tests were written out here; they moved into walker.h line for line, so
+		// the parity pins below stay on their lines.)
 		const short sx = static_cast<short>((dx > 0) - (dx < 0));
 		const short sy = static_cast<short>((dy > 0) - (dy < 0));
 		const bool cardinal = sx == 0 || sy == 0;
@@ -2226,7 +2226,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// The reach gate runs before the NO_RANGED / magic gates so that a
 	// NoRanged or NoMagic denial always means "the foe IS within this
 	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
-	// face a bump-range foe instead of sliding around it (guard-standoff
+	// face a foe inside its reach instead of sliding around it (guard-standoff
 	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
 	// gate consumes RNG, so all other callers see identical behavior.
 	distance = distance_to_ob(foe());
@@ -2234,11 +2234,11 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   finalized reach = the weapon's step x line of sight after the shooter's profile). The reach
 	//   gate runs BEFORE the NO_RANGED and mana gates, so a NoRanged or NoMagic denial always means
 	//   'the foe IS in reach' (COMMAND_ATTACK's guard-standoff fix keys off this to face a
-	//   bump-range foe instead of sliding).
+	//   foe inside its reach instead of sliding).
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: WalkerCombat.walker_fire_check_all_dirs
 	// tests: SemWalker2.a_foe_beyond_reach_is_out_of_range_before_any_other_denial
-	if (distance > finalized_weapon_reach(*weapon))
+	if (distance > weapon_reach(*weapon))
 	{
 		weapon->set_dead(1);
 		deny(FireCheckDenial::OutOfRange);
@@ -2246,7 +2246,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	}
 
 	// rule: A NO_RANGED family (ghost, slimes, ...) never takes a ranged shot even at a foe in
-	//   reach; the NoRanged denial tells COMMAND_ATTACK to face/bump instead.
+	//   reach; the NoRanged denial tells COMMAND_ATTACK to face it, or with Gameplay Fixes BC to fight.
 	// tests: WalkerMore.walker_init_fire_and_fire_check_gate_branches
 	// tests: WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches
 	// tests: SemWalker2.a_no_ranged_shooter_is_denied_no_ranged_with_its_foe_in_reach
@@ -2291,15 +2291,15 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	//   extra target; see the ray's hit test below.
 	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
 	// tests: SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray
-	walker* const ignored_foe =
-		foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
-		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
-			? foe()
-			: nullptr;
+	const walker* const ignored_foe =
+		ignored_target(*foe(), *weapon);  // the one rule, which og::reach's shot term asks too
 
 	// Run weapon through where it would go if all went well ..
-	// plumbing: fire_check's ray walk over the weapon's lineofsight steps (cumulative i*lastx,
-	//   classic triangular stepping); rules below.
+	// rule: Gameplay Fixes BD (#538): with the setting on the ray is the shot's own flight (line_check_flight); off, the classic loop below.
+	// tests: SemLineCheck.the_check_passes_exactly_where_the_shot_lands_with_the_setting_on, SemLineCheck.classic_the_check_steps_over_a_foe_between_two_of_its_spots
+	if (const std::optional<bool> flown = line_check_flight(weapon, ignored_foe, denial))
+		return *flown;
+	// plumbing: the classic ray walk (cumulative i*lastx, triangular stepping: 0, 1, 3, 6 ... steps out); rules below.
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
 		weapon->setxy(weapon->xpos() + static_cast<float>(i) * weapon->lastx(),
@@ -2511,33 +2511,33 @@ walker::act_fire()
 		set_dead(1);
 		death();
 	}
-	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))  // rule: A projectile that cannot take
-		//   its step (it met a body or a wall), or a NO_COLLIDE projectile on every tick, strikes
-		//   the live body its step met (attack: damage, score, effects); a wall or an already-dead
-		//   body takes no hit. Cross-reference below: every stock NO_COLLIDE weapon
-		//   family (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
-		//   holds for stock content only because 1654 keeps them alive after the hit.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
+	else  // rule: A projectile takes one step a tick (flight_step): a step it could not take (it
+		//   met a body or a wall), or any step of a NO_COLLIDE projectile, strikes the live body the
+		//   step met (attack: damage, score, effects); a wall or an already-dead body takes no hit.
+		//   Cross-reference below: every stock NO_COLLIDE weapon family
+		//   (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
+		//   holds for stock content only because the IMMORTAL test below keeps them alive after the hit.
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
 	{
+		const FlightStep step = flight_step();
 		// Hit the collide_ob;
 		// rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
-		//   projectile on every tick, strikes the live body its step met (attack.
-		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
-		if (collide_ob() && !collide_ob()->dead())
+		//   projectile on every tick, strikes the live body its step met (flight_step's Struck).
+		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body, WalkerCombat.walker_act_with_commands
+		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing, SemLineCheck.one_flight_step_tells_a_strike_from_a_stop_and_a_free_step
+		if (step == FlightStep::Struck)
 		{
 			attack(collide_ob());
 		}
-		// rule: An ordinary projectile is spent by its hit (dies); an IMMORTAL one (WAVE family,
-		//   circles of protection) survives the hit and keeps flying until its range runs out. See
-		//   above: the stock NO_COLLIDE weapons are all IMMORTAL, which is what lets them
-		//   hit every tick.
+		// rule: An ordinary projectile is spent by a step it could not take or that struck, and a
+		//   NO_COLLIDE one by every step (dies); an IMMORTAL one (WAVE family, circles of protection)
+		//   survives the hit and keeps flying until its range runs out. See above: the stock
+		//   NO_COLLIDE weapons are all IMMORTAL, which is what lets them hit every tick.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
-		// tests: WalkerCombat.walker_act_with_commands
-		if (!stats_->query_bit_flags(BIT_IMMORTAL))
+		// tests: WalkerCombat.walker_act_with_commands, SemLineCheck.a_no_collide_shot_that_is_not_immortal_is_spent_by_its_first_act
+		if ((step != FlightStep::Flew || stats_->query_bit_flags(BIT_NO_COLLIDE)) &&
+		    !stats_->query_bit_flags(BIT_IMMORTAL))
 		{
 			set_dead(1);
 			death();
@@ -3418,8 +3418,8 @@ void walker::apply_z_motion()
 		return;
 	}
 
-	const bool flying = (stats_ != nullptr) &&
-		(stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+	const bool flying =
+		flies();
 
 	smoother& sm = w->smoother_for_floor(floor());
 	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
@@ -3936,10 +3936,11 @@ void walker::set_hidden(bool value)
 }
 
 // The pad table of fire(): where the weapon it creates is placed, one pixel
-// outside this walker's box on the side facing(lastx(), lasty()) names.
-// fire(), set_weapon_heading() and fire_pad_answer() read it: one rule.
-// Appended at EOF so the parity canary pins above never shift.
-void walker::weapon_pad(const walker& weapon, short& px, short& py)
+// outside this walker's box on the side the facing `dir` names (fire() and the
+// line check pass facing(lastx(), lasty()), og::reach's shot term the facing
+// toward its body). fire(), set_weapon_heading() and fire_pad_answer() read it:
+// one rule. Appended at EOF so the parity canary pins above never shift.
+void walker::weapon_pad(const walker& weapon, short& px, short& py, short dir)
 {
 	std::int32_t x = weapon.xpos();
 	std::int32_t y = weapon.ypos();
@@ -3950,7 +3951,7 @@ void walker::weapon_pad(const walker& weapon, short& px, short& py)
 	// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
 	// tests: QuietProbe.set_weapon_heading_lands_on_fires_pad
 	// tests: QuietProbe.the_probe_pad_is_fires_pad_for_every_family_with_a_weapon_hook
-	switch (facing(lastx(), lasty()))
+	switch (dir)
 	{
 		case FACE_RIGHT:
 			x = xpos()+sizex()+1;
@@ -4012,8 +4013,8 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family, bool weapo
 	//   eaten, opened, drawn or announced), first against terrain, then against bodies under the
 	//   weapon's own rules (own-team bodies pass; an enemy living or generator blocks; enemy doors,
 	//   trees and weapons in flight pass a weapon probe; an arrow slit passes at pad distance). A
-	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear, Gameplay
-	//   Fixes V etc.) refuse casts whose pad is blocked.
+	//   negative family means 'my current weapon'. Bot payoff gates (gates.lua pad_clear_of_weapons
+	//   and summon_pad_clear, Gameplay Fixes V, AV, BH) refuse casts whose pad is blocked.
 	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	// tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
 	// tests: QuietProbe.fire_pad_clear_leaves_the_world_alone
@@ -4107,4 +4108,119 @@ bool walker::pad_room(Order body_order, std::int32_t body_family, std::int32_t w
 	if (!pad_probe(probe, weapon_family, px, py))
 		return false;
 	return og::sim::summon_room_at(*current_game->world, *this, body_order, body_family, px, py);
+}
+
+// A living of a family that never moves (a tower): its family descriptor says
+// is_stationary. Only a living is asked, since the descriptor is looked up by
+// family number alone and a weapon can share a living's number (the bone wall
+// shares the tower's). Appended at EOF so the parity canary pins above never
+// shift.
+bool walker::stationary() const
+{
+	// plumbing: only a living has a family that can be stationary
+	if (order() != Order::Living)
+		return false;
+	const auto* fd = get_family_descriptor(family());
+	return fd != nullptr && fd->is_stationary;
+}
+
+// A walker flies while it has the FLYING flag or flight ticks left (a flight
+// potion; the one tick a walker stuck in a wall is given). The simulation's
+// one test: the terrain questions, the stairs, the pathing graph, the chase
+// and the foe search ask it (the drawing code and two pack scripts still
+// write their own, #586). Appended at EOF so the parity canary pins above never shift.
+bool walker::flies() const
+{
+	// rule: A walker flies while it has the FLYING flag or flight ticks left: it takes no stair,
+	//   falls through no air tile, crosses water, tree crowns and low obstacles, and the chase and
+	//   the foe search treat it as a walker that never leaves its floor.
+	// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
+	// tests: SemWorld.a_walker_flies_with_the_flag_or_with_flight_ticks_left
+	return stats_ != nullptr && (stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+}
+
+// weapon_pad for the way this walker faces (facing(lastx(), lasty())): fire()'s and the line
+// check's pad. Appended at EOF so the parity canary pins above never shift.
+void walker::weapon_pad(const walker& weapon, short& px, short& py)
+{
+	weapon_pad(weapon, px, py, facing(lastx(), lasty()));
+}
+
+// fire_check's test weapon: placed and headed by the heading table (set_weapon_heading with a
+// facing and a waver) for the way this walker faces, its waver drawn as fire() draws a shot's.
+// Appended at EOF so the parity canary pins above never shift.
+void walker::set_weapon_heading(walker *weapon)
+{
+	signed char waver;
+
+	// Determine how much the thrown weapon can 'waver'
+	// Clamp before the signed-char narrowing: stepsize is replicated from
+	// network snapshots, so a hostile value > 254 would make the float->signed
+	// char conversion undefined. Normal stepsizes are well under 254, so this
+	// is byte-identical for legitimate game data.
+	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
+	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
+
+	set_weapon_heading(weapon, facing(lastx(), lasty()), waver);  // these are from the 'owner'
+}
+
+// A bot: a living no player drives. og::reach asks it (og::reach::asks). Appended at EOF so the
+// parity canary pins above never shift.
+bool walker::is_bot() const
+{
+	// rule: A bot is a living no seat drives (user() == -1); a seat's fighter is not, nor is a
+	//   weapon, an effect or a treasure.
+	// tests: SemReach.a_bot_is_a_living_no_seat_drives_and_only_a_moving_bot_is_asked
+	return query_order() == Order::Living && user() == -1;
+}
+
+// The firing box: living::act_random fires only at a foe inside it, and og::reach's shot term
+// judges only a body inside it. Appended at EOF so the parity canary pins above never shift.
+bool walker::in_firing_box(short xdelta, short ydelta) const
+{
+	// rule: A body is inside a walker's firing box when its corner-to-corner delta is under
+	//   lineofsight * 16 px on both axes.
+	// tests: SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it
+	// tests: SemReach.the_shot_term_judges_only_inside_the_firing_box_and_the_reach
+	return abs(xdelta) < lineofsight() * GRID_SIZE && abs(ydelta) < lineofsight() * GRID_SIZE;
+}
+
+// The detached test weapon of this walker's current weapon, profiled as fire() profiles a shot
+// before its family's hook: the prospective reach (query_prospective_weapon_reach) and og::reach's
+// shot term build their test weapon with it. Appended at EOF so the parity canary pins above never
+// shift.
+bool walker::unhooked_weapon(walker& weapon, float heading_x, float heading_y)
+{
+	// rule: The detached test weapon is the current weapon as the loader makes it, profiled by
+	//   configure_weapon_profile_base alone (team, owner, floor, difficulty, damage, the level's
+	//   line of sight, the circular range for a cardinal heading), never by the family's hook; with
+	//   no world, or a weapon the loader cannot make, there is none.
+	// tests: SemWalker2.only_a_living_in_a_world_has_a_predictable_reach
+	// tests: SemReach.the_reach_read_without_the_weapon_hook_is_the_line_checks_for_three_families
+	if (current_game == nullptr || current_game->world == nullptr)
+		return false;
+	const PixieData* data = current_game->world->configure_existing_entity(
+		weapon, Order::Weapon,
+		static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon())));
+	// rule: The detached test weapon: none for a weapon the loader cannot make.
+	// tests: SemWalker2.only_a_living_in_a_world_has_a_predictable_reach
+	// tests: SemReach.the_reach_read_without_the_weapon_hook_is_the_line_checks_for_three_families
+	if (data == nullptr)
+		return false;
+	weapon.set_data(*data);
+	configure_weapon_profile_base(&weapon, heading_x, heading_y);
+	return true;
+}
+
+// The fire ray's extra target: `target` when it is a live, visible, hostile ignored body on the
+// weapon's floor (a mode ball the ray would otherwise not see), else none. fire_check and
+// og::reach's shot term ask it. Appended at EOF so the parity canary pins above never shift.
+const walker* walker::ignored_target(const walker& target, const walker& weapon)
+{
+	// rule: Only a live, visible, same-floor, hostile ignored foe (a mode ball) is the fire ray's
+	//   extra target; see the ray's hit test (fire_check, line_check_flight).
+	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
+	// tests: SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray
+	return target.ignore() && !target.dead() && !target.dormant() && !target.hidden() &&
+	       target.floor() == weapon.floor() && !weapon.is_friendly(&target) ? &target : nullptr;
 }

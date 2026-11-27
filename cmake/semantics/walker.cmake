@@ -14,6 +14,11 @@ og_add_unit_group(og_unit_sem_walker_3 FILES
 og_add_unit_group(og_unit_sem_walker_4 FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_walker_4.cpp
 )
+# The line check a shooter asks before it fires, and the one step of a flying
+# weapon it shares with the shot (#538).
+og_add_unit_group(og_unit_sem_walker_5 FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_walker_5.cpp
+)
 # What the simulation hands each machine for its sounds and display effects
 # (#468, #484): placed sounds, cues, and the display marks every toggle off.
 og_add_unit_group(og_unit_sem_presentation_1 FILES

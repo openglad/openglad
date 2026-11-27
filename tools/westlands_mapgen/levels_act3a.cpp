@@ -575,6 +575,15 @@ void build_white_city(const LevelDataHooks& hooks)
     // the gate span (the drafted cell would plant it on the wall).
     place_living(w, FAMILY_GIANT_SKELETON, 2, 0, 37, 23, 9);
     place_living(w, FAMILY_GIANT_SKELETON, 2, 0, 37, 24, 9);
+    // (Not eased, 2026-11-18: with Gameplay Fixes on, a melee-only bot
+    // that faces its foe swings or steps in its ATTACK order (fix BC,
+    // #447). The curve-8 company's forty-seed average here fell from 2.80
+    // to 0.55 survivors. With the breach column below, the plain lattice,
+    // the town ghosts and the plain ghosts all at level 1 it reads only
+    // 1.55, and with the setting off it then falls from 3.10 to 1.32:
+    // no group that fights before tick 600 brings it back, so the levels
+    // were left as they were. With the setting off it reads 3.10 (2.83
+    // before these fixes).)
     for (int i = 0; i < 6; ++i)
     {
         place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 3); // the breach

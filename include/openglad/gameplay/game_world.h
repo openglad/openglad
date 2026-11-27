@@ -13,6 +13,7 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -25,6 +26,7 @@
 #include <openglad/gameplay/mode/mode_state.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/reach.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/core/irandom.h>
 
@@ -190,6 +192,12 @@ public:
     short par_value = 1;
     short time_bonus_limit = 4000;
     short difficulty = 100;
+
+    // og::reach (reach.h): the maps of what a bot can get at. Derived state only (a pure function of
+    // the grids, the live doors and the kind of fighter that asks), built on first need; never in
+    // a snapshot, a save, a replay or on the wire. Declared before the entity lists, which the
+    // destructor empties first: a door's death in that teardown still finds its world's maps.
+    og::reach::Maps reach_maps;
 
     int living_count = 0;
     EntityList oblist;
@@ -381,6 +389,8 @@ public:
     // calls this afterwards; smoothers_in_sync() above is its oracle.
     void rebind_smoothers() noexcept
     {
+        // The grids moved in are new terrain to og::reach's maps.
+        reach_maps.note_terrain();
         mysmoother.set_rng(&rng_);
         // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets it
         //   when the grid is gone) and the world RNG after a world handoff
@@ -472,6 +482,17 @@ public:
     bool query_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false, bool weapons_block = false);
     bool query_grid_passable(float x, float y, walker* ob, int floor, bool quiet = false);
+    // og::reach: is a door that bars `w` (og::reach::door_bars) and is not w's own foe met by w's
+    // box at (x, y) on `floor`? Asked through obmap::query_list's own loop in its doors-only mode
+    // (obmap::DoorsOnly): nothing eaten, opened, collided or drawn. False with no body map or no
+    // walker. Defined in reach.cpp.
+    bool door_bars_at(short x, short y, walker* w, int floor);
+    // The step test of the straight walk (to a foe and to a point) and of the shove: the terrain
+    // refuses w's box at (x, y) on w's floor (the 3-arg query_grid_passable), or, with the Gameplay
+    // Fixes setting on and w a bot, a door that bars w and is not its foe meets the box
+    // (door_bars_at; Gameplay Fixes BI, a door a bot cannot open is a wall to it). Defined in
+    // reach.cpp.
+    bool step_refused(float x, float y, walker* w);
     // Side-effect-free landing probe for floor transitions (Z-stairs, air
     // falls, cross-floor teleports): true when ob's bbox at (x, y) on
     // target_floor is grid-passable AND overlaps no blocking entity there.
@@ -509,10 +530,36 @@ public:
     bool clear_sight_line(const walker* from, const walker* to);
 
     // Search the obmap spiral for the first foe met; fall back to the
-    // floor-blind nearest-foe scan when it finds none or leaves the map.
+    // nearest-foe scan when it finds none or leaves the map. That scan is
+    // floor-blind except for a flyer on a level with floors, who is answered
+    // the nearest foe on its own floor when there is one (#512).
     walker* find_near_foe(walker* ob);
-    // Scan all live, non-dormant foes and return the nearest by 2D distance.
+    // Scan all live, non-dormant foes and return the nearest by 2D distance;
+    // floor-blind except for a flyer on a level with floors (#512).
     walker* find_nearest_foe(walker* ob);
+    // The one test of a foe candidate that the quick foe search, the full scan, the range finder
+    // (find_foes_in_range) and og::reach::shut_out ask: `w` is alive, awake (not dormant), visible
+    // (not hidden), not friendly to `searcher`, and a Living or a Generator. No cloak roll (each
+    // search makes its own), no draw. Defined at the end of game_world.cpp.
+    [[nodiscard]] static bool foe_candidate(const walker& searcher, const walker& w);
+    // The full foe scan's answer, kept in its one pass: the nearest foe on any
+    // floor and, for a living that flies on a level with more than one floor,
+    // the nearest on its own floor (#512). With Gameplay Fixes on a candidate
+    // that would replace either pick and that only a locked door keeps the
+    // searcher from (og::reach, asked of one Asker for the whole scan) is
+    // passed over for both (fix BJ).
+    struct NearestFoePick
+    {
+        walker* any = nullptr;
+        std::int32_t any_distance = 10000;
+        walker* own = nullptr;
+        std::int32_t own_distance = 10000;
+        int own_floor = -1;  // -1: the searcher does not fly, or the level has one floor
+        std::optional<og::reach::Asker> asker;  // the searcher, for the door question
+        void set_searcher(walker& ob, int floors);
+        void offer(walker* foe, std::int32_t distance);
+        [[nodiscard]] walker* answer() const;
+    };
     // The nearest live stain on who's floor (squared centre distance under
     // 800), or nullptr; a stain on another floor is never answered (#456).
     walker* find_nearest_blood(walker* who);
@@ -523,6 +570,9 @@ public:
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                      std::int32_t range, std::int32_t* howmany, walker* ob);
+    // The live, awake, visible, non-friendly Livings and Generators within range (foe_candidate);
+    // no cloak roll. While a bot's cast rule is asked (cast_rule_for names it) a candidate only a
+    // locked door keeps that bot from is left out of the list and the count (Gameplay Fixes BJ).
     std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                           std::int32_t range, std::int32_t* howmany, walker* ob);
     // Live hostile weapons in range; normal projectiles use weaplist, and
@@ -610,6 +660,40 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+    // While walker::line_check_flight flies its test weapon (Gameplay Fixes BD) this names that
+    // weapon, and two answers differ for it: query_grid_passable takes an arrow slit as open and
+    // draws nothing, as it does for a quiet question (fix BD), and ob_pass_check meets a live
+    // enemy door without the clash roll, so the door stops it and nothing is drawn (fix BF). Null
+    // at every other time; never saved, never sent. The old game's field has the same name.
+    const walker* slit_open_for = nullptr;
+    // While living::check_special asks a bot's cast rule (its family's check_special_ai, through
+    // living::cast_rule) this names that bot, and find_foes_in_range, asked by it, leaves out of its
+    // list and its count every candidate that only a locked door keeps the bot from (Gameplay Fixes
+    // BJ; og::reach::door_shut). Null at every other time, and for a walker og::reach::asks does not
+    // name; never saved, never sent. Set and cleared by CastRuleScope alone.
+    const walker* cast_rule_for = nullptr;
+    // Names `bot` in cast_rule_for for its lifetime and puts the old value back on every way out.
+    class CastRuleScope
+    {
+    public:
+        CastRuleScope(GameWorld& world, const walker* bot) : world_(world), before_(world.cast_rule_for)
+        {
+            world_.cast_rule_for = bot;
+        }
+        ~CastRuleScope() { world_.cast_rule_for = before_; }
+        CastRuleScope(const CastRuleScope&) = delete;
+        CastRuleScope& operator=(const CastRuleScope&) = delete;
+
+    private:
+        GameWorld& world_;
+        const walker* before_;
+    };
+    // Whether `w` is the test weapon line_check_flight is flying now (slit_open_for); false for
+    // null. The door rule of Gameplay Fixes BF asks this.
+    [[nodiscard]] bool is_line_check_probe(const walker* w) const
+    {
+        return w != nullptr && w == slit_open_for;
+    }
 
     // Game state flags written in-place by tick().
     short level_done = 0;
@@ -744,6 +828,18 @@ public:
     bool applying_snapshot_ = false;
 
 private:
+    // A new grid (made, resized or freed): the network delta's dirty tiles start over, and so do
+    // og::reach's terrain maps.
+    void grid_replaced() noexcept
+    {
+        clear_grid_dirty_tiles();
+        reach_maps.note_terrain();
+    }
+    // find_foes_in_range's cast-rule filter (Gameplay Fixes BJ): `w` is left out when the walker
+    // asking (`ob`) is the bot cast_rule_for names and only a locked door keeps it from `w`; the
+    // range finder's one Asker of `ob` is made on the first candidate it asks about. Defined at the
+    // end of game_world.cpp.
+    bool cast_rule_leaves_out(walker& ob, const walker& w, std::optional<og::reach::Asker>& asker) const;
     walker* add_to_list(Order order, std::int32_t family,
                         EntityList& target_list,
                         bool count_living, bool atstart);

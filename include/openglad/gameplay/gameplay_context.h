@@ -26,11 +26,15 @@ public:
     GameplayPathfindingState(GameplayPathfindingState&&) noexcept;
     GameplayPathfindingState& operator=(GameplayPathfindingState&&) noexcept;
 
+    // `cells`, when given, is what the solve reads for each neighbour instead of the terrain's
+    // answers: a bot's route with the Gameplay Fixes setting on (og::reach::plan_route; Gameplay
+    // Fixes BI, a door a bot cannot open is a wall to it). The costs are the same either way.
     void solve_for(walker* owner,
                    void* start_state,
                    void* end_state,
                    std::vector<void*>& path_out,
-                   float& total_cost);
+                   float& total_cost,
+                   const og::reach::RouteCells* cells = nullptr);
 
     // Position-goal variant: paths toward a fixed map point instead of the
     // owner's foe. The classic foe solve above is byte-identical with or
@@ -41,7 +45,8 @@ public:
                          void* start_state,
                          void* end_state,
                          std::vector<void*>& path_out,
-                         float& total_cost);
+                         float& total_cost,
+                         const og::reach::RouteCells* cells = nullptr);
 
 private:
     struct Impl;

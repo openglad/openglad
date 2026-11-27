@@ -23,6 +23,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/pathfinding_grid.h>
@@ -621,6 +622,74 @@ TEST_F(SemPathing, a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real
         float cost = 0.0f;
         EXPECT_EQ(std::vector<Cell>{}, solve_to(a, 14, 8, 1, cost))
             << "blocked destination: no edge into the wall above";
+    }
+}
+
+// gameplay_context.cpp (adjacent_cost) and og::reach::plan_route: Gameplay Fixes BI, a door a bot
+// cannot open is a wall to it, leaves a door the walker can open as it was: walked, at the body's
+// cost of ten a cell. The corridor of a_cell_holding_a_body_costs_ten_to_path_through with a door
+// (16 x 16, key level 2) at (4,2) in the body's place; a soldier bot of team 1 at (2,2) whose foe,
+// an orc of team 2, sits at (6,2), neither filed in the body map. The bot's own route
+// (find_path_to_foe) on both settings, (a) the door of its side, (b) an enemy door whose key it
+// holds: straight through the door, row 2 from 2 to 6; and the solve that route makes (with the
+// setting on the plan's start, goal and cells, with it off the classic solve) costs 22, the door's
+// two cells of its body-map bucket at 10 each. (c) An enemy door it holds no key to: the setting
+// off, the same route; the setting on, none (the corridor is the only way).
+// Fails when broken: the route finder pricing a bot's door cell as an empty one (cost 4 with the
+// setting on).
+TEST_F(SemPathing, a_door_the_walker_can_open_costs_ten_and_is_walked)
+{
+    enum class Door { OfItsSide, KeyHeld, NoKey };
+    for (short fixes : {short{0}, short{1}}) {
+        for (const Door kind : {Door::OfItsSide, Door::KeyHeld, Door::NoKey}) {
+            SCOPED_TRACE(std::string(fixes ? "Gameplay Fixes on, " : "Gameplay Fixes off, ") +
+                         (kind == Door::OfItsSide ? "(a) the door of its side"
+                          : kind == Door::KeyHeld ? "(b) an enemy door, its key held"
+                                                  : "(c) an enemy door, no key"));
+            SetUp();
+            world().gameplay_fixes = fixes;
+            for (int x = 0; x <= 10; ++x) {
+                tile(0, x, 1, PIX_H_WALL1);
+                tile(0, x, 3, PIX_H_WALL1);
+            }
+            walker* a = actor_at(2, 2, 0, 1);
+            walker* foe = world().add_ob(Order::Living, FAMILY_ORC);
+            walker* door = world().add_ob(Order::Weapon, FAMILY_DOOR);
+            ASSERT_TRUE(a && foe && door);
+            ASSERT_EQ(-1, static_cast<int>(a->user())) << "the staging: a bot";
+            foe->set_team_num(2);
+            foe->setxy(static_cast<short>(6 * GRID_SIZE), static_cast<short>(2 * GRID_SIZE));
+            (void)world().myobmap->remove(foe);
+            door->set_team_num(kind == Door::OfItsSide ? 1 : 3);
+            door->set_act_type(ACT_SIT);
+            door->stats()->set_level(2);
+            door->set_sizex(16);
+            door->set_sizey(16);
+            door->setxy(static_cast<short>(4 * GRID_SIZE + 1), static_cast<short>(2 * GRID_SIZE));
+            door->setxy(static_cast<short>(4 * GRID_SIZE), static_cast<short>(2 * GRID_SIZE));
+            if (kind == Door::KeyHeld)
+                a->set_keys(static_cast<std::uint32_t>(key_level_mask(2)));
+            a->set_foe(foe);
+            a->find_path_to_foe();
+            if (kind == Door::NoKey) {
+                EXPECT_EQ(fixes ? std::vector<Cell>{} : row(2, 2, 6, 0), cells(a->path_to_foe));
+                continue;
+            }
+            EXPECT_EQ(row(2, 2, 6, 0), cells(a->path_to_foe)) << "through the door";
+            std::vector<PathState> path;
+            float cost = -1.0f;
+            const og::reach::RoutePlan plan = og::reach::plan_route(*a, og::reach::Cell{6, 2, 0}, foe);
+            EXPECT_EQ(fixes != 0, plan.judged);
+            if (plan.judged) {
+                ASSERT_TRUE(plan.run);
+                pathing().solve_for(a, cell_state(plan.start.x, plan.start.y, plan.start.floor),
+                                    cell_state(plan.goal.x, plan.goal.y, plan.goal.floor), path, cost, &plan.cells);
+            } else {
+                pathing().solve_for(a, cell_state(2, 2, 0), cell_state(6, 2, 0), path, cost);
+            }
+            EXPECT_EQ(row(2, 2, 6, 0), cells(path));
+            EXPECT_FLOAT_EQ(22.0f, cost) << "(3,2) and (6,2) at 1, the door's two cells at 10 each";
+        }
     }
 }
 

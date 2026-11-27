@@ -2592,6 +2592,11 @@ TEST_F(ModesCtf, bot_match_produces_pickups_and_captures)
         if (fx.flag_carried(0) || fx.flag_carried(1))
             saw_pickup = true;
     }
+    print_modegame_line(
+        fx.world(), std::format("captures={},{} pickup={} ended={}",
+                                fx.captures(0), fx.captures(1),
+                                saw_pickup ? 1 : 0,
+                                fx.world().game_ended ? 1 : 0));
 
     ASSERT_TRUE(fx.ctf_active());
     ASSERT_TRUE(saw_pickup) << "flags must get picked up in a directed match";

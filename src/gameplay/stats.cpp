@@ -771,7 +771,7 @@ short statistics::do_command()
 				// tests: GameplayFixesWalk.a_rush_into_a_foe_still_strikes_it
 				// tests: GameplayFixesWalk.a_wall_stopped_rush_strikes_no_stale_body
 				// tests: StatsCommands.stats_do_command_rush_with_the_setting_on_leaves_a_parked_collider_alone
-				// tests: parity:soldier_charge_ally_scen99, parity:soldier_charge_front_foe_scen99
+				// tests: parity:soldier_charge_ally_scen99, parity:soldier_charge_front_foe_scen99, parity:soldier_charge_ally_fixes_scen99
 				// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 				if (controller_->collide_ob() // We hit someone
 				        && (og::sim::session_gameplay_fixes() == 0
@@ -817,12 +817,12 @@ short statistics::do_command()
 		// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
 		// tests: StatsUnit.stats_r12_command_and_hit_response_branches
 		case COMMAND_SEARCH: // use right-hand rule to find foe
-			// rule: A SEARCH order hunts the held foe (walk_to_foe) while it lives; with no foe or
-			//   a dead foe the order is abandoned that round.
+			// rule: A SEARCH order hunts the held foe (search_round: walk_to_foe, after Gameplay Fixes
+			//   BJ's keeps_foe) while it lives; with no foe or a dead foe the order is abandoned that round.
 			// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
-			// tests: StatsUnit.stats_r12_command_and_hit_response_branches
+			// tests: StatsUnit.stats_r12_command_and_hit_response_branches, SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
 			if (controller_->foe() && !controller_->foe()->dead())
-				walk_to_foe();
+				search_round();
 			else // stop trying to walk to this foe
             {
 				commands.front().commandcount = 0;
@@ -875,13 +875,13 @@ short statistics::do_command()
 		// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 		// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			// rule: An ATTACK order ends as soon as the walker has no foe or its foe is dead.
-			// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
-			// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
-			// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
-			if (!controller_->foe() || controller_->foe()->dead())
+			// rule: An ATTACK order ends as soon as the walker has no foe or its foe is dead, and when
+			//   its bot lets go a foe only a locked door keeps it from (Gameplay Fixes BJ, keeps_foe).
+			// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot, SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
+			// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires, SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+			if (!controller_->foe() || controller_->foe()->dead() || keeps_foe() == FoeKeep::LetGo)
 			{
-				commands.front().commandcount = 0;
+				end_order();
 				result = 1;
 				break;
 			}
@@ -904,12 +904,12 @@ short statistics::do_command()
 					deltay = (deltay > 0) ? 1 : -1;
 			{
 				walker::FireCheckDenial denial = walker::FireCheckDenial::None;
-				// rule: An attacking walker shoots when the shot is clear (queues a FIRE of rng(5)
-				//   rounds in front and fires now); when the only reason it cannot is its
-				//   orientation (a thrower facing off the foe, or a melee-only family at bump
-				//   range) it turns to face the foe without moving (guard-standoff fix, always on);
-				//   when the foe is out of range, behind a wall or it lacks mana it walks one step
-				//   toward the foe.
+				// rule: An attacking walker shoots when the shot is clear (queues a FIRE of rng(5) rounds in
+				//   front and fires now); when the only reason it cannot is its orientation (a thrower facing
+				//   off the foe, or a melee-only family with its foe inside its weapon's reach) it turns to
+				//   face the foe without moving (guard-standoff fix, always on; with Gameplay Fixes on a
+				//   melee-only bot that already faced its foe then fights: fix BC, attack_face_or_fight); when
+				//   the foe is out of range, behind a wall or it lacks mana it walks one step toward the foe.
 				// tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
 				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 				// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
@@ -917,7 +917,7 @@ short statistics::do_command()
 				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
 				// tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 				// tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
-				// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
+				// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving, SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
 				if (!controller_->fire_check(deltax, deltay, &denial))
 				{
 					// Guard-standoff melee deadlock fix (2026-07-07, see
@@ -926,8 +926,8 @@ short statistics::do_command()
 					// to face the foe and swing next tick. Two denials mean
 					// exactly that:
 					//  - Facing: a thrown-weapon family pointed off the foe;
-					//  - NoRanged: a melee-only family (orc, ghost, slime) at
-					//    bump range — its hit lands through fire()'s blocked
+					//  - NoRanged: a melee-only family (orc, ghost, slime) with its foe inside its weapon's reach,
+					//    which is tens of pixels, not only touching; its hit lands through fire()'s blocked
 					//    weapon-spawn cell, which also requires facing.
 					// The classic fallback walked instead; with the foe's own
 					// body blocking that step, walkstep's blocked-NPC branch
@@ -940,7 +940,7 @@ short statistics::do_command()
 					// repositioning), as does NoMagic (regen while closing).
 					// rule: An attacker standing exactly on its foe (a pass-through left the bodies
 					//   merged) steps out along its own facing to break the clinch,
-					//   deterministically and without RNG (always on).
+					//   deterministically and without RNG (always on; the step is attack_step's).
 					// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 					if (deltax == 0 && deltay == 0)
 					{
@@ -955,7 +955,7 @@ short statistics::do_command()
 						short stepx = 0, stepy = 0;
 						facing_step_delta(static_cast<char>(controller_->curdir()),
 						                  stepx, stepy);
-						controller_->walkstep(stepx, stepy);
+						attack_step(stepx, stepy);
 					}
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)  // rule: An attacking walker shoots
@@ -969,21 +969,21 @@ short statistics::do_command()
 					             // tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 					             // tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 					             // tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						// Note for NoRanged (melee-only) families: this only FACES the
-						// bump-range foe. Their swings are bumps: a step of their own
-						// that runs into a body (living::walk's probe); with Gameplay
-						// Fixes on, the right-hand walk's probe that finds their own foe
-						// (statistics::path_probe; off, every loud probe bumps) and
-						// walk_to_foe's near branch when a foe's body stands on their
-						// weapon's pad (Gameplay Fixes BB, near_swing; off, that branch's
-						// init_fire() only turns the bot back). Wiring init_fire() here
-						// as well was tried and rejected: it roughly doubles melee swing
-						// rate over classic and swung campaign balance hard (Westlands
-						// L2's fight-through crew started losing members). For #447 a
-						// swing here at a body on the pad, else a step, was measured
-						// against the setting-on game before Gameplay Fixes BB: blows per
-						// 100 ticks near a foe 0.97 to 2.06, Westlands survivors 322 to 255.
-						controller_->face_delta(deltax, deltay);
+						// Note for NoRanged (melee-only) families: classic, this arm only FACES a foe inside
+						// the weapon's reach. Their swings are bumps: a step of their own that runs into a body
+						// (living::walk's probe); with Gameplay Fixes on, the right-hand walk's probe that
+						// finds their own foe (statistics::path_probe; off, every loud probe bumps) and
+						// walk_to_foe's near branch when a foe's body stands on their weapon's pad (Gameplay
+						// Fixes BB, near_swing; off, that branch's init_fire() only turns the bot back). Wiring
+						// init_fire() here as well was tried in July 2026 and rejected then: it roughly doubles
+						// the melee swing rate over classic and swung campaign balance hard (Westlands L2's
+						// fight-through crew started losing members). For #447 a swing here at a body on the pad,
+						// else a step, was measured against the setting-on game before fix BB: blows per 100 ticks
+						// near a foe 0.97 to 2.06, Westlands survivors 322 to 255. Gameplay Fixes BC (#447) does it
+						// behind the setting: a swing at a body on the pad, else a step (attack_face_or_fight, at
+						// the end of this file), and the levels whose crews fell were eased in their builders where
+						// lowering a group brought them back or nearer (docs/gameplay-fixes.md, Balance). Off, nothing changed.
+						attack_face_or_fight(deltax, deltay);
 					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
 						//   of rng(5) rounds in front and fires now).
 						// tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
@@ -994,7 +994,7 @@ short statistics::do_command()
 						// tests: MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe
 						// tests: SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds
 						// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
-						controller_->walkstep(deltax, deltay);
+						attack_step(deltax, deltay);
 				}
 				else // (controller_->fire_check(deltax, deltay))
 				{
@@ -1652,8 +1652,8 @@ bool statistics::right_walk()
 // pixel (CHECK_STEP_SIZE) toward `side`, counted round from its facing: the
 // same box facing_step_delta names, and the same collide() rule the classic
 // probe met the body with (og::sim::step_meets). A melee-only bot has no aimed
-// shot (fire_check refuses it, the ATTACK arm only faces): its blows are the
-// bumps, its own step's and, with the setting on, this one at its own foe.
+// shot (fire_check refuses it). Its blows: its own step's bump; with the setting on also this
+// bump at its own foe and a swing at a body on its pad (near_swing, the ATTACK order).
 // Measured 2026-11-01: the quiet probes alone took a third of the orc, ghost
 // and slime swings and a fifth of their damage, and left an orc stopped
 // exactly against a standing foe swinging never. Off, the probe alone.
@@ -1720,25 +1720,25 @@ bool statistics::direct_walk()
 	//   lasting 30+rng(25) rounds.
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
-	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
-		ydelta = 0;
-	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
-		xdelta = 0;
+	walker::snap_three_to_one(xdelta, ydelta);
 
+	// The 3:1 snap and the shot test were written out here. Each is one function now: the snap
+	// (walker::snap_three_to_one) is shared with the planned approach of
+	// walker::can_approach_weapon_range, and the shot test (shot_attacks, at the end of this
+	// file) with a bot that keeps its foe only by its shot (Gameplay Fixes BJ, search_round).
+	// Both moved unchanged, their draws as they were, and line for line, so the parity pins
+	// below stay on their lines.
 	// rule: A chasing walker that can already land a shot on its foe along the (3:1-snapped, raw
-	//   pixel) delta stops chasing.
+	//   pixel) delta stops chasing (shot_attacks).
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks, SemAi4.a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on
-	if (controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
+	if (shot_attacks(xdelta, ydelta))
 	{
-		clear_command();
-		controller_->turn(controller_->facing(xdelta, ydelta));
-		add_command(COMMAND_ATTACK,static_cast<short>(30+rng(25)),0,0);
 		return 1;
 	}
 
 	// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-	//   allows it (bodies are not checked here), else slides along x, else along y; it fails
+	//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y; it fails
 	//   (returns 0, no move) when every straight move is walled or the foe is exactly on top of it.
 	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
@@ -1757,28 +1757,28 @@ bool statistics::direct_walk()
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
 	// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-	//   allows it (bodies are not checked here), else slides along x, else along y.
+	//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-	if (!current_game->world->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller_) )
+	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+	if (current_game->world->step_refused(controlx+xdeltastep, controly+ydeltastep, controller_) )
 	{
 		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-		//   allows it (bodies are not checked here), else slides along x, else along y.
+		//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-		// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-		if (!current_game->world->query_grid_passable(controlx+xdeltastep,controly+0,controller_) )
+		// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+		if (current_game->world->step_refused(controlx+xdeltastep,controly+0,controller_) )
 		{
 			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
-			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
+			//   GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-			// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
-			if (!current_game->world->query_grid_passable(controlx+0,controly+ydeltastep,controller_) )
+			// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+			if (current_game->world->step_refused(controlx+0,controly+ydeltastep,controller_) )
 			{
 				return 0;
 
@@ -1788,7 +1788,7 @@ bool statistics::direct_walk()
 			else //y ok
 			{
 				// rule: The straight-line chase takes the diagonal unit step toward the foe when
-				//   the GRID allows it (bodies are not checked here), else slides along x, else
+				//   the GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else
 				//   along y.
 				// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 				// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
@@ -1806,7 +1806,7 @@ bool statistics::direct_walk()
 		else //x ok
 		{
 			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
-			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
+			//   GRID allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1824,7 +1824,7 @@ bool statistics::direct_walk()
 	else //x and y ok
 	{
 		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
-		//   allows it (bodies are not checked here), else slides along x, else along y.
+		//   allows it (of bodies, only a door a bot cannot open), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1975,7 +1975,7 @@ bool statistics::walk_to_foe()
 	// byte-identical.
 	const bool multifloor = current_game->world->floor_count() > 1;
 	const bool flyer = multifloor &&
-	    (query_bit_flags(BIT_FLYING) || controller_->flight_left() != 0);
+	    controller_->flies();
 	const bool cross_floor = multifloor && !flyer &&
 	    foe->floor() != controller_->floor();
 
@@ -2021,27 +2021,27 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller_->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or
-		//   any chaser on a crowded map (more than 200 objects, dead included), skips A*: if any
-		//   foe is within 100 px it wipes its orders, turns toward the foe (near_turn), starts an
-		//   ATTACK of 30+rng(25) rounds and may swing (near_swing); if no foe is that close it
-		//   abandons its current order (front count zeroed) and falls through to the walk.
-		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
-		// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+		// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or any chaser on a
+		//   crowded map (more than 200 objects, dead included), skips A*: if any foe is within 100 px it wipes its
+		//   orders, turns toward the foe (turn_to_foe), starts an ATTACK of 30+rng(25) rounds and may swing
+		//   (near_swing); if no foe is that close it ends its order (front count zeroed) and falls to the walk.
+		//   Not a bot whose way only its key opens (Gameplay Fixes BK), nor a melee bot holding a door (BL).
+		// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 		// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
 		// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
+		// tests: SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door, parity:orc_bot_routes_to_held_door_scen99, parity:orc_bot_routes_to_held_door_fixes_scen99
 		if (!cross_floor &&
-		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT))
+		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT) && !og::reach::opens_way(*controller_, *foe) && !walks_into_door(*controller_, foe))
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
 			// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan),
-			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*.
-			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
-			// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
+			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*; a foe
+			//   only a locked door keeps a bot from is not counted near (Gameplay Fixes BJ, foes_not_door_shut).
+			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches, StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing, SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
-			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
-			if (howmany > 0)
+			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near, SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from, parity:orc_bot_near_ring_crowded_scen99, parity:orc_bot_near_ring_crowded_fixes_scen99
+			if (foes_not_door_shut(foelist) > 0)
 			{
 				clear_command();
 				// #320: find_near_foe's result was thrown away since the 2002
@@ -2066,7 +2066,7 @@ bool statistics::walk_to_foe()
 					xdelta = near_foe->xpos() - controller_->xpos();
 					ydelta = near_foe->ypos() - controller_->ypos();
 				}
-				const bool faced = near_turn(controller_->facing(xdelta, ydelta));
+				const bool faced = turn_to_foe(controller_->facing(xdelta, ydelta));
 				controller_->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				near_swing(faced, static_cast<short>(xdelta), static_cast<short>(ydelta));
 				return 1;
@@ -2086,13 +2086,13 @@ bool statistics::walk_to_foe()
 			}
 		}
 		else if (!flyer || foe->floor() == controller_->floor())  // rule: A far (>= 100 px) foe on an
-			//   uncrowded map is reached by A*; a ground walker that cannot path to a foe on
-			//   another floor routes to the nearest stair toward it; a flyer never paths to a foe
-			//   on another floor (it cannot change floors) and instead shadows the foe's 2D
-			//   position from its own floor.
+			//   uncrowded map, a foe whose way only the bot's key opens (Gameplay Fixes BK) and a door a melee
+			//   bot holds (BL) are reached by A*; a ground walker that cannot path to a foe on another floor
+			//   routes to the nearest stair toward it; a flyer never paths to a foe on another floor (it
+			//   cannot change floors) and instead shadows the foe's 2D position from its own floor.
 			// tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
 			// tests: ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair
-			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches
+			// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches, SemBotReach.a_key_holder_whose_way_runs_through_its_door_plans_its_route_instead_of_the_near_branch, SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
         {
             controller_->find_path_to_foe();
             // Cross-floor foe whose exact cell A* cannot reach (sparse upper
@@ -2168,8 +2168,8 @@ static void facing_step_delta(char dir, short& xdelta, short& ydelta)
 {
 	// rule: Each of the 8 facings maps to its unit step (UP (0,-1), UR (1,-1), R (1,0), DR (1,1), D
 	//   (0,1), DL (-1,1), L (-1,0), UL (-1,-1)); an invalid facing maps to no step. Used by the
-	//   clinch breaker (above), path_probe's box (above) and right_walk_to_point
-	//   (below, 1587); same table as right_walk's inline switches (above, 1048).
+	//   clinch breaker and path_probe's box (above), right_walk_to_point, near_swing and
+	//   keep_turn (below); same table as right_walk's inline switches (above).
 	// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
 	// tests: SemAi4.an_invalid_facing_maps_to_no_step
 	switch (dir)
@@ -2250,32 +2250,32 @@ bool statistics::direct_walk_to_point(short x, short y)
 	xdeltastep = xdelta * controller_->stepsize();
 	ydeltastep = ydelta * controller_->stepsize();
 
-	// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-	//   slide, else the y slide, and fails when walled or already there; it never attacks (same
-	//   ladder as above).
+	// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+	//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled
+	//   or already there; it never attacks (same ladder as above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-	// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-	if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))
+	// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+	if (current_game->world->step_refused(controlx + xdeltastep, controly + ydeltastep, controller_))
 	{
-		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-		//   slide, else the y slide, and fails when walled or already there.
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+		//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-		if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + 0, controller_))
+		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+		if (current_game->world->step_refused(controlx + xdeltastep, controly + 0, controller_))
 		{
-			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
-			//   the x slide, else the y slide, and fails when walled or already there.
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+			//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
-			if (!current_game->world->query_grid_passable(controlx + 0, controly + ydeltastep, controller_))
+			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled, SemBotReach.the_straight_walk_takes_no_step_into_a_door_it_cannot_open
+			if (current_game->world->step_refused(controlx + 0, controly + ydeltastep, controller_))
 			{
 				// No straight-line move brings us closer to the point.
 				return 0;
 			}
 			else // y ok
 			{
-				// rule: A walk toward a point takes the diagonal unit step when the grid allows,
-				//   else the x slide, else the y slide, and fails when walled or already there.
+				// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+				//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 				// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 				// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 				if (ydelta == 0.0f)
@@ -2286,8 +2286,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 		}
 		else // x ok
 		{
-			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
-			//   the x slide, else the y slide, and fails when walled or already there.
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+			//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 			if (xdelta == 0.0f)
@@ -2298,8 +2298,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 	}
 	else // x and y ok
 	{
-		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
-		//   slide, else the y slide, and fails when walled or already there.
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows (of bodies,
+		//   only a door a bot cannot open), else the x slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 		if (xdelta == 0.0f && ydelta == 0.0f)
@@ -2510,23 +2510,23 @@ bool statistics::slide_half_clear(short dx, short dy)
 	return current_game->world->query_passable(x, y, controller_);
 }
 
-// Gameplay Fixes BB (#497): the turn of walk_to_foe's near branch. Appended at
-// the end of the file so the parity pins above never shift.
-// walker::turn never writes enddir, and init_fire() and living::act_round both
-// turn a walker toward enddir before anything else. Classic: the notch this
-// turn gives a bot that does not face its foe is undone at once by the
-// init_fire() that follows (measured on Tryxian level 1, six seeds of 2400
-// ticks: every one of 14,547 calls with the setting off), so the bot never
-// completes its aim here.
-bool statistics::near_turn(short aim)
+// Gameplay Fixes BB (#497) and BE (#513): the turn toward a foe, for walk_to_foe's
+// near branch and for living::act_random's refused shot. Appended at the end of the
+// file so the parity pins above never shift. walker::turn never writes enddir, and
+// init_fire() and living::act_round both turn a walker toward enddir before anything
+// else: classic, a bot's notch toward a foe it does not face is undone at once, in the
+// near branch by the init_fire() that follows (measured on Tryxian level 1, six seeds
+// of 2400 ticks: all 14,547 calls with the setting off), in act_random by its next
+// act. With the setting on the turn is kept; a tower is snap-faced (keep_turn, below).
+bool statistics::turn_to_foe(short aim)
 {
 	const bool faced = controller_->curdir() == aim;
-	// rule: Gameplay Fixes BB (#497): a bot not yet facing its near foe keeps the foe's direction
-	//   as the facing it is turning to (enddir), so the notch it turns now is not undone and its
-	//   next acts finish the turn. Classic: enddir is left as it was and the bot is turned back.
-	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on
+	// rule: Gameplay Fixes BB (#497) and BE (#513): a bot not yet facing its foe keeps the foe's
+	//   direction for good (keep_turn, at the end of this file), so its turn is not undone and its
+	//   next acts finish it. Classic: enddir is left as it was and the bot is turned back.
+	// tests: SemAi4.a_chaser_turning_toward_its_near_foe_keeps_that_aim_with_the_setting_on, SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on, parity:orc_refused_shot_turn_scen99, parity:orc_refused_shot_turn_fixes_scen99
 	if (og::sim::session_gameplay_fixes() != 0 && !faced)
-		controller_->set_enddir(static_cast<char>(aim));
+		return keep_turn(aim);
 	controller_->turn(aim);
 	return faced;
 }
@@ -2572,7 +2572,7 @@ void statistics::near_swing(bool faced, short xdelta, short ydelta)
 	// tests: SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
 	// tests: parity:mage_bot_far_foe_fixes_scen99
 	const bool lands = query_bit_flags(BIT_NO_RANGED)
-	        ? controller_->fire_pad_answer() == walker::PadAnswer::Body
+	        ? foe_on_pad()
 	        : controller_->fire_check(xdelta, ydelta);
 	if (lands)
 		controller_->init_fire();
@@ -2589,15 +2589,416 @@ bool statistics::near_adopts(const walker* near_foe, std::uint32_t held_distance
 	// tests: parity:walk_to_foe_adopts_near_foe_scen99
 	if (static_cast<std::uint32_t>(controller_->distance_to_ob(near_foe)) < held_distance)
 		return true;
-	// rule: #447 (this game only, both settings; only a level with more than one floor has a
-	//   flyer here): a flyer never changes floors, so a foe on another floor is one it can only
-	//   shadow. When the quick foe search answers a foe on the flyer's own floor it takes that
-	//   one, even when it is farther than the foe it holds; the quick search looks about five
-	//   map cells (160 px) round the bot, and with no foe on its floor inside that reach the
-	//   flyer keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's rule
-	//   alone.
+	// rule: #447, #512 (this game only, both settings; only a level with more than one floor has
+	//   a flyer here): a flyer never changes floors, so a foe on another floor is one it can only
+	//   shadow. When the foe search answers a foe on the flyer's own floor (the quick search, or
+	//   beyond its reach the full scan, which answers a flyer the nearest foe on its floor) it
+	//   takes that one, even when it is farther than the foe it holds. With no foe on its floor
+	//   anywhere it keeps the foe it has. A flyer that holds a foe on its own floor keeps #320's
+	//   rule alone.
 	// tests: SemAi4.a_flyer_whose_foe_is_on_another_floor_takes_the_foe_on_its_own_floor
 	const walker* held = controller_->foe();
 	return flyer && held != nullptr && held->floor() != controller_->floor()
 	        && near_foe->floor() == controller_->floor();
+}
+
+// Gameplay Fixes BE (#513): the turn toward a foe that is kept. Asked only by
+// turn_to_foe, only with the setting on and only by a bot that does not face
+// `aim`; it answers false, "the bot did not face its foe", so the near branch
+// starts no swing on this act. A bot that can walk keeps the aim as the facing
+// it is turning to (enddir) and turns one notch: living::act_round's turn
+// finishes it, one notch an act, before the bot's queued orders run. A tower
+// has no walk to carry its aim, and walker::turn leaves a stationary living's
+// heading where it was while its line check and its shot fly along that
+// heading; so it faces its foe at once, as its own step rule already does
+// (walker::walkstep), and its next line check flies the new way. That also
+// serves fix BB's near branch: a tower within 100 px of a foe it does not face
+// faces it on the re-plan act and can shoot on its next one. Appended at the
+// end of the file so the parity pins above never shift.
+bool statistics::keep_turn(short aim)
+{
+	// rule: Gameplay Fixes BE (#513): a stationary living (a tower) faces its foe at once, heading
+	//   included (face_delta): a notch of walker::turn would leave its heading, which its line
+	//   check and its shot fly along, on the old line. Any other bot keeps the aim as the facing it
+	//   is turning to (enddir) and turns one notch; its next acts finish the turn.
+	// tests: SemAi5.a_tower_whose_shot_is_refused_faces_its_foe_at_once_with_its_heading
+	// tests: SemAi5.a_tower_turning_toward_its_near_foe_faces_it_at_once_with_the_setting_on
+	// tests: SemAi5.a_bot_whose_shot_is_refused_keeps_its_turn_toward_the_foe_with_the_setting_on, SemAi5.a_walking_shooter_whose_shot_is_refused_keeps_its_turn_and_its_own_heading_with_the_setting_on
+	if (controller_->stationary())
+	{
+		short ux = 0, uy = 0;
+		facing_step_delta(static_cast<char>(aim), ux, uy);
+		controller_->face_delta(ux, uy);
+		return false;
+	}
+	controller_->set_enddir(static_cast<char>(aim));
+	controller_->turn(aim);
+	return false;
+}
+
+// Gameplay Fixes BB (#497) and BC (#447): is a foe's body on this bot's weapon
+// pad? It is the one place a melee-only bot's swing can land: fire() places its
+// weapon on that pad and strikes the body it meets there. Asked quietly
+// (walker::fire_pad_answer: no draw, nothing built, nothing eaten or opened).
+// walk_to_foe's near branch (near_swing) and the ATTACK order
+// (attack_face_or_fight) both ask it: one rule. Appended at the end of the file
+// so the parity pins above never shift.
+bool statistics::foe_on_pad() const
+{
+	// rule: A melee-only bot's blow can land only on a foe's body standing on its weapon's pad
+	//   (own-team bodies, terrain and a clear pad are all "no").
+	// tests: SemAi4.a_melee_only_chaser_swings_from_the_near_branch_only_at_a_body_on_its_pad
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_wall_or_an_ally_on_the_pad_is_stepped_at_not_swung_at
+	return controller_->fire_pad_answer() == walker::PadAnswer::Body;
+}
+
+// Gameplay Fixes BC (#447): the ATTACK order's round when its shot is refused
+// for the bot's facing (Facing) or because the bot is melee-only with its foe
+// inside its weapon's reach (NoRanged). Classic, the guard-standoff fix
+// (2026-07-07): the bot only faces its foe, so a melee-only bot stands for the
+// whole order. With the setting on a melee-only bot that already faced its foe
+// on its own floor fights, by the rule a shooter follows in the same order (it
+// fires when the blow can land, else it steps): it swings when a foe's body
+// stands on its weapon's pad and otherwise takes a step toward the foe. A bot
+// that had to turn spends the round on the turn (fix BB's rule), and a foe on
+// another floor is only faced (a flyer never changes floors). The weapon's
+// magic is not asked: an orc out of magic swings and lands nothing until its
+// magic returns, as a player's orc does, and its step into a body would start
+// the same swing. Appended at the end of the file so the parity pins above
+// never shift.
+void statistics::attack_face_or_fight(short deltax, short deltay)
+{
+	const walker* const foe = controller_->foe();
+	// A bot refused for its facing does not face its foe, so in this arm "already faced" is true
+	// only for a melee-only bot whose foe is inside its weapon's reach.
+	const bool fights = og::sim::session_gameplay_fixes() != 0 &&
+	                    controller_->curdir() == controller_->facing(deltax, deltay) &&
+	                    foe != nullptr && foe->floor() == controller_->floor();
+	controller_->face_delta(deltax, deltay);  // the heading the pad and the swing read
+	// rule: Gameplay Fixes BC (#447): in its ATTACK order a melee-only bot that already faced its
+	//   foe on its own floor fights: it swings when a foe's body stands on its weapon's pad (while
+	//   its weapon's pause runs that starts nothing, and it does not step), else it takes a step
+	//   toward the foe. Classic, a shooter turned off its foe, a bot that had to turn this round
+	//   and a foe on another floor: it only faces (the guard-standoff fix).
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_faced_melee_only_attacker_steps_toward_a_foe_off_its_pad_with_the_setting_on
+	// tests: SemAi5.a_melee_only_attacker_that_must_turn_only_turns_on_both_settings
+	// tests: SemAi5.a_busy_melee_only_attacker_neither_swings_nor_steps
+	// tests: SemAi5.a_melee_only_attacker_whose_foe_is_on_another_floor_only_faces_it
+	// tests: SemAi5.a_melee_only_attacker_lands_one_blow_per_weapon_pause_in_its_order
+	// tests: SemAi5.an_attack_order_queued_by_a_script_fights_the_same_way
+	// tests: SemAi5.a_shooter_turned_off_its_foe_still_only_faces
+	// tests: SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving
+	// tests: parity:orc_attack_order_blows_scen99, parity:orc_attack_order_blows_fixes_scen99
+	if (!fights)
+		return;
+	// rule: Gameplay Fixes BC (#447): a foe's body on the pad is swung at with no step; anything
+	//   else on the pad (a wall, an ally), or nothing, is stepped at, and a step that runs into the
+	//   foe's own body beside the pad bumps it.
+	// tests: SemAi5.a_faced_melee_only_attacker_swings_at_a_body_on_its_pad_with_the_setting_on
+	// tests: SemAi5.a_faced_melee_only_attacker_steps_toward_a_foe_off_its_pad_with_the_setting_on
+	// tests: SemAi5.a_wall_or_an_ally_on_the_pad_is_stepped_at_not_swung_at
+	// tests: SemAi5.a_small_foe_beside_the_pad_is_bumped_by_the_step
+	if (foe_on_pad())
+		controller_->init_fire();
+	else
+		controller_->walkstep(deltax, deltay);
+}
+
+// og::reach: the level of a door's statistics is the key the door wants, which a door question
+// reads; the setter tells the door (SimEntity::door_state_written), which tells its world's maps.
+// Appended at the end of the file so the parity pins above stay on their lines.
+void statistics::level_written() noexcept
+{
+	// rule: og::reach: the walker whose level was written is told by its owner first and its
+	//   controller second (as mark_dirty finds it), so a door whose controller link was cleared
+	//   still tells its world's maps; statistics of no walker tell nothing.
+	// tests: SemBotReach.a_doors_level_written_after_its_controller_link_was_cleared_still_counts
+	walker* const told = owner_ != nullptr ? owner_ : controller_;
+	// plumbing: statistics built for no walker have no door to tell; the rule is the door's
+	if (told != nullptr)
+		told->door_state_written();
+}
+
+// Gameplay Fixes BJ: a bot treats an enemy that only a locked door keeps it from as if it were not
+// there. Asked at the top of a SEARCH round (search_round) and of an ATTACK round, of a live held
+// foe: a foe handed to the bot without a search (a blow, its own shot landing, a yell, a script)
+// reaches the rule here. The door question is og::reach::door_shut_exit (reach.h): it draws nothing
+// and answers "kept" for every walker og::reach::asks does not name (the setting off, a player's
+// fighter, a tower, a guard at its post). Appended at the end of the file so the parity pins above
+// never shift.
+statistics::FoeKeep statistics::keeps_foe()
+{
+	walker* const foe = controller_->foe();
+	// rule: Gameplay Fixes BL: a held door (a door is no fighter, so the question below would keep
+	//   it) is asked the last-resort rule's keep instead (keeps_door).
+	// tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+	if (foe->is_door())
+		return keeps_door(*controller_);
+	const og::reach::Exit why = og::reach::door_shut_exit(*controller_, *foe);
+	// rule: Gameplay Fixes BJ: a held foe only a locked door keeps the bot from is let go: no foe, its
+	//   orders cleared (clear_command, which clears its leader too), its route cleared; the round
+	//   ends there, with no step and no draw.
+	// tests: SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+	// tests: SemBotReach.a_struck_bot_takes_its_striker_at_the_blow_and_lets_go_on_its_next_round
+	// tests: SemBotReach.a_chaser_lets_its_foe_go_on_the_round_after_the_foe_passes_its_own_door, parity:orc_bot_handed_foe_let_go_scen99, parity:orc_bot_handed_foe_let_go_fixes_scen99
+	if (why == og::reach::Exit::DoorShut)
+	{
+		let_go(*controller_);
+		return FoeKeep::LetGo;
+	}
+	// rule: Gameplay Fixes BJ: a held foe that only a locked door keeps the bot from on foot, but
+	//   that its shot lands on from where it stands, is kept only by the shot (search_round and
+	//   attack_step: it takes no step for it); every other held foe is kept as before.
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	return why == og::reach::Exit::Shot ? FoeKeep::ByShot : FoeKeep::Kept;
+}
+
+// The SEARCH order's round with a live held foe (do_command). Appended at the end of the file so
+// the parity pins above never shift.
+void statistics::search_round()
+{
+	const FoeKeep keep = keeps_foe();
+	// rule: Gameplay Fixes BJ: a SEARCH round whose foe was let go ends there (keeps_foe).
+	// tests: SemBotReach.a_handed_foe_only_a_door_keeps_the_bot_from_is_let_go_at_the_top_of_its_next_round
+	if (keep == FoeKeep::LetGo)
+		return;
+	// rule: Gameplay Fixes BJ: a bot that keeps its foe only by its shot takes no step: it faces the
+	//   foe along direct_walk's 3:1-snapped raw delta (face_delta: facing, end facing and heading),
+	//   then asks direct_walk's shot test (shot_attacks, its draws as they are): on a pass its orders
+	//   are wiped, it turns and starts an ATTACK of 30+rng(25) rounds; on a refusal the round ends.
+	//   Every other bot hunts as before (walk_to_foe).
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	// tests: SemBotReach.archers_behind_a_door_shoot_only_through_an_arrow_slit_and_never_step
+	if (keep == FoeKeep::ByShot)
+	{
+		const walker* const foe = controller_->foe();
+		float xdelta = static_cast<float>(foe->xpos() - controller_->xpos());
+		float ydelta = static_cast<float>(foe->ypos() - controller_->ypos());
+		walker::snap_three_to_one(xdelta, ydelta);
+		controller_->face_delta(static_cast<short>(xdelta), static_cast<short>(ydelta));
+		(void)shot_attacks(xdelta, ydelta);
+		return;
+	}
+	walk_to_foe();
+}
+
+// The ATTACK order's end when it has no live foe left, or its bot let its foe go (keeps_foe, which
+// cleared the orders already, so there may be none to end). Appended at the end of the file so the
+// parity pins above never shift.
+void statistics::end_order()
+{
+	// plumbing: the front order (the ATTACK being run) ends: its count goes to 0 and the round's
+	//   tail pops it; after a let-go the queue is empty and nothing is left to end
+	if (!commands.empty())
+		commands.front().commandcount = 0;
+}
+
+// The ATTACK order's two steps toward its foe (the step out of a merged clinch, and the step a
+// shot refused for its range, a wall, its magic or its ray takes). Appended at the end of the file
+// so the parity pins above never shift.
+void statistics::attack_step(short xdelta, short ydelta)
+{
+	walker* const foe = controller_->foe();
+	// rule: Gameplay Fixes BJ: in its ATTACK order a bot that keeps its foe only by its shot takes
+	//   neither step (its fire_check and its turn toward the foe stay); asked again here of the same
+	//   world the top of the round asked, so the answer is keeps_foe's. Every other walker steps as
+	//   before.
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	// tests: SemBotReach.archers_behind_a_door_shoot_only_through_an_arrow_slit_and_never_step
+	if (foe != nullptr && og::reach::door_shut_exit(*controller_, *foe) == og::reach::Exit::Shot)
+		return;
+	controller_->walkstep(xdelta, ydelta);
+}
+
+// direct_walk's shot test, written once: direct_walk asks it before its straight step, and a bot
+// that keeps its foe only by its shot asks it in its SEARCH round (search_round, Gameplay Fixes
+// BJ). The delta is the 3:1-snapped raw delta. Appended at the end of the file so the parity pins
+// above never shift.
+bool statistics::shot_attacks(float xdelta, float ydelta)
+{
+	// rule: A walker that can already land a shot on its foe along the delta (fire_check, its draws
+	//   as they are) wipes its orders, turns toward the foe and starts an ATTACK lasting 30+rng(25)
+	//   rounds; a refused shot changes nothing here.
+	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
+	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks, SemAi4.a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on
+	// tests: SemBotReach.a_bot_kept_only_by_its_shot_faces_its_foe_and_shoots_without_a_step
+	if (!controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
+		return false;
+	clear_command();
+	controller_->turn(controller_->facing(xdelta, ydelta));
+	add_command(COMMAND_ATTACK,static_cast<short>(30+rng(25)),0,0);
+	return true;
+}
+
+// The idle decision of a bot with no foe (living.cpp: the seek's coin and act_random's), Gameplay
+// Fixes BJ and BL. `bot` is the living that is deciding, which passes itself: the stats' owner is
+// not read (a snapshot resolves it by id, so it may be nobody or another walker), as the classic
+// wander read none. Appended at the end of the file so the parity pins above never shift.
+short statistics::idle_walk(walker& bot, Sint32 rounds)
+{
+	// One question of one Asker: whether the bot is shut out (og::reach::shut_out's answer) and the
+	// door og::reach::breaks would hand it, read from one walk over its hostiles.
+	const og::reach::Asker::LastResort last = og::reach::Asker(bot).last_resort(nullptr);
+	// rule: Gameplay Fixes BJ: a bot shut out by a locked door (some enemy on its floor only a door
+	//   keeps it from) queues no wander and makes neither of its two direction draws. The question
+	//   is asked of the living that is deciding, whatever its stats name as their owner. Every
+	//   other walker, and every walker with the setting off, wanders as before (try_random_walk).
+	// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
+	if (last.shut)
+	{
+		// rule: Gameplay Fixes BL: the shut-out bot is handed the locked door in its way as its foe
+		//   (hand_door) when it has no enemy it can get at (the door og::reach::breaks answers); only
+		//   when there is none does it stay where it is.
+		// tests: SemBotReach.a_bot_with_only_an_enemy_behind_a_door_queues_no_wander_and_is_handed_the_door
+		// tests: SemBotBreak.on_the_first_tick_every_shut_out_bot_of_both_sides_is_handed_the_rooms_door
+		// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
+		if (last.door != nullptr)
+			hand_door(bot, const_cast<walker*>(last.door));
+		return 0;
+	}
+	return try_random_walk(rounds);
+}
+
+// Gameplay Fixes BJ and BL: the let-go of a held foe: no foe, the orders cleared (clear_command,
+// which clears the leader too), the route cleared. Draws nothing. Appended at the end of the file
+// so the parity pins above never shift.
+void statistics::let_go(walker& bot)
+{
+	bot.set_foe(nullptr);
+	clear_command();
+	bot.path_to_foe.clear();
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// keep of a held door, asked at the top of a SEARCH and an ATTACK round (keeps_foe) and after every
+// act (GameWorld::tick: a bot in a swing never reaches the top of its round). `bot` is the living
+// whose foe is asked about (it passes itself). Its let-go clears the orders through clear_command,
+// which writes to the statistics' owner, so a bot these statistics do not name as their owner (a
+// snapshot resolves the owner by id: it may be nobody or another walker) is not asked. Draws
+// nothing. Appended at the end of the file so the parity pins above never shift.
+statistics::FoeKeep statistics::keeps_door(walker& bot)
+{
+	walker* const door = bot.foe();
+	// rule: Gameplay Fixes BL: the keep is asked only of a bot keep_asked_of names: a door holder
+	//   (holds_door: a bot og::reach::asks names, the setting on, not a tower, not a guard at its
+	//   post, not a player's fighter, whose foe is a live door, whether that door bars it or not)
+	//   whose statistics name it as their owner; every other walker keeps its foe as before, and a
+	//   bot whose statistics name nobody or another walker keeps its door untouched (no owner's
+	//   orders, leader or weapon is written).
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door
+	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	// tests: SemBotBreak.guards_far_off_are_handed_nothing_and_the_orcs_inside_are
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	if (!keep_asked_of(bot))
+		return FoeKeep::Kept;
+	walker* const kept = og::reach::keeps_door(bot, *door);
+	// rule: Gameplay Fixes BL: a door the keep no longer allows (the bot gets at an enemy, is shut
+	//   out no more, or no door leads to a hostile; a door that bars it not is no edge door) is let
+	//   go as Gameplay Fixes BJ lets a foe go: no foe, orders, leader and route cleared.
+	// tests: SemBotBreak.an_enemy_that_appears_takes_every_door_holder_off_its_door, parity:orc_bot_lets_door_go_scen99, parity:orc_bot_lets_door_go_fixes_scen99
+	// tests: SemBotBreak.a_bot_handed_the_key_of_the_door_it_holds_lets_it_go_and_takes_the_enemy_behind_it
+	if (kept == nullptr)
+	{
+		let_go(bot);
+		return FoeKeep::LetGo;
+	}
+	// rule: Gameplay Fixes BL: while the conditions hold and the held door no longer leads to a
+	//   hostile, the door breaks answers is taken (hand_door) and kept.
+	// tests: SemBotBreak.a_held_door_that_still_leads_to_an_enemy_is_kept_when_a_better_one_appears
+	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed
+	if (kept != door)
+		hand_door(bot, kept);
+	return FoeKeep::Kept;
+}
+
+// walk_to_foe's near branch: how many of the foes found within its reach the bot does not let go
+// as door-shut (Gameplay Fixes BJ), asked of one Asker. Appended at the end of the file so the
+// parity pins above never shift.
+std::int32_t statistics::foes_not_door_shut(const std::list<walker*>& foes)
+{
+	og::reach::Asker asker(*controller_);
+	std::int32_t count = 0;
+	// plumbing: each foe of the list, judged below
+	for (walker* foe : foes)
+	{
+		// rule: Gameplay Fixes BJ: the near branch counts only the foes found within its reach that
+		//   are not door-shut for the bot (og::reach::Asker::door_shut); classic, every foe found.
+		// tests: SemBotReach.the_near_branch_counts_no_foe_only_a_door_keeps_the_bot_from
+		if (!asker.door_shut(*foe))
+			++count;
+	}
+	return count;
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// one test of a door holder, a bot og::reach::asks names whose foe is a live door (whether that door
+// bars it or not), written once for its askers: keep_asked_of (which adds the owner test, and which
+// the keep and living::act_random ask) and walks_into_door (which adds the melee-only flag). Draws
+// nothing. Appended at the end of the file so the parity pins above never shift.
+bool statistics::holds_door(const walker& bot, const walker* foe)
+{
+	// rule: Gameplay Fixes BL: a door holder is a bot og::reach::asks names (the setting on, a bot,
+	//   not a tower, not a guard at its post) whose foe is a live door; a walker whose foe is a
+	//   fighter or a dead door or who holds none, and every walker og::reach::asks does not name (a
+	//   seat's fighter, a tower, a guard at its post, every walker with the setting off), is none.
+	// tests: SemBotBreak.a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act
+	// tests: SemBotBreak.everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
+	return foe != nullptr && !foe->dead() && foe->is_door() && og::reach::asks(&bot);
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: the
+// bots the keep (keeps_door) is asked of, written once for its two askers: the keep, whose let-go
+// writes to the statistics' owner through clear_command, and living::act_random, where a bot the keep
+// is asked of keeps its door through the one-in-80 retarget (the draw of 80 is made as before; the
+// fresh search is not asked), so that among the door rules only the keep lets a door go. A door holder
+// whose statistics name nobody or another walker (only a restored snapshot makes one: the owner is
+// resolved by id) is not asked the keep and retargets as before. Draws nothing. Appended at the end of
+// the file so the parity pins above never shift.
+bool statistics::keep_asked_of(const walker& bot) const
+{
+	// rule: Gameplay Fixes BL: the keep is asked of a door holder (holds_door, asked of its own
+	//   foe) whose statistics these are and name it as their owner; a door holder whose statistics
+	//   name nobody or another walker is not asked: the keep leaves it its foe, and its random act's
+	//   one-in-80 retargets it as it retargets a walker that holds no door.
+	// tests: SemBotBreak.the_keep_leaves_alone_a_seat_the_setting_off_and_a_bot_whose_statistics_name_another_or_nobody
+	// tests: SemBotBreak.everyone_else_retargets_on_the_one_in_eighty_of_the_random_act_as_before
+	// tests: SemBotBreak.a_door_holder_keeps_its_door_through_the_one_in_eighty_of_its_random_act
+	return holds_door(bot, bot.foe()) && controller_ == &bot;
+}
+
+// Gameplay Fixes BL, a bot with no enemy it can get at breaks down the locked door in its way: a
+// melee-only bot breaks its door by walking into it. Asked by walk_to_foe's near test (such a bot is
+// never taken by the near branch: it plans its route into the door at any distance and on a crowded
+// map, by the far arm), by hand_door (it re-plans on its next chase) and by
+// walker::follow_path_to_foe (its route's last hop meets the door from every side). A bot that
+// shoots keeps its walk and shoots at the door from where its line check passes. Draws nothing.
+// Appended at the end of the file so the parity pins above never shift.
+bool statistics::walks_into_door(const walker& bot, const walker* foe)
+{
+	// rule: Gameplay Fixes BL: a door holder (holds_door: a bot og::reach::asks names, the setting
+	//   on, not a tower, not a guard at its post, whose foe is a live door) that is melee-only
+	//   (BIT_NO_RANGED) walks into that door; every other walker (a bot that shoots, a seat's
+	//   fighter, a bot whose foe is a fighter), and every walker with the setting off, walks as before.
+	// tests: SemBotBreak.a_melee_door_holder_skips_the_near_branch_and_plans_its_route_into_the_door
+	return holds_door(bot, foe) && bot.stats() != nullptr && bot.stats()->query_bit_flags(BIT_NO_RANGED);
+}
+
+// Gameplay Fixes BL: the hand-over of a door, written once for the three places that hand a bot
+// the door in its way (idle_walk, keeps_door's swap and the tick's hand-out in GameWorld::tick):
+// the door is set as the bot's foe, and a bot walks_into_door names re-plans on its next chase.
+// Draws nothing (the next chase draws its re-plan cadence, as every re-plan does). Appended at the
+// end of the file so the parity pins above never shift.
+void statistics::hand_door(walker& bot, walker* door)
+{
+	bot.set_foe(door);
+	// rule: Gameplay Fixes BL: a melee-only bot handed a door has its re-plan counter set to 0, so
+	//   its next chase re-plans at once (its route into the door, with the cadence draw every
+	//   re-plan makes) and takes no right-hand walk first; a bot that shoots keeps its counter.
+	// tests: SemBotBreak.a_melee_bot_handed_a_door_replans_on_its_next_chase_at_each_place_a_door_is_handed, parity:orc_bot_handed_door_replans_scen99, parity:orc_bot_handed_door_replans_fixes_scen99
+	if (walks_into_door(bot, door))
+		bot.set_path_check_counter(0);
 }

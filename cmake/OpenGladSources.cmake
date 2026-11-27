@@ -116,6 +116,7 @@ set(OG_GAMEPLAY_WORLD_SOURCES
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/game_world_weather.cpp
+    ${SRC_DIR}/gameplay/reach.cpp
     ${SRC_DIR}/gameplay/respawn/respawn.cpp
     ${SRC_DIR}/gameplay/mode/mode_tick.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp

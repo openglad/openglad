@@ -75,6 +75,7 @@ og_unit_sem_ai_1
 og_unit_sem_ai_2
 og_unit_sem_ai_3
 og_unit_sem_ai_4
+og_unit_sem_ai_5
 og_unit_sem_families_1
 og_unit_sem_families_2
 og_unit_sem_families_3
@@ -92,6 +93,7 @@ og_unit_sem_walker_1
 og_unit_sem_walker_2
 og_unit_sem_walker_3
 og_unit_sem_walker_4
+og_unit_sem_walker_5
 og_unit_sem_world_1
 og_unit_sem_world_2
 og_unit_sem_world_3

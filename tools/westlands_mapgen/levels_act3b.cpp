@@ -117,34 +117,42 @@ void build_dead_marshes(const LevelDataHooks& hooks)
     paint_marsh(w.grid, 48, 34, 49, 37); // I3, north to the ground south of C
     paint_marsh(w.grid, 76, 39, 77, 44); // I4, south to the P6 south shore
 
-    // Marsh-lights (team 2): ghosts drifting over every mere, levels 3/4
-    // alternating, with one elder light in the great mere and one in P6.
+    // Marsh-lights (team 2): ghosts drifting over every mere, levels 1 to 3,
+    // with one elder light in the great mere and one in P6 (eased below).
     // (F4 fresh-team calibration: 4/5 -> 3/4, elders 6 -> 5, the second
     // rising 5 -> 4 and its hour 400 -> 600 — every light on the map
     // converges on the causeway fight, and at the old levels the curve-6
     // company was extinct by tick 1500 with the Bearer dead first.)
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-6 company's forty-seed average here fell from 5.35 to
+    // 0.60 survivors. The P1 lights shed two levels (3/4 -> 1/2), the
+    // great mere's three (3/4 -> 1/1, its elder 5 -> 2), P3's two
+    // (3/4 -> 1/2), P4's one (3/4 -> 2/3), the small mere's pair one each
+    // (4 -> 3) and P6's two (3/4 -> 1/2, its elder 5 -> 3), which brings
+    // it back to 5.33. With the setting off it reads 7.83, from 5.80.)
     static constexpr int p1[5][2] = {{12, 15}, {24, 20}, {14, 22}, {26, 14},
                                      {22, 12}};
     for (int i = 0; i < 5; ++i)
-        place_living(w, FAMILY_GHOST, 2, 0, p1[i][0], p1[i][1], 3 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p1[i][0], p1[i][1], 1 + (i % 2));
     static constexpr int p2[6][2] = {{40, 8},  {44, 18}, {52, 6},
                                      {56, 16}, {42, 14}, {54, 20}};
     for (int i = 0; i < 6; ++i)
         place_living(w, FAMILY_GHOST, 2, 0, p2[i][0], p2[i][1],
-                     (i == 2) ? 5 : 3 + (i % 2));
+                     (i == 2) ? 2 : 1);
     static constexpr int p3[4][2] = {{10, 34}, {18, 40}, {24, 32}, {14, 42}};
     static constexpr int p4[4][2] = {{42, 36}, {56, 40}, {44, 44}, {54, 36}};
     for (int i = 0; i < 4; ++i)
     {
-        place_living(w, FAMILY_GHOST, 2, 0, p3[i][0], p3[i][1], 3 + (i % 2));
-        place_living(w, FAMILY_GHOST, 2, 0, p4[i][0], p4[i][1], 3 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p3[i][0], p3[i][1], 1 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p4[i][0], p4[i][1], 2 + (i % 2));
     }
-    place_living(w, FAMILY_GHOST, 2, 0, 72, 20, 4); // P5, the small mere
-    place_living(w, FAMILY_GHOST, 2, 0, 80, 22, 4);
+    place_living(w, FAMILY_GHOST, 2, 0, 72, 20, 3); // P5, the small mere
+    place_living(w, FAMILY_GHOST, 2, 0, 80, 22, 3);
     static constexpr int p6[4][2] = {{70, 32}, {82, 40}, {72, 42}, {84, 34}};
     for (int i = 0; i < 4; ++i)
         place_living(w, FAMILY_GHOST, 2, 0, p6[i][0], p6[i][1],
-                     (i == 1) ? 5 : 3 + (i % 2));
+                     (i == 1) ? 3 : 1 + (i % 2));
     // The marsh wakes: a second rising at tick 800 punishes dawdling.
     static constexpr int wake[6][2] = {{42, 6},  {50, 12}, {56, 8},
                                        {46, 40}, {52, 44}, {78, 36}};
@@ -730,10 +738,19 @@ void build_ash_plains(const LevelDataHooks& hooks)
     // turned the stealth-march into a 35-foe brawl at the west edge; now
     // the west column hunts, the lanes hold their ground, and the fords
     // stay the fights you MUST take.)
+    // (Eased 2026-11-18: with Gameplay Fixes on, a melee-only bot that
+    // faces its foe swings or steps in its ATTACK order (fix BC, #447).
+    // The curve-8 company's forty-seed average here fell from 5.90 to
+    // 2.58 survivors. The central files below shed one level (3 -> 2),
+    // the two river 1 ford watches three each (5 -> 2) and the fire-river
+    // wraiths one (4 -> 3). It reads 5.53, still 0.38 under the 5.90 it
+    // read before these fixes (the measure's error there is 0.34); one
+    // more level off the wraiths reads 6.88, too far. With the setting
+    // off it reads 7.17, from 6.22.)
     for (int i = 0; i < 6; ++i)
     {
-        place_living(w, FAMILY_ORC, 2, 0, 44, 6 + i * 6, 3, true);
-        place_living(w, FAMILY_ORC, 2, 0, 46, 6 + i * 6, 3, true);
+        place_living(w, FAMILY_ORC, 2, 0, 44, 6 + i * 6, 2, true);
+        place_living(w, FAMILY_ORC, 2, 0, 46, 6 + i * 6, 2, true);
     }
     place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 15, 5, true);
     place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 33, 5, true);
@@ -757,15 +774,15 @@ void build_ash_plains(const LevelDataHooks& hooks)
     place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 12, 5, true); // legion captains
     place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 45, 5, true);
     // The ford watches: the fights you MUST take.
-    place_living(w, FAMILY_ORC, 2, 0, 32, 15, 5, true); // river 1 north ford
-    place_living(w, FAMILY_ORC, 2, 0, 32, 17, 5, true);
+    place_living(w, FAMILY_ORC, 2, 0, 32, 15, 2, true); // river 1 north ford
+    place_living(w, FAMILY_ORC, 2, 0, 32, 17, 2, true);
     place_living(w, FAMILY_SKELETON, 2, 0, 62, 31, 5, true); // river 2 south
     place_living(w, FAMILY_SKELETON, 2, 0, 62, 33, 5, true); // ford
     // Wraiths riding the fire-rivers, where ground crews cannot answer.
     static constexpr int wraiths[6][2] = {{28, 7},  {58, 20}, {58, 44},
                                           {28, 45}, {80, 7},  {46, 25}};
     for (int i = 0; i < 6; ++i)
-        place_living(w, FAMILY_GHOST, 2, 0, wraiths[i][0], wraiths[i][1], 4);
+        place_living(w, FAMILY_GHOST, 2, 0, wraiths[i][0], wraiths[i][1], 3);
     // The relief column rises from the south camps at tick 700.
     static constexpr int relief[6][2] = {{44, 42}, {46, 42}, {44, 45},
                                          {46, 45}, {42, 44}, {48, 44}};
